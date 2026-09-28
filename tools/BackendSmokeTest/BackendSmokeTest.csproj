@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>BackendSmokeTest</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="obj\**\*.cs" />
+  </ItemGroup>
+
+  <!--
+    只读冒烟测试：直接编译主工程的后端源文件（纯 BCL 实现，无 WinUI 依赖），
+    用来在不跑 UI 的情况下验证后端逻辑。只执行读取操作，不做任何伪装/关闭。
+    注意：FrameService 依赖 DispatcherQueue（WindowsAppSDK），无法在此编译，由主工程构建覆盖。
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\src\DeltaNFD\Native\Privilege.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Native\NvApiDrs.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Native\CoreParkingLoop.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Native\MemoryPurge.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Native\ProcessPerf.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Native\CpuSets.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\AdvancedTweakService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\AceService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\AppSettingsStore.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\AppDataPaths.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\CleanupService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\DefenderGuard.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\ElevationHelper.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Log.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\GpuSpoofService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\IAceService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\IAdvancedTweakService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\ICleanupService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\IGpuSpoofService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\IPowerService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\ISystemTweakService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\NvProfileService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OperationResult.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\PowerService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\RegistryAclHelper.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\CpuTopologyService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\CcdTopologyDetector.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\ICpuTopologyService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\RuntimeGuardService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\IRuntimeGuardService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\DeltaForceLocator.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\IShaderService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\ShaderService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\SystemTweakService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\TweakBackupStore.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\PagefileService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\TweakDb\BxCatalog.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\TweakDb\BxService.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- DefenderGuard 的配置数据文件（冒烟测试的 Defender 状态只读查询要用） -->
+  <ItemGroup>
+    <Content Include="..\..\src\DeltaNFD\Assets\TweakDb\*.json" Link="Assets\TweakDb\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

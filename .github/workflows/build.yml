@@ -1,0 +1,31 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build main app (x64)
+        run: dotnet build src/DeltaNFD/DeltaNFD.csproj -c Release -p:Platform=x64
+
+      - name: Build smoke test
+        run: dotnet build tools/BackendSmokeTest/BackendSmokeTest.csproj -c Release
+
+      # 只读冒烟测试（枚举显卡 / 读取状态），不修改系统
+      - name: Read-only smoke test
+        run: dotnet run --project tools/BackendSmokeTest --nologo
+        continue-on-error: true

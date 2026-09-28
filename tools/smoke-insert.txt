@@ -1,0 +1,4 @@
+var shaderDiag = await shader.DiagnoseAsync();
+Console.WriteLine($"  健康检测[{shaderDiag.Level}]：{shaderDiag.Summary}");
+foreach (var d in shaderDiag.Details) { Console.WriteLine("      " + d); }
+Console.WriteLine($"      建议：{shaderDiag.Advice}");

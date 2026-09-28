@@ -1,0 +1,112 @@
+[
+  {
+    "Name": "TSX",
+    "Description": "TSXnewDesc",
+    "Arguments": [
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel",
+        "Key": "DisableTsx",
+        "Values": [
+          {
+            "ValueTypes": [
+              "OFF",
+              "DEFAULT",
+              "BEST"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "ON"
+            ],
+            "Value": "0"
+          }
+        ]
+      }
+    ],
+    "IconPath": "CreditCardChipOutline"
+  },
+  {
+    "Name": "Spectre, Meltdown, Downfall",
+    "Description": "SpectreMeltownNewDesc3",
+    "Arguments": [
+      "VISIBLETWEAKS"
+    ],
+    "WillBrake": [],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management",
+        "Key": "FeatureSettingsOverride",
+        "ValueFormat": "HEX",
+        "Values": [
+          {
+            "ValueTypes": [
+              "OFF"
+            ],
+            "Value": "2000003"
+          },
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "BEST",
+              "ON"
+            ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management",
+        "Key": "FeatureSettingsOverrideMask",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "BEST",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "OFF"
+            ],
+            "Value": "3"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management",
+        "Key": "FeatureSettings",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "BEST",
+              "ON"
+            ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [
+              "OFF"
+            ],
+            "Value": "1"
+          }
+        ]
+      }
+    ],
+    "IconPath": "CodeNotEqual"
+  }
+]

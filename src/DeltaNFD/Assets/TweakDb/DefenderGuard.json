@@ -1,0 +1,39 @@
+{
+  // DefenderGuard（优化前安全软件预检 / 优化后恢复）配置。
+  // 按项目铁律（HANDOFF §11.1）：命令与关键词字面量全部放在数据文件，C# 只留通用解释器。
+  // statusQuery：只读查询 Defender 状态（av=防病毒在 / rtp=实时保护开 / tamper=篡改防护开）。
+  "statusQuery": "$s=Get-MpComputerStatus; $p=Get-MpPreference; [pscustomobject]@{ av=[bool]$s.AntivirusEnabled; rtp=[bool]$s.RealTimeProtectionEnabled; tamper=[bool]$s.IsTamperProtected } | ConvertTo-Json -Compress",
+  // 只读枚举注册的杀软产品（SecurityCenter2），用于提醒用户暂时退出第三方杀软。
+  "avProductsQuery": "Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -ErrorAction SilentlyContinue | ForEach-Object { Write-Output $_.displayName }",
+  // 恢复方向命令（重新打开实时保护；篡改防护无法编程恢复，只能引导用户）。
+  "enableRealtimeCmd": "Set-MpPreference -DisableRealtimeMonitoring:$false",
+  // 会话级排除项（应用前添加、应用后移除，防止工具文件被误隔离）。
+  "addExclusionCmd": "Add-MpPreference -ExclusionPath '{0}'",
+  "removeExclusionCmd": "Remove-MpPreference -ExclusionPath '{0}'",
+  // SecurityCenter2 中不算“第三方”的产品名。
+  "avProductIgnoreNames": [ "Windows Defender" ],
+  // 批次条目命中以下关键词（小写子串）即视为“会被安全软件拦截的安全防护类条目”，触发预检引导。
+  "interceptTargets": [
+    "windows defender",
+    "defender security center",
+    "disableantispyware",
+    "disablerealtimemonitoring",
+    "windefend",
+    "wdnissvc",
+    "wdfilter",
+    "wdboot",
+    "msmpeng",
+    "mssense",
+    " sense ",
+    "securityhealth",
+    "wscsvc"
+  ],
+  // 命中以下关键词的条目属于“关闭 Defender 本体”：应用成功后不做实时保护自动恢复（尊重条目意图）。
+  "defenderOffTargets": [
+    "disableantispyware",
+    "disablerealtimemonitoring",
+    "windefend",
+    "wdnissvc",
+    "msmpeng"
+  ]
+}

@@ -1,0 +1,349 @@
+<Page
+    x:Class="DeltaNFD.Views.LabPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:DeltaNFD.ViewModels">
+
+    <ScrollViewer>
+        <StackPanel MaxWidth="1080" Padding="28,20,28,32" Spacing="16">
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="CPU实验室" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="CPU 信息与核心调度（实验功能，逐步完善中）" Style="{StaticResource PageSubtitleStyle}" />
+            </StackPanel>
+
+            <!-- 处理器场景切换 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="处理器场景" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="按处理器形态切换本页展示的优化卡片（默认自动检测本机）。切换到与本机不一致的场景仅用于查看，相关功能会自行检测并在不适用时拒绝执行。" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.Scenarios}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="8" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LabScenarioVm">
+                                <ToggleButton Content="{x:Bind Title}"
+                                              IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
+                                              Click="ScenarioChip_Click"
+                                              FontWeight="SemiBold" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <InfoBar IsOpen="{x:Bind ViewModel.ScenarioMismatchVisible, Mode=OneWay}"
+                             Severity="Warning"
+                             Title="场景与本机处理器不一致"
+                             Message="{x:Bind ViewModel.ScenarioMismatchText, Mode=OneWay}"
+                             IsClosable="False" />
+                </StackPanel>
+            </Border>
+
+            <!-- CPU 拓扑 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="处理器" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="{x:Bind ViewModel.CpuNameText, Mode=OneWay}"
+                                       FontSize="13" FontWeight="SemiBold" />
+                        </StackPanel>
+
+                        <Button Grid.Column="1" Content="重新检测" VerticalAlignment="Center"
+                                IsEnabled="{x:Bind ViewModel.CanRefresh, Mode=OneWay}"
+                                Click="RefreshButton_Click" />
+                    </Grid>
+
+                    <TextBlock Text="{x:Bind ViewModel.VendorText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" />
+                    <TextBlock Text="{x:Bind ViewModel.TopologyText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" />
+
+                    <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" Margin="0,4" />
+
+                    <TextBlock Text="关键判定" FontWeight="SemiBold" FontSize="13" />
+                    <TextBlock Text="{x:Bind ViewModel.HybridText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <TextBlock Text="{x:Bind ViewModel.HtText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- AMD CCD 判定 -->
+            <Border Style="{StaticResource CardBorderStyle}"
+                    Visibility="{x:Bind ViewModel.ShowCcdJudge, Mode=OneWay}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{x:Bind ViewModel.CcdSectionText, Mode=OneWay}"
+                               Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="{x:Bind ViewModel.CcdAdvice, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.CcdItems}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:CcdItemVm">
+                                <TextBlock Text="{x:Bind Text}" Style="{StaticResource CardDescStyle}"
+                                           Padding="4,2" TextWrapping="Wrap" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- 双CCD 专属调度 -->
+            <Border Style="{StaticResource CardBorderStyle}"
+                    Visibility="{x:Bind ViewModel.ShowDualCcd, Mode=OneWay}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="双CCD 专属调度" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="游戏独占一个 CCD，所有其他进程推到另一个 CCD，让游戏获得最大的 CPU 资源。CPU0 留给系统中断和内核进程以保障系统流畅度下限。" />
+
+                    <Grid ColumnSpacing="16" Padding="0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="游戏 CCD" FontWeight="SemiBold" />
+                            <TextBlock Text="选择哪个 CCD 运行游戏（另一个 CCD 给其他进程）"
+                                       Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" MinWidth="180" VerticalAlignment="Center"
+                                  ItemsSource="{x:Bind ViewModel.DualCcdChoices}"
+                                  SelectedIndex="{x:Bind ViewModel.DualCcdGameCcdIndex, Mode=TwoWay}" />
+                    </Grid>
+
+                    <Grid ColumnSpacing="16" Padding="0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="生效方式" FontWeight="SemiBold" />
+                            <TextBlock Text="立即生效：马上调整所有进程亲和性；帧格生效：加入帧格模式随开关自动启停"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" MinWidth="180" VerticalAlignment="Center"
+                                  SelectedIndex="{x:Bind ViewModel.DualCcdApplyModeIndex, Mode=TwoWay}">
+                            <ComboBoxItem Content="立即生效" />
+                            <ComboBoxItem Content="帧格生效" />
+                        </ComboBox>
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+                        <Button Content="撤销调度"
+                                IsEnabled="{x:Bind ViewModel.DualCcdRevertEnabled, Mode=OneWay}"
+                                Click="RevertDualCcdButton_Click" />
+                        <Button Style="{StaticResource AccentButtonStyle}"
+                                Content="应用双CCD调度"
+                                IsEnabled="{x:Bind ViewModel.DualCcdApplyEnabled, Mode=OneWay}"
+                                Click="ApplyDualCcdButton_Click" />
+                        <ProgressRing Width="24" Height="24"
+                                      IsActive="{x:Bind ViewModel.IsApplying, Mode=OneWay}"
+                                      Foreground="{StaticResource AppAccentBrush}"
+                                      VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <TextBlock Text="{x:Bind ViewModel.DualCcdStatusText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- 无省电电源计划 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="无省电电源计划" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                       Text="针对延迟与性能优化的电源计划（导入后显示为「无省电释放模式」；旧版计划可通过「修正计划名称」处理）。导入后可在 Windows 电源选项中切换；配合帧格页「电源计划锁定」可在游戏期间保持生效。" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <ProgressRing Width="24" Height="24"
+                                          IsActive="{x:Bind ViewModel.SchemeBusy, Mode=OneWay}"
+                                          Foreground="{StaticResource AppAccentBrush}" />
+                            <Button Content="切换到无省电电源计划"
+                                    IsEnabled="{x:Bind ViewModel.CanSwitchScheme, Mode=OneWay}"
+                                    Click="SwitchSchemeButton_Click" />
+                            <Button Style="{StaticResource AccentButtonStyle}"
+                                    Content="{x:Bind ViewModel.ImportSchemeButtonText, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanImportScheme, Mode=OneWay}"
+                                    Click="ImportSchemeButton_Click" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Text="{x:Bind ViewModel.SchemeStatusText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- 异类调度策略 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="异类调度策略" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="Windows 对混合架构 CPU（大小核 / 异构核心）的调度偏好，按当前电源计划交流/直流同时设置，选择后立即生效。仅对支持异构调度的平台有实际意义（Intel 大小核 / 部分 AMD 异构配置）。两个线程调度策略取值 0–5（5=自动，系统默认，让 Windows 自行选择落核偏好）；「生效的异类策略」为总策略（0–4，Windows 官方仅以编号命名，默认 4）。" />
+
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.HeteroItems}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:HeteroPolicyVm">
+                                <Grid ColumnSpacing="16" Padding="0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{x:Bind Title}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <ProgressRing Width="16" Height="16"
+                                                          IsActive="{x:Bind IsBusy, Mode=OneWay}"
+                                                          Foreground="{StaticResource AppAccentBrush}"
+                                                          VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <TextBlock Text="{x:Bind CurrentText, Mode=OneWay}"
+                                                   Style="{StaticResource CardDescStyle}" />
+                                    </StackPanel>
+
+                                    <ComboBox Grid.Column="1" MinWidth="190" VerticalAlignment="Center"
+                                              ItemsSource="{x:Bind Options}"
+                                              SelectedIndex="{x:Bind SelectedIndex, Mode=TwoWay}"
+                                              SelectionChanged="HeteroPolicyCombo_SelectionChanged" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="{x:Bind ViewModel.HeteroStatusText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- 内存限制检测 -->
+            <Border Style="{StaticResource CardBorderStyle}"
+                    Visibility="{x:Bind ViewModel.MemoryLimitDetected, Mode=OneWay}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="内存限制警告" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="{x:Bind ViewModel.MemoryLimitText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="其他「优化工具」常用 bcdedit removememory 把可用内存砍到约 12GB，损失巨大。本工具的显卡伪装方案不需要限制内存——建议立即移除。" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Style="{StaticResource AccentButtonStyle}"
+                                Content="移除 12GB 内存限制"
+                                Click="RemoveMemoryLimitButton_Click" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 单CCD 优化调度 -->
+            <Border Style="{StaticResource CardBorderStyle}"
+                    Visibility="{x:Bind ViewModel.ShowSingleCcd, Mode=OneWay}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="单CCD 优化调度" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="把三角洲进程的 CPU0 让出来：系统中断和内核进程集中在 CPU0，游戏在其余核心运行，减少调度抖动。对全部 AMD 机型可用（双CCD 机型不做 CCD 隔离、只想把 CPU0 留给系统时同样适用）。规则持久化：游戏未运行时点击即登记，游戏启动后由轮询自动应用并持续保持，恢复全部核心即解除。" />
+                    <TextBlock Text="{x:Bind ViewModel.GameStatusText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+                        <Button Content="恢复全部核心"
+                                IsEnabled="{x:Bind ViewModel.SingleCcdRestoreEnabled, Mode=OneWay}"
+                                Click="RestoreCpu0Button_Click" />
+                        <Button Style="{StaticResource AccentButtonStyle}"
+                                Content="排除 CPU0"
+                                IsEnabled="{x:Bind ViewModel.SingleCcdApplyEnabled, Mode=OneWay}"
+                                Click="ExcludeCpu0Button_Click" />
+                    </StackPanel>
+                    <TextBlock Text="{x:Bind ViewModel.SingleCcdStatusText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- CPU 亲和性（Process Lasso 风格，仅三角洲进程） -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="CPU 亲和性" FontWeight="SemiBold" FontSize="14" />
+                                <Border Style="{StaticResource ChipBorderStyle}"
+                                        Background="{ThemeResource ControlFillColorDefaultBrush}">
+                                    <TextBlock Text="仅 DeltaForceClient-Win64-Shipping.exe" FontSize="10" Opacity="0.75" />
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                       Text="勾选允许三角洲运行的核心；游戏运行期间持续保持硬亲和性。关闭规则或清空勾选时，恢复本工具记录的原亲和性。单/双 CCD 专属调度激活时，本规则自动让位。" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <TextBlock Text="{x:Bind ViewModel.GameAffinityStatusText, Mode=OneWay}"
+                                       FontSize="12" Opacity="0.85" VerticalAlignment="Center" TextWrapping="Wrap" />
+                            <ToggleSwitch IsOn="{x:Bind ViewModel.GameAffinityRuleEnabled, Mode=TwoWay}"
+                                          IsEnabled="{x:Bind ViewModel.AffinityRuleSupported, Mode=OneWay}"
+                                          OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                          HorizontalAlignment="Right" />
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="全部核心" FontSize="12" Padding="12,5" Click="AffinityAllButton_Click" />
+                        <Button Content="排除 CPU0" FontSize="12" Padding="12,5" Click="AffinityExcludeCpu0Button_Click" />
+                        <Button Content="仅 CCD0" FontSize="12" Padding="12,5"
+                                Visibility="{x:Bind ViewModel.AffinityCcdButtonsVisible, Mode=OneWay}"
+                                Click="AffinityCcd0Button_Click" />
+                        <Button Content="仅 CCD1" FontSize="12" Padding="12,5"
+                                Visibility="{x:Bind ViewModel.AffinityCcdButtonsVisible, Mode=OneWay}"
+                                Click="AffinityCcd1Button_Click" />
+                    </StackPanel>
+
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.AffinityCores}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ItemsWrapGrid Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AffinityCoreVm">
+                                <CheckBox Content="{x:Bind Label}" IsChecked="{x:Bind IsChecked, Mode=TwoWay}"
+                                          MinWidth="0" Margin="0,0,10,4" FontSize="12" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- 说明 -->
+            <Border Style="{StaticResource CardBorderStyle}" Padding="20,14">
+                <StackPanel Spacing="6">
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· CPU 亲和性规则持久化：游戏运行期间持续硬锁到勾选核心；关闭规则时恢复本工具修改前的进程亲和性。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· 大小核机器建议把游戏锁定到 P 核；AMD 双 CCD 机型可对比两个 CCD 的表现后择优锁定。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· 与「双CCD 专属调度」二选一：专属调度激活期间亲和性规则自动让位，撤销后自动恢复。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· 本栏目为实验室功能，后续将引入 CCD 体质判定与自动择优调度。" />
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

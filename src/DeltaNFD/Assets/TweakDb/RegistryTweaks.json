@@ -1,0 +1,704 @@
+[
+  {
+    "Name": "SystemResponsiveness",
+    "Description": "SystemResponsivenessDesc",
+    "Arguments": [
+      "PRO",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "CUSTOM_VALUE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile",
+        "ValueFormat": "HEX",
+        "Key": "SystemResponsiveness",
+        "Values": [
+          {
+            "ValueName": "DEFAULT20",
+            "ValueTypes": [
+              "DEFAULT",
+              "OPTIMAL"
+            ],
+            "Value": "14"
+          },
+          {
+            "ValueName": "10%",
+            "ValueTypes": [
+              "BEST"
+            ],
+            "Value": "a"
+          }
+        ]
+      }
+    ],
+    "IconPath": "Chip",
+    "Level": 1
+  },
+  {
+    "Name": "Win32PrioritySeparation",
+    "Description": "Win32PrioritySeparationDesc",
+    "Arguments": [
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "CUSTOM_VALUE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\PriorityControl",
+        "ValueFormat": "HEX",
+        "Key": "Win32PrioritySeparation",
+        "Values": [
+          {
+            "ValueName": "default",
+            "ValueTypes": [
+              "DEFAULT",
+              "BEST"
+            ],
+            "Value": "2"
+          },
+          {
+            "ValueName": "HEX 1A (DEC 26)",
+            "ValueTypes": [
+              "OPTIMAL"
+            ],
+            "Value": "1a"
+          }
+        ]
+      }
+    ],
+    "IconPath": "ScaleBalance"
+  },
+  {
+    "Name": "svccombine",
+    "Description": "svccombinedesc",
+    "Arguments": [
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "CHECK",
+        "Path": "SVCHOST",
+        "Key": "",
+        "Values": []
+      },
+      {
+        "TweakType": "EMBEDDEDTWEAK",
+        "Path": "SVCHOSTTWEAK",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "BEST",
+              "ON"
+            ],
+            "Value": "JustForCheck"
+          }
+        ]
+      }
+    ],
+    "IconPath": "VectorCombine",
+    "Level": 3
+  },
+  {
+    "Name": "WindowsUpdatesReservedStorage",
+    "Description": "WindowsUpdatesReservedStorageDesc",
+    "IconPath": "ContentSave",
+    "Arguments": [
+      "PRO",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ReserveManager",
+        "Key": "MiscPolicyInfo",
+        "Values": [
+          {
+            "ValueTypes": [
+              "BEST",
+              "OPTIMAL",
+              "OFF"
+            ],
+            "Value": "2"
+          },
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ReserveManager",
+        "Key": "PassedPolicy",
+        "Values": [
+          {
+            "ValueTypes": [
+              "BEST",
+              "OPTIMAL",
+              "OFF"
+            ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ReserveManager",
+        "Key": "ShippedWithReserves",
+        "Values": [
+          {
+            "ValueTypes": [
+              "BEST",
+              "OPTIMAL",
+              "OFF"
+            ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "1"
+          }
+        ]
+      }
+    ],
+    "Level": 1
+  },
+  {
+    "Name": "LastAccess",
+    "Description": "LastAccessDesc",
+    "IconPath": "FileDocumentRefreshOutline",
+    "Arguments": [
+      "VISIBLETWEAKS",
+      "LEVEL",
+      "TRUSTED"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\FileSystem",
+        "Key": "NtfsDisableLastAccessUpdate",
+        "ValueFormat": "HEX",
+        "Values": [
+          {
+            "ValueTypes": [
+              "BEST",
+              "OPTIMAL",
+              "OFF"
+            ],
+            "Value": "80000001"
+          },
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "80000000"
+          }
+        ]
+      }
+    ],
+    "Level": 1
+  },
+  {
+    "Name": "8dot3NameCreation",
+    "Description": "8dot3NameCreationDesc",
+    "IconPath": "FileQuestionOutline",
+    "Arguments": [
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\FileSystem",
+        "Key": "NtfsDisable8dot3NameCreation",
+        "Values": [
+          {
+            "ValueTypes": [
+              "BEST",
+              "OPTIMAL",
+              "OFF"
+            ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "0"
+          }
+        ]
+      }
+    ],
+    "Level": 1
+  },
+  //{
+  //  "Name": "UnloadDll",
+  //  "Description": "UnloadDllDesc",
+  //  "IconPath": "Memory",
+  //  "Arguments": [
+  //    "VISIBLETWEAKS",
+  //    "LEVEL",
+  //    "PRO"
+  //  ],
+  //  "NoSupport": [
+  //    "EXPERIMENTAL"
+  //  ],
+  //  "Type": "DOUBLE",
+  //  "Tweaks": [
+  //    {
+  //      "TweakType": "REG",
+  //      "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer",
+  //      "Key": "AlwaysUnloadDLL",
+  //      "Values": [
+  //        {
+  //          "ValueTypes": [
+  //            "BEST",
+  //            "OPTIMAL",
+  //            "ON"
+  //          ],
+  //          "Value": "1"
+  //        },
+  //        {
+  //          "ValueTypes": [
+  //            "DEFAULT",
+  //            "OFF"
+  //          ],
+  //          "Value": "Null"
+  //        }
+  //      ]
+  //    },
+  //    {
+  //      "TweakType": "REG",
+  //      "Path": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer",
+  //      "Key": "AlwaysUnloadDLL",
+  //      "Values": [
+  //        {
+  //          "ValueTypes": [
+  //            "BEST",
+  //            "OPTIMAL",
+  //            "ON"
+  //          ],
+  //          "Value": "1"
+  //        },
+  //        {
+  //          "ValueTypes": [
+  //            "DEFAULT",
+  //            "OFF"
+  //          ],
+  //          "Value": "Null"
+  //        }
+  //      ]
+  //    }
+  //  ],
+  //  "Level": 0
+  //},
+  //{
+  //  "Name": "LazyMode",
+  //  "Description": "LazyModeDesc",
+  //  "IconPath": "TimerAlertOutline",
+  //  "Arguments": [
+  //    "VISIBLETWEAKS",
+  //    "LEVEL"
+  //  ],
+  //  "NoSupport": [
+  //    "EXPERIMENTAL"
+  //  ],
+  //  "Type": "DOUBLE",
+  //  "Tweaks": [
+  //    {
+  //      "TweakType": "REG",
+  //      "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile",
+  //      "Key": "NoLazyMode",
+  //      "Values": [
+  //        {
+  //          "ValueTypes": [
+  //            "BEST",
+  //            "OPTIMAL",
+  //            "OFF"
+  //          ],
+  //          "Value": "1"
+  //        },
+  //        {
+  //          "ValueTypes": [
+  //            "DEFAULT",
+  //            "ON"
+  //          ],
+  //          "Value": "Null"
+  //        }
+  //      ]
+  //    }
+  //  ],
+  //  "Level": 0
+  //},
+  {
+    "Name": "ApplicationCompatibility",
+    "IconPath": "ApplicationVariableOutline",
+    "Description": "ApplicationCompatibilityDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppCompat",
+        "Key": "DisableEngine",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppCompat",
+        "Key": "SbEnable",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppCompat",
+        "Key": "DisablePCA",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "AutoMaintenance",
+    "IconPath": "WrenchClock",
+    "Description": "AutoMaintenanceDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\Maintenance",
+        "Key": "MaintenanceDisabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "ScheduledMaintenance",
+    "IconPath": "WrenchClockOutline",
+    "Description": "ScheduledMaintenanceDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\ScheduledDiagnostics",
+        "Key": "EnabledExecution",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "UCPD",
+    "IconPath": "FileDocumentAlertOutline",
+    "Description": "UCPDDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [
+      "UCPD"
+    ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\AppxDeploymentClient\\UCPD velocity",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\UCPD",
+        "Key": "Start",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": 1
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 4
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "PagingSetttings",
+    "IconPath": "Memory",
+    "Arguments": [
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [
+      "ADVANCEDUSER"
+    ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management",
+        "Key": "DisablePagingExecutive",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF"
+            ],
+            "Value": "1"
+          }
+        ]
+      }
+      ]
+  },
+  {
+    "Name": "TimerResolution",
+    "Description": "TimerResolutionMovedDesc",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel",
+        "Key": "GlobalTimerResolutionRequests",
+        "Values": [
+          { "ValueTypes": [ "BEST", "ON" ], "Value": "1" },
+          { "ValueTypes": [ "DEFAULT", "OFF" ], "Value": "Null" }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "StoragePowerSavingOff",
+    "Description": "StoragePowerMovedDesc",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\stornvme\\Parameters\\Device",
+        "Key": "IdlePowerMode",
+        "Values": [
+          { "ValueTypes": [ "BEST", "ON" ], "Value": "0" },
+          { "ValueTypes": [ "DEFAULT", "OFF" ], "Value": "Null" }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\stornvme\\Parameters\\Device",
+        "Key": "NOPPME",
+        "Values": [
+          { "ValueTypes": [ "BEST", "ON" ], "Value": "0" },
+          { "ValueTypes": [ "DEFAULT", "OFF" ], "Value": "Null" }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power",
+        "Key": "StorageD3InModernStandby",
+        "Values": [
+          { "ValueTypes": [ "BEST", "ON" ], "Value": "0" },
+          { "ValueTypes": [ "DEFAULT", "OFF" ], "Value": "Null" }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "NetworkPowerSavingOff",
+    "Description": "NetworkPowerMovedDesc",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REGENUM",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e972-e325-11ce-bfc1-08002be10318}",
+        "Key": "EnablePowerManagement",
+        "Values": [
+          { "ValueTypes": [ "BEST", "ON" ], "Value": "0" },
+          { "ValueTypes": [ "DEFAULT", "OFF" ], "Value": "Null" }
+        ]
+      },
+      {
+        "TweakType": "REGENUM",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e972-e325-11ce-bfc1-08002be10318}",
+        "Key": "PnPCapabilities",
+        "Values": [
+          { "ValueTypes": [ "BEST", "ON" ], "Value": "24" },
+          { "ValueTypes": [ "DEFAULT", "OFF" ], "Value": "Null" }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "USBSelectiveSuspendOff",
+    "Description": "USBSelectiveSuspendOffDesc",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Usb",
+        "Key": "DisableSelectiveSuspend",
+        "Values": [
+          { "ValueTypes": [ "BEST", "ON" ], "Value": "1" },
+          { "ValueTypes": [ "DEFAULT", "OFF" ], "Value": "Null" }
+        ]
+      },
+      {
+        "TweakType": "CMD",
+        "Values": [
+          { "ValueTypes": [ "BEST", "ON" ], "Value": "powercfg /setacvalueindex SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0 & powercfg /setdcvalueindex SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0 & powercfg /setactive SCHEME_CURRENT" },
+          { "ValueTypes": [ "DEFAULT", "OFF" ], "Value": "powercfg /setacvalueindex SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 1 & powercfg /setdcvalueindex SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 1 & powercfg /setactive SCHEME_CURRENT" }
+        ]
+      }
+    ]
+  }
+]

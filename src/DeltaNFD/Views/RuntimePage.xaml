@@ -1,0 +1,154 @@
+<Page
+    x:Class="DeltaNFD.Views.RuntimePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer>
+        <StackPanel MaxWidth="1080" Padding="28,20,28,32" Spacing="16">
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="运行库" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="VC++ 运行库检测 / 修复 / 防护模式，防三角洲强制覆盖安装" Style="{StaticResource PageSubtitleStyle}" />
+            </StackPanel>
+
+            <!-- 运行库检测 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="运行库检测" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                       Text="只检测 v14 运行库（不完善版本）：扫描卸载表中显示名为「Microsoft Visual C++ v14 Redistributable」的条目（三角洲强制安装）。其它 C++ 运行库不参与检测。" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <ProgressRing Width="24" Height="24"
+                                          IsActive="{x:Bind ViewModel.IsChecking, Mode=OneWay}"
+                                          Foreground="{StaticResource AppAccentBrush}" />
+                            <Button Content="{x:Bind ViewModel.CheckButtonText, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanCheck, Mode=OneWay}"
+                                    Click="CheckButton_Click" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Text="{x:Bind ViewModel.CheckText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               FontFamily="Consolas" />
+                </StackPanel>
+            </Border>
+
+            <!-- 修复运行库 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="修复运行库" FontWeight="SemiBold" />
+                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                   Text="两步修复：① 卸载系统上全部 C++ 运行库条目（MSI 条目走 msiexec 静默卸载）；② 运行内置的 VC++ AIO 修复包（自动 SHA256 校验）重装 2005–2022 全系列 x86 + x64 官方运行库。约 3–5 分钟，期间请勿关闭电脑。" />
+                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                   Text="⚠ 注意：重装会改变系统运行库环境——如果你近期有用 C++ 写东西（开发环境依赖特定运行库版本），请谨慎修复。" />
+                        <TextBlock Text="{x:Bind ViewModel.RepairStatusText, Mode=OneWay}"
+                                   FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <ProgressRing Width="24" Height="24"
+                                      IsActive="{x:Bind ViewModel.IsRepairing, Mode=OneWay}"
+                                      Foreground="{StaticResource AppAccentBrush}" />
+                        <Button Style="{StaticResource AccentButtonStyle}"
+                                Content="{x:Bind ViewModel.RepairButtonText, Mode=OneWay}"
+                                IsEnabled="{x:Bind ViewModel.RepairEnabled, Mode=OneWay}"
+                                Click="RepairButton_Click" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 单独卸载 V14 运行库 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="单独卸载 V14 运行库" FontWeight="SemiBold" />
+                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                   Text="只卸载显示名带「v14」的运行库条目（如「Microsoft Visual C++ v14 Redistributable」）；所有年份命名的条目（2015 / 2017 / 2019 / 2022 / 2026 等）与 2005-2013 各分支一律不动。逐条静默卸载，约 1 分钟。" />
+                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                   Text="⚠ 卸载后依赖该运行库的游戏 / 软件将无法启动，直到重装运行库；Steam 启动游戏时也可能自动重装（Steamworks 共享运行库机制），游戏 / 启动器侧的重装可用下方「运行库防护模式」拦截。防护开启时请先关闭再卸载（否则卸载器会被拦截）。" />
+                        <TextBlock Text="{x:Bind ViewModel.UninstallV14StatusText, Mode=OneWay}"
+                                   FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <ProgressRing Width="24" Height="24"
+                                      IsActive="{x:Bind ViewModel.UninstallV14Busy, Mode=OneWay}"
+                                      Foreground="{StaticResource AppAccentBrush}" />
+                        <Button Content="单独卸载 V14"
+                                IsEnabled="{x:Bind ViewModel.UninstallV14Enabled, Mode=OneWay}"
+                                Click="UninstallV14Button_Click" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 防护模式 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="运行库防护模式" FontWeight="SemiBold" />
+                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                   Text="开启后通过 IFEO 拦截全部运行库安装器（VC++ 2005~2022 全系列、DirectX、UE4 前置包等），并对 UE4 前置包设置拒绝执行 ACL——三角洲将无法强制安装 v14 运行库（不完善版本）或覆盖现有运行库。" />
+                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                   Text="注意：需要手动安装运行库时请先临时关闭本开关，装完再开。" />
+                        <TextBlock Text="{x:Bind ViewModel.GuardStatusText, Mode=OneWay}"
+                                   FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <ProgressRing Width="24" Height="24"
+                                      IsActive="{x:Bind ViewModel.GuardIsBusy, Mode=OneWay}"
+                                      Foreground="{StaticResource AppAccentBrush}" />
+                        <TextBlock Text="{x:Bind ViewModel.GuardToggleText, Mode=OneWay}"
+                                   FontSize="12" Opacity="0.85" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <ToggleSwitch IsOn="{x:Bind ViewModel.GuardIsEnabled, Mode=OneWay}"
+                                      Toggled="GuardToggle_Toggled"
+                                      IsEnabled="{x:Bind ViewModel.GuardToggleEnabled, Mode=OneWay}"
+                                      OnContent="" OffContent=""
+                                      MinWidth="0" Margin="0" HorizontalAlignment="Right"
+                                      VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 说明 -->
+            <Border Style="{StaticResource CardBorderStyle}" Padding="20,14">
+                <StackPanel Spacing="6">
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· 三角洲会静默强制安装「Microsoft Visual C++ v14 Redistributable」运行库（不完善版本），可能覆盖你已安装的官方运行库，导致其它游戏 / 软件崩溃或异常。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· 修复原理 = 先卸载系统上全部 C++ 运行库，再用官方 MSI 安装包重装全系列（2005–2022），恢复干净状态。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· 运行库拦截已按需求从「帧格」页移除，防护开关统一在本页管理。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· 手动安装任意运行库 / DirectX 组件前，请先临时关闭防护模式，否则安装器会被拦截。" />
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

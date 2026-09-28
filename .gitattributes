@@ -1,0 +1,16 @@
+# Windows 默认 CRLF，仓库统一 LF 由 git 处理换行转换
+* text=auto
+
+# 源码文件强制 LF 入库
+*.cs text eol=lf
+*.xaml text eol=lf
+*.csproj text eol=lf
+*.sln text eol=crlf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.manifest text eol=lf
+
+# 二进制文件
+*.png binary
+*.ico binary

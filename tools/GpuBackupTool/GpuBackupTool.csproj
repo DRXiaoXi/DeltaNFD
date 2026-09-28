@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>GpuBackupTool</RootNamespace>
+  </PropertyGroup>
+
+  <!-- 一次性工具：把当前显卡 DeviceDesc 写入 DeltaNFD 恢复备份库（只备份，不改注册表） -->
+  <ItemGroup>
+    <Compile Include="..\..\src\DeltaNFD\Native\Privilege.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\ElevationHelper.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Log.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\GpuSpoofService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\IGpuSpoofService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OperationResult.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\RegistryAclHelper.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\AppDataPaths.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\TweakBackupStore.cs" />
+  </ItemGroup>
+
+</Project>

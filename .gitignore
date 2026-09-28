@@ -1,0 +1,83 @@
+# ---------- .NET / Visual Studio ----------
+bin/
+obj/
+out/
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+# Rider
+*.DotSettings.user
+
+# ---------- 构建产物 ----------
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Ll]og/
+[Ll]ogs/
+*.binlog
+*.log
+
+# ---------- NuGet ----------
+*.nupkg
+**/packages/*
+!**/packages/build/
+*.nuget.props
+*.nuget.targets
+project.lock.json
+
+# ---------- WinUI / MSIX 打包 ----------
+*.appx
+*.appxbundle
+*.appxupload
+*.msix
+*.msixbundle
+*.msixupload
+AppPackages/
+BundleArtifacts/
+
+# ---------- 测试与发布 ----------
+[Tt]est[Rr]esult*/
+TestResult.xml
+publish/
+PublishProfiles/
+
+# ---------- 安装包产物（installer\DeltaNFD.iss 脚本本身保留入库） ----------
+installer/Output/
+_buildcheck/
+
+# ---------- 内部交接文档（仅本地保留，不随仓库分发） ----------
+HANDOFF.md
+.zcodeignore
+
+# ---------- 本地 ACE 调查材料（不随公开源码分发） ----------
+ace-burn-report/
+/ACE-CORE空转调查报告.zip
+
+# ---------- 运行库安装包（仅作为安装器构建输入，不入源码仓库） ----------
+src/DeltaNFD/Assets/VCRedistRepair.exe
+src/DeltaNFD/Assets/VCRedist2015-2022-x64.exe
+src/DeltaNFD/Assets/VCRedist2015-2022-x86.exe
+src/DeltaNFD/Assets/VCRedistRepair_unpacked/
+src/DeltaNFD/Assets/background.png
+
+# ---------- 本机运行时生成的文件 ----------
+*.tmp
+.tmp
+
+# ---------- ZCode 工作区 ----------
+.zcode/
+
+# ---------- 操作系统 ----------
+Thumbs.db
+Desktop.ini
+.DS_Store
+installer/Backup/
+
+# ---------- 本地生成的源码归档（不重复提交到仓库） ----------
+/DeltaNFD_Source_*.zip
+/DeltaOptimizer_Source_*.zip

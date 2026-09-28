@@ -1,0 +1,98 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>DeltaNFD</RootNamespace>
+    <AssemblyName>DeltaNFD</AssemblyName>
+    <AssemblyTitle>Delta NFD</AssemblyTitle>
+    <Product>Delta No FPS Drops</Product>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <Platforms>x86;x64;ARM64</Platforms>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x86'">win-x86</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x64'">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
+
+    <UseWinUI>true</UseWinUI>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- 非打包部署：无需 MSIX 签名，构建后直接运行 exe -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+
+    <DefaultLanguage>zh-CN</DefaultLanguage>
+    <Version>0.82.0</Version>
+    <!-- 日志头/程序集读取的显示版本（与关于卡 VersionText 保持一致） -->
+    <InformationalVersion>OpenAlphaV0.82</InformationalVersion>
+    <!-- 应用图标（exe / 任务栏 / 托盘共用；托盘经 ExtractIconExW 从 exe 提取） -->
+    <ApplicationIcon>Assets\DeltaNFD.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- 磁盘介质检测（MSFT_PhysicalDisk，虚拟内存盘符的机械盘/固态判定） -->
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- 隔离构建时也不要把旧 obj 目录中的生成代码当作项目源码。 -->
+  <ItemGroup>
+    <Compile Remove="obj\**\*.cs" />
+    <Page Remove="obj\**\*.xaml" />
+  </ItemGroup>
+
+  <!-- 扩展优化库 优化数据库（JSON，随程序输出） -->
+  <ItemGroup>
+    <Content Include="Assets\TweakDb\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 背景图（用户自备：Assets\background.png / .jpg 等，随程序输出） -->
+  <ItemGroup>
+    <Content Include="Assets\background.*" Condition="'$(IncludeBundledBackground)' != 'false'" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 应用图标（exe/任务栏/托盘）+ 应用内 logo（标题栏 / 关于卡） -->
+  <ItemGroup>
+  <Content Include="Assets\DeltaNFD.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- VC++ AIO 解包修复安装程序及其 payload：作为自定义数据复制，不进入 WinUI PRI 资源索引。 -->
+  <ItemGroup>
+    <Content Remove="Assets\VCRedistRepair_unpacked\**\*" />
+    <None Remove="Assets\VCRedistRepair_unpacked\**\*" />
+    <RepairRuntimePayload Include="Assets\VCRedistRepair_unpacked\**\*"
+                          Exclude="Assets\VCRedistRepair_unpacked\解包报告.md;Assets\VCRedistRepair_unpacked\SFX配置块.txt" />
+  </ItemGroup>
+
+  <!-- VC++ 2015-2022 官方运行库安装包（修复后钉装基线 14.42.34433） -->
+  <ItemGroup>
+    <Content Include="Assets\VCRedist2015-2022-x64.exe" Condition="Exists('Assets\VCRedist2015-2022-x64.exe')" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\VCRedist2015-2022-x86.exe" Condition="Exists('Assets\VCRedist2015-2022-x86.exe')" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 无省电电源计划（CPU实验室导入用，显示名「无省电释放模式」） -->
+  <ItemGroup>
+    <Content Include="Assets\NoPowerSave-Scheme.pow" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="CopyRepairRuntimePayloadToBuildOutput" AfterTargets="Build" Condition="'$(IsDesignTimeBuild)' != 'true'">
+    <MakeDir Directories="@(RepairRuntimePayload->'$(OutDir)Assets\VCRedistRepair_unpacked\%(RecursiveDir)')" />
+    <Copy SourceFiles="@(RepairRuntimePayload)"
+          DestinationFiles="@(RepairRuntimePayload->'$(OutDir)Assets\VCRedistRepair_unpacked\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyRepairRuntimePayloadToPublish" AfterTargets="Publish">
+    <MakeDir Directories="@(RepairRuntimePayload->'$(PublishDir)Assets\VCRedistRepair_unpacked\%(RecursiveDir)')" />
+    <Copy SourceFiles="@(RepairRuntimePayload)"
+          DestinationFiles="@(RepairRuntimePayload->'$(PublishDir)Assets\VCRedistRepair_unpacked\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

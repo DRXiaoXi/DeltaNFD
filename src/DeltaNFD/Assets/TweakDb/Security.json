@@ -1,0 +1,572 @@
+[
+  {
+    "Name": "setssecmsg",
+    "Description": "setssecmsgdesc",
+    "Level": 1,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings\\Windows.SystemToast.SecurityAndMaintenance",
+        "Key": "Enabled",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings\\Windows.SystemToast.SecurityAndMaintenance",
+        "Key": "Enabled",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows Defender Security Center\\Notifications",
+        "Key": "DisableNotifications",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows Defender Security Center\\Notifications",
+        "Key": "DisableNotifications",
+        "Values": [
+          {
+            "ValueTypes": [ "ON", "DEFAULT" ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "1"
+          }
+        ]
+      }
+    ],
+    "IconPath": "ShieldAlertOutline"
+  },
+  {
+    "Name": "DefenderName",
+    "Risk": "High",
+    "Description": "DefenderNameDesc",
+    "IconPath": "Security",
+    "Level": 5,
+    "Arguments": [ "TRUSTED", "LEVEL", "NOINSTANTAPPLY" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "EMBEDDEDTWEAK",
+        "Path": "DEFENDERTWEAK",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "JustForCheck"
+          }
+        ]
+      },
+      {
+        "TweakType": "CHECK",
+        "Path": "DEFENDER",
+        "Key": "",
+        "Values": []
+      }
+    ]
+  },
+  {
+    "Name": "SecurityHealthService",
+    "Risk": "High",
+    "Description": "SecurityHealthServiceDesc",
+    "IconPath": "ShieldHome",
+    "Level": 1,
+    "Arguments": [ "TRUSTED", "LEVEL", "VISIBLETWEAKS" ],
+    "NoSupport": [],
+    "WillBrake": [ "WBSecuityUI" ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\SecurityHealthService",
+        "Key": "Start",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "3"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "4"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG_EXPAND_SZ",
+        "Path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
+        "Key": "SecurityHealth",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "%windir%\\system32\\SecurityHealthSystray.exe"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "VBSW11",
+    "Risk": "High",
+    "Level": 5,
+    "Arguments": [ "LEVEL" ],
+    "WillBrake": [],
+    "NoSupport": [ "VBS", "W10" ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "EMBEDDEDTWEAK",
+        "Path": "VBSTWEAKW11",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "JustForCheck"
+          }
+        ]
+      },
+      {
+        "TweakType": "CHECK",
+        "Path": "VBSTWEAK",
+        "Key": "",
+        "Values": []
+      }
+    ],
+    "IconPath": "ServerSecurity"
+  },
+  {
+    "Name": "VBS",
+    "Risk": "High",
+    "Description": "VBSDesc",
+    "Level": 5,
+    "Arguments": [ "LEVEL" ],
+    "WillBrake": [],
+    "NoSupport": [ "VBS", "W11" ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "EMBEDDEDTWEAK",
+        "Path": "VBSTWEAKW10",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "JustForCheck"
+          }
+        ]
+      },
+      {
+        "TweakType": "CHECK",
+        "Path": "VBSTWEAK",
+        "Key": "",
+        "Values": []
+      }
+    ],
+    "IconPath": "ServerSecurity"
+  },
+  {
+    "Name": "MemoryIntegrity",
+    "Risk": "High",
+    "Level": 3,
+    "Arguments": [ "LEVEL", "VISIBLETWEAKS", "TRUSTED" ],
+    "WillBrake": [],
+    "NoSupport": [ "W11" ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "EMBEDDEDTWEAK",
+        "Path": "MITWEAK",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "JustForCheck"
+          }
+        ]
+      },
+      {
+        "TweakType": "CHECK",
+        "Path": "MITWEAK",
+        "Key": "",
+        "Values": []
+      }
+    ],
+    "IconPath": "ShieldLockOutline"
+  },
+  {
+    "Name": "setssmartscreen",
+    "Risk": "High",
+    "Description": "SmartScreenDesc",
+    "IconPath": "AlertOctagonOutline",
+    "Level": 2,
+    "Arguments": [ "TRUSTED", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "EMBEDDEDTWEAK",
+        "Path": "SMARTSCREENTWEAK",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "JustForCheck"
+          }
+        ]
+      },
+      {
+        "TweakType": "CHECK",
+        "Path": "SMARTSCREEN",
+        "Key": "",
+        "Values": []
+      }
+    ]
+  },
+  {
+    "Name": "setsfirewall",
+    "Risk": "High",
+    "Description": "setsfirewalldesc",
+    "Level": 2,
+    "Arguments": [ "LEVEL", "VISIBLETWEAKS" ],
+    "WillBrake": [ "WBXBOX" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\ControlSet001\\Services\\SharedAccess\\Parameters\\FirewallPolicy\\PublicProfile",
+        "Key": "EnableFirewall",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\ControlSet001\\Services\\SharedAccess\\Parameters\\FirewallPolicy\\DomainProfile",
+        "Key": "EnableFirewall",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\ControlSet001\\Services\\SharedAccess\\Parameters\\FirewallPolicy\\StandardProfile",
+        "Key": "EnableFirewall",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          }
+        ]
+      }
+    ],
+    "IconPath": "SecurityNetwork"
+  },
+  {
+    "Name": "WPBT",
+    "Description": "WPBTDesc",
+    "Level": 1,
+    "Arguments": [ "LEVEL", "VISIBLETWEAKS" ],
+    "WillBrake": [],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager",
+        "Key": "DisableWpbtExecution",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "1"
+          }
+        ]
+      }
+    ],
+    "IconPath": "RefreshAuto"
+  },
+  {
+    "Name": "CodeIntegrity",
+    "Risk": "High",
+    "Level": 2,
+    "Arguments": [
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [ "W10" ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\CI\\Policy",
+        "Key": "VerifiedAndReputablePolicyState",
+        "Values": [
+          {
+            "ValueTypes": [
+              "OFF",
+              "BEST"
+            ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [
+              "ON",
+              "DEFAULT"
+            ],
+            "Value": "2"
+          }
+        ]
+      }
+    ],
+    "IconPath": "CreditCardChipOutline"
+  },
+  {
+    "Name": "CodeIntegrity",
+    "Risk": "High",
+    "Level": 2,
+    "Arguments": [
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [ "W11" ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\CI\\Policy",
+        "Key": "VerifiedAndReputablePolicyState",
+        "Values": [
+          {
+            "ValueTypes": [
+              "OFF",
+              "BEST"
+            ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [
+              "ON",
+              "DEFAULT"
+            ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ],
+    "IconPath": "CreditCardChipOutline"
+  },
+  {
+    "Name": "BitlockerPrevent",
+    "Description": "BitlockerPreventDesc",
+    "Level": 1,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\BitLocker",
+        "Key": "PreventDeviceEncryption",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ],
+    "IconPath": "FolderLockOutline"
+  },
+  {
+    "Name": "setsuac",
+    "Risk": "High",
+    "Description": "setsuacdesc11",
+    "Level": 1,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [ "W10" ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+        "Key": "PromptOnSecureDesktop",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+        "Key": "ConsentPromptBehaviorAdmin",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "5"
+          }
+        ]
+      }
+    ],
+    "IconPath": "ShieldAccountOutline"
+  },
+  {
+    "Name": "setsuac",
+    "Risk": "High",
+    "Description": "setsuacdesc10",
+    "Level": 1,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [ "W11" ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+        "Key": "EnableLUA",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+        "Key": "PromptOnSecureDesktop",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+        "Key": "ConsentPromptBehaviorAdmin",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "5"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\luafv",
+        "Key": "Start",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "4"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "2"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Services\\luafv",
+        "Key": "Start",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "4"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "2"
+          }
+        ]
+      }
+    ],
+    "IconPath": "ShieldAccountOutline"
+  }
+]

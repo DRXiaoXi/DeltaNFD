@@ -1,0 +1,95 @@
+{
+  "DefenderName": {
+    "Name": "DefenderName",
+    "Tweaks": [
+      { "TweakType": "REG", "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender", "Key": "DisableAntiSpyware",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "1" }, { "ValueTypes": ["OFF", "DEFAULT"], "Value": "Null" } ] },
+      { "TweakType": "REG", "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Real-Time Protection", "Key": "DisableRealtimeMonitoring",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "1" }, { "ValueTypes": ["OFF", "DEFAULT"], "Value": "Null" } ] },
+      { "TweakType": "SVC", "Path": "WinDefend",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "4" }, { "ValueTypes": ["OFF"], "Value": "2" } ] },
+      { "TweakType": "SVC", "Path": "WdNisSvc",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "4" }, { "ValueTypes": ["OFF"], "Value": "2" } ] },
+      { "TweakType": "SVC", "Path": "Sense",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "4" }, { "ValueTypes": ["OFF"], "Value": "3" } ] },
+      { "TweakType": "CMD", "Path": "",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "sc.exe stop WinDefend >nul 2>&1 & sc.exe stop WdNisSvc >nul 2>&1 & sc.exe stop Sense >nul 2>&1" }, { "ValueTypes": ["OFF"], "Value": "" } ] }
+    ]
+  },
+
+  "VBS": {
+    "Name": "VBS",
+    "Tweaks": [
+      { "TweakType": "REG", "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard", "Key": "EnableVirtualizationBasedSecurity",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "0" }, { "ValueTypes": ["OFF"], "Value": "1" } ] },
+      { "TweakType": "REG", "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity", "Key": "Enabled",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "0" }, { "ValueTypes": ["OFF"], "Value": "1" } ] },
+      { "TweakType": "CMD", "Path": "",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "bcdedit /set hypervisorlaunchtype off" }, { "ValueTypes": ["OFF"], "Value": "bcdedit /set hypervisorlaunchtype auto" } ] }
+    ]
+  },
+
+  "VBSW11": {
+    "Name": "VBSW11",
+    "Tweaks": [
+      { "TweakType": "REG", "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard", "Key": "EnableVirtualizationBasedSecurity",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "0" }, { "ValueTypes": ["OFF"], "Value": "1" } ] },
+      { "TweakType": "REG", "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity", "Key": "Enabled",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "0" }, { "ValueTypes": ["OFF"], "Value": "1" } ] },
+      { "TweakType": "CMD", "Path": "",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "bcdedit /set hypervisorlaunchtype off" }, { "ValueTypes": ["OFF"], "Value": "bcdedit /set hypervisorlaunchtype auto" } ] }
+    ]
+  },
+
+  "MemoryIntegrity": {
+    "Name": "MemoryIntegrity",
+    "Tweaks": [
+      { "TweakType": "REG", "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity", "Key": "Enabled",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "0" }, { "ValueTypes": ["OFF"], "Value": "1" } ] }
+    ]
+  },
+
+  "setssmartscreen": {
+    "Name": "setssmartscreen",
+    "Tweaks": [
+      { "TweakType": "REG", "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System", "Key": "EnableSmartScreen",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "0" }, { "ValueTypes": ["OFF", "DEFAULT"], "Value": "Null" } ] },
+      { "TweakType": "REG_SZ", "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer", "Key": "SmartScreenEnabled",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "Off" }, { "ValueTypes": ["OFF"], "Value": "RequireAdmin" } ] }
+    ]
+  },
+
+  "setsupdate": {
+    "Name": "setsupdate",
+    "Tweaks": [
+      { "TweakType": "SVC", "Path": "wuauserv",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "4" }, { "ValueTypes": ["OFF"], "Value": "3" } ] },
+      { "TweakType": "SVC", "Path": "UsoSvc",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "4" }, { "ValueTypes": ["OFF"], "Value": "2" } ] },
+      { "TweakType": "SVC", "Path": "WaaSMedicSvc",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "4" }, { "ValueTypes": ["OFF"], "Value": "3" } ] },
+      { "TweakType": "SVC", "Path": "DoSvc",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "4" }, { "ValueTypes": ["OFF"], "Value": "2" } ] },
+      { "TweakType": "REG", "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU", "Key": "NoAutoUpdate",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "1" }, { "ValueTypes": ["OFF", "DEFAULT"], "Value": "Null" } ] },
+      { "TweakType": "CMD", "Path": "",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "sc.exe stop wuauserv >nul 2>&1 & sc.exe stop UsoSvc >nul 2>&1" }, { "ValueTypes": ["OFF"], "Value": "" } ] }
+    ]
+  },
+
+  "svccombine": {
+    "Name": "svccombine",
+    "Tweaks": [
+      { "TweakType": "REG", "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control", "Key": "SvcHostSplitThresholdInKB",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "4194304" }, { "ValueTypes": ["OFF", "DEFAULT"], "Value": "Null" } ] }
+    ]
+  },
+
+  "HPETName": {
+    "Name": "HPETName",
+    "Tweaks": [
+      { "TweakType": "CMD", "Path": "",
+        "Values": [ { "ValueTypes": ["ON"], "Value": "bcdedit /set disabledynamictick yes && bcdedit /set useplatformtick yes" }, { "ValueTypes": ["OFF"], "Value": "bcdedit /deletevalue disabledynamictick && bcdedit /deletevalue useplatformtick" } ] }
+    ]
+  }
+}

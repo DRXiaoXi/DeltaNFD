@@ -1,0 +1,802 @@
+[
+  {
+    "Name": "setsaccel",
+    "Description": "setsacceldesc",
+    "Level": 2,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKEY_CURRENT_USER\\Control Panel\\Mouse",
+        "Key": "MouseSpeed",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKEY_CURRENT_USER\\Control Panel\\Mouse",
+        "Key": "MouseThreshold1",
+        "Values": [
+          {
+            "ValueTypes": [ "ON", "DEFAULT" ],
+            "Value": "6"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKEY_CURRENT_USER\\Control Panel\\Mouse",
+        "Key": "MouseThreshold2",
+        "Values": [
+          {
+            "ValueTypes": [ "ON", "DEFAULT" ],
+            "Value": "10"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          }
+        ]
+      }
+    ],
+    "IconPath": "MouseMoveVertical"
+  },
+  {
+    "Name": "setsautodriverupd",
+    "Description": "setsautodriverupddesc",
+    "Level": 1,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\DriverSearching",
+        "Key": "SearchOrderConfig",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "3"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate",
+        "Key": "ExcludeWUDriversInQualityUpdate",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [ "OFF", "OPTIMAL", "BEST" ],
+            "Value": "1"
+          }
+        ]
+      }
+    ],
+    "IconPath": "Update"
+  },
+  {
+    "Name": "setsuved",
+    "Description": "setsuveddesc",
+    "Level": 1,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [ "W11" ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings",
+        "Key": "NOC_GLOBAL_SETTING_ALLOW_TOASTS_ABOVE_LOCK",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "ON", "DEFAULT" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings",
+        "Key": "NOC_GLOBAL_SETTING_ALLOW_CRITICAL_TOASTS_ABOVE_LOCK",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "ON", "DEFAULT" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings",
+        "Key": "NOC_GLOBAL_SETTING_TOASTS_ENABLED",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "ON", "DEFAULT" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications",
+        "Key": "ToastEnabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "ON", "DEFAULT" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\PushNotifications",
+        "Key": "ToastEnabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "ON", "DEFAULT" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+        "Key": "DisableNotificationCenter",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "ON", "DEFAULT" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+        "Key": "DisableNotificationCenter",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "ON", "DEFAULT" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Policies\\Microsoft\\Windows\\CurrentVersion\\PushNotifications",
+        "Key": "NoToastApplicationNotification",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "ON", "DEFAULT" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Policies\\Microsoft\\Windows\\CurrentVersion\\PushNotifications",
+        "Key": "NoTileApplicationNotification",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "ON", "DEFAULT" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ],
+    "IconPath": "BellBadgeOutline"
+  },
+  {
+    "Name": "setsuwpwork",
+    "Description": "setsuwpworkdesc",
+    "Level": 5,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications",
+        "Key": "GlobalUserDisabled",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Search",
+        "Key": "BackgroundAppGlobalToggle",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\embeddedmode",
+        "Key": "Start",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "3"
+          },
+          {
+            "ValueTypes": [ "OPTIMAL", "BEST", "OFF" ],
+            "Value": "4"
+          }
+        ]
+      }
+    ],
+    "IconPath": "CogRefresh"
+  },
+  {
+    "Name": "setsautomapupd",
+    "Description": "setsautomapupddesc",
+    "Level": 1,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\Maps",
+        "Key": "AutoUpdateEnabled",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          }
+        ]
+      }
+    ],
+    "IconPath": "MapClockOutline"
+  },
+  {
+    "Name": "setsappsautoupd",
+    "Description": "setsappsautoupddesc",
+    "Level": 1,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\WindowsStore",
+        "Key": "AutoDownload",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "2"
+          }
+        ]
+      }
+    ],
+    "IconPath": "DownloadCircleOutline"
+  },
+  {
+    "Name": "setstrans",
+    "Description": "setstransdesc",
+    "Level": 3,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        "Key": "EnableTransparency",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        "Key": "EnableBlurBehind",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          }
+        ]
+      }
+    ],
+    "IconPath": "SquareOpacity"
+  },
+  {
+    "Name": "HPETName",
+    "Level": 1,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "CHECK",
+        "Path": "HPET",
+        "Key": "",
+        "Values": []
+      },
+      {
+        "TweakType": "BAT",
+        "Path": "cmd64",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "bcdedit /deletevalue disabledynamictick"
+          },
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "bcdedit /set disabledynamictick yes"
+          }
+        ]
+      },
+      {
+        "TweakType": "BAT",
+        "Path": "cmd64",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "bcdedit /deletevalue useplatformtick"
+          },
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "bcdedit /set useplatformtick yes"
+          }
+        ]
+      },
+      {
+        "TweakType": "DEVICE",
+        "Path": "ACPI\\PNP0103",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "Disable"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Enable"
+          }
+        ]
+      }
+    ],
+    "IconPath": "TimerCogOutline"
+  },
+  {
+    "Name": "GameBar",
+    "Description": "GameBarDesc",
+    "Level": 3,
+    "OnWith": [ "FSOMPO" ],
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\GameBar",
+        "Key": "AutoGameModeEnabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\GameBar",
+        "Key": "GamePanelStartupTipIndex",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "3"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\GameBar",
+        "Key": "ShowStartupPanel",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\GameBar",
+        "Key": "UseNexusForGameBarEnabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\GameBar",
+        "Key": "AllowAutoGameMode",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\GameDVR",
+        "Key": "AppCaptureEnabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\GameDVR",
+        "Key": "AllowGameDVR",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\PolicyManager\\default\\ApplicationManagement\\AllowGameDVR",
+        "Key": "value",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          }
+        ]
+      }
+    ],
+    "IconPath": "GamepadVariantOutline"
+  },
+  {
+    "Name": "WSearch",
+    "Description": "WSearchDesc",
+    "Level": 5,
+    "Arguments": [ "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\WSearch",
+        "Key": "Start",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "2"
+          },
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "4"
+          }
+        ]
+      }
+    ],
+    "IconPath": "ChartBarStacked"
+  },
+  {
+    "Name": "Sysmain",
+    "Description": "SysmainDesc",
+    "Level": 5,
+    "Arguments": [ "LEVEL" ],
+    "NoSupport": [ "HDD" ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\SysMain",
+        "Key": "Start",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "2"
+          },
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "4"
+          }
+        ]
+      }
+    ],
+    "IconPath": "SelectionMultiple"
+  },
+  {
+    "Name": "setsupdate",
+    "Risk": "High",
+    "Description": "setsupdatedesc",
+    "Level": 5,
+    "Arguments": [ "TRUSTED", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "EMBEDDED_FILE",
+        "Path": "Resources.EmbedRes.Tweaks.Updates",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "enable.bat"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "disable.bat"
+          }
+        ]
+      },
+      {
+        "TweakType": "CHECK",
+        "Path": "WUPDATES",
+        "Key": "",
+        "Values": []
+      }
+    ],
+    "IconPath": "MicrosoftWindows"
+  },
+  //{
+  //  "Name": "setsupdate",
+  //  "Description": "setsupdatedesc",
+  //  "Level": 5,
+  //  "Arguments": [ "TRUSTED", "LEVEL" ],
+  //  "NoSupport": [],
+  //  "Type": "CUSTOM_VALUE",
+  //  "Tweaks": [
+  //    {
+  //      "TweakType": "EMBEDDED_FILE",
+  //      "Path": "Resources.EmbedRes.Tweaks.Updates",
+  //      "Key": "",
+  //      "Values": [
+  //        {
+  //          "ValueName": "default",
+  //          "ValueTypes": [ "DEFAULT", "ON" ],
+  //          "Value": "enable.bat"
+  //        },
+  //        {
+  //          "ValueName": "Paused",
+  //          "ValueTypes": [ "OPTIMAL", "OFF" ],
+  //          "Value": "pause.bat"
+  //        },
+  //        {
+  //          "ValueName": "default",
+  //          "ValueTypes": [ "BEST", "OFF" ],
+  //          "Value": "disable.bat"
+  //        }
+  //      ]
+  //    },
+  //    {
+  //      "TweakType": "CHECK",
+  //      "Path": "WUPDATES",
+  //      "Key": "",
+  //      "Values": []
+  //    }
+  //  ],
+  //  "IconPath": "MicrosoftWindows"
+  //},
+  {
+    "Name": "DelieveryOptimization",
+    "Level": 2,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeliveryOptimization",
+        "Key": "DODownloadMode",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ],
+    "IconPath": "ShareVariantOutline"
+  },
+  {
+    "Name": "MELaunchSpeed",
+    "Description": "MELaunchSpeedDesc",
+    "Level": 2,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Edge",
+        "Key": "StartupBoostEnabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Edge",
+        "Key": "BackgroundModeEnabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ],
+    "IconPath": "MicrosoftEdge"
+  },
+  {
+    "Name": "HAGS",
+    "Description": "HAGSDesc",
+    "Level": 1,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [ "HAGS" ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers",
+        "Key": "HwSchMode",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "ON", "OPTIMAL" ],
+            "Value": "2"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "1"
+          }
+        ]
+      }
+    ],
+    "IconPath": "ExpansionCardVariant"
+  }
+]

@@ -1,0 +1,207 @@
+<Page
+    x:Class="DeltaNFD.Views.GpuSpoofPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:DeltaNFD.ViewModels">
+
+    <ScrollViewer>
+        <StackPanel MaxWidth="1080" Padding="28,20,28,32" Spacing="16">
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="显卡伪装" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="修改显卡型号显示（如 1050 Ti / RX 540 / GTX 750），注册表级修改，可随时恢复" Style="{StaticResource PageSubtitleStyle}" />
+            </StackPanel>
+
+            <InfoBar IsOpen="{x:Bind ViewModel.IsResultVisible, Mode=OneWay}"
+                     Severity="{x:Bind ViewModel.ResultSeverity, Mode=OneWay}"
+                     Title="操作结果"
+                     Message="{x:Bind ViewModel.ResultText, Mode=OneWay}"
+                     IsClosable="True"
+                     CloseButtonClick="ResultInfoBar_CloseButtonClick" />
+
+            <!-- 本机显卡列表 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="12">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="本机显卡" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="{x:Bind ViewModel.AdapterSummaryText, Mode=OneWay}"
+                                       Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+
+                        <Button Grid.Column="1" Content="刷新列表" VerticalAlignment="Center"
+                                IsEnabled="{x:Bind ViewModel.CanRefresh, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.RefreshCommand}" />
+                    </Grid>
+
+                    <ListView ItemsSource="{x:Bind ViewModel.Adapters}"
+                              SelectedItem="{x:Bind ViewModel.SelectedAdapter, Mode=TwoWay}"
+                              SelectionMode="Single"
+                              IsItemClickEnabled="False">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AdapterVm">
+                                <Grid ColumnSpacing="14" Padding="4,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Width="40" Height="40" CornerRadius="9" Background="{StaticResource AppAccentChipBrush}">
+                                        <TextBlock Text="Δ" FontSize="18" FontWeight="Bold"
+                                                   Foreground="{StaticResource AppAccentBrush}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{x:Bind DisplayName}" FontWeight="SemiBold" FontSize="14" />
+                                            <Border Style="{StaticResource ChipBorderStyle}" Background="{StaticResource AppAccentChipBrush}"
+                                                    Visibility="{x:Bind IsMasked}">
+                                                <TextBlock Text="{x:Bind StatusText}" FontSize="10" FontWeight="SemiBold"
+                                                           Foreground="{StaticResource AppAccentBrush}" />
+                                            </Border>
+                                        </StackPanel>
+                                        <TextBlock Text="{x:Bind DeviceDesc}" FontSize="11" Opacity="0.55"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+
+                                    <Border Grid.Column="2" Style="{StaticResource ChipBorderStyle}"
+                                            Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="{x:Bind StatusText}" FontSize="11" Opacity="0.75" />
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </StackPanel>
+            </Border>
+
+            <!-- 伪装设置 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="4">
+
+                    <!-- 预置型号 -->
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="预置伪装型号" FontWeight="SemiBold" />
+                            <TextBlock Text="与常见伪装工具一致的三个型号，直接选用即可" Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" MinWidth="260" VerticalAlignment="Center"
+                                  ItemsSource="{x:Bind ViewModel.Presets}"
+                                  SelectedIndex="{x:Bind ViewModel.SelectedPresetIndex, Mode=TwoWay}" />
+                    </Grid>
+
+                    <!-- 自定义型号 -->
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="自定义型号（可选）" FontWeight="SemiBold" />
+                            <TextBlock Text="填写后优先于上方预置型号，例如 NVIDIA GeForce RTX 4090"
+                                       Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <TextBox Grid.Column="1" MinWidth="260" MaxWidth="340" VerticalAlignment="Center"
+                                 PlaceholderText="留空使用上方预置型号"
+                                 Text="{x:Bind ViewModel.CustomName, Mode=TwoWay}" />
+                    </Grid>
+
+                    <!-- 将生效的型号预览 -->
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="本次将写入的型号" FontWeight="SemiBold" />
+                            <TextBlock Text="确认无误后再执行伪装；只改名称显示，不影响硬件与性能"
+                                       Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <Border Grid.Column="1" Style="{StaticResource ChipBorderStyle}" Background="{StaticResource AppAccentChipBrush}"
+                                VerticalAlignment="Center">
+                            <TextBlock Text="{x:Bind ViewModel.EffectiveName, Mode=OneWay}" FontSize="12"
+                                       FontWeight="SemiBold" Foreground="{StaticResource AppAccentBrush}" />
+                        </Border>
+                    </Grid>
+
+                    <!-- 生效方式 -->
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="生效方式" FontWeight="SemiBold" />
+                            <TextBlock Text="永久生效会保留伪装，直到手动恢复；临时模式可立即重载显卡，或在重启后由工具自动还原原型号。"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" MinWidth="260" VerticalAlignment="Center"
+                                  ItemsSource="{x:Bind ViewModel.EffectiveModeOptions}"
+                                  SelectedIndex="{x:Bind ViewModel.EffectiveModeIndex, Mode=TwoWay}" />
+                    </Grid>
+
+                    <!-- 临时模式：生效时机 -->
+                    <Grid ColumnSpacing="16" Padding="0,10"
+                          Visibility="{x:Bind ViewModel.IsTemporaryMode, Mode=OneWay}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="生效时机" FontWeight="SemiBold" />
+                            <TextBlock Text="立即重载会尝试重载显卡驱动；重启生效会先写入伪装型号并立即重启，登录后工具自启动并还原原型号。"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" MinWidth="260" VerticalAlignment="Center"
+                                  ItemsSource="{x:Bind ViewModel.DirectApplyModeOptions}"
+                                  SelectedIndex="{x:Bind ViewModel.DirectApplyModeIndex, Mode=TwoWay}" />
+                    </Grid>
+
+                    <!-- 重载显卡的风险提示 -->
+                    <InfoBar IsOpen="{x:Bind ViewModel.ShowReloadRisk, Mode=OneWay}"
+                             IsClosable="False"
+                             Severity="Warning"
+                             Title="立即重载风险提示"
+                             Message="重载显卡时屏幕会黑屏数秒，正在运行的游戏和 3D 应用可能崩溃。保险机制：45 秒后系统自动重新启用显卡；台式机重载后需在 1 分钟内确认显示器亮屏，超时未确认自动重启。笔记本或无法确认显示器归属时会拒绝重载，请改选重启生效。" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right" Margin="0,10,0,0">
+                        <Button Content="恢复原始型号"
+                                Click="RestoreButton_Click" />
+                        <Button Style="{StaticResource AccentButtonStyle}"
+                                Content="{x:Bind ViewModel.PrimaryActionText, Mode=OneWay}"
+                                Click="SpoofButton_Click" />
+                        <ProgressRing Width="28" Height="28"
+                                      IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
+                                      Foreground="{StaticResource AppAccentBrush}"
+                                      VerticalAlignment="Center" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 说明 -->
+            <Border Style="{StaticResource CardBorderStyle}" Padding="20,14">
+                <StackPanel Spacing="6">
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· 伪装仅修改注册表中的设备描述字符串（DeviceDesc），设备管理器与游戏读取到的名称会改变；不修改 PCI 硬件 ID 与驱动，性能不变。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· 伪装 / 恢复后需重启电脑生效（注销不会生效）；恢复原始型号需要本工具留有备份（伪装时自动生成）。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· 如曾用其他脚本伪装过，请先用该脚本恢复，再使用本页功能，避免备份错乱。" />
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>
