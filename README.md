@@ -42,8 +42,15 @@
 - 设置页自由切换**主题色**（8 种预设 + 自定义颜色，全局即时生效并保存）
 - 明暗主题（浅色 / 深色 / 跟随系统，重启保持）
 - 自定义背景图 + 背景遮罩浓度滑条（默认 70%）
-- 公开源码与预发布安装包不附带默认背景图；可在设置页自行选择图片，未选择时使用 Mica 背景
+- 安装包内置默认背景图（首次启动即生效）；也可在设置页自行选择图片，选择后覆盖内置图，恢复默认可回到内置图
 - 启动时自动识别三角洲游戏目录；识别失败会提示手动定位。设置页也可更改目录，着色器 / ACE / 运行库保护等功能共用同一目录
+
+### 🔄 软件更新
+- 设置页「软件更新」卡：启动后自动检查新版本（可关闭），发现更新时提醒并挂导航徽标
+- **只提醒、不自动装**：下载与安装都需要你点确认；安装包先校验 SHA256 与大小，校验不过不会执行
+- 更新流程：工具退出 → 静默覆盖安装 → 自动重新打开新版本；设置、备份与日志都保留
+- 只有通过安装包安装的版本支持自动更新；从压缩包手动解压运行会提示前往发布页下载
+- 支持多下载地址回退（GitHub + 国内镜像），可点「跳过此版本」不再提示该版本
 
 ## 系统要求
 
@@ -78,6 +85,28 @@ installer\make-installer.cmd
 新安装默认位于 `C:\Program Files\Delta NFD`。若旧版仍安装在 `C:\Program Files\DeltaOptimizer`，请先通过 Windows「已安装的应用」卸载旧版，再运行新安装包；安装器仅在旧程序文件仍存在时阻止跨目录覆盖。卸载后遗留的登录任务会在新文件安装成功后尝试迁移，任务权限异常会给出警告而不阻断安装。用户设置、备份和日志位于 `%APPDATA%`，卸载程序不会删除它们。
 
 打包完成后，可将生成的单个安装器作为 GitHub Release 附件发布；源码仓库不包含安装器或独立的 VC++ 包。
+
+### 发布一个新版本（含自动更新清单）
+
+自动更新读取仓库 `main` 分支根目录的 `update.json`，比对版本后会提示用户下载对应安装包。发布步骤：
+
+1. 同步四处版本号（`src/DeltaNFD/DeltaNFD.csproj` 的 `Version` / `InformationalVersion`、`MainWindow` 的首启公告常量、`installer/DeltaNFD.iss` 的 `MyAppVersion` / `MyAppDisplayVersion`）。
+2. 运行 `installer\make-installer.cmd` 生成安装包。
+3. 用 `installer\make-update-manifest.ps1` 生成清单（会写入 SHA256、字节数与显示版本，并打印发布清单）：
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File installer\make-update-manifest.ps1 `
+     -InstallerPath "<安装包路径>" -Version 0.83.0 `
+     -InstallerUrl "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.83.0/<附件名>" `
+     -NotesFile "<更新说明.txt>"
+   ```
+
+4. 把安装包上传到该 tag 的 Release，**并把生成的 `update.json` 提交到 `main`**。
+5. 校验：`dotnet run --project tools/BackendSmokeTest -- --update-live`。
+
+> **更新源与镜像**：发布方改 `src/DeltaNFD/Assets/UpdateConfig.json`（随程序分发，升级安装会覆盖）；用户想自己加国内镜像，用设置页「更新源配置」生成并编辑 `%APPDATA%\Delta NFD\update-source.json`（优先级更高、升级不覆盖）。两种方式都要把**镜像主机写进 `allowedHosts`**，并在 `update.json` 的 `installers` 里加上镜像地址（`-MirrorUrl` 即可）。所有地址共用同一条 SHA256，客户端下载后强制校验，镜像内容被替换会被拒绝。
+>
+> 注意：`0.82.0` 及更早版本不含更新器，收不到自动更新，需要用户先手动安装一次带更新器的版本。
 
 也可以打开根目录的 `DeltaNFD.sln`（含全部三个项目）用 Visual Studio 2022 构建：
 

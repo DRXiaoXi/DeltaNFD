@@ -168,7 +168,7 @@
                         <StackPanel Spacing="4">
                             <TextBlock Text="无省电电源计划" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                       Text="针对延迟与性能优化的电源计划（导入后显示为「无省电释放模式」；旧版计划可通过「修正计划名称」处理）。导入后可在 Windows 电源选项中切换；配合帧格页「电源计划锁定」可在游戏期间保持生效。" />
+                                       Text="针对延迟与性能优化的电源计划（导入后显示为「无省电释放模式」，并自动激活立即生效；旧版计划可通过「修正计划名称」处理）。也可在 Windows 电源选项中切换；配合帧格页「电源计划锁定」可在游戏期间保持生效。" />
                         </StackPanel>
 
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
@@ -312,7 +312,20 @@
                         <Button Content="仅 CCD1" FontSize="12" Padding="12,5"
                                 Visibility="{x:Bind ViewModel.AffinityCcdButtonsVisible, Mode=OneWay}"
                                 Click="AffinityCcd1Button_Click" />
+                        <!-- 大小核机型（Intel 12 代+）：仅 P 核 / 仅 E 核 -->
+                        <Button Content="{x:Bind ViewModel.AffinityPCoreButtonText, Mode=OneWay}"
+                                FontSize="12" Padding="12,5"
+                                Visibility="{x:Bind ViewModel.AffinityHybridButtonsVisible, Mode=OneWay}"
+                                Click="AffinityPCoreButton_Click" />
+                        <Button Content="{x:Bind ViewModel.AffinityECoreButtonText, Mode=OneWay}"
+                                FontSize="12" Padding="12,5"
+                                Visibility="{x:Bind ViewModel.AffinityHybridButtonsVisible, Mode=OneWay}"
+                                Click="AffinityECoreButton_Click" />
                     </StackPanel>
+
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Visibility="{x:Bind ViewModel.AffinityHybridButtonsVisible, Mode=OneWay}"
+                               Text="{x:Bind ViewModel.HybridCoreDetailText, Mode=OneWay}" />
 
                     <ItemsControl ItemsSource="{x:Bind ViewModel.AffinityCores}">
                         <ItemsControl.ItemsPanel>
@@ -327,6 +340,40 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- 优化方案：保存 / 导入（txt 分享） -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <StackPanel Spacing="3">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="优化方案（保存 / 分享 / 导入）" FontWeight="SemiBold" FontSize="14" />
+                            <Border Style="{StaticResource ChipBorderStyle}" Background="{StaticResource AppAccentChipBrush}">
+                                <TextBlock Text="txt 格式" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{StaticResource AppAccentBrush}" />
+                            </Border>
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                   Text="把本机当前的「异类调度策略 + CPU 亲和性」导出为 txt 文件，可分享给其他使用**同款 CPU** 的人直接导入；导入时会校验 CPU 型号、核心数、线程数三者完全一致，不一致将拒绝导入（不同 CPU 的核心编号不同，套用会锁错核心）。" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="保存当前方案" FontSize="12" Padding="14,6"
+                                Style="{StaticResource AccentButtonStyle}"
+                                IsEnabled="{x:Bind ViewModel.AffinityRuleSupported, Mode=OneWay}"
+                                Click="SavePlanButton_Click" />
+                        <Button Content="导入方案…" FontSize="12" Padding="14,6"
+                                Click="ImportPlanButton_Click" />
+                    </StackPanel>
+
+                    <TextBlock Text="{x:Bind ViewModel.PlanStatusText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Opacity="0.7"
+                               Text="· 方案文件是纯文本，可自行打开查看或修改；文件头部有标识行，便于识别来源。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Opacity="0.7"
+                               Text="· 导入只改「CPU 亲和性」与「异类调度策略」，不会改动深度优化 / 扩展优化库等其他设置。" />
                 </StackPanel>
             </Border>
 

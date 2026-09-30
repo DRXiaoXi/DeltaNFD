@@ -22,15 +22,6 @@ public sealed partial class ShaderPage : Page
         await ViewModel.LoadAsync();
     }
 
-    /// <summary>运行库非最适版本提醒「去处理」：跳转到运行库页。</summary>
-    private void JumpButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button { Tag: string tag })
-        {
-            App.MainWindow?.NavigateByTag(tag);
-        }
-    }
-
     private async void ClearButton_Click(object sender, RoutedEventArgs e)
     {
         var confirm = new ContentDialog

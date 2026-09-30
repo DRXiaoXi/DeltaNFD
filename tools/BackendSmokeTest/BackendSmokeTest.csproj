@@ -29,6 +29,11 @@
     <Compile Include="..\..\src\DeltaNFD\Services\AceService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\AppSettingsStore.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\AppDataPaths.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\AppVersion.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\CpuPlanService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\IUpdateService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\UpdateService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\GitHubReleaseSource.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\CleanupService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\DefenderGuard.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\ElevationHelper.cs" />
@@ -66,6 +71,11 @@
   <!-- DefenderGuard 的配置数据文件（冒烟测试的 Defender 状态只读查询要用） -->
   <ItemGroup>
     <Content Include="..\..\src\DeltaNFD\Assets\TweakDb\*.json" Link="Assets\TweakDb\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 自动更新的来源配置（update-checks 校验“随程序输出的配置本身合法”） -->
+  <ItemGroup>
+    <Content Include="..\..\src\DeltaNFD\Assets\UpdateConfig.json" Link="Assets\UpdateConfig.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

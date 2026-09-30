@@ -25,6 +25,10 @@ jobs:
       - name: Build smoke test
         run: dotnet build tools/BackendSmokeTest/BackendSmokeTest.csproj -c Release
 
+      # 自动更新的离线逻辑校验（清单解析 / 哈希护栏 / 版本比较）：纯逻辑 + 临时目录，不联网、不改系统
+      - name: Auto-update logic checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --update-checks
+
       # 只读冒烟测试（枚举显卡 / 读取状态），不修改系统
       - name: Read-only smoke test
         run: dotnet run --project tools/BackendSmokeTest --nologo

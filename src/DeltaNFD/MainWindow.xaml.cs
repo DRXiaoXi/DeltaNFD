@@ -1,4 +1,4 @@
-﻿using DeltaNFD.Native;
+using DeltaNFD.Native;
 using DeltaNFD.Services;
 using DeltaNFD.Views;
 using Microsoft.UI.Xaml;
@@ -18,7 +18,7 @@ public sealed partial class MainWindow : Window
     private bool _exitRequested;
 
     /// <summary>当前公告版本标识（发布新公告时更新此值，老用户会再收到一次弹窗）。</summary>
-    private const string CurrentAnnouncementVersion = "OpenAlphaV0.82";
+    private const string CurrentAnnouncementVersion = "OpenAlphaV0.83";
 
     /// <summary>本次进程是否已检查过公告（Activated 每次激活都会触发，只处理一次）。</summary>
     private bool _announcementChecked;
@@ -33,6 +33,9 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
 
         Title = "三角帧不掉洲 · 三角洲行动优化工具";
+        // 标题栏版本号：唯一来源是程序集 InformationalVersion（csproj 的 <InformationalVersion>，
+        // 由 AppVersion 统一读取并截断 SourceLink 的 +提交哈希），不要在 XAML/C# 里写死版本字符串。
+        AppVersionText.Text = AppVersion.Text;
         SystemBackdrop = new MicaBackdrop();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
@@ -69,6 +72,9 @@ public sealed partial class MainWindow : Window
         // 背景图：启动应用一次，并监听设置页的实时变更
         ApplyBackgroundImage();
         BackgroundManager.Changed += ApplyBackgroundImage;
+
+        // 发现新版本时在「设置」导航项上挂提示徽标（服务可能在后台线程触发）
+        ServiceLocator.Update.AvailabilityChanged += OnUpdateAvailabilityChanged;
     }
 
     private async void ContentFrame_Loaded(object sender, RoutedEventArgs e)
@@ -132,6 +138,172 @@ public sealed partial class MainWindow : Window
             // 公告失败不影响启动
             Services.Log.Error("公告：首启公告展示失败", ex);
         }
+        finally
+        {
+            // 更新相关对话框必须排在公告之后（同一时刻只能有一个 ContentDialog）
+            await TryHandleUpdateOnStartupAsync();
+        }
+    }
+
+    // ---------------------------------------------------------------- 自动更新
+
+    /// <summary>
+    /// 启动时的更新流程：先核对「上次登记的更新是否生效」，再按设置自动检查新版本。
+    /// 全程只提醒，下载与安装都由用户在设置页确认（见 HANDOFF §32）。
+    /// </summary>
+    private async Task TryHandleUpdateOnStartupAsync()
+    {
+        try
+        {
+            await ReportPendingUpdateResultAsync();
+            await CheckUpdatesOnStartupAsync();
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error("更新：启动检查流程失败", ex);
+        }
+    }
+
+    /// <summary>上次退出时登记过待安装版本 → 这次启动就能判断更新是否成功。</summary>
+    private async Task ReportPendingUpdateResultAsync()
+    {
+        var settings = AppSettingsStore.Read();
+        if (string.IsNullOrWhiteSpace(settings.PendingUpdateVersion))
+        {
+            return;
+        }
+
+        var pending = settings.PendingUpdateVersion;
+        var display = string.IsNullOrWhiteSpace(settings.PendingUpdateDisplayVersion)
+            ? pending
+            : settings.PendingUpdateDisplayVersion;
+        var current = ServiceLocator.Update.CurrentVersionText;
+        var applied = UpdateService.TryParseVersion(pending, out var pendingVersion) &&
+                      UpdateService.CompareVersions(ServiceLocator.Update.CurrentVersion, pendingVersion) >= 0;
+
+        Services.Log.Info($"更新：上次登记待安装 {pending}，当前 {current}，判定 {(applied ? "已生效" : "未生效")}");
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = ContentFrame.XamlRoot,
+            Title = applied ? "更新完成" : "更新似乎未生效",
+            Content = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Text = applied
+                    ? $"已更新到 {current}。本次更新保留了你的设置、备份与日志。"
+                    : $"计划更新到 {display}，但当前仍是 {current}。安装可能被取消，或被安全软件拦截。\n\n" +
+                      "可以在「设置 → 软件更新」重试，或打开下载文件夹查看残留的安装包与安装日志。" +
+                      "当前版本仍可正常使用。",
+            },
+            CloseButtonText = "知道了",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        try
+        {
+            await dialog.ShowAsync();
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error("更新：更新结果提示展示失败", ex);
+        }
+
+        // 无论成败都清掉登记与安装包，避免每次启动重复提示
+        ServiceLocator.Update.CleanupPendingInstaller();
+    }
+
+    /// <summary>启动时的自动检查（只提醒，不下载）。</summary>
+    private async Task CheckUpdatesOnStartupAsync()
+    {
+        if (!AppSettingsStore.Read().AutoUpdateCheckEnabled)
+        {
+            return;
+        }
+
+        // 启动 10 秒后再联网：避开启动扫描与游戏进程抢资源
+        await Task.Delay(TimeSpan.FromSeconds(10));
+
+        var result = await ServiceLocator.Update.CheckAsync(manual: false);
+        if (result.Status is UpdateCheckStatus.Throttled or UpdateCheckStatus.Disabled)
+        {
+            return;
+        }
+
+        if (!result.HasUpdate)
+        {
+            ApplyUpdateBadge(false);
+            return;
+        }
+
+        ApplyUpdateBadge(true);
+
+        var notes = string.IsNullOrWhiteSpace(result.Notes)
+            ? "发布页未提供更新说明。"
+            : result.Notes.Trim();
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = ContentFrame.XamlRoot,
+            Title = (result.Mandatory ? "必须更新：" : "发现新版本：") + result.AvailableVersionText,
+            Content = new ScrollViewer
+            {
+                MaxHeight = 320,
+                Content = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap,
+                    Text = $"当前版本 {result.CurrentVersionText}。\n\n{notes}",
+                },
+            },
+            PrimaryButtonText = "去设置页更新",
+            SecondaryButtonText = result.Mandatory ? "" : "跳过此版本",
+            CloseButtonText = "稍后",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+
+        var choice = await dialog.ShowAsync();
+        if (choice == ContentDialogResult.Primary)
+        {
+            NavigateByTag("settings");
+            return;
+        }
+
+        if (choice == ContentDialogResult.Secondary && result.Manifest?.Version is { Length: > 0 } version)
+        {
+            AppSettingsStore.Update(s => s.SkippedUpdateVersion = version);
+            Services.Log.Info("更新：用户在启动提示里跳过版本 " + version);
+            ApplyUpdateBadge(false);
+        }
+    }
+
+    private void OnUpdateAvailabilityChanged(bool available)
+    {
+        if (!DispatcherQueue.TryEnqueue(() => ApplyUpdateBadge(available)))
+        {
+            Services.Log.Warn("更新：窗口 Dispatcher 已停止，无法刷新导航徽标");
+        }
+    }
+
+    private void ApplyUpdateBadge(bool available)
+    {
+        try
+        {
+            SettingsNavItem.InfoBadge = available ? new InfoBadge { Value = 1 } : null;
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Warn("更新：刷新导航徽标失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>自动更新专用退出：更新已登记，退出后由安装器覆盖安装并重新拉起新版本。</summary>
+    public void RequestExitForUpdate()
+    {
+        Services.Log.Info("更新：退出应用以便安装新版本");
+        _exitRequested = true;
+        _trayIcon?.Dispose();
+        _trayIcon = null;
+        Application.Current.Exit();
     }
 
     private async Task EnsureGameDirectoryOnStartupAsync()

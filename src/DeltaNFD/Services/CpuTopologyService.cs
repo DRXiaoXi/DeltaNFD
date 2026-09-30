@@ -48,9 +48,17 @@ public sealed class CpuTopologyService : ICpuTopologyService
             if (groupLpCounts.Count == 0) groupLpCounts.Add(systemLogical);
         }
 
-        var pCores = cores.Where(c => c.EfficiencyClass > 0).ToList();
-        var eCores = cores.Where(c => c.EfficiencyClass == 0).ToList();
-        var isHybrid = pCores.Count > 0 && eCores.Count > 0;
+        // 大小核（P/E 核）判定。
+        // ⚠ Intel 语义：GetLogicalProcessorInformationEx 的 EfficiencyClass 对 **P 核返回 0**、
+        //    对 E 核返回 1（而 AMD 上该字段恒为 0，不以 0 代表 P 核）。
+        //    因此「EfficiencyClass > 0 = P 核」是错的——在 Intel 上会把 P 核和 E 核完全判反。
+        //    正确做法：把类值升序排名，**等于最大值的那一档才是 P 核**，其余为 E 核。
+        //    单档（非大小核）时全部核心同类，isHybrid = false。
+        var hybrid = ClassifyHybridCores(cores);
+
+        var pCores = cores.Where(c => (hybrid.PCoreMask & c.Mask) != 0).ToList();
+        var eCores = cores.Where(c => (hybrid.ECoreMask & c.Mask) != 0).ToList();
+        var isHybrid = hybrid.IsHybrid;
         var hasHt = cores.Any(c => c.Smt);
         var logicalProcessors = cores.Sum(c => c.LogicalProcessors.Count);
 
@@ -76,11 +84,58 @@ public sealed class CpuTopologyService : ICpuTopologyService
             IsAmd = isAmd, IsAmdMultiCcd = isMultiCcd, CcdCount = isAmd ? ccds.Count : 0,
             Ccds = ccds, CcdAdvice = ccdAdvice, CcdDetectionSource = ccdSource,
             AllMask = allMask,
-            PCoreMask = pCores.Aggregate(0UL, (m, c) => m | c.Mask),
-            ECoreMask = eCores.Aggregate(0UL, (m, c) => m | c.Mask),
+            PCoreMask = hybrid.PCoreMask,
+            ECoreMask = hybrid.ECoreMask,
             HybridAdvice = hybridAdvice,
         };
     });
+
+    /// <summary>大小核分类结果。</summary>
+    internal readonly record struct HybridClassification(
+        bool IsHybrid, ulong PCoreMask, ulong ECoreMask, int DistinctClassCount);
+
+    /// <summary>
+    /// 按 EfficiencyClass 分类 P 核 / E 核（纯函数，便于单测）。
+    ///
+    /// 这是全项目最容易搞反的一处，务必看清语义：
+    ///   **Intel 12 代及以后，P 核 EfficiencyClass = 0，E 核 = 1。**
+    ///   （AMD 上该字段恒为 0，不以 0 代表 P 核。）
+    /// 因此：
+    ///   · 不能按「&gt; 0 = P 核」归类 —— 在 Intel 上会把 P 核和 E 核完全判反；
+    ///   · **类值最小**的那一档才是 P 核（Intel 语义：更"高效"的 E 核排在后面）。
+    /// 单档（所有核心同类，如普通 AMD / Intel 非混合架构）→ IsHybrid = false，两个掩码均为 0。
+    /// </summary>
+    internal static HybridClassification ClassifyHybridCores(IReadOnlyList<CpuCoreInfo> cores)
+    {
+        if (cores.Count == 0)
+        {
+            return new HybridClassification(false, 0, 0, 0);
+        }
+
+        var distinctClasses = cores.Select(c => c.EfficiencyClass).Distinct().OrderBy(v => v).ToList();
+        if (distinctClasses.Count < 2)
+        {
+            // 同构架构：没有大小核之分，绝不能把「类值 0」当成 P 核或 E 核
+            return new HybridClassification(false, 0, 0, distinctClasses.Count);
+        }
+
+        // Intel 语义：类值最小的档 = P 核（P 核为 0，E 核为 1）
+        var pClass = distinctClasses[0];
+        ulong pMask = 0, eMask = 0;
+        foreach (var core in cores)
+        {
+            if (core.EfficiencyClass == pClass)
+            {
+                pMask |= core.Mask;
+            }
+            else
+            {
+                eMask |= core.Mask;
+            }
+        }
+
+        return new HybridClassification(true, pMask, eMask, distinctClasses.Count);
+    }
 
     // ---------------- 亲和性 ----------------
 

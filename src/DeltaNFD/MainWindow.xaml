@@ -25,6 +25,11 @@
                            Stretch="Uniform" />
                 </Border>
                 <TextBlock Text="三角帧不掉洲" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <Border Style="{StaticResource ChipBorderStyle}" Background="{StaticResource AppAccentChipBrush}"
+                        VerticalAlignment="Center">
+                    <TextBlock x:Name="AppVersionText" FontSize="10" FontWeight="SemiBold"
+                               Foreground="{StaticResource AppAccentBrush}" />
+                </Border>
                 <TextBlock Text="三角洲行动优化工具 · 作者 逐梦之子-晓夕" FontSize="12" Opacity="0.55" VerticalAlignment="Center" />
             </StackPanel>
         </Grid>
@@ -91,7 +96,7 @@
             </NavigationView.MenuItems>
 
             <NavigationView.FooterMenuItems>
-                <NavigationViewItem Tag="settings" Content="设置">
+                <NavigationViewItem x:Name="SettingsNavItem" Tag="settings" Content="设置">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE713;" />
                     </NavigationViewItem.Icon>

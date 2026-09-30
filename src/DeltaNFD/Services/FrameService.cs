@@ -23,6 +23,7 @@ public sealed class FrameService : IFrameService
 
     private readonly object _gate = new();
     private readonly IGpuSpoofService _spoof = ServiceLocator.GpuSpoof;
+    private readonly FrameTweaksService _frameTweaks = new();
 
     /// <summary>构造时若在 UI 线程（ServiceLocator 首次访问发生在页面构造）则捕获派发器，
     /// 保证 PropertyChanged 在 UI 线程触发，x:Bind 才能安全更新。</summary>
@@ -40,6 +41,12 @@ public sealed class FrameService : IFrameService
     private bool _responseBoostEcoQos = true;
     private bool _responseBoostTimer = true;
     private bool _memoryCleanEnabled;
+    private bool _foregroundBoostEnabled;
+    private bool _foregroundResponsiveness = true;
+    private bool _foregroundPriority = true;
+    private bool _powerSaveLatencyEnabled;
+    private bool _nicPowerSavingOff = true;
+    private bool _usbSuspendOff = true;
     private GpuSpoofApplyMode _gpuSpoofApplyMode = GpuSpoofApplyMode.Reboot;
     private string _gpuSpoofRegistryPath = "";
     private string _gpuSpoofFakeName = "";
@@ -79,6 +86,7 @@ public sealed class FrameService : IFrameService
             _ = SelfHealSpoofAsync();
             _ = SelfHealDualCcdAsync();
             _ = SelfHealPowerLockAsync();
+            _ = SelfHealFrameTweaksAsync();
         }
         var startupSettings = AppSettingsStore.Read();
         if (startupSettings.TempSpoofRestorePending)
@@ -409,6 +417,118 @@ public sealed class FrameService : IFrameService
         }
     }
 
+    // ---------------- 前台加速响应（调度参数临时改写，退出帧格还原） ----------------
+
+    /// <summary>前台加速响应总开关（关 = 全部机制不生效）。</summary>
+    public bool ForegroundBoostEnabled
+    {
+        get => _foregroundBoostEnabled;
+        set
+        {
+            if (_foregroundBoostEnabled == value)
+            {
+                return;
+            }
+
+            _foregroundBoostEnabled = value;
+            SaveSettings();
+            OnPropertyChanged();
+            UpdateStatus();
+        }
+    }
+
+    /// <summary>子开关①：系统后台资源预留 20%→10%。</summary>
+    public bool ForegroundResponsivenessEnabled
+    {
+        get => _foregroundResponsiveness;
+        set
+        {
+            if (_foregroundResponsiveness == value)
+            {
+                return;
+            }
+
+            _foregroundResponsiveness = value;
+            SaveSettings();
+            OnPropertyChanged();
+            UpdateStatus();
+        }
+    }
+
+    /// <summary>子开关②：前台游戏优先调度（0x1A）。</summary>
+    public bool ForegroundPriorityEnabled
+    {
+        get => _foregroundPriority;
+        set
+        {
+            if (_foregroundPriority == value)
+            {
+                return;
+            }
+
+            _foregroundPriority = value;
+            SaveSettings();
+            OnPropertyChanged();
+            UpdateStatus();
+        }
+    }
+
+    // ---------------- 降低省电延迟（网卡/USB 省电临时关闭，退出帧格还原） ----------------
+
+    /// <summary>降低省电延迟总开关（关 = 全部机制不生效）。</summary>
+    public bool PowerSaveLatencyEnabled
+    {
+        get => _powerSaveLatencyEnabled;
+        set
+        {
+            if (_powerSaveLatencyEnabled == value)
+            {
+                return;
+            }
+
+            _powerSaveLatencyEnabled = value;
+            SaveSettings();
+            OnPropertyChanged();
+            UpdateStatus();
+        }
+    }
+
+    /// <summary>子开关①：网卡省电全禁。</summary>
+    public bool NicPowerSavingOffEnabled
+    {
+        get => _nicPowerSavingOff;
+        set
+        {
+            if (_nicPowerSavingOff == value)
+            {
+                return;
+            }
+
+            _nicPowerSavingOff = value;
+            SaveSettings();
+            OnPropertyChanged();
+            UpdateStatus();
+        }
+    }
+
+    /// <summary>子开关②：关闭 USB 选择性暂停。</summary>
+    public bool UsbSuspendOffEnabled
+    {
+        get => _usbSuspendOff;
+        set
+        {
+            if (_usbSuspendOff == value)
+            {
+                return;
+            }
+
+            _usbSuspendOff = value;
+            SaveSettings();
+            OnPropertyChanged();
+            UpdateStatus();
+        }
+    }
+
     /// <summary>内存清理状态文字（上次清理时间与释放量）。</summary>
     public string MemoryCleanStatusText => _memoryCleanStatusText;
 
@@ -660,6 +780,9 @@ public sealed class FrameService : IFrameService
         // 加速系统响应模式：帧格激活后统一换挡（核心常驻环立即启动）
         UpdateResponseBoostState();
 
+        // 前台加速响应 + 降低省电延迟：帧格激活时应用临时改写（退出时自动还原）
+        var foregroundNote = await ApplyFrameTweaksAsync();
+
         // 内存清理（实验性）：开启帧格时立即执行一次（绕过冷却），给游戏腾出干净的可用内存
         if (_memoryCleanEnabled)
         {
@@ -669,14 +792,14 @@ public sealed class FrameService : IFrameService
         if (!useSpoof)
         {
             Log.Info("帧格模式已开启（无伪装配置）");
-            return OperationResult.Ok("帧格模式已开启（各功能按帧格页开关执行）。" + notes);
+            return OperationResult.Ok("帧格模式已开启（各功能按帧格页开关执行）。" + notes + foregroundNote);
         }
 
         if (GpuSpoofApplyMode == GpuSpoofApplyMode.Reboot || !appliedImmediately)
         {
             return OperationResult.Ok(
                 $"帧格模式已开启：显卡已伪装为「{GpuSpoofFakeName}」，重启电脑后生效。" +
-                "已创建登录自启动任务，重启登录后本程序自动运行并保持帧格模式。" + notes,
+                "已创建登录自启动任务，重启登录后本程序自动运行并保持帧格模式。" + notes + foregroundNote,
                 requiresReboot: true);
         }
 
@@ -684,11 +807,11 @@ public sealed class FrameService : IFrameService
         {
             return OperationResult.Ok(
                 $"帧格模式已开启：显卡已伪装为「{GpuSpoofFakeName}」并重载立即生效。" +
-                "请在 1 分钟内确认显示器处于亮屏状态，超时未确认电脑将自动重启以恢复显示。" + notes,
+                "请在 1 分钟内确认显示器处于亮屏状态，超时未确认电脑将自动重启以恢复显示。" + notes + foregroundNote,
                 requiresDisplayConfirm: true);
         }
 
-        return OperationResult.Ok($"帧格模式已开启：显卡已伪装为「{GpuSpoofFakeName}」并重载立即生效。" + notes);
+        return OperationResult.Ok($"帧格模式已开启：显卡已伪装为「{GpuSpoofFakeName}」并重载立即生效。" + notes + foregroundNote);
     }
 
     public async Task<OperationResult> DeactivateFrameModeAsync()
@@ -764,6 +887,10 @@ public sealed class FrameService : IFrameService
         var notes = dualNote + powerNote;
         if (dualNote.Length > 0) Log.Info("帧格退出·双CCD：" + dualNote.Trim());
         if (powerNote.Length > 0) Log.Info("帧格退出·电源锁定：" + powerNote.Trim());
+
+        // 前台加速响应 + 降低省电延迟：退出帧格时还原全部临时改写
+        var tweaksNote = await RevertFrameTweaksAsync();
+        notes += tweaksNote;
 
         // 加速系统响应模式：帧格退出后全部还原（开关设置保留）
         UpdateResponseBoostState();
@@ -844,6 +971,95 @@ public sealed class FrameService : IFrameService
         catch (Exception ex)
         {
             return $"双CCD调度撤销失败：{ex.Message}";
+        }
+    }
+
+    // ---------------- 前台加速响应 + 降低省电延迟（帧格激活临时改写，退出还原） ----------------
+
+    /// <summary>帧格开启时：按开关应用前台加速响应与降低省电延迟的临时改写。</summary>
+    private async Task<string> ApplyFrameTweaksAsync()
+    {
+        try
+        {
+            if (!_foregroundBoostEnabled && !_powerSaveLatencyEnabled)
+            {
+                return "";
+            }
+
+            var result = await _frameTweaks.ApplyAsync(
+                _foregroundBoostEnabled && _foregroundResponsiveness,
+                _foregroundBoostEnabled && _foregroundPriority,
+                _powerSaveLatencyEnabled && _nicPowerSavingOff,
+                _powerSaveLatencyEnabled && _usbSuspendOff);
+            Log.Info($"帧格·临时优化：应用结果={(result.Success ? "成功" : "失败")}，说明={result.Message}");
+            return result.Success
+                ? (result.Message.Length > 0 ? " " + result.Message.TrimEnd('。') + "。" : "")
+                : $" {result.Message}";
+        }
+        catch (Exception ex)
+        {
+            Log.Error("帧格·临时优化：应用异常", ex);
+            return $" 前台加速/省电延迟优化应用失败：{ex.Message}";
+        }
+    }
+
+    /// <summary>帧格退出时：还原全部前台加速响应与降低省电延迟的临时改写。</summary>
+    private async Task<string> RevertFrameTweaksAsync()
+    {
+        try
+        {
+            var result = await _frameTweaks.RevertAsync();
+            Log.Info($"帧格·临时优化：还原结果={(result.Success ? "成功" : "失败")}，说明={result.Message}");
+            if (!result.Success)
+            {
+                return " " + result.Message;
+            }
+
+            return result.Message.Length > 0 ? " " + result.Message.TrimEnd('。') + "。" : "";
+        }
+        catch (Exception ex)
+        {
+            Log.Error("帧格·临时优化：还原异常", ex);
+            return $" 帧格临时优化还原失败：{ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// 开机自愈：帧格激活状态下登录后，若临时优化注册表值被系统重置（驱动重装/组策略刷新等），
+    /// 静默重新应用。备份记录仍在时只补写优化值（备份不覆盖，原值还原语义不变）。
+    /// </summary>
+    private async Task SelfHealFrameTweaksAsync()
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(12));
+            if (!_frameModeActive)
+            {
+                return;
+            }
+
+            var foregroundWanted = _foregroundBoostEnabled;
+            var powerSaveWanted = _powerSaveLatencyEnabled;
+            if (!foregroundWanted && !powerSaveWanted)
+            {
+                return;
+            }
+
+            // 已有备份 = 上次已改写；值被重置时补写（备份保持首次的原值，不重复记录）
+            if (foregroundWanted && !FrameTweaksService.IsForegroundBoostApplied() ||
+                powerSaveWanted && !FrameTweaksService.IsPowerSaveLatencyApplied())
+            {
+                var result = await _frameTweaks.ApplyAsync(
+                    foregroundWanted && _foregroundResponsiveness,
+                    foregroundWanted && _foregroundPriority,
+                    powerSaveWanted && _nicPowerSavingOff,
+                    powerSaveWanted && _usbSuspendOff);
+                Log.Info($"帧格·临时优化：开机自愈结果={(result.Success ? "成功" : "失败")}，说明={result.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("帧格·临时优化：开机自愈失败", ex);
         }
     }
 
@@ -1046,9 +1262,11 @@ public sealed class FrameService : IFrameService
             var power = ServiceLocator.Power;
             var schemes = await power.GetSchemesAsync();
             var active = schemes.FirstOrDefault(s => s.IsActive);
+            Log.Info($"帧格·电源锁定：开始应用，当前 GUID={(active?.Guid ?? "(未知)")}，配置目标={(string.IsNullOrWhiteSpace(_powerLockTargetGuid) ? "当前计划" : _powerLockTargetGuid)}");
 
             if (active is null || string.IsNullOrEmpty(active.Guid))
             {
+                Log.Warn("帧格·电源锁定：无法识别当前活动计划，未应用锁定");
                 return "电源计划锁定失败：无法读取当前电源计划。";
             }
 
@@ -1057,6 +1275,7 @@ public sealed class FrameService : IFrameService
             if (!string.IsNullOrWhiteSpace(targetGuid) &&
                 schemes.All(s => !s.Guid.Equals(targetGuid, StringComparison.OrdinalIgnoreCase)))
             {
+                Log.Warn($"帧格·电源锁定：配置目标 {targetGuid} 不在系统计划列表中，回退锁定当前计划 {active.Guid}");
                 targetGuid = "";
             }
 
@@ -1064,6 +1283,7 @@ public sealed class FrameService : IFrameService
             AppSettingsStore.Update(s => s.FramePowerPreviousSchemeGuid = active.Guid);
             var lockGuid = string.IsNullOrWhiteSpace(targetGuid) ? active.Guid : targetGuid;
             var result = await power.SetSchemeAsync(lockGuid);
+            Log.Info($"帧格·电源锁定：应用结果={(result.Success ? "成功" : "失败")}，锁定 GUID={lockGuid}，原计划 GUID={active.Guid}，说明={result.Message}");
             if (!result.Success)
             {
                 return $"电源计划锁定失败：{result.Message}";
@@ -1075,6 +1295,7 @@ public sealed class FrameService : IFrameService
         }
         catch (Exception ex)
         {
+            Log.Error("帧格·电源锁定：应用异常", ex);
             return $"电源计划锁定失败：{ex.Message}";
         }
     }
@@ -1092,16 +1313,19 @@ public sealed class FrameService : IFrameService
             var previous = AppSettingsStore.Read().FramePowerPreviousSchemeGuid;
             if (string.IsNullOrWhiteSpace(previous))
             {
+                Log.Warn("帧格·电源锁定：退出时没有记录原计划 GUID，无法自动还原");
                 return "";
             }
 
             var result = await ServiceLocator.Power.SetSchemeAsync(previous);
+            Log.Info($"帧格·电源锁定：退出还原结果={(result.Success ? "成功" : "失败")}，原计划 GUID={previous}，说明={result.Message}");
             return result.Success
                 ? "电源计划已还原为用户原计划，锁定解除。"
                 : $"电源计划还原失败：{result.Message}";
         }
         catch (Exception ex)
         {
+            Log.Error("帧格·电源锁定：退出还原异常", ex);
             return $"电源计划还原失败：{ex.Message}";
         }
     }
@@ -1140,12 +1364,15 @@ public sealed class FrameService : IFrameService
             if (active is not null && !active.Guid.Equals(expected, StringComparison.OrdinalIgnoreCase))
             {
                 Log.Info($"电源锁定守护：计划被改走（{active.Guid}），重锁回 {expected}");
-                await power.SetSchemeAsync(expected);
+                var result = await power.SetSchemeAsync(expected);
+                Log.Info($"电源锁定守护：重锁结果={(result.Success ? "成功" : "失败")}，目标 GUID={expected}，说明={result.Message}");
             }
+            else if (active is null)
+                Log.Warn($"电源锁定守护：未能识别当前活动计划，期望 GUID={expected}");
         }
-        catch
+        catch (Exception ex)
         {
-            // 防改检查失败不影响其他功能
+            Log.Error("电源锁定守护：检查或重锁失败", ex);
         }
     }
 
@@ -1160,11 +1387,13 @@ public sealed class FrameService : IFrameService
                 return;
             }
 
-            await ApplyPowerLockAsync();
+            var note = await ApplyPowerLockAsync();
+            if (!string.IsNullOrWhiteSpace(note))
+                Log.Info("帧格·电源锁定：开机自愈结果=" + note);
         }
-        catch
+        catch (Exception ex)
         {
-            // 自愈失败不影响其他功能
+            Log.Error("帧格·电源锁定：开机自愈失败", ex);
         }
     }
 
@@ -1726,9 +1955,11 @@ public sealed class FrameService : IFrameService
                     ? (_parkedCoreCount >= 0 ? $" · 加速响应（停靠核心 {_parkedCoreCount}）" : " · 加速响应")
                     : " · 加速响应")
                 : "";
+            var foregroundPart = _foregroundBoostEnabled ? " · 前台加速" : "";
+            var powerSavePart = _powerSaveLatencyEnabled ? " · 省电延迟" : "";
             var memCleanPart = _memoryCleanEnabled ? " · 内存清理" : "";
             var gamePart = _isGameRunning ? " · 三角洲运行中…" : "";
-            return $"帧格模式运行中{spoofPart}{powerPart}{dualPart}{boostPart}{memCleanPart}{gamePart}";
+            return $"帧格模式运行中{spoofPart}{powerPart}{dualPart}{boostPart}{foregroundPart}{powerSavePart}{memCleanPart}{gamePart}";
         }
 
         return _isGameRunning ? "三角洲运行中…" : "已启用 · 等待三角洲启动…";
@@ -1830,6 +2061,12 @@ public sealed class FrameService : IFrameService
         _memoryCleanGameAutoEnabled = s.FrameMemoryCleanGameAutoEnabled;
         _memoryCleanThresholdPercent = Math.Clamp(s.FrameMemoryCleanThresholdPercent, 30, 95);
         _memoryCleanThresholdText = _memoryCleanThresholdPercent.ToString();
+        _foregroundBoostEnabled = s.FrameForegroundBoostEnabled;
+        _foregroundResponsiveness = s.FrameForegroundResponsivenessEnabled;
+        _foregroundPriority = s.FrameForegroundPriorityEnabled;
+        _powerSaveLatencyEnabled = s.FramePowerSaveLatencyEnabled;
+        _nicPowerSavingOff = s.FrameNicPowerSavingOffEnabled;
+        _usbSuspendOff = s.FrameUsbSuspendOffEnabled;
         _gpuSpoofApplyMode = s.GpuSpoofApplyMode == nameof(GpuSpoofApplyMode.DeviceRestart)
             ? GpuSpoofApplyMode.DeviceRestart
             : GpuSpoofApplyMode.Reboot;
@@ -1860,6 +2097,12 @@ public sealed class FrameService : IFrameService
                 s.GpuSpoofFakeName = _gpuSpoofFakeName;
                 s.FrameMemoryCleanGameAutoEnabled = _memoryCleanGameAutoEnabled;
                 s.FrameMemoryCleanThresholdPercent = _memoryCleanThresholdPercent;
+                s.FrameForegroundBoostEnabled = _foregroundBoostEnabled;
+                s.FrameForegroundResponsivenessEnabled = _foregroundResponsiveness;
+                s.FrameForegroundPriorityEnabled = _foregroundPriority;
+                s.FramePowerSaveLatencyEnabled = _powerSaveLatencyEnabled;
+                s.FrameNicPowerSavingOffEnabled = _nicPowerSavingOff;
+                s.FrameUsbSuspendOffEnabled = _usbSuspendOff;
                 s.FrameModeActive = _frameModeActive;
             });
         }

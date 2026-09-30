@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DeltaNFD.Services;
 
@@ -305,6 +305,12 @@ public partial class LabViewModel : ObservableObject
             var topology = await _cpu.GetTopologyAsync();
             _topology = topology;
             OnPropertyChanged(nameof(AffinityRuleSupported));
+            // 大小核相关绑定依赖 _topology，刷新后必须通知，否则 P/E 按钮与标签不会出现
+            OnPropertyChanged(nameof(IsHybridCpu));
+            OnPropertyChanged(nameof(AffinityHybridButtonsVisible));
+            OnPropertyChanged(nameof(AffinityPCoreButtonText));
+            OnPropertyChanged(nameof(AffinityECoreButtonText));
+            OnPropertyChanged(nameof(HybridCoreDetailText));
             if (!AffinityRuleSupported && GameAffinityRuleEnabled)
                 GameAffinityRuleEnabled = false;
 
@@ -328,7 +334,12 @@ public partial class LabViewModel : ObservableObject
             for (var i = 0; i < 64; i++)
             {
                 if ((topology.AllMask & (1UL << i)) == 0) continue;
-                var core = new AffinityCoreVm { Index = i, Label = $"CPU {i}", IsChecked = (savedAffinityMask & (1UL << i)) != 0 };
+                // 大小核机型在标签上标出 P/E，让用户一眼核对识别结果是否正确
+                var kind = !topology.IsHybrid ? ""
+                    : (topology.PCoreMask & (1UL << i)) != 0 ? " · P 核"
+                    : (topology.ECoreMask & (1UL << i)) != 0 ? " · E 核"
+                    : "";
+                var core = new AffinityCoreVm { Index = i, Label = $"CPU {i}{kind}", IsChecked = (savedAffinityMask & (1UL << i)) != 0 };
                 core.PropertyChanged += (_, e) =>
                 {
                     if (e.PropertyName == nameof(AffinityCoreVm.IsChecked))
@@ -469,6 +480,62 @@ public partial class LabViewModel : ObservableObject
 
         var mask = _topology.Ccds[ccdIndex].Mask;
         SetAffinitySelection(mask);
+    }
+
+    // ---- 大小核（Intel P/E 核）快捷预设 ----
+
+    /// <summary>当前 CPU 是否为大小核混合架构（决定 P/E 核快捷按钮是否显示）。</summary>
+    public bool IsHybridCpu => _topology?.IsHybrid == true;
+
+    /// <summary>P/E 核快捷按钮可见性（仅大小核机型显示）。</summary>
+    public bool AffinityHybridButtonsVisible => IsHybridCpu && AffinityRuleSupported;
+
+    /// <summary>P 核按钮文字（带核数，便于用户确认识别是否正确）。</summary>
+    public string AffinityPCoreButtonText =>
+        _topology is null || !_topology.IsHybrid ? "仅 P 核" : $"仅 P 核（{_topology.PCoreCount}）";
+
+    /// <summary>E 核按钮文字（带核数）。</summary>
+    public string AffinityECoreButtonText =>
+        _topology is null || !_topology.IsHybrid ? "仅 E 核" : $"仅 E 核（{_topology.ECoreCount}）";
+
+    /// <summary>大小核识别结果说明（给用户核对 P/E 判定是否符合预期）。</summary>
+    public string HybridCoreDetailText
+    {
+        get
+        {
+            if (_topology is null || !_topology.IsHybrid)
+            {
+                return "";
+            }
+
+            return $"已识别大小核：P 核 {_topology.PCoreCount} 个（掩码 0x{_topology.PCoreMask:X}）、"
+                + $"E 核 {_topology.ECoreCount} 个（掩码 0x{_topology.ECoreMask:X}）。"
+                + "游戏建议锁定 P 核；E 核留给后台任务。";
+        }
+    }
+
+    /// <summary>快捷预设：仅勾选 P 核（性能核）。</summary>
+    public void AffinityOnlyPCores()
+    {
+        if (_topology?.IsHybrid != true || _topology.PCoreMask == 0)
+        {
+            GameAffinityStatusText = "当前 CPU 未识别到大小核架构，无法使用 P 核预设。";
+            return;
+        }
+
+        SetAffinitySelection(_topology.PCoreMask);
+    }
+
+    /// <summary>快捷预设：仅勾选 E 核（效率核）。</summary>
+    public void AffinityOnlyECores()
+    {
+        if (_topology?.IsHybrid != true || _topology.ECoreMask == 0)
+        {
+            GameAffinityStatusText = "当前 CPU 未识别到大小核架构，无法使用 E 核预设。";
+            return;
+        }
+
+        SetAffinitySelection(_topology.ECoreMask);
     }
 
     private void SetAffinitySelection(ulong mask)
@@ -766,13 +833,16 @@ public partial class LabViewModel : ObservableObject
         try
         {
             var schemes = await ServiceLocator.Power.GetSchemesAsync();
-            var guid = AppSettingsStore.Read().AtlasPowerSchemeGuid;
+            var settings = AppSettingsStore.Read();
+            var guid = settings.AtlasPowerSchemeGuid;
             var scheme = schemes.FirstOrDefault(s => !string.IsNullOrWhiteSpace(guid) && s.Guid.Equals(guid, StringComparison.OrdinalIgnoreCase))
                 ?? schemes.FirstOrDefault(s => s.Name == PowerService.NoPowerSaveSchemeName ||
                     PowerService.LegacyNoPowerSaveNames.Contains(s.Name));
             SchemeGuid = scheme?.Guid ?? "";
             SchemeImported = scheme is not null;
             SchemeNeedsNameMigration = schemes.Any(s => PowerService.LegacyNoPowerSaveNames.Contains(s.Name));
+
+            Log.Info($"CPU实验室·电源计划检测：缓存 GUID={(string.IsNullOrWhiteSpace(guid) ? "(空)" : guid)}，识别 GUID={(scheme?.Guid ?? "(无)")}，活动 GUID={(schemes.FirstOrDefault(s => s.IsActive)?.Guid ?? "(未知)")}，已导入={SchemeImported}，帧格激活={settings.FrameModeActive}，帧格电源锁定={settings.FramePowerLockEnabled}，锁定目标={(string.IsNullOrWhiteSpace(settings.FramePowerLockTargetGuid) ? "当前计划" : settings.FramePowerLockTargetGuid)}，锁定原计划={(string.IsNullOrWhiteSpace(settings.FramePowerPreviousSchemeGuid) ? "(空)" : settings.FramePowerPreviousSchemeGuid)}");
 
             SchemeStatusText = scheme is null
                 ? "无省电电源计划未导入（导入后可在电源选项中查看）"
@@ -785,6 +855,7 @@ public partial class LabViewModel : ObservableObject
         }
         catch (Exception ex)
         {
+            Log.Error("CPU实验室·电源计划状态读取失败", ex);
             SchemeGuid = "";
             SchemeImported = false;
             SchemeNeedsNameMigration = false;
@@ -793,7 +864,7 @@ public partial class LabViewModel : ObservableObject
         }
     }
 
-    /// <summary>导入内置的无省电电源计划（已导入则跳过），完成后刷新状态。</summary>
+    /// <summary>导入内置的无省电电源计划（已导入则跳过）。全新导入成功后立即激活生效，完成后刷新状态。</summary>
     public async Task ImportSchemeAsync()
     {
         if (SchemeBusy)
@@ -804,15 +875,55 @@ public partial class LabViewModel : ObservableObject
         SchemeBusy = true;
         try
         {
+            Log.Info("CPU实验室·电源计划：点击导入/修正名称");
+            var wasImported = SchemeImported;
             var result = await ServiceLocator.Power.ImportNoPowerSaveSchemeAsync();
+            Log.Info($"CPU实验室·电源计划：导入结果={(result.Success ? "成功" : "失败")}，说明={result.Message}");
             if (!result.Success)
             {
                 SchemeStatusText = result.Message;
                 return;
             }
 
-            if (!await RefreshSchemeStatusCoreAsync())
-                SchemeStatusText = result.Message + "；" + SchemeStatusText;
+            // 仅全新导入（或收养既有计划）时自动激活；「修正计划名称」不改变当前激活计划
+            if (wasImported)
+            {
+                if (!await RefreshSchemeStatusCoreAsync())
+                    SchemeStatusText = result.Message + "；" + SchemeStatusText;
+                return;
+            }
+
+            // 帧格电源锁定开启期间激活会被锁定守卫立刻改回目标计划，跳过自动激活并说明
+            var settings = AppSettingsStore.Read();
+            if (settings.FrameModeActive && settings.FramePowerLockEnabled)
+            {
+                await RefreshSchemeStatusCoreAsync();
+                SchemeStatusText = result.Message +
+                    "；帧格电源锁定开启中，暂不自动激活——退出帧格或关闭电源锁定后再点击「切换到无省电电源计划」启用。" + SchemeStatusText;
+                return;
+            }
+
+            var guid = settings.AtlasPowerSchemeGuid;
+            if (string.IsNullOrWhiteSpace(guid))
+            {
+                guid = (await ServiceLocator.Power.GetSchemesAsync())
+                    .FirstOrDefault(s => s.Name == PowerService.NoPowerSaveSchemeName)?.Guid;
+            }
+
+            if (string.IsNullOrWhiteSpace(guid))
+            {
+                if (!await RefreshSchemeStatusCoreAsync())
+                    SchemeStatusText = result.Message + "；" + SchemeStatusText;
+                return;
+            }
+
+            var activate = await ServiceLocator.Power.SetSchemeAsync(guid);
+            Log.Info($"CPU实验室·电源计划：导入后自动激活结果={(activate.Success ? "成功" : "失败")}，目标 GUID={guid}，说明={activate.Message}");
+            var activateNote = activate.Success
+                ? "导入后已自动激活，立即生效。"
+                : $"自动激活失败：{activate.Message}——可点击「切换到无省电电源计划」重试。";
+            await RefreshSchemeStatusCoreAsync();
+            SchemeStatusText = activateNote + "；" + SchemeStatusText;
         }
         catch (Exception ex)
         {
@@ -837,9 +948,11 @@ public partial class LabViewModel : ObservableObject
         try
         {
             var guid = SchemeGuid;
+            Log.Info($"CPU实验室·电源计划：点击切换，页面 GUID={(string.IsNullOrWhiteSpace(guid) ? "(空)" : guid)}");
             if (string.IsNullOrWhiteSpace(guid))
             {
                 var import = await ServiceLocator.Power.ImportNoPowerSaveSchemeAsync();
+                Log.Info($"CPU实验室·电源计划：切换前自动导入结果={(import.Success ? "成功" : "失败")}，说明={import.Message}");
                 if (!import.Success)
                 {
                     SchemeStatusText = import.Message;
@@ -856,6 +969,7 @@ public partial class LabViewModel : ObservableObject
             }
 
             var result = await ServiceLocator.Power.SetSchemeAsync(guid);
+            Log.Info($"CPU实验室·电源计划：切换结果={(result.Success ? "成功" : "失败")}，目标 GUID={guid}，说明={result.Message}");
             if (result.Success)
             {
                 if (!await RefreshSchemeStatusCoreAsync())
@@ -982,6 +1096,195 @@ public partial class LabViewModel : ObservableObject
         finally
         {
             item.IsBusy = false;
+        }
+    }
+
+    // ---------------- 优化方案：保存 / 导入（txt 分享） ----------------
+
+    [ObservableProperty] private string planStatusText =
+        "把当前「异类调度策略 + CPU 亲和性」导出为 txt，可分享给使用相同 CPU 的人导入。";
+
+    /// <summary>
+    /// 采集当前方案：CPU 型号 / 核心数 / 线程数 / 异类调度策略 / CPU 亲和性。
+    /// 拓扑未就绪时返回 null（调用方给提示）。
+    /// </summary>
+    public async Task<CpuPlanService.CpuPlan?> CapturePlanAsync()
+    {
+        if (_topology is null)
+        {
+            PlanStatusText = "处理器信息尚未就绪，请稍后重试。";
+            return null;
+        }
+
+        // 异类策略以**实时读取**为准，避免用户刚改完下拉、页面缓存还是旧值
+        await RefreshHeteroPoliciesAsync();
+
+        var selectedCores = AffinityCores.Where(c => c.IsChecked).Select(c => c.Index).ToList();
+        var plan = new CpuPlanService.CpuPlan
+        {
+            CpuName = _topology.CpuName,
+            PhysicalCores = _topology.PhysicalCores,
+            LogicalProcessors = _topology.LogicalProcessors,
+            AffinityRuleEnabled = GameAffinityRuleEnabled,
+            AffinityMask = $"0x{AffinityRuleMask:X}",
+            AffinityCores = selectedCores,
+            SavedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            MachineName = Environment.MachineName,
+            AppVersion = AppVersion.Text,
+        };
+
+        foreach (var item in HeteroItems)
+        {
+            if (item.Unsupported)
+            {
+                continue;
+            }
+
+            plan.Hetero.Add(new CpuPlanService.HeteroEntry(
+                item.SettingGuid,
+                item.Title,
+                (item.SelectedIndex >= 0 ? item.SelectedIndex : 0).ToString(),
+                (item.SelectedIndex >= 0 ? item.SelectedIndex : 0).ToString()));
+        }
+
+        return plan;
+    }
+
+    /// <summary>把方案写进文件（UTF-8 无 BOM，与项目其余文本文件一致）。</summary>
+    public bool SavePlanToFile(CpuPlanService.CpuPlan plan, string path, out string message)
+    {
+        try
+        {
+            var text = CpuPlanService.Serialize(plan);
+            File.WriteAllText(path, text, new System.Text.UTF8Encoding(false));
+            message = $"方案已保存：{path}";
+            PlanStatusText = message + $"（CPU {plan.CpuName} · {plan.PhysicalCores} 核 / {plan.LogicalProcessors} 线程 · 勾选 {plan.AffinityCores.Count} 核 · 异类策略 {plan.Hetero.Count} 项）";
+            Log.Info($"CPU方案：已保存到 {path}（{plan.CpuName}，{plan.PhysicalCores}C/{plan.LogicalProcessors}T）");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            message = $"保存方案失败：{ex.Message}";
+            PlanStatusText = message;
+            Log.Error("CPU方案：保存失败", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 读取并校验方案文件。校验不通过（CPU/核心数/线程数不一致或格式错误）时返回 null 并给出原因，
+    /// **不会**改动本机任何设置——导入必须先过校验，再单独调用 <see cref="ImportPlanAsync"/>。
+    /// </summary>
+    public CpuPlanService.CpuPlan? LoadAndValidatePlanFile(string path, out string message)
+    {
+        try
+        {
+            var text = File.ReadAllText(path, System.Text.Encoding.UTF8);
+            if (!CpuPlanService.TryParse(text, out var plan, out var parseError))
+            {
+                message = parseError;
+                PlanStatusText = "导入失败：" + parseError;
+                return null;
+            }
+
+            if (_topology is null)
+            {
+                message = "处理器信息尚未就绪，请稍后重试。";
+                PlanStatusText = message;
+                return null;
+            }
+
+            var validation = CpuPlanService.ValidateForLocalMachine(
+                plan!, _topology.CpuName, _topology.PhysicalCores, _topology.LogicalProcessors);
+            if (!validation.Success)
+            {
+                message = validation.Message;
+                PlanStatusText = "导入被拒绝：" + validation.Message;
+                Log.Warn($"CPU方案：拒绝导入 {path}；{validation.Message}");
+                return null;
+            }
+
+            message = "";
+            return plan;
+        }
+        catch (Exception ex)
+        {
+            message = $"读取方案失败：{ex.Message}";
+            PlanStatusText = message;
+            Log.Error("CPU方案：读取失败", ex);
+            return null;
+        }
+    }
+
+    /// <summary>把已通过校验的方案应用到本机（亲和性勾选 + 规则开关 + 异类调度策略）。</summary>
+    public async Task<bool> ImportPlanAsync(CpuPlanService.CpuPlan plan)
+    {
+        try
+        {
+            // 1. 亲和性：以「已勾选核心」为准重建掩码，避免掩码与核心列表互相矛盾
+            ulong mask = 0;
+            foreach (var core in plan.AffinityCores)
+            {
+                if (core is >= 0 and < 64)
+                {
+                    mask |= 1UL << core;
+                }
+            }
+
+            // 掩码可能超出本机可用核心（同一 CPU 不同主板/BIOS 下逻辑处理器布局仍应一致，
+            // 但保险起见与本机 AllMask 求交，绝不写入本机不存在的核心）
+            var available = _topology?.AllMask ?? 0;
+            if (available != 0)
+            {
+                mask &= available;
+            }
+
+            // 先写设置再回填 UI，避免 SetAffinitySelection 里的持久化把旧值盖回来
+            AppSettingsStore.Update(s => s.GameAffinityRuleMask = mask);
+            SetAffinitySelection(mask);
+
+            if (plan.AffinityRuleEnabled != GameAffinityRuleEnabled)
+            {
+                GameAffinityRuleEnabled = plan.AffinityRuleEnabled;
+            }
+
+            // 2. 异类调度策略：按 GUID 匹配本机读取到的条目
+            var applied = 0;
+            foreach (var entry in plan.Hetero)
+            {
+                var target = HeteroItems.FirstOrDefault(
+                    i => i.SettingGuid.Equals(entry.SettingGuid, StringComparison.OrdinalIgnoreCase));
+                if (target is null || target.Unsupported)
+                {
+                    continue;
+                }
+
+                if (!int.TryParse(entry.AcValue, out var value))
+                {
+                    continue;
+                }
+
+                var result = await ServiceLocator.Power.SetHeteroPolicyAsync(entry.SettingGuid, value);
+                if (result.Success)
+                {
+                    applied++;
+                    target.CurrentText = $"当前值：{value}";
+                }
+            }
+
+            await RefreshHeteroPoliciesAsync();
+
+            PlanStatusText = $"方案已导入：亲和性掩码 0x{mask:X}（{plan.AffinityCores.Count} 核）"
+                + $"，异类调度策略 {applied}/{plan.Hetero.Count} 项。"
+                + (plan.AffinityRuleEnabled ? "亲和性规则已开启，游戏运行时自动应用。" : "亲和性规则为关闭状态（方案里即为关闭）。");
+            Log.Info($"CPU方案：导入完成（掩码 0x{mask:X}，异类策略 {applied}/{plan.Hetero.Count}）");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            PlanStatusText = $"导入方案失败：{ex.Message}";
+            Log.Error("CPU方案：导入失败", ex);
+            return false;
         }
     }
 }

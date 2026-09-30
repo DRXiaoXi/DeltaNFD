@@ -182,11 +182,14 @@ public partial class RuntimeViewModel : ObservableObject
 
     [ObservableProperty] private bool guardIsEnabled;
     [ObservableProperty] private bool guardIsBusy;
+    [ObservableProperty] private bool guardIsPartial;
     [ObservableProperty] private string guardStatusText = "正在读取防护状态…";
+    private bool _guardStateKnown;
 
-    public bool GuardToggleEnabled => !GuardIsBusy && !IsRepairing && !UninstallV14Busy;
+    public bool GuardToggleEnabled => _guardStateKnown && !GuardIsBusy && !IsRepairing && !UninstallV14Busy;
 
-    public string GuardToggleText => GuardIsBusy ? "切换中…" : GuardIsEnabled ? "防护已开启" : "防护未开启";
+    public string GuardToggleText => GuardIsBusy ? "切换中…" : GuardIsPartial ? "防护部分生效"
+        : GuardIsEnabled ? "防护已开启" : "防护未开启";
 
     partial void OnGuardIsBusyChanged(bool value)
     {
@@ -195,6 +198,7 @@ public partial class RuntimeViewModel : ObservableObject
     }
 
     partial void OnGuardIsEnabledChanged(bool value) => OnPropertyChanged(nameof(GuardToggleText));
+    partial void OnGuardIsPartialChanged(bool value) => OnPropertyChanged(nameof(GuardToggleText));
 
     /// <summary>读取防护模式状态（busy 守卫版，供进页/手动刷新调用）。</summary>
     public async Task LoadGuardAsync()
@@ -209,6 +213,13 @@ public partial class RuntimeViewModel : ObservableObject
         {
             await RefreshGuardCoreAsync();
         }
+        catch (Exception ex)
+        {
+            Log.Error("运行库防护：读取实际状态失败", ex);
+            _guardStateKnown = false;
+            GuardStatusText = $"防护状态读取失败：{ex.Message}；请重新进入此页重试。";
+            OnPropertyChanged(nameof(GuardToggleEnabled));
+        }
         finally
         {
             GuardIsBusy = false;
@@ -220,13 +231,19 @@ public partial class RuntimeViewModel : ObservableObject
     private async Task RefreshGuardCoreAsync()
     {
         var status = await _guard.GetStatusAsync();
-        GuardIsEnabled = status.IfeoApplied;
+        _guardStateKnown = true;
+        GuardIsEnabled = status.IfeoCount > 0 || status.Ue4PrereqDenied;
+        GuardIsPartial = GuardIsEnabled && (!status.IfeoApplied ||
+            (status.Ue4PrereqFound && !status.Ue4PrereqDenied));
+        OnPropertyChanged(nameof(GuardToggleEnabled));
         GuardStatusText = status.IfeoApplied
-            ? $"防护已开启：IFEO 已拦截 {status.IfeoCount}/{status.IfeoTotal} 个运行库安装器"
+            ? $"{(GuardIsPartial ? "防护部分生效" : "防护已开启")}：IFEO 已拦截 {status.IfeoCount}/{status.IfeoTotal} 个运行库安装器"
               + (status.Ue4PrereqFound
                   ? (status.Ue4PrereqDenied ? "，UE4 前置包已拒绝执行" : "，UE4 前置包未拦截")
                   : "")
-            : $"防护未开启（IFEO {status.IfeoCount}/{status.IfeoTotal}）——三角洲可强制覆盖安装运行库";
+            : GuardIsEnabled
+                ? $"防护部分生效：IFEO {status.IfeoCount}/{status.IfeoTotal}，部分安装器可能仍被拦截；可关闭以清理残留"
+                : $"防护未开启（IFEO {status.IfeoCount}/{status.IfeoTotal}）——三角洲可安装运行库";
     }
 
     /// <summary>切换防护模式。返回后端结果供页面弹窗；完成后重读真实状态。</summary>
@@ -243,8 +260,25 @@ public partial class RuntimeViewModel : ObservableObject
             var result = enable
                 ? await _guard.EnableAsync()
                 : await _guard.DisableAsync();
-            await RefreshGuardCoreAsync();
-            return result;
+            try
+            {
+                await RefreshGuardCoreAsync();
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Log.Error("运行库防护：切换后读取实际状态失败", ex);
+                _guardStateKnown = false;
+                GuardStatusText = $"切换后无法读取实际防护状态：{ex.Message}";
+                OnPropertyChanged(nameof(GuardToggleEnabled));
+                return OperationResult.Fail(result.Message + "；" + GuardStatusText);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("运行库防护：切换过程异常", ex);
+            GuardStatusText = $"防护切换异常：{ex.Message}";
+            return OperationResult.Fail(GuardStatusText);
         }
         finally
         {

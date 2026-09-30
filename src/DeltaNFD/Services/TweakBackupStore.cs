@@ -80,6 +80,16 @@ public sealed class TweakBackupStore
         }
     }
 
+    /// <summary>用于恢复操作：备份文件无法读取时必须报错，不能把它当成“没有备份”。</summary>
+    public RegistryValueBackup? GetStrict(string hive, string keyPath, string valueName)
+    {
+        var id = MakeId(hive, keyPath, valueName);
+        lock (_gate)
+        {
+            return LoadAll(strict: true).FirstOrDefault(b => b.Id == id);
+        }
+    }
+
     public List<RegistryValueBackup> GetAll()
     {
         lock (_gate)
@@ -89,14 +99,18 @@ public sealed class TweakBackupStore
     }
 
     /// <summary>保存备份。同一 Id 已存在时保留最早的原值（那才是真正的原始值），不覆盖。</summary>
-    public void Save(RegistryValueBackup entry)
+    public void Save(RegistryValueBackup entry) => SaveCore(entry, strict: false);
+
+    public void SaveStrict(RegistryValueBackup entry) => SaveCore(entry, strict: true);
+
+    private void SaveCore(RegistryValueBackup entry, bool strict)
     {
         // Id 始终由 Hive/KeyPath/ValueName 生成，保证一致
         entry.Id = MakeId(entry.Hive, entry.KeyPath, entry.ValueName);
 
         lock (_gate)
         {
-            var all = LoadAll();
+            var all = LoadAll(strict);
             if (all.Any(b => b.Id == entry.Id))
             {
                 return;
@@ -109,11 +123,15 @@ public sealed class TweakBackupStore
 
     public bool Remove(string keyPath, string valueName) => Remove("HKLM", keyPath, valueName);
 
-    public bool Remove(string hive, string keyPath, string valueName)
+    public bool Remove(string hive, string keyPath, string valueName) => RemoveCore(hive, keyPath, valueName, strict: false);
+
+    public bool RemoveStrict(string hive, string keyPath, string valueName) => RemoveCore(hive, keyPath, valueName, strict: true);
+
+    private bool RemoveCore(string hive, string keyPath, string valueName, bool strict)
     {
         lock (_gate)
         {
-            var all = LoadAll();
+            var all = LoadAll(strict);
             var removed = all.RemoveAll(b => b.Id == MakeId(hive, keyPath, valueName)) > 0;
             if (removed)
             {
@@ -124,24 +142,34 @@ public sealed class TweakBackupStore
         }
     }
 
-    private List<RegistryValueBackup> LoadAll()
+    private List<RegistryValueBackup> LoadAll(bool strict = false)
     {
         try
         {
             if (!File.Exists(_filePath))
             {
+                if (strict)
+                {
+                    try { _ = File.GetAttributes(_filePath); }
+                    catch (FileNotFoundException) { return []; }
+                    catch (DirectoryNotFoundException) { return []; }
+                    throw new IOException($"备份路径不是可读取的文件：{_filePath}");
+                }
                 return [];
             }
 
             using var stream = File.OpenRead(_filePath);
-            return JsonSerializer.Deserialize<List<RegistryValueBackup>>(stream, JsonOptions) ?? [];
+            var entries = JsonSerializer.Deserialize<List<RegistryValueBackup>>(stream, JsonOptions);
+            return entries ?? (strict
+                ? throw new InvalidDataException($"备份文件内容为空：{_filePath}")
+                : []);
         }
-        catch (JsonException)
+        catch (JsonException) when (!strict)
         {
             // 备份文件损坏时不阻塞正常流程；代价是丢失恢复能力，由调用方「无备份」提示兜底
             return [];
         }
-        catch (IOException)
+        catch (IOException) when (!strict)
         {
             return [];
         }

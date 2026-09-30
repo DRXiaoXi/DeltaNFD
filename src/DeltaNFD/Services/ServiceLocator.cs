@@ -23,6 +23,7 @@ public static class ServiceLocator
     private static readonly Lazy<INvProfileService> NvProfileLazy = new(() => new NvProfileService());
     private static readonly Lazy<IPagefileService> PagefileLazy = new(() => new PagefileService());
     private static readonly Lazy<GameProcessMonitor> GameMonitorLazy = new(() => new GameProcessMonitor());
+    private static readonly Lazy<IUpdateService> UpdateLazy = new(() => new UpdateService());
 
     internal static GameProcessMonitor GameMonitor => GameMonitorLazy.Value;
 
@@ -75,4 +76,7 @@ public static class ServiceLocator
 
     /// <summary>虚拟内存（页面文件）设置：状态读取 / 固定大小设置 / 恢复系统托管。</summary>
     public static IPagefileService Pagefile => PagefileLazy.Value;
+
+    /// <summary>自动更新：检查 update.json / 下载并校验安装包 / 交给 Inno Setup 静默安装。</summary>
+    public static IUpdateService Update => UpdateLazy.Value;
 }

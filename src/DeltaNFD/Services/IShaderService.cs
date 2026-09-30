@@ -85,7 +85,8 @@ public sealed class ShaderDiagnosis
 
 /// <summary>
 /// 着色器维护服务：N 卡驱动版本体检（问题驱动 / 过老驱动提醒）+ 三角洲 PSOCache 旧着色器清理
-/// + PSOCache 健康检测（AMD / Intel / NVIDIA 通用的 GameVer 临时计数判定，以及 NVIDIA 专用 NVPH 结构判定）。
+/// + PSOCache 健康检测（AMD / Intel / NVIDIA 通用的 GameVer 临时计数判定，以及 NVIDIA 专用的
+/// PARC 异常文件判定与 NVPH 结构判定）。
 /// PSOCache 位于 {游戏根}\DeltaForce\Saved\PSOCache，游戏运行时被锁定，需退出游戏后清理。
 /// </summary>
 public interface IShaderService
@@ -97,9 +98,11 @@ public interface IShaderService
     Task<OperationResult> ClearPsoCacheAsync();
 
     /// <summary>
-    /// PSOCache 健康检测（纯只读）：GameVer 达到 2 个及以上时作为 AMD / Intel / NVIDIA 通用的临时异常判据 +
-    /// 单版本下 SM6\DXCache NVPH 文件缺失 / 0KB 损坏判定（仅 N 卡且驱动 ≥572.83 时下结论）；
-    /// 617.14 与 591/610/616 共用问题驱动判定；更高版本若 ≥256MB NVPH 少于两个，也判为驱动异常。
+    /// PSOCache 健康检测（纯只读），判定优先级：
+    /// ① GameVer 达到 2 个及以上 → AMD / Intel / NVIDIA 通用异常判据；
+    /// ② **N 卡：SM6\DXCache 出现任何 .parc 文件即直接判为异常**（不依赖驱动版本，先于下列 NVPH 判定）；
+    /// ③ 单版本下 SM6\DXCache NVPH 文件缺失 / 0KB 损坏判定（仅 N 卡且驱动 ≥572.83 时下结论）；
+    ///    617.14 与 591/610/616 共用问题驱动判定；更高版本若 ≥256MB NVPH 少于两个，也判为驱动异常。
     /// </summary>
     Task<ShaderDiagnosis> DiagnoseAsync();
 }

@@ -1,0 +1,32 @@
+{
+  // 自动更新来源与网络参数（Delta NFD）—— 这是“随程序发布”的默认配置。
+  //
+  // 注意：本文件在程序目录（Assets\）下，升级安装会被新版本覆盖。
+  //       用户想自己加国内镜像，请用设置页「更新源配置」生成并编辑
+  //       %APPDATA%\Delta NFD\update-source.json —— 它优先级更高，且升级不会覆盖。
+  //
+  // manifestUrls  : Release API 或更新清单地址，按顺序尝试；失败才切换备用源。
+  // GitHub 发布列表包含 Alpha，按数值选择最高已发布版本，不读取未发布的 main/update.json。
+  // 清华镜像只同步收录项目，目前不包含 DeltaNFD，不能当作通用 GitHub 代理。
+  // allowedHosts  : 允许下载/取清单的主机白名单（精确匹配或子域后缀匹配）。
+  //                 使用国内镜像时，必须把镜像主机追加到这里，否则一律拒绝下载。
+  // autoCheckThrottleHours : 启动时自动检查的最小间隔（小时）。
+  // checkTimeoutSeconds    : 取清单的超时（秒）。
+  // downloadTimeoutMinutes : 下载安装包的单次静默超时（分钟，实际按“无数据”空闲计时）。
+  // releasePageUrl         : 清单不可用 / 未安装版时，给用户手动下载的兜底页面。
+  "schemaVersion": 1,
+  "manifestUrls": [
+    "https://api.github.com/repos/DRXiaoXi/DeltaNFD/releases?per_page=100"
+  ],
+  "allowedHosts": [
+    "githubusercontent.com",
+    "github.com",
+    "api.github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com"
+  ],
+  "autoCheckThrottleHours": 6,
+  "checkTimeoutSeconds": 15,
+  "downloadTimeoutMinutes": 60,
+  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases"
+}

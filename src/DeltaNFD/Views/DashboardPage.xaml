@@ -79,8 +79,10 @@
                 </Grid>
             </Border>
 
-            <!-- 优化检测（全量扫描系统优化项目，计算优化分数；结果顺延到系统优化页） -->
-            <Border Style="{StaticResource CardBorderStyle}">
+            <!-- 优化检测（全量扫描系统优化项目，计算优化分数；结果顺延到系统优化页）
+                 按需求隐藏分数卡片（仅隐藏 UI，后台全量扫描不停止——系统优化页依赖 OptimizationScan 的缓存结果）。
+                 要恢复显示：删掉下面 Border 的 Visibility 属性（以及本行的 Visibility 说明）即可。 -->
+            <Border Style="{StaticResource CardBorderStyle}" Visibility="Collapsed">
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />

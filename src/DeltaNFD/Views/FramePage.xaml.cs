@@ -54,6 +54,12 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
     /// <summary>加速系统响应模式子开关可用性：帧格未激活 && 总开关已开。</summary>
     public bool SubTogglesEditable => FrameSrv.FeaturesEditable && FrameSrv.ResponseBoostEnabled;
 
+    /// <summary>前台加速响应子开关可用性：帧格未激活 && 总开关已开。</summary>
+    public bool ForegroundSubTogglesEditable => FrameSrv.FeaturesEditable && FrameSrv.ForegroundBoostEnabled;
+
+    /// <summary>降低省电延迟子开关可用性：帧格未激活 && 总开关已开。</summary>
+    public bool PowerSaveSubTogglesEditable => FrameSrv.FeaturesEditable && FrameSrv.PowerSaveLatencyEnabled;
+
     public FramePage()
     {
         InitializeComponent();
@@ -77,9 +83,12 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
             UpdateGameDot();
         }
 
-        if (e.PropertyName is nameof(IFrameService.FeaturesEditable) or nameof(IFrameService.ResponseBoostEnabled))
+        if (e.PropertyName is nameof(IFrameService.FeaturesEditable) or nameof(IFrameService.ResponseBoostEnabled)
+            or nameof(IFrameService.ForegroundBoostEnabled) or nameof(IFrameService.PowerSaveLatencyEnabled))
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SubTogglesEditable)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ForegroundSubTogglesEditable)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PowerSaveSubTogglesEditable)));
         }
     }
 

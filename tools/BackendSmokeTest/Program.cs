@@ -1,4 +1,4 @@
-﻿using DeltaNFD.Services;
+using DeltaNFD.Services;
 
 ﻿// 只读冒烟测试：只枚举显卡、读取优化项状态、查询 VBS 运行时。
 // 绝不调用 SpoofAsync / RestoreAsync / DisableAsync —— 那些会真实改动系统。
@@ -22,6 +22,20 @@ if (args.Contains("--appdata-migration-checks", StringComparer.OrdinalIgnoreCase
     return;
 }
 
+if (args.Contains("--update-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { UpdateChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--update-live", StringComparer.OrdinalIgnoreCase))
+{
+    try { await UpdateChecksLive.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args.Contains("--power-scheme-checks", StringComparer.OrdinalIgnoreCase))
 {
     try
@@ -36,9 +50,23 @@ if (args.Contains("--power-scheme-checks", StringComparer.OrdinalIgnoreCase))
     return;
 }
 
+if (args.Contains("--runtime-guard-safety-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await RuntimeGuardSafetyChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args.Contains("--hardware-only", StringComparer.OrdinalIgnoreCase))
 {
     await HardwareDetectionChecks.RunAsync();
+    return;
+}
+
+if (args.Contains("--cpu-plan-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { CpuPlanChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
 

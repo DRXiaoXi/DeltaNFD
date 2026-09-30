@@ -254,9 +254,14 @@ public sealed class ShaderService : IShaderService
     /// <summary>正常状态下 ≥256MB 的 NVPH 文件至少应有的数量。</summary>
     private const int NvphMinLargeCount = 2;
 
-    public Task<ShaderDiagnosis> DiagnoseAsync() => Task.Run(() =>
+    public Task<ShaderDiagnosis> DiagnoseAsync() => Task.Run(() => DiagnoseAt(DeltaForceLocator.FindPsoCachePath()));
+
+    /// <summary>
+    /// 对指定 PSOCache 目录做着色器健康诊断。
+    /// 抽成独立方法是为了能在没有安装游戏时用临时目录做回归测试（PARC / NVPH 判定）。
+    /// </summary>
+    internal ShaderDiagnosis DiagnoseAt(string psoPath)
     {
-        var psoPath = DeltaForceLocator.FindPsoCachePath();
         if (psoPath.Length == 0 || !Directory.Exists(psoPath))
         {
             return new ShaderDiagnosis
@@ -330,32 +335,10 @@ public sealed class ShaderService : IShaderService
             };
         }
 
-        if (string.IsNullOrEmpty(driverVersion))
-        {
-            return new ShaderDiagnosis
-            {
-                Level = ShaderDiagLevel.NotApplicable,
-                Summary = "已检测到 N 卡，但驱动版本读取失败，暂不判定 NVPH 结构。",
-                Details = details,
-                Advice = "请通过 GeForce App 确认驱动版本后重新检测。",
-            };
-        }
-
-        var versionNumber = ToVersionNumber(driverVersion);
-        if (versionNumber is null || versionNumber < MinDriverVersion)
-        {
-            return new ShaderDiagnosis
-            {
-                Level = ShaderDiagLevel.NotApplicable,
-                Summary = $"驱动 {driverVersion} 低于 572.83，旧版驱动的 NVPH 结构不同，拒绝判定。",
-                Details = details,
-                Advice = "建议先升级到 572.83 或更新驱动，然后一键清除旧着色器文件并进游戏重新预热。",
-            };
-        }
-
-        details.Add($"驱动：{driverVersion}");
-
-        // SM6\DXCache 下的 NVPH 文件检查
+        // ---------- 结构性判定（与驱动版本无关，优先执行） ----------
+        // NVIDIA 已确认。PARC 文件是缓存异常产物，出现即代表缓存有问题，
+        // 因此这里**先于所有驱动版本门槛与 NVPH 判定**检查：
+        // 需求是「N 卡检测到 PARC 文件时直接判定为有问题」——不能被「驱动过老，拒绝判定」屏蔽掉。
         var dxCache = Path.Combine(gameVerDirs[0], "SM6", "DXCache");
         if (!Directory.Exists(dxCache))
         {
@@ -367,6 +350,56 @@ public sealed class ShaderService : IShaderService
                 Advice = "进入游戏完成一次着色器预热后再来检测。",
             };
         }
+
+        var parcFiles = new DirectoryInfo(dxCache)
+            .EnumerateFiles("*.parc", SearchOption.TopDirectoryOnly)
+            .Select(f => { try { return (Name: f.Name, Size: f.Length); } catch { return (Name: f.Name, Size: -1L); } })
+            .ToList();
+
+        if (parcFiles.Count > 0)
+        {
+            foreach (var f in parcFiles)
+            {
+                details.Add($"· {f.Name}（{f.Size / 1024.0 / 1024.0:0.0} MB）【PARC 异常文件】");
+            }
+
+            Log.Info($"着色器 PARC 判定：DXCache 中检测到 {parcFiles.Count} 个 .parc 文件 → 直接判为异常");
+            return new ShaderDiagnosis
+            {
+                Level = ShaderDiagLevel.Abnormal,
+                Summary = $"判定为着色器异常：DXCache 中检测到 {parcFiles.Count} 个 PARC 文件"
+                    + $"（{string.Join("、", parcFiles.Take(3).Select(f => f.Name))}）。"
+                    + "PARC 是缓存异常产物，出现即代表着色器缓存有问题。",
+                Details = details,
+                Advice = "建议：一键清除旧着色器文件，然后进入游戏重新预热着色器。",
+            };
+        }
+
+        // ---------- 以下 NVPH 结构判定依赖驱动版本 ----------
+        if (string.IsNullOrEmpty(driverVersion))
+        {
+            return new ShaderDiagnosis
+            {
+                Level = ShaderDiagLevel.NotApplicable,
+                Summary = "已检测到 N 卡，但驱动版本读取失败，暂无法判定 NVPH 结构（已确认无 PARC 异常文件）。",
+                Details = details,
+                Advice = "请通过 GeForce App 确认驱动版本后重新检测。",
+            };
+        }
+
+        var versionNumber = ToVersionNumber(driverVersion);
+        if (versionNumber is null || versionNumber < MinDriverVersion)
+        {
+            return new ShaderDiagnosis
+            {
+                Level = ShaderDiagLevel.NotApplicable,
+                Summary = $"驱动 {driverVersion} 低于 572.83，旧版驱动的 NVPH 结构不同，拒绝判定（已确认无 PARC 异常文件）。",
+                Details = details,
+                Advice = "建议先升级到 572.83 或更新驱动，然后一键清除旧着色器文件并进游戏重新预热。",
+            };
+        }
+
+        details.Add($"驱动：{driverVersion}");
 
         var nvphFiles = new DirectoryInfo(dxCache)
             .EnumerateFiles("*.nvph", SearchOption.TopDirectoryOnly)
@@ -451,7 +484,7 @@ public sealed class ShaderService : IShaderService
             Details = details,
             Advice = "建议：一键清除旧着色器文件，然后进入游戏重新预热着色器。",
         };
-    });
+    }
 
     /// <summary>状态卡与健康检测共用驱动归因：617.14 缓存异常时视为问题驱动；更高版本仅在大文件不足时归因驱动。</summary>
     private static bool HasProblemDriverCacheSignature(

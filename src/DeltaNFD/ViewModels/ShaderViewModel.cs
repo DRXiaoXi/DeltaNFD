@@ -20,7 +20,9 @@ public partial class ShaderViewModel : ObservableObject
     [ObservableProperty] private string sysCacheText = "系统级着色器缓存（D3DSCache / NVIDIA DXCache / AMD DxCache）";
     [ObservableProperty] private bool isCleaningSystem;
 
-    // ---- 运行库非最适版本提醒（低于推荐版本或未安装 → 黄色，建议重装运行库） ----
+    // ---- 运行库提醒已于 2026-09-30 按用户要求从着色器页移除 ----
+    // 这两个属性保留（无 XAML 消费者），供将来需要时复用；为避免每次进页白跑一次
+    // 全量 VC++ 扫描（ScanVcRedistsAsync 会枚举注册表 + 文件系统），LoadAsync 不再调用。
     [ObservableProperty] private bool runtimeSuboptimal;
     [ObservableProperty] private string runtimeWarnText = "";
 
@@ -109,8 +111,7 @@ public partial class ShaderViewModel : ObservableObject
             // 进页自动做一次健康检测
             await DiagnoseAsync();
 
-            // 运行库非最适版本检测（黄色提醒；v14 问题包在主页以红色提示，这里只做黄色档）
-            _ = LoadRuntimeWarnAsync();
+            // 运行库提醒已移除（见上方属性注释），此处不再触发全量运行库扫描。
         }
         finally
         {
@@ -118,7 +119,7 @@ public partial class ShaderViewModel : ObservableObject
         }
     }
 
-    /// <summary>运行库分支版本核对：任一分支低于推荐版本或未安装 → 黄色提醒（后台执行，不阻塞页面）。</summary>
+    /// <summary>运行库分支版本核对（保留备用：着色器页的提醒 UI 已移除，当前无调用方）。</summary>
     private async Task LoadRuntimeWarnAsync()
     {
         try

@@ -11,32 +11,9 @@
                 <TextBlock Text="N 卡驱动体检与三角洲着色器缓存清理，解决着色器缺失 / 异常问题" Style="{StaticResource PageSubtitleStyle}" />
             </StackPanel>
 
-            <!-- 运行库非最适版本提醒（黄色） -->
-            <Border Style="{StaticResource CardBorderStyle}"
-                    Background="#26FACC15"
-                    Visibility="{x:Bind ViewModel.RuntimeSuboptimal, Mode=OneWay}">
-                <Grid ColumnSpacing="16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Spacing="4">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="⚠ 运行库非最适版本" Style="{StaticResource SectionTitleStyle}"
-                                       Foreground="#FDE047" />
-                        </StackPanel>
-                        <TextBlock Text="{x:Bind ViewModel.RuntimeWarnText, Mode=OneWay}"
-                                   Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
-                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                   Foreground="#FDE047"
-                                   Text="建议到「运行库」页执行「重装运行库」：全程静默，卸载现有全部 C++ 运行库后重装 2005–2026 官方最适全系列（约 3–5 分钟）。" />
-                    </StackPanel>
-
-                    <Button Grid.Column="1" Content="去处理" Tag="runtime" Click="JumpButton_Click"
-                            VerticalAlignment="Center" />
-                </Grid>
-            </Border>
+            <!-- 运行库非最适版本提醒已按用户要求移除（2026-09-30）。
+                 运行库状态统一由「运行库」页与主页「组件检测状态」负责，着色器页不再重复提醒。
+                 如需恢复：从 git 历史取回本段 Border，并保留 ViewModel 的 RuntimeSuboptimal/RuntimeWarnText。 -->
 
             <!-- N 卡驱动体检 -->
             <Border Style="{StaticResource CardBorderStyle}">
@@ -98,7 +75,7 @@
                         <StackPanel Spacing="4">
                             <TextBlock Text="着色器健康检测" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                       Text="检测 PSOCache 的 GameVer 版本残留与 NVPH 缓存文件缺失 / 损坏（0KB）。仅对 N 卡（驱动 ≥572.83）下结论；A 卡 / I 卡自动跳过判定。" />
+                                       Text="检测 PSOCache 的 GameVer 版本残留、NVPH 缓存文件缺失 / 损坏（0KB），以及 PARC 异常文件（N 卡检测到 .parc 即直接判为有问题）。仅对 N 卡下结论；A 卡 / I 卡自动跳过判定。" />
                         </StackPanel>
 
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">

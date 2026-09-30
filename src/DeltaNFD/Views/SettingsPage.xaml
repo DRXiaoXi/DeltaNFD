@@ -209,6 +209,95 @@
                 </StackPanel>
             </Border>
 
+            <!-- 软件更新 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="软件更新" Style="{StaticResource SectionTitleStyle}" />
+
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="从发布页面检查新版本：只提醒，下载与安装都需要你确认；安装包会先校验 SHA256 才允许执行。安装前本工具会退出，装完自动重新打开新版本，设置、备份与日志都会保留。" />
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="启动时自动检查更新" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind Update.CurrentVersionDetail}"
+                                       Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" IsOn="{x:Bind Update.AutoCheck, Mode=TwoWay}"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <InfoBar IsOpen="{x:Bind Update.InfoBarOpen, Mode=OneWay}"
+                             Severity="{x:Bind Update.Severity, Mode=OneWay}"
+                             Title="更新" Message="{x:Bind Update.StatusText, Mode=OneWay}"
+                             IsClosable="False" />
+
+                    <!-- 有新版本时的详情与操作 -->
+                    <StackPanel Spacing="10" Visibility="{x:Bind Update.UpdateAvailable, Mode=OneWay}">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="新版本" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <Border Style="{StaticResource ChipBorderStyle}"
+                                    Background="{StaticResource AppAccentChipBrush}">
+                                <TextBlock Text="{x:Bind Update.AvailableVersionText, Mode=OneWay}"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource AppAccentBrush}" />
+                            </Border>
+                            <Border Style="{StaticResource ChipBorderStyle}"
+                                    Background="#33E5484D" Visibility="{x:Bind Update.Mandatory, Mode=OneWay}">
+                                <TextBlock Text="必须更新" FontSize="11" FontWeight="SemiBold" Foreground="#FFE5484D" />
+                            </Border>
+                        </StackPanel>
+
+                        <Expander Header="更新说明" HorizontalAlignment="Stretch"
+                                  Visibility="{x:Bind Update.DetailsVisible, Mode=OneWay}">
+                            <TextBlock Text="{x:Bind Update.Notes, Mode=OneWay}" TextWrapping="Wrap"
+                                       Style="{StaticResource CardDescStyle}" Margin="0,4,0,0" />
+                        </Expander>
+
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button Content="{x:Bind Update.ActionButtonText, Mode=OneWay}"
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    Click="PrimaryUpdateAction_Click"
+                                    IsEnabled="{x:Bind Update.ActionEnabled, Mode=OneWay}" />
+                            <Button Content="跳过此版本" Click="SkipUpdateVersion_Click"
+                                    IsEnabled="{x:Bind Update.SkipEnabled, Mode=OneWay}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- 下载进度 -->
+                    <StackPanel Spacing="6" Visibility="{x:Bind Update.ShowProgress, Mode=OneWay}">
+                        <ProgressBar Maximum="100" Value="{x:Bind Update.ProgressPercent, Mode=OneWay}" />
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock Text="{x:Bind Update.ProgressText, Mode=OneWay}"
+                                       Style="{StaticResource CardDescStyle}" VerticalAlignment="Center" />
+                            <Button Content="取消下载" Click="CancelUpdateDownload_Click"
+                                    IsEnabled="{x:Bind Update.CancelEnabled, Mode=OneWay}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="检查更新" Click="CheckUpdateButton_Click"
+                                IsEnabled="{x:Bind Update.CheckEnabled, Mode=OneWay}" />
+                        <Button Content="更新源配置" Click="OpenUpdateSourceConfig_Click"
+                                ToolTipService.ToolTip="添加国内镜像：编辑这里生成的 update-source.json（升级不会覆盖）" />
+                        <HyperlinkButton Content="打开发布页面" Padding="4,0" VerticalAlignment="Center"
+                                         Click="OpenUpdateReleasePage_Click" />
+                        <Button Content="打开下载文件夹" Click="OpenUpdateDownloadFolder_Click" />
+                    </StackPanel>
+
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Opacity="0.7"
+                               Text="{x:Bind Update.SourceHint}" />
+
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Opacity="0.7"
+                               Text="说明：只有通过安装包安装的版本才支持自动更新；开发构建或手动解压运行会提示手动下载。下载失败的安装包不会被安装，可在下载文件夹里查看或重试。" />
+                </StackPanel>
+            </Border>
+
             <!-- 关于 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">

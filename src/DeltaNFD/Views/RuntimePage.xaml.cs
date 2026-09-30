@@ -124,6 +124,8 @@ public sealed partial class RuntimePage : Page
         }
 
         var result = await ViewModel.SetGuardAsync(toggle.IsOn);
+        // 后端可能拒绝写入，VM 的布尔值未变化时 x:Bind 不会主动拨回控件。
+        toggle.IsOn = ViewModel.GuardIsEnabled;
         if (result is { Success: false })
         {
             await new ContentDialog

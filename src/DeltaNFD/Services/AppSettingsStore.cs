@@ -57,6 +57,26 @@ public sealed class AppSettings
     /// <summary>游戏内自动清理阈值：系统内存占用百分比（30–95），达到即触发清理，默认 80。</summary>
     public int FrameMemoryCleanThresholdPercent { get; set; } = 80;
 
+    // ---- 帧格：前台加速响应（调度参数临时改写，退出帧格自动还原） ----
+    /// <summary>总开关：帧格页「前台加速响应」。</summary>
+    public bool FrameForegroundBoostEnabled { get; set; }
+
+    /// <summary>子开关①：系统后台资源预留 20%→10%（SystemResponsiveness=0x0A），默认开。</summary>
+    public bool FrameForegroundResponsivenessEnabled { get; set; } = true;
+
+    /// <summary>子开关②：前台游戏优先调度（Win32PrioritySeparation=0x1A），默认开。</summary>
+    public bool FrameForegroundPriorityEnabled { get; set; } = true;
+
+    // ---- 帧格：降低省电延迟（网卡/USB 省电临时关闭，退出帧格自动还原） ----
+    /// <summary>总开关：帧格页「降低省电延迟」。</summary>
+    public bool FramePowerSaveLatencyEnabled { get; set; }
+
+    /// <summary>子开关①：网卡省电全禁（物理网卡 EnablePowerManagement=0 + PnPCapabilities=24），默认开。</summary>
+    public bool FrameNicPowerSavingOffEnabled { get; set; } = true;
+
+    /// <summary>子开关②：关闭 USB 选择性暂停（全局 DisableSelectiveSuspend=1 + 电源计划 AC/DC），默认开。</summary>
+    public bool FrameUsbSuspendOffEnabled { get; set; } = true;
+
     // ---- 旧版帧格显卡伪装迁移标记（保留以清理升级前的用户配置） ----
     /// <summary>旧版是否保存过临时帧格伪装配置；新版本启动时会清除并必要时还原原型号。</summary>
     public bool GpuSpoofFrameConfigured { get; set; }
@@ -138,6 +158,25 @@ public sealed class AppSettings
 
     /// <summary>已展示过公告的版本标识（与 MainWindow.CurrentAnnouncementVersion 比对，不同则再次弹公告）。</summary>
     public string AnnouncementVersionSeen { get; set; } = "";
+
+    // ---- 自动更新（只提醒，下载与安装都必须用户确认） ----
+    /// <summary>启动后自动检查更新（关闭后仍可在设置页手动「检查更新」）。</summary>
+    public bool AutoUpdateCheckEnabled { get; set; } = true;
+
+    /// <summary>上次实际发起更新检查的 UTC 时间（自动检查节流用；失败也记录，避免断网时反复重试）。</summary>
+    public DateTime? LastUpdateCheckUtc { get; set; }
+
+    /// <summary>用户点过「跳过此版本」的清单版本号；清单声明强制更新时忽略该项。</summary>
+    public string SkippedUpdateVersion { get; set; } = "";
+
+    /// <summary>已登记待安装的版本号（非空 = 更新流程已启动；升级后用它与当前版本比对判断成败）。</summary>
+    public string PendingUpdateVersion { get; set; } = "";
+
+    /// <summary>待安装版本的显示文本（如 OpenAlphaV0.83）。</summary>
+    public string PendingUpdateDisplayVersion { get; set; } = "";
+
+    /// <summary>已下载并通过校验的安装包完整路径（升级成功后按此清理）。</summary>
+    public string PendingUpdateInstallerPath { get; set; } = "";
 
     public static AppSettings Load(string path)
     {

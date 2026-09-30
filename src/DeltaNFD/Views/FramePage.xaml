@@ -192,6 +192,134 @@
                         </Border>
                     </StackPanel>
 
+                    <!-- 功能：前台加速响应（总开关 + 两个子开关；退出帧格自动还原） -->
+                    <StackPanel Spacing="4" Padding="0,10">
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Spacing="4" VerticalAlignment="Center">
+                                <TextBlock Text="前台加速响应" FontWeight="SemiBold" />
+                                <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                           Text="帧格期间把系统调度参数临时切换为前台优先：后台资源预留从 20% 降到 10%，前台（游戏）获得更长的处理器时间片与调度加速。开启帧格时写入，退出帧格时自动还原为开启前的原值（如果你已在系统优化里应用过同款优化，还原后仍保持优化值）。" />
+                                <TextBlock Text="{x:Bind FrameSrv.StatusText, Mode=OneWay}"
+                                           FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                          IsOn="{x:Bind FrameSrv.ForegroundBoostEnabled, Mode=TwoWay}"
+                                          IsEnabled="{x:Bind FrameSrv.FeaturesEditable, Mode=OneWay}"
+                                          OnContent="" OffContent=""
+                                          MinWidth="0" Margin="0" HorizontalAlignment="Right" />
+                        </Grid>
+
+                        <!-- 两个子开关（总开关关闭时置灰） -->
+                        <Border Margin="16,4,0,2" Padding="12,8" CornerRadius="8"
+                                Background="{StaticResource AppAccentSoftBrush}">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                                        <TextBlock Text="系统后台资源预留降低" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" FontSize="11"
+                                                   Text="把 Windows 为后台程序预留的 CPU 资源比例从默认 20% 降到 10%（SystemResponsiveness=10），多媒体/后台任务让出更多 CPU 时间给游戏。对应系统优化·调整里的「系统后台资源预留」。" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                                  IsOn="{x:Bind FrameSrv.ForegroundResponsivenessEnabled, Mode=TwoWay}"
+                                                  IsEnabled="{x:Bind ForegroundSubTogglesEditable, Mode=OneWay}"
+                                                  OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                                  HorizontalAlignment="Right" />
+                                </Grid>
+
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                                        <TextBlock Text="前台游戏优先调度" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" FontSize="11"
+                                                   Text="启用前台程序优先的处理器调度策略（0x1A）：短时间片 + 前台高加速，游戏获得更多 CPU 时间片，后台任务自动让路。对应系统优化·调整里的「前台游戏优先调度」。" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                                  IsOn="{x:Bind FrameSrv.ForegroundPriorityEnabled, Mode=TwoWay}"
+                                                  IsEnabled="{x:Bind ForegroundSubTogglesEditable, Mode=OneWay}"
+                                                  OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                                  HorizontalAlignment="Right" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- 功能：降低省电延迟（总开关 + 两个子开关；退出帧格自动还原） -->
+                    <StackPanel Spacing="4" Padding="0,10">
+                        <Grid ColumnSpacing="16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Spacing="4" VerticalAlignment="Center">
+                                <TextBlock Text="降低省电延迟" FontWeight="SemiBold" />
+                                <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                           Text="帧格期间临时关闭网卡与 USB 的省电休眠，消除设备从低功耗态唤醒带来的延迟毛刺：网卡掉 ping、键鼠/手柄/声卡短暂卡顿爆音。开启帧格时写入，退出帧格时自动还原。笔记本用户注意：开启期间耗电会略增。" />
+                                <TextBlock Text="{x:Bind FrameSrv.StatusText, Mode=OneWay}"
+                                           FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                          IsOn="{x:Bind FrameSrv.PowerSaveLatencyEnabled, Mode=TwoWay}"
+                                          IsEnabled="{x:Bind FrameSrv.FeaturesEditable, Mode=OneWay}"
+                                          OnContent="" OffContent=""
+                                          MinWidth="0" Margin="0" HorizontalAlignment="Right" />
+                        </Grid>
+
+                        <!-- 两个子开关（总开关关闭时置灰） -->
+                        <Border Margin="16,4,0,2" Padding="12,8" CornerRadius="8"
+                                Background="{StaticResource AppAccentSoftBrush}">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                                        <TextBlock Text="网卡省电全禁" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" FontSize="11"
+                                                   Text="关闭所有物理网卡的「允许计算机关闭此设备以节约电源」（EnablePowerManagement=0 + PnPCapabilities=24），降低网络延迟与断流；立即生效。对应系统优化·调整里的「网卡省电全禁」。" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                                  IsOn="{x:Bind FrameSrv.NicPowerSavingOffEnabled, Mode=TwoWay}"
+                                                  IsEnabled="{x:Bind PowerSaveSubTogglesEditable, Mode=OneWay}"
+                                                  OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                                  HorizontalAlignment="Right" />
+                                </Grid>
+
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                                        <TextBlock Text="关闭 USB 选择性暂停" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" FontSize="11"
+                                                   Text="阻止系统在空闲时挂起 USB 设备（全局注册表 DisableSelectiveSuspend=1 + 当前电源计划交流/直流设置），解决键鼠/手柄/声卡短暂卡顿、掉线、爆音。对应系统优化·调整里的「关闭 USB 选择性暂停」。" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                                  IsOn="{x:Bind FrameSrv.UsbSuspendOffEnabled, Mode=TwoWay}"
+                                                  IsEnabled="{x:Bind PowerSaveSubTogglesEditable, Mode=OneWay}"
+                                                  OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                                  HorizontalAlignment="Right" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
                     <!-- 功能：内存清理（实验性；清空待备内存列表） -->
                     <Grid ColumnSpacing="16" Padding="0,10">
                         <Grid.ColumnDefinitions>
@@ -205,6 +333,11 @@
                                 <Border Style="{StaticResource ChipBorderStyle}"
                                         Background="{ThemeResource ControlFillColorDefaultBrush}">
                                     <TextBlock Text="实验性" FontSize="10" Opacity="0.75" />
+                                </Border>
+                                <Border Style="{StaticResource ChipBorderStyle}"
+                                        Background="#33E5484D">
+                                    <TextBlock Text="可能导致性能下降" FontSize="10"
+                                               Foreground="#FFE5484D" />
                                 </Border>
                             </StackPanel>
                             <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
@@ -300,6 +433,10 @@
                                Text="· 开启「电源计划锁定」后，一键帧格模式会锁定你选择的计划（默认当前计划，防止被其他程序改成省电方案），退出时自动解除并还原原计划。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="· 「加速系统响应模式」三项机制全部为运行时行为：不写系统配置、不修改任何电源计划，退出帧格/关闭工具后自动恢复，重启无残留。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· 「前台加速响应」与「降低省电延迟」在开启帧格时写入系统调度/省电设置，退出帧格时自动还原为开启前的原值；原值备份独立保存，重启后退出帧格仍能完整还原。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· 帧格模式意外退出（如进程被结束）时，上述临时改写不会自动还原；重新打开本工具后再次开启/退出帧格模式即可还原。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="· 双CCD 专属调度在 CPU实验室 的生效方式选为「帧格生效」后会作为帧格选项出现在本页，随帧格模式自动启停。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"

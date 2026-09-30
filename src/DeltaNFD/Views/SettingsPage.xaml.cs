@@ -21,6 +21,9 @@ public sealed partial class SettingsPage : Page
 
     public SettingsViewModel ViewModel { get; } = new();
 
+    /// <summary>「软件更新」卡的 ViewModel（检查 / 下载 / 安装交接）。</summary>
+    public UpdateViewModel Update { get; } = new();
+
     /// <summary>主题色预设（含默认天空蓝与历史用色）。</summary>
     private static readonly (string Name, string Hex)[] AccentPresets =
     [
@@ -60,6 +63,21 @@ public sealed partial class SettingsPage : Page
         DimSlider.Value = BackgroundManager.DimOpacity * 100;
         _suppressDimSlider = false;
 
+        // 更新确认框（ViewModel 不能直接弹 ContentDialog，通过钩子注入，见 HANDOFF §3.2）
+        Update.ConfirmHook = async (title, message, primaryText) =>
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = title,
+                Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
+                PrimaryButtonText = primaryText,
+                CloseButtonText = "取消",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        };
+
         var current = BackgroundManager.ResolveCurrent();
         BackgroundStatusText.Text = DescribeBackground(current);
         // 背景图片模式开关切换后状态文字跟随刷新（否则显示与现实相反）
@@ -68,8 +86,13 @@ public sealed partial class SettingsPage : Page
             BackgroundManager.Changed -= OnBackgroundChanged;
             BackgroundManager.Changed += OnBackgroundChanged;
             OnBackgroundChanged();
+            Update.Attach();
         };
-        Unloaded += (_, _) => BackgroundManager.Changed -= OnBackgroundChanged;
+        Unloaded += (_, _) =>
+        {
+            BackgroundManager.Changed -= OnBackgroundChanged;
+            Update.Detach();
+        };
 
         BuildAccentSwatches();
 
@@ -279,4 +302,27 @@ public sealed partial class SettingsPage : Page
     {
         Services.Log.OpenFolderInExplorer();
     }
+
+    // ---------------- 软件更新 ----------------
+
+    private void CheckUpdateButton_Click(object sender, RoutedEventArgs e) =>
+        Update.CheckCommand.Execute(null);
+
+    private void PrimaryUpdateAction_Click(object sender, RoutedEventArgs e) =>
+        Update.PrimaryActionCommand.Execute(null);
+
+    private void SkipUpdateVersion_Click(object sender, RoutedEventArgs e) =>
+        Update.SkipVersionCommand.Execute(null);
+
+    private void CancelUpdateDownload_Click(object sender, RoutedEventArgs e) =>
+        Update.CancelDownloadCommand.Execute(null);
+
+    private void OpenUpdateReleasePage_Click(object sender, RoutedEventArgs e) =>
+        Update.OpenReleasePageCommand.Execute(null);
+
+    private void OpenUpdateDownloadFolder_Click(object sender, RoutedEventArgs e) =>
+        Update.OpenDownloadFolderCommand.Execute(null);
+
+    private void OpenUpdateSourceConfig_Click(object sender, RoutedEventArgs e) =>
+        Update.OpenUpdateSourceConfigCommand.Execute(null);
 }

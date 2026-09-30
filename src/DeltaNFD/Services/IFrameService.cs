@@ -77,6 +77,28 @@ public interface IFrameService : INotifyPropertyChanged
     /// <summary>子开关③：系统定时器 0.5ms（帧格激活且游戏运行时）。</summary>
     bool ResponseBoostTimerEnabled { get; set; }
 
+    // ---- 帧格功能：前台加速响应（调度参数临时改写，退出帧格自动还原） ----
+
+    /// <summary>前台加速响应总开关（关 = 全部机制不生效）。</summary>
+    bool ForegroundBoostEnabled { get; set; }
+
+    /// <summary>子开关①：系统后台资源预留 20%→10%（SystemResponsiveness=0x0A）。</summary>
+    bool ForegroundResponsivenessEnabled { get; set; }
+
+    /// <summary>子开关②：前台游戏优先调度（Win32PrioritySeparation=0x1A）。</summary>
+    bool ForegroundPriorityEnabled { get; set; }
+
+    // ---- 帧格功能：降低省电延迟（网卡/USB 省电临时关闭，退出帧格自动还原） ----
+
+    /// <summary>降低省电延迟总开关（关 = 全部机制不生效）。</summary>
+    bool PowerSaveLatencyEnabled { get; set; }
+
+    /// <summary>子开关①：网卡省电全禁（EnablePowerManagement=0 + PnPCapabilities=24）。</summary>
+    bool NicPowerSavingOffEnabled { get; set; }
+
+    /// <summary>子开关②：关闭 USB 选择性暂停（全局注册表 + 电源计划 AC/DC）。</summary>
+    bool UsbSuspendOffEnabled { get; set; }
+
     // ---- 帧格功能：内存清理（实验性；清空待备内存列表） ----
 
     /// <summary>内存清理（实验性）：清空待备内存列表释放可用内存；帧格激活期间自动触发 + 可手动执行。</summary>

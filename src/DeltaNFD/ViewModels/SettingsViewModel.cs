@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using DeltaNFD.Services;
 using Microsoft.UI.Xaml;
 
@@ -27,7 +27,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string generalStatusText = "";
 
-    public string VersionText => "OpenAlphaV0.82";
+    /// <summary>显示版本（唯一来源：csproj 的 InformationalVersion，已去掉 SourceLink 提交哈希后缀）。</summary>
+    public string VersionText => AppVersion.Text;
 
     private bool _suppressAutoStartChanged;
     private bool _suppressTrayChanged;

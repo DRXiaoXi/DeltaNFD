@@ -25,7 +25,10 @@ public sealed class PowerService : IPowerService
         var (code, stdout, stderr) = await RunPowerCfgAsync("/list", TimeSpan.FromSeconds(20));
         var schemes = new List<PowerSchemeInfo>();
         if (code != 0)
+        {
+            Log.Warn($"电源计划：/list 失败，退出码={code}，原因={PowerCfgDetail(stdout, stderr)}");
             throw new InvalidOperationException($"读取电源计划失败：{FirstLine(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr)}");
+        }
 
         foreach (var match in SchemeRegex.Matches(stdout).Cast<Match>())
         {
@@ -39,7 +42,10 @@ public sealed class PowerService : IPowerService
             });
         }
         if (schemes.Count == 0)
+        {
+            Log.Warn($"电源计划：/list 退出码=0，但未解析到计划；活动 GUID={DisplayGuid(activeGuid)}");
             throw new InvalidOperationException("powercfg 未返回可识别的电源计划列表，已停止导入以避免生成重复计划。");
+        }
 
         // 列表里没有卓越性能时补一个"未导入"条目，供 UI 展示可选
         if (schemes.All(s => s.Name != "卓越性能"))
@@ -57,14 +63,17 @@ public sealed class PowerService : IPowerService
 
     public async Task<OperationResult> SetSchemeAsync(string schemeGuid)
     {
+        Log.Info($"电源计划：请求切换，目标 GUID={DisplayGuid(schemeGuid)}");
         if (!ElevationHelper.IsElevated)
         {
+            Log.Warn("电源计划：切换被拒绝，程序未以管理员运行");
             return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
         }
 
         try
         {
             var targetGuid = schemeGuid;
+            var beforeGuid = await GetActiveSchemeGuidAsync();
 
             // 卓越性能默认隐藏：动态导入一份并缓存其 GUID
             if (schemeGuid.Equals(UltimateSchemeTemplateGuid, StringComparison.OrdinalIgnoreCase))
@@ -72,28 +81,39 @@ public sealed class PowerService : IPowerService
                 var imported = await EnsureUltimateSchemeAsync();
                 if (!imported.Success)
                 {
+                    Log.Warn($"电源计划：卓越性能导入失败，原因={imported.Message}");
                     return imported;
                 }
 
                 targetGuid = AppSettingsStore.Read().UltimatePowerSchemeGuid;
                 if (string.IsNullOrWhiteSpace(targetGuid))
                 {
+                    Log.Warn("电源计划：卓越性能导入后没有得到目标 GUID");
                     return OperationResult.Fail("卓越性能计划导入失败（未获得 GUID）。");
                 }
             }
 
             var (code, stdout, stderr) = await RunPowerCfgAsync($"/setactive {targetGuid}", TimeSpan.FromSeconds(20));
+            var afterGuid = await GetActiveSchemeGuidAsync();
+            Log.Info($"电源计划：/setactive 完成，退出码={code}，之前={DisplayGuid(beforeGuid)}，目标={DisplayGuid(targetGuid)}，之后={DisplayGuid(afterGuid)}");
             if (code != 0)
             {
                 var reason = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+                Log.Warn($"电源计划：/setactive 失败，原因={PowerCfgDetail(stdout, stderr)}");
                 return OperationResult.Fail($"切换电源计划失败：{FirstLine(reason)}");
             }
+
+            if (!string.IsNullOrWhiteSpace(afterGuid) && !afterGuid.Equals(targetGuid, StringComparison.OrdinalIgnoreCase))
+                Log.Warn($"电源计划：命令返回成功但活动计划不是目标，目标={DisplayGuid(targetGuid)}，实际={afterGuid}");
+            else if (string.IsNullOrWhiteSpace(afterGuid))
+                Log.Warn("电源计划：命令返回成功，但无法解析切换后的活动 GUID");
 
             var name = await GetSchemeNameAsync(targetGuid);
             return OperationResult.Ok($"已切换电源计划为「{name}」（立即生效）。");
         }
         catch (Exception ex)
         {
+            Log.Error($"电源计划：切换异常，目标 GUID={DisplayGuid(schemeGuid)}", ex);
             return OperationResult.Fail($"切换电源计划失败：{ex.Message}");
         }
     }
@@ -171,8 +191,10 @@ public sealed class PowerService : IPowerService
 
     public async Task<OperationResult> ImportNoPowerSaveSchemeAsync()
     {
+        Log.Info("无省电电源计划：请求导入或修正旧名称");
         if (!ElevationHelper.IsElevated)
         {
+            Log.Warn("无省电电源计划：导入被拒绝，程序未以管理员运行");
             return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
         }
 
@@ -192,6 +214,7 @@ public sealed class PowerService : IPowerService
         // 已有缓存的 GUID 且计划仍存在，或按名字能认出旧导入：直接收养，不重复导入（避免刷出多个同名计划）
         var cachedGuid = AppSettingsStore.Read().AtlasPowerSchemeGuid;
         var schemes = await GetSchemesAsync();
+        Log.Info($"无省电电源计划：导入前检测，缓存 GUID={DisplayGuid(cachedGuid)}，系统计划数={schemes.Count(s => s.Guid != UltimateSchemeTemplateGuid)}，活动 GUID={DisplayGuid(schemes.FirstOrDefault(s => s.IsActive)?.Guid)}");
         var legacySchemes = schemes.Where(s => LegacyNoPowerSaveNames.Contains(s.Name)).ToList();
         var renameFailures = 0;
         foreach (var legacyScheme in legacySchemes)
@@ -208,6 +231,7 @@ public sealed class PowerService : IPowerService
         if (existing is not null)
         {
             AppSettingsStore.Update(s => s.AtlasPowerSchemeGuid = existing.Guid);
+            Log.Info($"无省电电源计划：识别为已存在，GUID={existing.Guid}，名称={existing.Name}，旧名改写失败数={renameFailures}，未重复导入");
             return OperationResult.Ok(renameFailures == 0
                 ? $"无省电电源计划已存在（{existing.Guid}），无需重复导入。"
                 : $"无省电电源计划已存在（{existing.Guid}），但有 {renameFailures} 份旧名称计划改名失败，可再次点击修正。");
@@ -216,19 +240,26 @@ public sealed class PowerService : IPowerService
         var powPath = Path.Combine(AppContext.BaseDirectory, "Assets", "NoPowerSave-Scheme.pow");
         if (!File.Exists(powPath))
         {
+            Log.Warn("无省电电源计划：内置 NoPowerSave-Scheme.pow 不存在，未执行导入");
             return OperationResult.Fail("未找到内置电源计划文件（Assets\\NoPowerSave-Scheme.pow），请重新部署程序。");
         }
 
         var newGuid = Guid.NewGuid().ToString("D");
+        Log.Info($"无省电电源计划：开始 /import，指定 GUID={newGuid}");
         var (code, stdout, stderr) = await RunPowerCfgAsync(
             $"/import \"{powPath}\" {newGuid}", TimeSpan.FromSeconds(30));
+        Log.Info($"无省电电源计划：/import 退出码={code}，GUID={newGuid}" +
+            (code == 0 ? "" : $"，原因={PowerCfgDetail(stdout, stderr)}"));
         if (code == 0)
             AppSettingsStore.Update(s => s.AtlasPowerSchemeGuid = newGuid);
 
-        var (verifyCode, _, _) = await RunPowerCfgAsync($"/query {newGuid}", TimeSpan.FromSeconds(20));
+        var (verifyCode, verifyOut, verifyErr) = await RunPowerCfgAsync($"/query {newGuid}", TimeSpan.FromSeconds(20));
+        Log.Info($"无省电电源计划：/query 复核退出码={verifyCode}，GUID={newGuid}" +
+            (verifyCode == 0 ? "" : $"，原因={PowerCfgDetail(verifyOut, verifyErr)}"));
         if (verifyCode != 0)
         {
             var reason = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+            Log.Warn($"无省电电源计划：导入未能确认，导入退出码={code}，复核退出码={verifyCode}，GUID={newGuid}");
             return OperationResult.Fail(code == 0
                 ? $"导入命令已完成，但无法查询计划 {newGuid}；请先在电源选项中核对，不要重复点击导入。"
                 : $"导入无省电电源计划失败：{FirstLine(reason)}");
@@ -239,6 +270,7 @@ public sealed class PowerService : IPowerService
 
         // 覆盖 .pow 内嵌的「Atlas Power Scheme」名；改名失败时保留已导入的 GUID。
         var renamed = await RenameNoPowerSaveSchemeAsync(newGuid);
+        Log.Info($"无省电电源计划：导入完成，GUID={newGuid}，标准名称改写={(renamed ? "成功" : "失败")}");
         return OperationResult.Ok(renamed
             ? $"「{NoPowerSaveSchemeName}」电源计划已导入（GUID {newGuid}）。可在电源选项中查看，或一键切换启用。"
             : $"电源计划已导入（GUID {newGuid}），但显示名暂未改成功——可在实验室点击「修正计划名称」重试。");
@@ -274,8 +306,9 @@ public sealed class PowerService : IPowerService
 
             return OperationResult.Ok("");
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Error("无省电电源计划：旧名称迁移异常", ex);
             return OperationResult.Ok("");
         }
     }
@@ -283,9 +316,13 @@ public sealed class PowerService : IPowerService
     /// <summary>powercfg /changename 改为标准显示名。返回命令是否成功。</summary>
     private async Task<bool> RenameNoPowerSaveSchemeAsync(string guid)
     {
-        var (code, _, _) = await RunPowerCfgAsync(
+        var (code, stdout, stderr) = await RunPowerCfgAsync(
             $"/changename {guid} \"{NoPowerSaveSchemeName}\" \"{NoPowerSaveSchemeDescription}\"",
             TimeSpan.FromSeconds(20));
+        if (code != 0)
+            Log.Warn($"无省电电源计划：/changename 失败，GUID={guid}，退出码={code}，原因={PowerCfgDetail(stdout, stderr)}");
+        else
+            Log.Info($"无省电电源计划：/changename 成功，GUID={guid}");
         return code == 0;
     }
 
@@ -410,13 +447,16 @@ public sealed class PowerService : IPowerService
 
     private async Task<string> GetActiveSchemeGuidAsync()
     {
-        var (code, stdout, _) = await RunPowerCfgAsync("/getactivescheme", TimeSpan.FromSeconds(15));
+        var (code, stdout, stderr) = await RunPowerCfgAsync("/getactivescheme", TimeSpan.FromSeconds(15));
         if (code != 0)
         {
+            Log.Warn($"电源计划：/getactivescheme 失败，退出码={code}，原因={PowerCfgDetail(stdout, stderr)}");
             return "";
         }
 
         var match = SchemeRegex.Match(stdout);
+        if (!match.Success)
+            Log.Warn($"电源计划：/getactivescheme 退出码=0，但无法解析活动 GUID；输出={PowerCfgDetail(stdout, stderr)}");
         return match.Success ? match.Groups["guid"].Value.ToLowerInvariant() : "";
     }
 
@@ -519,5 +559,13 @@ public sealed class PowerService : IPowerService
         var trimmed = text.Trim();
         var lineBreak = trimmed.IndexOfAny(['\r', '\n']);
         return lineBreak > 0 ? trimmed[..lineBreak] : trimmed;
+    }
+
+    private static string DisplayGuid(string? guid) => string.IsNullOrWhiteSpace(guid) ? "(空)" : guid;
+
+    private static string PowerCfgDetail(string stdout, string stderr)
+    {
+        var line = FirstLine(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr);
+        return line.Length == 0 ? "(无输出)" : line.Length <= 180 ? line : line[..180] + "…";
     }
 }

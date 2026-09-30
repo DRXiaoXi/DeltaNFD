@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.AccessControl;
 using Microsoft.Win32;
 
 namespace DeltaNFD.Services;
@@ -53,16 +54,7 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         var redists = await Task.Run(GetInstalledRedists);
         var ue4Path = await FindUe4PrereqAsync();
 
-        var ifeoApplied = 0;
-        foreach (var name in IfeoInstallerNames)
-        {
-            using var key = Registry.LocalMachine.OpenSubKey($@"{IfeoRoot}\{name}");
-            if (key?.GetValue("Debugger") as string == DebuggerValue)
-            {
-                ifeoApplied++;
-            }
-        }
-
+        var ifeoApplied = CountIfeoApplied();
         var denied = ue4Path.Length > 0 && await IsExecuteDeniedAsync(ue4Path);
 
         return new RuntimeGuardStatus
@@ -77,6 +69,114 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         };
     }
 
+    private static int CountIfeoApplied()
+    {
+        var ifeoApplied = 0;
+        foreach (var name in IfeoInstallerNames)
+        {
+            using var key = Registry.LocalMachine.OpenSubKey($@"{IfeoRoot}\{name}");
+            if (key?.GetValue("Debugger") as string == DebuggerValue)
+            {
+                ifeoApplied++;
+            }
+        }
+
+        return ifeoApplied;
+    }
+
+    private static (string? Value, RegistryValueKind Kind) ReadDebugger(string keyPath)
+    {
+        using var key = Registry.LocalMachine.OpenSubKey(keyPath);
+        if (key is null || !key.GetValueNames().Contains("Debugger", StringComparer.OrdinalIgnoreCase))
+            return (null, RegistryValueKind.None);
+
+        var kind = key.GetValueKind("Debugger");
+        var value = key.GetValue("Debugger", null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+        if (kind is not (RegistryValueKind.String or RegistryValueKind.ExpandString) || value is not string text)
+            throw new InvalidDataException($"IFEO Debugger 原值不是可安全备份的字符串：HKLM\\{keyPath}");
+        return (text, kind);
+    }
+
+    private static RegistryKey? OpenIfeoForWrite(string name, bool createIfMissing)
+    {
+        var keyPath = $@"{IfeoRoot}\{name}";
+        using var readKey = Registry.LocalMachine.OpenSubKey(keyPath);
+        if (readKey is not null)
+        {
+            return Registry.LocalMachine.OpenSubKey(keyPath,
+                RegistryKeyPermissionCheck.ReadWriteSubTree,
+                RegistryRights.SetValue)
+                ?? throw new UnauthorizedAccessException($"无权写入 IFEO 键：HKLM\\{keyPath}");
+        }
+
+        if (!createIfMissing)
+            return null;
+
+        using var parent = Registry.LocalMachine.OpenSubKey(IfeoRoot,
+            RegistryKeyPermissionCheck.ReadWriteSubTree, RegistryRights.CreateSubKey);
+        if (parent is null)
+            throw new UnauthorizedAccessException($"无权在 IFEO 下创建子键：HKLM\\{IfeoRoot}");
+        return parent.CreateSubKey(name, RegistryKeyPermissionCheck.ReadWriteSubTree)
+            ?? throw new UnauthorizedAccessException($"无法创建 IFEO 键：HKLM\\{keyPath}");
+    }
+
+    private List<string> RestoreIfeoEntries(IEnumerable<string> names)
+    {
+        var problems = new List<string>();
+        foreach (var name in names)
+        {
+            var keyPath = $@"{IfeoRoot}\{name}";
+            var stage = "读取备份";
+            try
+            {
+                var backup = _backups.GetStrict("HKLM", keyPath, "Debugger");
+                if (backup is null)
+                    continue;
+
+                stage = "还原注册表";
+                using (var key = OpenIfeoForWrite(name, backup.ValueKind != RegistryValueKind.None))
+                {
+                    if (backup.ValueKind == RegistryValueKind.None)
+                        key?.DeleteValue("Debugger", throwOnMissingValue: false);
+                    else
+                        key!.SetValue("Debugger", backup.Data, backup.ValueKind);
+                }
+
+                stage = "清理备份";
+                _backups.RemoveStrict("HKLM", keyPath, "Debugger");
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"运行库防护：IFEO {name} {stage}失败", ex);
+                problems.Add($"IFEO {name} {stage}：{DescribeError(ex)}");
+            }
+        }
+
+        return problems;
+    }
+
+    private static string DescribeError(Exception ex) =>
+        $"{ex.GetType().Name} (0x{ex.HResult:X8}): {ex.Message}";
+
+    private static string SummarizeProblems(IReadOnlyList<string> problems) =>
+        string.Join("；", problems.Take(3)) +
+        (problems.Count > 3 ? $"；另有 {problems.Count - 3} 项，详见日志" : "");
+
+    private async Task<RuntimeGuardStatus?> PersistActualGuardStateAsync()
+    {
+        try
+        {
+            var status = await GetStatusAsync();
+            AppSettingsStore.Update(s => s.RuntimeGuardEnabled = status.IfeoCount > 0 || status.Ue4PrereqDenied);
+            return status;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("运行库防护：复核实际状态失败", ex);
+            return null;
+        }
+    }
+
     // ---------------- 开启 / 关闭 ----------------
 
     public async Task<OperationResult> EnableAsync()
@@ -88,53 +188,89 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         }
 
         var problems = new List<string>();
+        var writtenNames = new List<string>();
 
         // 1. IFEO 劫持（备份原 Debugger 值后写入 taskkill）
         foreach (var name in IfeoInstallerNames)
         {
+            var stage = "读取原值";
             try
             {
                 var keyPath = $@"{IfeoRoot}\{name}";
-                var current = ReadRegValue("HKLM", keyPath, "Debugger");
-                _backups.Save(new RegistryValueBackup
+                var (current, kind) = ReadDebugger(keyPath);
+                stage = "保存备份";
+                _backups.SaveStrict(new RegistryValueBackup
                 {
                     Hive = "HKLM",
                     Id = TweakBackupStore.MakeId("HKLM", keyPath, "Debugger"),
                     KeyPath = keyPath,
                     ValueName = "Debugger",
-                    ValueKind = current is null ? RegistryValueKind.None : RegistryValueKind.String,
-                    Data = current as string ?? "",
+                    ValueKind = kind,
+                    Data = current ?? "",
                     CreatedAt = DateTimeOffset.Now,
                 });
 
-                using var key = Registry.LocalMachine.CreateSubKey(keyPath, writable: true);
-                key.SetValue("Debugger", DebuggerValue, RegistryValueKind.String);
+                stage = "写入注册表";
+                using var key = OpenIfeoForWrite(name, createIfMissing: true);
+                key!.SetValue("Debugger", DebuggerValue, RegistryValueKind.String);
+                writtenNames.Add(name);
             }
             catch (Exception ex)
             {
-                problems.Add($"IFEO {name}: {ex.Message}");
+                Log.Error($"运行库防护：IFEO {name} {stage}失败", ex);
+                problems.Add($"IFEO {name} {stage}：{DescribeError(ex)}");
+                if (stage == "保存备份")
+                    break;
             }
         }
 
-        // 2. UE4Prereq Deny-Execute ACL（best-effort，找不到游戏目录不算失败）
-        var ue4Path = await FindUe4PrereqAsync();
-        if (ue4Path.Length > 0)
+        if (problems.Count == 0)
         {
-            var acl = await SetExecuteDenyAsync(ue4Path, deny: true);
-            if (!acl.Success)
+            try
             {
-                problems.Add(acl.Message);
+                var count = CountIfeoApplied();
+                if (count != IfeoInstallerNames.Length)
+                    problems.Add($"IFEO 写入后复核仅生效 {count}/{IfeoInstallerNames.Length} 项");
+            }
+            catch (Exception ex)
+            {
+                Log.Error("运行库防护：IFEO 写入后复核失败", ex);
+                problems.Add($"IFEO 复核：{DescribeError(ex)}");
             }
         }
-
-        AppSettingsStore.Update(s => s.RuntimeGuardEnabled = true);
 
         if (problems.Count > 0)
         {
-            return OperationResult.Fail($"拦截开启失败：{string.Join("；", problems)}");
+            var rollbackProblems = RestoreIfeoEntries(writtenNames);
+            var status = await PersistActualGuardStateAsync();
+            var rollbackText = rollbackProblems.Count == 0 ? "本次已写入的 IFEO 项已回滚"
+                : $"回滚仍有 {rollbackProblems.Count} 项失败：{SummarizeProblems(rollbackProblems)}";
+            var stateText = status is null ? "无法复核最终状态" : $"当前 IFEO {status.IfeoCount}/{status.IfeoTotal}";
+            return OperationResult.Fail($"拦截开启失败：{SummarizeProblems(problems)}；{rollbackText}；{stateText}。");
         }
 
-        var ue4Note = ue4Path.Length > 0 ? "UE4 前置包已拒绝执行。" : "未在游戏目录找到 UE4 前置包（IFEO 名单已覆盖后续任何路径）。";
+        // 2. UE4Prereq 文件 ACL 是额外防护；失败不撤销已完整生效的 IFEO。
+        var ue4Note = "未在游戏目录找到 UE4 前置包。";
+        try
+        {
+            var ue4Path = await FindUe4PrereqAsync();
+            if (ue4Path.Length > 0)
+            {
+                var acl = await SetExecuteDenyAsync(ue4Path, deny: true);
+                ue4Note = acl.Success ? "UE4 前置包已拒绝执行。" : $"UE4 前置包未能单独拦截：{acl.Message}";
+                if (!acl.Success) Log.Warn("运行库防护：" + ue4Note);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("运行库防护：UE4 前置包 ACL 处理失败", ex);
+            ue4Note = $"UE4 前置包未能单独拦截：{DescribeError(ex)}";
+        }
+
+        var finalStatus = await PersistActualGuardStateAsync();
+        if (finalStatus is null || !finalStatus.IfeoApplied)
+            return OperationResult.Fail("IFEO 写入完成，但无法确认全部防护仍在生效；请查看日志并重新检测状态。");
+
         return OperationResult.Ok($"运行库拦截已开启：{IfeoInstallerNames.Length} 个安装器名已劫持。{ue4Note}");
     }
 
@@ -146,56 +282,35 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
             return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
         }
 
-        var problems = new List<string>();
-
-        // 1. 还原 IFEO（按备份：原无 Debugger 值则删除该值）
-        foreach (var name in IfeoInstallerNames)
-        {
-            var keyPath = $@"{IfeoRoot}\{name}";
-            var backup = _backups.Get("HKLM", keyPath, "Debugger");
-            if (backup is null)
-            {
-                continue;
-            }
-
-            try
-            {
-                using (var key = Registry.LocalMachine.OpenSubKey(keyPath, writable: true))
-                {
-                    if (backup.ValueKind == RegistryValueKind.None)
-                    {
-                        key?.DeleteValue("Debugger", throwOnMissingValue: false);
-                    }
-                    else
-                    {
-                        key?.SetValue("Debugger", backup.Data, RegistryValueKind.String);
-                    }
-                }
-
-                _backups.Remove("HKLM", keyPath, "Debugger");
-            }
-            catch (Exception ex)
-            {
-                problems.Add($"IFEO {name}: {ex.Message}");
-            }
-        }
+        var problems = RestoreIfeoEntries(IfeoInstallerNames);
 
         // 2. 还原 UE4Prereq ACL
-        var ue4Path = await FindUe4PrereqAsync();
-        if (ue4Path.Length > 0 && await IsExecuteDeniedAsync(ue4Path))
+        try
         {
-            var acl = await SetExecuteDenyAsync(ue4Path, deny: false);
-            if (!acl.Success)
+            var ue4Path = await FindUe4PrereqAsync();
+            if (ue4Path.Length > 0 && await IsExecuteDeniedAsync(ue4Path))
             {
-                problems.Add(acl.Message);
+                var acl = await SetExecuteDenyAsync(ue4Path, deny: false);
+                if (!acl.Success)
+                    problems.Add(acl.Message);
             }
         }
+        catch (Exception ex)
+        {
+            Log.Error("运行库防护：UE4 前置包 ACL 还原失败", ex);
+            problems.Add($"UE4 前置包 ACL 还原：{DescribeError(ex)}");
+        }
 
-        AppSettingsStore.Update(s => s.RuntimeGuardEnabled = false);
+        var finalStatus = await PersistActualGuardStateAsync();
+        if (finalStatus is null)
+            problems.Add("无法复核最终防护状态");
+        else if (finalStatus.IfeoCount > 0 || finalStatus.Ue4PrereqDenied)
+            problems.Add($"仍有拦截残留：IFEO {finalStatus.IfeoCount}/{finalStatus.IfeoTotal}" +
+                (finalStatus.Ue4PrereqDenied ? "，UE4 前置包仍被拒绝执行" : ""));
 
         if (problems.Count > 0)
         {
-            return OperationResult.Fail($"拦截关闭失败：{string.Join("；", problems)}");
+            return OperationResult.Fail($"拦截关闭未完成：{SummarizeProblems(problems)}");
         }
 
         return OperationResult.Ok("运行库拦截已关闭，三角洲将可以正常安装运行库。");
@@ -1025,12 +1140,6 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
     }
 
     // ---------------- 注册表 / 进程工具 ----------------
-
-    private static object? ReadRegValue(string hive, string keyPath, string valueName)
-    {
-        using var key = Registry.LocalMachine.OpenSubKey(keyPath);
-        return key?.GetValue(valueName);
-    }
 
     private static async Task<(int Code, string StdOut, string StdErr)> RunCaptureAsync(
         string fileName, string arguments, TimeSpan timeout)
