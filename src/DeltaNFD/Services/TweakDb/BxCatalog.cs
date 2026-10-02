@@ -153,6 +153,9 @@ public static class BxCatalog
     /// <summary>主页与栏目共用的最终适用性判定，避免两处 UI 对同一数据库条目显示不同结果。</summary>
     internal static string? GetUnavailableReason(BxItem item, int build, bool? systemDriveIsHdd)
     {
+        if (item.Name.Equals("HPETName", StringComparison.OrdinalIgnoreCase) &&
+            GetCpuRestrictionReason(item, ReadCpuVendor()) is { } cpuReason)
+            return cpuReason;
         if (item.ValidationError is not null)
             return "数据校验失败：" + item.ValidationError;
 
@@ -165,6 +168,21 @@ public static class BxCatalog
 
         return null;
     }
+
+    internal static string ReadCpuVendor()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"HARDWARE\DESCRIPTION\System\CentralProcessor\0");
+            return key?.GetValue("VendorIdentifier") as string ?? "";
+        }
+        catch { return ""; }
+    }
+
+    internal static string? GetCpuRestrictionReason(BxItem item, string vendor) =>
+        item.Name.Equals("HPETName", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(vendor.Trim(), "GenuineIntel", StringComparison.OrdinalIgnoreCase)
+            ? "Intel 平台不开放 HPET 优化；已有设置可通过一键恢复还原" : null;
 
     internal static List<BxItem> SelectCompatibleItems(IEnumerable<BxItem> items, int build) => items
         .Where(i => !string.IsNullOrWhiteSpace(i.Name))

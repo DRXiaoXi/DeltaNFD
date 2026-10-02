@@ -199,8 +199,10 @@ public sealed class BxService : IBxService
 {
     internal const string FullHyperVItemName = "HyperVOffFull";
     private readonly Lazy<ISystemTweakService> _fullHyperV;
+    private readonly Func<string> _cpuVendor;
     public BxService() : this(() => new SystemTweakService()) { }
-    internal BxService(Func<ISystemTweakService> factory) { _fullHyperV = new(factory); }
+    internal BxService(Func<ISystemTweakService> factory, Func<string>? cpuVendor = null)
+    { _fullHyperV = new(factory); _cpuVendor = cpuVendor ?? BxCatalog.ReadCpuVendor; }
 
     internal Task<OperationResult> ApplyFullHyperVAsync(bool turnOn) => turnOn
         ? _fullHyperV.Value.DisableAsync(SystemTweak.HyperVAndVbs)
@@ -855,6 +857,12 @@ public sealed class BxService : IBxService
 
     public Task<OperationResult> ApplyItemAsync(BxItem item, bool turnOn) => Task.Run(async () =>
     {
+        if (turnOn && item.Name.Equals("HPETName", StringComparison.OrdinalIgnoreCase) &&
+            BxCatalog.GetCpuRestrictionReason(item, _cpuVendor()) is { } cpuReason)
+        {
+            Log.Warn($"扩展库应用拒绝：{item.Name}；目标=优化；原因={cpuReason}");
+            return OperationResult.Fail(cpuReason);
+        }
         if (!ElevationHelper.IsElevated)
         {
             Log.Warn($"扩展库应用拒绝：{item.Name}；目标={(turnOn ? "优化" : "还原")}；原因=当前进程未提升为管理员");

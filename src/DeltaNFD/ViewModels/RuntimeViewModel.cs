@@ -193,6 +193,8 @@ public partial class RuntimeViewModel : ObservableObject
     [ObservableProperty] private bool guardIsPartial;
     [ObservableProperty] private string guardStatusText = "正在读取防护状态…";
     private bool _guardStateKnown;
+    public bool CanRepairLegacyUe4Acl { get; private set; }
+    public string GuardUe4Path { get; private set; } = "";
 
     public bool GuardToggleEnabled => _guardStateKnown && !GuardIsBusy && !IsRepairing && !UninstallV14Busy;
 
@@ -240,8 +242,10 @@ public partial class RuntimeViewModel : ObservableObject
     {
         var status = await _guard.GetStatusAsync();
         _guardStateKnown = true;
+        CanRepairLegacyUe4Acl = status.CanRepairLegacyUe4Acl;
+        GuardUe4Path = status.Ue4PrereqPath;
         GuardIsEnabled = status.IfeoManagedCount > 0 || status.Ue4PrereqDenied || status.Ue4RestorePending;
-        GuardIsPartial = GuardIsEnabled && (!status.IfeoApplied ||
+        GuardIsPartial = GuardIsEnabled && (status.CanRepairLegacyUe4Acl || !status.IfeoApplied ||
             (status.Ue4PrereqFound && !status.Ue4PrereqDenied));
         OnPropertyChanged(nameof(GuardToggleEnabled));
         GuardStatusText = status.IfeoApplied
@@ -255,6 +259,29 @@ public partial class RuntimeViewModel : ObservableObject
         if (status.IfeoExternalCount > 0)
             GuardStatusText += $"；另有 {status.IfeoExternalCount} 项外部/归属不明拦截，请在创建它的工具中处理。";
         if (status.Ue4RestorePending) GuardStatusText += "；UE4 原文件权限恢复记录仍保留。";
+        if (status.CanRepairLegacyUe4Acl) GuardStatusText += "；关闭时可确认修复旧 UE4 单条执行拒绝，不会重置目录权限。";
+    }
+
+    public async Task<OperationResult?> RepairLegacyUe4AclAsync()
+    {
+        if (GuardIsBusy || !CanRepairLegacyUe4Acl) return null;
+        GuardIsBusy = true;
+        try
+        {
+            var result = await _guard.RepairLegacyUe4AclAsync(GuardUe4Path);
+            await RefreshGuardCoreAsync();
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _guardStateKnown = false;
+            CanRepairLegacyUe4Acl = false;
+            GuardStatusText = "旧权限修复/状态复核失败：" + ex.Message + "；请重新进入此页复核。";
+            OnPropertyChanged(nameof(GuardToggleEnabled));
+            Log.Error("旧 UE4 权限修复状态无法确认", ex);
+            return OperationResult.Fail(GuardStatusText);
+        }
+        finally { GuardIsBusy = false; }
     }
 
     /// <summary>切换防护模式。返回后端结果供页面弹窗；完成后重读真实状态。</summary>

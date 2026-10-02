@@ -38,6 +38,14 @@ public static class ServiceLocator
     private static readonly Lazy<IPagefileService> PagefileLazy = new(() => new PagefileService());
     private static readonly Lazy<GameProcessMonitor> GameMonitorLazy = new(() => new GameProcessMonitor());
     private static readonly Lazy<IUpdateService> UpdateLazy = new(() => new UpdateService());
+    private static readonly Lazy<PluginManagerService> PluginsLazy = new(() =>
+    {
+        var manager = PluginManagerService.Default;
+        manager.RuntimeIsBusy = id => PluginRuntimeLazy is { IsValueCreated: true } && PluginRuntimeLazy.Value.IsRunning(id);
+        return manager;
+    });
+    private static readonly Lazy<Plugins.PluginRuntimeService> PluginRuntimeLazy = new(() =>
+        new Plugins.PluginRuntimeService(PluginsLazy.Value.Backups, PluginsLazy.Value.Handoffs, PluginsLazy.Value.DataRoot, PluginsLazy.Value.Authorizations));
 
     internal static GameProcessMonitor GameMonitor => GameMonitorLazy.Value;
 
@@ -93,4 +101,10 @@ public static class ServiceLocator
 
     /// <summary>自动更新：检查 update.json / 下载并校验安装包 / 交给 Inno Setup 静默安装。</summary>
     public static IUpdateService Update => UpdateLazy.Value;
+
+    /// <summary>拓展插件管理（导入/授权/卸载；不启动插件后端进程）。</summary>
+    public static PluginManagerService Plugins => PluginsLazy.Value;
+
+    /// <summary>拓展插件运行时（按操作启动后端、单请求串行、超时取消与 stop 排空）。</summary>
+    public static Plugins.PluginRuntimeService PluginRuntime => PluginRuntimeLazy.Value;
 }

@@ -50,6 +50,18 @@ internal static class SystemOptimizePhaseOneChecks
         Assert(BxCatalog.GetUnsupportedReason(hddItem, 22631, null) is not null, "unknown media blocked");
         Assert(BxCatalog.GetUnsupportedReason(hddItem, 22631, false) is null, "SSD allowed");
 
+        var hpet = new BxItem { Name = "HPETName" };
+        Assert(BxCatalog.GetCpuRestrictionReason(hpet, "GenuineIntel") is not null, "Intel HPET blocked");
+        Assert(BxCatalog.GetCpuRestrictionReason(hpet, " genuineintel ") is not null, "Intel vendor case/space normalization");
+        Assert(BxCatalog.GetCpuRestrictionReason(hpet, "AuthenticAMD") is null, "AMD HPET unchanged");
+        Assert(BxCatalog.GetCpuRestrictionReason(hpet, "") is null, "unknown vendor not misidentified as Intel");
+        Assert(BxCatalog.GetCpuRestrictionReason(hddItem, "GenuineIntel") is null, "other Intel options unchanged");
+        var intelService = new BxService(() => throw new InvalidOperationException("must not create a write backend"), () => "GenuineIntel");
+        var hpetRefused = intelService.ApplyItemAsync(hpet, true).GetAwaiter().GetResult();
+        Assert(!hpetRefused.Success && hpetRefused.Message.Contains("Intel"), "direct Intel HPET apply refused before writes");
+        var restoreValidation = intelService.ApplyItemAsync(hpet, false).GetAwaiter().GetResult();
+        Assert(!restoreValidation.Message.Contains("Intel"), "Intel restore not blocked by CPU policy (empty fixture has no operations)");
+
         Assert(BxService.MatchesAppxPattern(["Microsoft.XboxApp"], "Microsoft.Xbox*"), "APPX wildcard");
         Assert(!BxService.MatchesAppxPattern(["Microsoft.XboxApp"], "Microsoft.YourPhone"), "APPX absent");
         Console.WriteLine("系统优化第一阶段合成检查通过（任务、兼容性、APPX 匹配）。");

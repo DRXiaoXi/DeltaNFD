@@ -1,8 +1,107 @@
 using DeltaNFD.Services;
 
+if (args.Contains("--plugin-ui-wiring-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { PluginUiWiringChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--plugin-diagnostics-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await PluginDiagnosticsChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--shader-path-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { ShaderCachePathChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--plugin-test-delayed-exit", StringComparer.Ordinal))
+{
+    await Task.Delay(1800);
+    return;
+}
+
+if (args.Contains("--plugin-integrity-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { BackendSmokeTest.PluginIntegrityChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--plugin-stability-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await PluginStabilityChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+// 插件运行时测试后端：宿主按规范只传 --dnfd-pipe/--dnfd-session/--dnfd-host-pid 三个标准参数，
+// 因此这里按可执行文件名（PluginChild<Mode>.exe）识别，而不是额外命令行开关。
+if (Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "")
+    .StartsWith("PluginChild", StringComparison.OrdinalIgnoreCase))
+{
+    BackendSmokeTest.PluginRuntimeChild.Run();
+    return;
+}
+
 if (args.Contains("--offline-helper-e2e-child", StringComparer.OrdinalIgnoreCase))
 {
     OfflineHelperE2EChecks.RunChild();
+    return;
+}
+
+if (args.Contains("--plugin-adversarial-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await BackendSmokeTest.PluginAdversarialChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--plugin-offline-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await BackendSmokeTest.PluginOfflineChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--plugin-continuous-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await BackendSmokeTest.PluginContinuousChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--plugin-restore-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await BackendSmokeTest.PluginRestoreChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--plugin-runtime-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await BackendSmokeTest.PluginRuntimeChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--plugin-manager-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { BackendSmokeTest.PluginManagerChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--plugin-import-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { BackendSmokeTest.PluginImportChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
 

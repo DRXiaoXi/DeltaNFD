@@ -28,6 +28,7 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
             IfeoManagedCount = state.Managed, IfeoExternalCount = state.External,
             Ue4PrereqFound = path.Length > 0 || state.PendingAcl, Ue4PrereqPath = path,
             Ue4PrereqDenied = state.FileDenied, Ue4RestorePending = state.PendingAcl,
+            CanRepairLegacyUe4Acl = _protection.CanRepairLegacyAcl(path),
         };
     }
     public Task<OperationResult> EnableAsync() => Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
@@ -58,6 +59,18 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         }
         catch (Exception ex) { Log.Error("运行库防护状态无法复核", ex); }
     }
+
+    public Task<OperationResult> RepairLegacyUe4AclAsync(string expectedPath) => Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
+    {
+        if (!ElevationHelper.IsElevated) return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
+        var path = FindUe4PrereqAsync().GetAwaiter().GetResult();
+        if (string.IsNullOrWhiteSpace(path) || !Path.GetFullPath(path).Equals(Path.GetFullPath(expectedPath), StringComparison.OrdinalIgnoreCase))
+            return OperationResult.Fail("游戏前置包路径已变化，未修改权限，请重新确认。");
+        var result = _protection.RepairLegacyAcl(path);
+        PersistGuardState(path);
+        Log.Info("旧 UE4 权限修复结果：" + result.Message);
+        return result;
+    }));
 
     // ---------------- 已装运行库枚举 ----------------
 

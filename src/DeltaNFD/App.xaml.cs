@@ -93,6 +93,9 @@ public partial class App : Application
             var offline = await new OfflineModeCoordinator().PrepareForRemovalAsync(restoreCpuSets: true);
             Log.Info("卸载前脱机恢复：" + offline.Message);
             if (!offline.Success) { Environment.Exit(2); return; }
+            using var pluginGate = ServiceLocator.PluginRuntime.BlockNewOperations();
+            var pluginBlocker = await PluginLifecycleGuard.PrepareHandoverAsync(ServiceLocator.Plugins, ServiceLocator.PluginRuntime, "卸载");
+            if (pluginBlocker.Length > 0) { Log.Warn(pluginBlocker); Environment.Exit(2); return; }
             var result = await new RuntimeGuardService().DisableAsync();
             Log.Info("卸载前运行库防护恢复：" + result.Message);
             code = result.Success ? 0 : 2;

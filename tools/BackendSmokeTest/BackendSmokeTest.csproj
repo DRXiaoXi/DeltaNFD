@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <Compile Remove="obj\**\*.cs" />
+    <Compile Remove="**/obj-*/**/*.cs;**/bin-*/**/*.cs;_buildcheck/**/*.cs" />
   </ItemGroup>
 
   <!--
@@ -45,6 +46,21 @@
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginUiParser.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginIpc.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginTrust.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginPackageIndex.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginPackageIntegrity.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginAuthorizationStore.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginRunStore.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginReconnectSession.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginPackageImporter.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginBackendSession.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginRuntimeService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginBackupStore.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginJobHandle.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginHandoffStore.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\PluginLifecycleGuard.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginDiagnostics.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginHistoryQuery.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\PluginManagerService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\FrameFeatureState.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\FramePowerLifecycle.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\FrameTweaksService.cs" />

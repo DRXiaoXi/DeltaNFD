@@ -7,6 +7,7 @@ namespace DeltaNFD.Views;
 public sealed partial class RuntimePage : Page
 {
     public RuntimeViewModel ViewModel { get; } = new();
+    private bool _guardToggleHandling;
 
     public RuntimePage()
     {
@@ -122,24 +123,44 @@ public sealed partial class RuntimePage : Page
 
     private async void GuardToggle_Toggled(object sender, RoutedEventArgs e)
     {
-        if (sender is not ToggleSwitch toggle || toggle.IsOn == ViewModel.GuardIsEnabled)
+        if (_guardToggleHandling || sender is not ToggleSwitch toggle || toggle.IsOn == ViewModel.GuardIsEnabled)
         {
             return;
         }
 
-        var result = await ViewModel.SetGuardAsync(toggle.IsOn);
-        // 后端可能拒绝写入，VM 的布尔值未变化时 x:Bind 不会主动拨回控件。
-        toggle.IsOn = ViewModel.GuardIsEnabled;
-        if (result is { Success: false })
+        _guardToggleHandling = true;
+        try
         {
-            await new ContentDialog
+            var requested = toggle.IsOn;
+            var result = await ViewModel.SetGuardAsync(requested);
+            if (result is { Success: false } && ViewModel.CanRepairLegacyUe4Acl)
             {
-                XamlRoot = XamlRoot,
-                Title = "操作失败",
-                Content = result.Message,
-                CloseButtonText = "知道了",
-                DefaultButton = ContentDialogButton.Close,
-            }.ShowAsync();
+                toggle.IsOn = ViewModel.GuardIsEnabled;
+                var confirm = new ContentDialog
+                {
+                    XamlRoot = XamlRoot, Title = "修复旧 UE4 权限残留？",
+                    Content = ViewModel.GuardUe4Path + "\n\n缺少旧版原始权限记录，无法证明规则来源。是否授权仅移除该文件一条显式 Everyone 拒绝执行规则？\n会先保存当前权限快照，保留其余权限及继承状态，不重置整个目录。取消则不修改。",
+                    PrimaryButtonText = "备份并修复", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
+                };
+                if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+                result = await ViewModel.RepairLegacyUe4AclAsync();
+                if (result is { Success: true }) result = await ViewModel.SetGuardAsync(requested);
+            }
+            toggle.IsOn = ViewModel.GuardIsEnabled;
+            if (result is { Success: false })
+            {
+                await new ContentDialog
+                {
+                    XamlRoot = XamlRoot, Title = "操作失败", Content = result.Message,
+                    CloseButtonText = "知道了", DefaultButton = ContentDialogButton.Close,
+                }.ShowAsync();
+            }
         }
+        catch (Exception ex)
+        {
+            DeltaNFD.Services.Log.Error("运行库防护界面切换失败", ex);
+            await ViewModel.LoadGuardAsync();
+        }
+        finally { toggle.IsOn = ViewModel.GuardIsEnabled; _guardToggleHandling = false; }
     }
 }

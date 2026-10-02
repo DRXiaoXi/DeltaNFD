@@ -18,7 +18,7 @@ public sealed partial class MainWindow : Window
     private bool _exitRequested;
 
     /// <summary>当前公告版本标识（发布新公告时更新此值，老用户会再收到一次弹窗）。</summary>
-    private const string CurrentAnnouncementVersion = "OpenAlphaV0.89";
+    private const string CurrentAnnouncementVersion = "PreBeta0.9";
 
     /// <summary>本次进程是否已检查过公告（Activated 每次激活都会触发，只处理一次）。</summary>
     private bool _announcementChecked;
@@ -423,8 +423,8 @@ public sealed partial class MainWindow : Window
 
         if (OfflineModeGuard.BlocksNormalAutomation)
         {
-            _trayIcon?.Dispose();
-            _trayIcon = null;
+            args.Cancel = true;
+            DispatcherQueue.TryEnqueue(ExitApplication);
             return;
         }
 
@@ -436,6 +436,8 @@ public sealed partial class MainWindow : Window
             if (tray is null || !tray.Show())
             {
                 Log.Error("托盘：图标注册失败，本次关闭将直接退出应用（驻留托盘不可用）");
+                args.Cancel = true;
+                DispatcherQueue.TryEnqueue(ExitApplication);
                 return;
             }
 
@@ -446,6 +448,8 @@ public sealed partial class MainWindow : Window
 
         if (settings.SuppressBackgroundRunPrompt || !HasBackgroundWorkToPreserve(settings))
         {
+            args.Cancel = true;
+            DispatcherQueue.TryEnqueue(ExitApplication);
             return;
         }
 
@@ -563,12 +567,31 @@ public sealed partial class MainWindow : Window
     public void ActivateFromSecondLaunch() => RestoreFromTray();
 
     /// <summary>托盘菜单「退出」：先移除图标再退出应用（不留幽灵图标）。</summary>
-    private void ExitApplication()
+    private bool _pluginExitInProgress;
+    private async void ExitApplication()
     {
-        _exitRequested = true;
-        _trayIcon?.Dispose();
-        _trayIcon = null;
-        Application.Current.Exit();
+        if (_pluginExitInProgress) return;
+        _pluginExitInProgress = true;
+        try
+        {
+            using var blocked = ServiceLocator.PluginRuntime.BlockNewOperations();
+            var allowAutonomous = OfflineModeGuard.BlocksNormalAutomation && AppSettingsStore.Read().AllowPluginsInOfflineMode;
+            var blocker = await PluginLifecycleGuard.PrepareHandoverAsync(ServiceLocator.Plugins, ServiceLocator.PluginRuntime,
+                "退出", restoreChanges: false, allowAutonomous: allowAutonomous);
+            if (blocker.Length > 0)
+            {
+                RestoreFromTray();
+                await new ContentDialog { XamlRoot = ContentFrame.XamlRoot, Title = "插件尚未安全停止", Content = blocker,
+                    CloseButtonText = "知道了" }.ShowAsync();
+                return;
+            }
+            _exitRequested = true;
+            _trayIcon?.Dispose();
+            _trayIcon = null;
+            Application.Current.Exit();
+        }
+        catch (Exception ex) { Log.Error("退出前插件处理失败，应用保持打开", ex); }
+        finally { _pluginExitInProgress = false; }
     }
 
     /// <summary>脱机助手已完成启动握手后，主界面直接退出，不进入托盘驻留。</summary>
@@ -649,6 +672,7 @@ public sealed partial class MainWindow : Window
             "ace" => typeof(AcePage),
             "runtime" => typeof(RuntimePage),
             "lab" => typeof(LabPage),
+            "plugins" => typeof(PluginPage),
             "settings" => typeof(SettingsPage),
             _ => typeof(DashboardPage),
         };

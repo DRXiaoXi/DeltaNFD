@@ -1,8 +1,8 @@
 ; 三角帧不掉洲（Delta No FPS Drops / Delta NFD）安装脚本 · Inno Setup 6
 ; 编译：ISCC.exe DeltaNFD.iss
-; 产物：三角帧不掉洲_DeltaNFD_安装包_0.89.0_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
+; 产物：三角帧不掉洲_DeltaNFD_安装包_0.90.0_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
 ;
-; 当前对外版本：0.89.0 / OpenAlphaV0.89。旧版迭代记录不代表当前版本。
+; 当前源码版本：0.90.0 / PreBeta0.9。发布清单须在安装包生成后重新生成。
 ;
 ; 卸载设计（OpenAlphaV0.83 重写，见 HANDOFF §34）：
 ;   1. 卸载前结束残留的 DeltaNFD 进程（托盘驻留时进程仍在跑，会导致文件删不掉）；
@@ -18,8 +18,8 @@
 #define MyAppShortName "Delta NFD"
 #define MyAppEnglishName "Delta No FPS Drops"
 #define MyAppDisplayName "三角帧不掉洲（Delta NFD）"
-#define MyAppVersion "0.89.0"
-#define MyAppDisplayVersion "OpenAlphaV0.89"
+#define MyAppVersion "0.90.0"
+#define MyAppDisplayVersion "PreBeta0.9"
 #define MyAppExeName "DeltaNFD.exe"
 ; 登录任务名（与 AppControlService / FrameService 创建的一致）
 #define AutoStartTaskName "DeltaNFD_AutoStart"

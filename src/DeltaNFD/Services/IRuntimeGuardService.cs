@@ -84,6 +84,7 @@ public sealed class RuntimeGuardStatus
     public int IfeoManagedCount { get; init; }
     public int IfeoExternalCount { get; init; }
     public bool Ue4RestorePending { get; init; }
+    public bool CanRepairLegacyUe4Acl { get; init; }
 
     /// <summary>是否找到了三角洲的 UE4 前置包（运行库载体）。</summary>
     public required bool Ue4PrereqFound { get; init; }
@@ -110,6 +111,7 @@ public interface IRuntimeGuardService
 
     /// <summary>关闭拦截（移除 IFEO 与 ACL）。</summary>
     Task<OperationResult> DisableAsync();
+    Task<OperationResult> RepairLegacyUe4AclAsync(string expectedPath);
 
     /// <summary>
     /// Visual C++ v14 运行库检测（纯只读）：只检测显示名匹配 "Visual C++ v14 Redistributable" 的条目，

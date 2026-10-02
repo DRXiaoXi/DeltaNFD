@@ -8,7 +8,10 @@ namespace DeltaNFD.Services;
 public sealed class ShaderService : IShaderService
 {
     private readonly GameTargetService _target;
-    public ShaderService(GameTargetService? target = null) => _target = target ?? GameTargetService.Default;
+    private readonly Func<(ShaderGpuDetectionState State, string Version)> _driverReader;
+    public ShaderService(GameTargetService? target = null) : this(target, ReadNvidiaDriver) { }
+    internal ShaderService(GameTargetService? target, Func<(ShaderGpuDetectionState State, string Version)> driverReader)
+    { _target = target ?? GameTargetService.Default; _driverReader = driverReader; }
     private const string DisplayClassPath = @"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
 
     /// <summary>问题驱动系列（591 / 610 / 616）：存在着色器文件缺失问题。</summary>
@@ -31,7 +34,7 @@ public sealed class ShaderService : IShaderService
             IsNvidia = false, DriverState = ShaderDriverState.NotApplicable,
             DriverAdvice = GameTargetService.DeltaOnlyMessage, IsGameRunning = false,
         };
-        var (gpuState, driverVersion) = ReadNvidiaDriver();
+        var (gpuState, driverVersion) = _driverReader();
         var isNvidia = gpuState == ShaderGpuDetectionState.Nvidia;
 
         double psoSizeMb = 0;
@@ -327,7 +330,7 @@ public sealed class ShaderService : IShaderService
         }
 
         // GameVer = 1：进入 NVPH 深度检测（仅 N 卡 + 驱动 ≥572.83）
-        var (gpuState, driverVersion) = ReadNvidiaDriver();
+        var (gpuState, driverVersion) = _driverReader();
         if (gpuState != ShaderGpuDetectionState.Nvidia)
         {
             if (gpuState == ShaderGpuDetectionState.NotPresent)
@@ -352,17 +355,18 @@ public sealed class ShaderService : IShaderService
         }
 
         // ---------- NVPH 结构判定依赖驱动版本 ----------
-        var dxCache = Path.Combine(gameVerDirs[0], "SM6", "DXCache");
-        if (!Directory.Exists(dxCache))
+        var dxCache = FindDxCachePath(gameVerDirs[0]);
+        if (dxCache is null)
         {
             return new ShaderDiagnosis
             {
                 Level = ShaderDiagLevel.Info,
-                Summary = "未找到 SM6\\DXCache 目录（该版本尚未完成预热）。",
+                Summary = "未找到 SM6\\DXCache 或 SM5\\DXCache 目录（尚未生成可检测的缓存）。",
                 Details = details,
                 Advice = "进入游戏完成一次着色器预热后再来检测。",
             };
         }
+        details.Add("检测路径：" + Path.GetFileName(Path.GetDirectoryName(dxCache)) + "\\DXCache");
 
         if (string.IsNullOrEmpty(driverVersion))
         {
@@ -475,7 +479,7 @@ public sealed class ShaderService : IShaderService
     }
 
     /// <summary>状态卡与健康检测共用驱动归因：617.14 缓存异常时视为问题驱动；更高版本仅在大文件不足时归因驱动。</summary>
-    private static bool HasProblemDriverCacheSignature(
+    internal static bool HasProblemDriverCacheSignature(
         ShaderGpuDetectionState gpuState,
         string driverVersion,
         string psoCachePath)
@@ -502,8 +506,8 @@ public sealed class ShaderService : IShaderService
                 return false;
             }
 
-            var dxCache = Path.Combine(gameVerDirs[0], "SM6", "DXCache");
-            if (!Directory.Exists(dxCache))
+            var dxCache = FindDxCachePath(gameVerDirs[0]);
+            if (dxCache is null)
             {
                 return false;
             }
@@ -537,6 +541,14 @@ public sealed class ShaderService : IShaderService
             Log.Warn($"着色器驱动硬规则：读取 NVPH 缓存失败：{ex.Message}");
             return false;
         }
+    }
+
+    internal static string? FindDxCachePath(string gameVerDirectory)
+    {
+        var sm6 = Path.Combine(gameVerDirectory, "SM6", "DXCache");
+        if (Directory.Exists(sm6)) return sm6;
+        var sm5 = Path.Combine(gameVerDirectory, "SM5", "DXCache");
+        return Directory.Exists(sm5) ? sm5 : null;
     }
 
     /// <summary>"596.36" → 59636（与 MinDriverVersion 同构）；解析失败为 null。</summary>

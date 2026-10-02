@@ -26,9 +26,9 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 
     <DefaultLanguage>zh-CN</DefaultLanguage>
-    <Version>0.89.0</Version>
+    <Version>0.90.0</Version>
     <!-- 日志头/程序集读取的显示版本（与关于卡 VersionText 保持一致） -->
-    <InformationalVersion>OpenAlphaV0.89</InformationalVersion>
+    <InformationalVersion>PreBeta0.9</InformationalVersion>
     <!-- 应用图标（exe / 任务栏 / 托盘共用；托盘经 ExtractIconExW 从 exe 提取） -->
     <ApplicationIcon>Assets\DeltaNFD.ico</ApplicationIcon>
   </PropertyGroup>

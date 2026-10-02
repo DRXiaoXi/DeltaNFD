@@ -5,13 +5,14 @@
   Usage (from anywhere; the script only needs an absolute or relative installer path):
 
     powershell -ExecutionPolicy Bypass -File installer\make-update-manifest.ps1 `
-      -InstallerPath installer\Output\三角帧不掉洲_DeltaNFD_安装包_0.83.0_x64.exe `
-      -Version 0.83.0 `
-      -InstallerUrl "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.83.0/<asset>.exe" `
-      -NotesFile notes\0.83.0.txt
+      -InstallerPath installer\Output\三角帧不掉洲_DeltaNFD_安装包_0.90.0_x64.exe `
+      -Version 0.90.0 `
+      -DisplayVersion "PreBeta0.9" `
+      -InstallerUrl "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.90.0/<asset>.exe" `
+      -NotesFile notes\0.90.0.txt
 
   Optional:
-    -DisplayVersion       display text, default "OpenAlphaV<Version>"
+    -DisplayVersion       display text; pass "PreBeta0.9" for version 0.90.0
     -ReleaseTag           default "v<Version>"
     -ReleasePageUrl       default the GitHub release tag page
     -MinimumSupportedVersion  clients below this version are forced to update
@@ -57,7 +58,7 @@ foreach ($mirror in $MirrorUrl) {
 }
 
 if ($Version -notmatch '^\d+(\.\d+){1,3}$') {
-    throw "Version must be numeric, for example 0.83.0 (got: $Version)"
+    throw "Version must be numeric, for example 0.90.0 (got: $Version)"
 }
 
 $installer = Get-Item -LiteralPath $InstallerPath

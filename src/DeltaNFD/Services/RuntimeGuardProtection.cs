@@ -28,6 +28,15 @@ internal sealed class GuardProtectionState
     public int Version { get; set; } = 1;
     public List<GuardIfeoRecord> Ifeo { get; set; } = [];
     public List<GuardAclRecord> Acls { get; set; } = [];
+    public List<GuardLegacyAclRepair> LegacyAclRepairs { get; set; } = [];
+}
+internal sealed class GuardLegacyAclRepair
+{
+    public string Path { get; set; } = "";
+    public string Identity { get; set; } = "";
+    public string Before { get; set; } = "";
+    public string After { get; set; } = "";
+    public bool Completed { get; set; }
 }
 internal sealed class GuardIfeoRecord
 {
@@ -104,11 +113,11 @@ internal sealed class RuntimeGuardProtection
                 (!value.ForeignOwner && value.Owner?.StartsWith(OwnerPrefix, StringComparison.Ordinal) == true) || CanAdoptLegacy(name, value))) managed++;
             else external++;
         }
-        var paths = state.Acls.Select(a => a.Path).ToList();
+        var paths = state.Acls.Select(a => a.Path).Concat(state.LegacyAclRepairs.Where(r => !r.Completed).Select(r => r.Path)).ToList();
         if (!string.IsNullOrWhiteSpace(currentFile)) paths.Add(currentFile);
         var denied = false;
         foreach (var path in paths.Distinct(StringComparer.OrdinalIgnoreCase)) denied |= HasExecuteDeny(_files.Read(path).Dacl);
-        return new(blocked, managed, external, denied, state.Acls.Count > 0);
+        return new(blocked, managed, external, denied, state.Acls.Count > 0 || state.LegacyAclRepairs.Any(r => !r.Completed));
     }
     internal string? RepairBlocker(string? currentFile)
     {
@@ -123,6 +132,21 @@ internal sealed class RuntimeGuardProtection
     internal OperationResult Enable(string? file)
     {
         var state = _store.Load();
+        if (state.LegacyAclRepairs.Any(r => !r.Completed))
+            return OperationResult.Fail("旧 UE4 权限修复尚未完成，请先完成修复或关闭防护。");
+        if (!string.IsNullOrWhiteSpace(file))
+        {
+            try
+            {
+                var current = _files.Read(file);
+                var owned = state.Acls.FirstOrDefault(a => a.Path.Equals(current.Path, StringComparison.OrdinalIgnoreCase));
+                if (owned is null && HasExecuteDeny(current.Dacl))
+                    return OperationResult.Fail("UE4 存在未记录的执行拒绝，请先确认修复旧权限残留；未新增 IFEO 拦截。");
+                if (owned is not null && (owned.Identity != current.Identity || NormalizeDacl(current.Dacl) != NormalizeDacl(owned.Applied)))
+                    return OperationResult.Fail("已记录的 UE4 文件或权限已变化，请先恢复；未新增 IFEO 拦截。");
+            }
+            catch (Exception ex) { return OperationResult.Fail("UE4 权限预检失败，未新增拦截：" + ex.Message); }
+        }
         // Preflight every name before the first mutation.
         foreach (var name in Names)
         {
@@ -171,13 +195,17 @@ internal sealed class RuntimeGuardProtection
             var errors = RestoreIfeo(state, added);
             return OperationResult.Fail("防护开启失败：" + ex.Message + (errors.Count == 0 ? "；本次新增拦截已回滚。" : "；回滚未完成：" + string.Join("；", errors)));
         }
-        string note = "";
         if (!string.IsNullOrWhiteSpace(file))
         {
             try { ApplyAcl(state, file); }
-            catch (Exception ex) { note = " UE4 权限未完成：" + ex.Message + "，恢复记录已保留。"; }
+            catch (Exception ex)
+            {
+                var rollback = RestoreIfeo(state, added);
+                return OperationResult.Fail("UE4 权限开启失败：" + ex.Message + "；权限恢复记录保留。" +
+                    (rollback.Count == 0 ? "本次新增 IFEO 已回滚。" : "IFEO 回滚未完成：" + string.Join("；", rollback)));
+            }
         }
-        return OperationResult.Ok("IFEO 防护已开启。" + note);
+        return OperationResult.Ok("IFEO 防护已开启，已找到的 UE4 权限写入通过复核。");
     }
     private List<string> RestoreIfeo(GuardProtectionState state, IEnumerable<string> names)
     {
@@ -238,6 +266,11 @@ internal sealed class RuntimeGuardProtection
     {
         var state = _store.Load();
         var errors = RestoreIfeo(state, Names);
+        foreach (var repair in state.LegacyAclRepairs.Where(r => !r.Completed))
+        {
+            try { CompleteLegacyRepair(state, repair); }
+            catch (Exception ex) { errors.Add("旧 UE4 修复：" + ex.Message); }
+        }
         foreach (var record in state.Acls.ToArray())
         {
             try
@@ -289,6 +322,74 @@ internal sealed class RuntimeGuardProtection
         if (NormalizeDacl(_files.Read(record.Path).Dacl) != NormalizeDacl(record.Applied)) throw new IOException("UE4 权限写后复核失败。");
     }
     internal static string NormalizeDacl(string sddl) => new RawSecurityDescriptor(sddl).GetSddlForm(AccessControlSections.Access);
+    internal bool CanRepairLegacyAcl(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var state = _store.Load();
+        var file = _files.Read(path);
+        if (state.Acls.Any(a => a.Path.Equals(file.Path, StringComparison.OrdinalIgnoreCase))) return false;
+        var pending = state.LegacyAclRepairs.FirstOrDefault(r => !r.Completed && r.Path.Equals(file.Path, StringComparison.OrdinalIgnoreCase));
+        return pending is not null
+            ? pending.Identity == file.Identity && (NormalizeDacl(file.Dacl) == NormalizeDacl(pending.Before) || NormalizeDacl(file.Dacl) == NormalizeDacl(pending.After))
+            : TryRemoveLegacyExecuteRule(file.Path, file.Dacl, out _);
+    }
+
+    internal OperationResult RepairLegacyAcl(string path)
+    {
+        try
+        {
+            var state = _store.Load();
+            var file = _files.Read(path);
+            if (state.Acls.Any(a => a.Path.Equals(file.Path, StringComparison.OrdinalIgnoreCase)))
+                return OperationResult.Fail("该文件有正常防护恢复记录，请使用关闭防护，不接管旧权限。");
+            var repair = state.LegacyAclRepairs.FirstOrDefault(r => !r.Completed && r.Path.Equals(file.Path, StringComparison.OrdinalIgnoreCase));
+            if (repair is null)
+            {
+                if (!TryRemoveLegacyExecuteRule(file.Path, file.Dacl, out var after))
+                    return OperationResult.Fail("不是可确认的单条旧 Everyone 拒绝执行规则，未修改权限。");
+                repair = new() { Path = file.Path, Identity = file.Identity, Before = file.Dacl, After = after };
+                state.LegacyAclRepairs.Add(repair);
+                _store.Save(state);
+            }
+            CompleteLegacyRepair(state, repair);
+            return OperationResult.Ok("旧 UE4 单条拒绝执行规则已移除；其余权限保留，修复前快照保存在机器级防护记录中。");
+        }
+        catch (Exception ex) { return OperationResult.Fail("旧 UE4 权限修复失败，记录保留供重试：" + ex.Message); }
+    }
+
+    private void CompleteLegacyRepair(GuardProtectionState state, GuardLegacyAclRepair repair)
+    {
+        var current = _files.Read(repair.Path);
+        if (current.Identity != repair.Identity) throw new IOException("文件已替换，拒绝向新文件应用旧修复。");
+        if (!TryRemoveLegacyExecuteRule(repair.Path, repair.Before, out var expected) || NormalizeDacl(expected) != NormalizeDacl(repair.After))
+            throw new IOException("旧权限修复记录不符合最小修改规则。");
+        var actual = NormalizeDacl(current.Dacl);
+        if (actual != NormalizeDacl(repair.After))
+        {
+            if (actual != NormalizeDacl(repair.Before)) throw new IOException("权限已被外部修改，未覆盖。");
+            _files.SetDacl(repair.Path, repair.Identity, repair.Before, repair.After);
+        }
+        if (NormalizeDacl(_files.Read(repair.Path).Dacl) != NormalizeDacl(repair.After)) throw new IOException("修复后权限复核失败。");
+        repair.Completed = true;
+        _store.Save(state);
+        Log.Info("UE4 旧权限修复完成：Path=" + repair.Path + "；Identity=" + repair.Identity + "；仅移除显式 Everyone ExecuteFile 拒绝。");
+    }
+
+    internal static bool TryRemoveLegacyExecuteRule(string path, string sddl, out string after)
+    {
+        after = "";
+        if (!new[] { "UE4PrereqSetup_x64.exe", "UE4PrereqSetup_x86.exe" }.Contains(Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)) return false;
+        var descriptor = new RawSecurityDescriptor(sddl);
+        var acl = descriptor.DiscretionaryAcl;
+        if (acl is null) return false;
+        var indexes = Enumerable.Range(0, acl.Count).Where(i => acl[i] is CommonAce a && !a.IsCallback &&
+            a.AceFlags == AceFlags.None && a.AceQualifier == AceQualifier.AccessDenied &&
+            a.SecurityIdentifier.IsWellKnown(WellKnownSidType.WorldSid) && a.AccessMask == (int)FileSystemRights.ExecuteFile).ToArray();
+        if (indexes.Length != 1) return false;
+        acl.RemoveAce(indexes[0]);
+        after = descriptor.GetSddlForm(AccessControlSections.Access);
+        return !HasExecuteDeny(after) && acl.Count > 0;
+    }
     internal static bool HasExecuteDeny(string sddl)
     {
         var dacl = new RawSecurityDescriptor(sddl).DiscretionaryAcl;

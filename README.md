@@ -96,8 +96,8 @@ installer\make-installer.cmd
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File installer\make-update-manifest.ps1 `
-     -InstallerPath "<安装包路径>" -Version 0.89.0 `
-     -InstallerUrl "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.89.0/<附件名>" `
+     -InstallerPath "<安装包路径>" -Version 0.90.0 -DisplayVersion "PreBeta0.9" `
+     -InstallerUrl "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.90.0/<附件名>" `
      -NotesFile "<更新说明.txt>"
    ```
 

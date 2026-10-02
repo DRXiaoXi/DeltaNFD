@@ -103,6 +103,10 @@ public sealed class AppSettings
     /// <summary>双CCD调度已登记为「帧格生效」：帧格模式开启时自动应用、退出时自动撤销。</summary>
     public bool DualCcdArmed { get; set; }
 
+    // ---- 拓展插件：脱机自主运行例外（规范第 8 节）----
+    /// <summary>总开关：允许已单独授权的插件在脱机模式自主驻留（默认 false；开启时脱机为“非零进程”）。</summary>
+    public bool AllowPluginsInOfflineMode { get; set; }
+
     // ---- 游戏进程 ----
     public bool GamePriorityEnabled { get; set; }
     public bool CustomGameModeEnabled { get; set; }

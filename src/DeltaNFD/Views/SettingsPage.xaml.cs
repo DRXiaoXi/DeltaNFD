@@ -134,7 +134,18 @@ public sealed partial class SettingsPage : Page
         OfflineModeStartButton.IsEnabled = !_offlineModeBusy && state.OfflineModeEnabled &&
             state.SavedPreferences is not null &&
             (state.Status is OfflineModeStatus.Ready or OfflineModeStatus.Kept or OfflineModeStatus.Failed);
-        OfflineModeStatusText.Text = state.Message;
+        // 插件脱机开关状态与脱机就绪文案（规范第 8 节：开启即“非零进程”）。
+        if (AllowPluginsOfflineToggle is not null)
+        {
+            _suppressOfflineModeToggle = true;
+            AllowPluginsOfflineToggle.IsOn = AppSettingsStore.Read().AllowPluginsInOfflineMode;
+            _suppressOfflineModeToggle = false;
+        }
+        if (AppSettingsStore.Read().AllowPluginsInOfflineMode && !state.OfflineModeEnabled)
+            OfflineModeStatusText.Text = state.Message +
+                Environment.NewLine + "注意：已允许插件在脱机模式下运行——移交后为“非零进程”，不适用零进程验收。";
+        else
+            OfflineModeStatusText.Text = state.Message;
         ViewModel.RefreshOfflineModeControls();
         SetTargetControlsEnabled(!_offlineModeBusy && !state.BlocksNormalAutomation);
     }
@@ -161,8 +172,18 @@ public sealed partial class SettingsPage : Page
             return;
         }
 
+        // 模式切换前统一插件拦截（待做清单第 9 项）：停止/恢复/排空失败阻止切换。
         _offlineModeBusy = true;
         RefreshOfflineModeControls();
+        var pluginBlocker = await PluginLifecycleGuard.PrepareHandoverAsync(
+            ServiceLocator.Plugins, ServiceLocator.PluginRuntime, "脱机模式切换");
+        if (pluginBlocker.Length > 0)
+        {
+            _offlineModeBusy = false;
+            OfflineModeStatusText.Text = pluginBlocker;
+            RefreshOfflineModeControls();
+            return;
+        }
         OperationResult result;
         try
         {
@@ -201,13 +222,74 @@ public sealed partial class SettingsPage : Page
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 
+    private async void AllowPluginsOfflineToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (AllowPluginsOfflineToggle is null) return;
+        var desired = AllowPluginsOfflineToggle.IsOn;
+        var current = AppSettingsStore.Read().AllowPluginsInOfflineMode;
+        if (desired == current) return;
+
+        if (desired)
+        {
+            // 开启：只保存偏好（不自动启动/移交任何插件）；移交发生在准备脱机启动时。
+            AppSettingsStore.Update(s => s.AllowPluginsInOfflineMode = true);
+            OfflineModeStatusText.Text = "已允许插件在脱机模式下运行。准备脱机启动时会先移交已单独授权的插件（标记为非零进程）。";
+            return;
+        }
+
+        // 关闭：立即排空所有已移交插件（重连→身份复核→stop→确认退出）；失败不宣称零进程。
+        AllowPluginsOfflineToggle.IsEnabled = false;
+        try
+        {
+            var failures = await ServiceLocator.PluginRuntime.DrainOfflinePluginsAsync();
+            AppSettingsStore.Update(s => s.AllowPluginsInOfflineMode = false);
+            OfflineModeStatusText.Text = failures.Count == 0
+                ? "已停止所有已移交插件，恢复默认零进程脱机。"
+                : "部分插件未能确认停止（记录保留）：" + Environment.NewLine +
+                  string.Join(Environment.NewLine, failures) + Environment.NewLine +
+                  "不宣称零进程就绪，请人工处理。";
+        }
+        finally
+        {
+            AllowPluginsOfflineToggle.IsEnabled = true;
+            RefreshOfflineModeControls();
+        }
+    }
+
     private async void OfflineModeStartButton_Click(object sender, RoutedEventArgs e)
     {
         if (_offlineModeBusy) return;
         _offlineModeBusy = true;
         RefreshOfflineModeControls();
         OperationResult result;
-        try { result = await _offlineMode.StartHelperAsync(); }
+        try
+        {
+            // 插件脱机移交（规范第 8 节）：总开关开启时，先移交已单独授权的插件，再启动官方脱机助手。
+            if (AppSettingsStore.Read().AllowPluginsInOfflineMode)
+            {
+                var manager = ServiceLocator.Plugins;
+                var candidates = manager.ListOfflineHandoffCandidates(true, out var listError);
+                if (listError.Length > 0)
+                {
+                    result = OperationResult.Fail("读取插件列表失败，未开始脱机准备：" + listError);
+                    OfflineModeStatusText.Text = result.Message;
+                    RefreshOfflineModeControls();
+                    return;
+                }
+                foreach (var candidate in candidates)
+                {
+                    var handoffError = await ServiceLocator.PluginRuntime.HandoffToOfflineAsync(candidate);
+                    if (handoffError.Length > 0)
+                    {
+                        result = OperationResult.Fail($"插件“{candidate.Id}”移交失败，未开始脱机准备：{handoffError}");
+                        OfflineModeStatusText.Text = result.Message;
+                        RefreshOfflineModeControls();
+                        return;
+                    }
+                }
+            }
+            result = await _offlineMode.StartHelperAsync();
+        }
         catch (Exception ex)
         {
             result = OperationResult.Fail("启动脱机助手异常：" + ex.Message);

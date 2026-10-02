@@ -72,6 +72,35 @@ internal static class RuntimeGuardRecoveryChecks
             f = New(); f.Files.Values[path] = new(path, "old", "D:P(D;;FX;;;WD)(A;;FA;;;BA)");
             f.Guard.Enable(path);
             Check(f.State.Value.Acls.Count == 0 && !f.Guard.Disable(path).Success, "不接管或移除已有第三方执行拒绝");
+            var legacyAcl = "D:P(D;;0x20;;;WD)" + Original[3..];
+            f = New(); f.Files.Values[path] = new(path, "legacy", legacyAcl);
+            Check(!f.Guard.Enable(path).Success && f.Registry.Writes == 0, "旧 ACL 预检失败不先开启 IFEO");
+            Check(f.Guard.CanRepairLegacyAcl(path), "仅显式单条 Everyone ExecuteFile 可确认修复");
+            Check(!f.Guard.Disable(path).Success && f.Files.Values[path].Dacl == legacyAcl, "关闭本身不擅自接管未知 ACL");
+            Check(f.Guard.RepairLegacyAcl(path).Success && f.State.Value.LegacyAclRepairs.Single().Completed,
+                "明确修复保存前后快照与完成记录");
+            var legacyJournal = f.State.Value;
+            Check(RuntimeGuardProtection.NormalizeDacl(f.Files.Values[path].Dacl) == RuntimeGuardProtection.NormalizeDacl(Original),
+                "旧规则修复保留原有拒绝读取与其他权限");
+            for (var cycle = 0; cycle < 2; cycle++)
+                Check(f.Guard.Enable(path).Success && f.Guard.Disable(path).Success &&
+                    RuntimeGuardProtection.NormalizeDacl(f.Files.Values[path].Dacl) == RuntimeGuardProtection.NormalizeDacl(Original),
+                    "旧规则修复后开关往返 " + cycle);
+            f = New(); f.Files.Values[path] = new(path, "legacy", legacyAcl); f.State.FailSave = true;
+            Check(!f.Guard.RepairLegacyAcl(path).Success && f.Files.Values[path].Dacl == legacyAcl, "旧修复备份失败零权限写入");
+            f = New(); f.Files.Values[path] = new(path, "legacy", legacyAcl); f.Files.FailAfterWrite = true;
+            Check(!f.Guard.RepairLegacyAcl(path).Success && !f.State.Value.LegacyAclRepairs.Single().Completed,
+                "旧修复写后异常保留未完成记录");
+            Check(f.Guard.RepairLegacyAcl(path).Success && f.State.Value.LegacyAclRepairs.Single().Completed, "旧修复写后异常可按已完成原值重试");
+            f = New(); f.Files.Values[path] = new(path, "legacy", legacyAcl); f.Files.FailAfterWrite = true; f.Guard.RepairLegacyAcl(path);
+            f.Files.Values[path] = f.Files.Values[path] with { Identity = "replaced" };
+            Check(!f.Guard.RepairLegacyAcl(path).Success, "旧修复拒绝文件身份变化");
+            f = New(); f.Files.Values[path] = new(path, "legacy", legacyAcl); f.Files.FailAfterWrite = true; f.Guard.RepairLegacyAcl(path);
+            f.Files.Values[path] = f.Files.Values[path] with { Dacl = f.Files.Values[path].Dacl + "(A;;FR;;;BU)" };
+            Check(!f.Guard.RepairLegacyAcl(path).Success && !f.State.Value.LegacyAclRepairs.Single().Completed, "旧修复不覆盖外部权限变化");
+            foreach (var acl in new[] { "D:P(D;;FX;;;WD)(A;;FA;;;BA)", "D:P(D;ID;0x20;;;WD)(A;;FA;;;BA)", "D:P(D;;0x20;;;WD)(D;;0x20;;;WD)(A;;FA;;;BA)" })
+                Check(!RuntimeGuardProtection.TryRemoveLegacyExecuteRule(path, acl, out _), "拒绝宽泛/继承/重复拒绝规则");
+            Check(!RuntimeGuardProtection.TryRemoveLegacyExecuteRule(Path.Combine(root, "other.exe"), legacyAcl, out _), "拒绝修复非 UE4 文件");
             f = New(); f.Files.Values[path] = new(path, "old", Original); f.Files.FailAfterWrite = true;
             f.Guard.Enable(path);
             Check(f.State.Value.Acls.Count == 1 && f.Guard.Disable(null).Success, "ACL 写入后异常保留记录并可恢复");
@@ -83,6 +112,9 @@ internal static class RuntimeGuardRecoveryChecks
             File.WriteAllText(storePath, "{bad-json");
             try { disk.Load(); throw new Exception("corrupt state accepted"); } catch (JsonException) { }
             Check(File.ReadAllText(storePath) == "{bad-json", "损坏状态文件不覆盖");
+            File.Delete(storePath);
+            disk.Save(legacyJournal);
+            Check(disk.Load().LegacyAclRepairs.Count == 1, "旧权限修复日志 JSON 往返");
 
             // Only a disposable fixture file is touched; no installed prerequisite or IFEO key is changed.
             File.WriteAllText(path, "fixture");

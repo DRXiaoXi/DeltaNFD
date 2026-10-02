@@ -100,7 +100,7 @@ public interface IShaderService
     /// <summary>
     /// PSOCache 健康检测（纯只读），判定优先级：
     /// ① GameVer 达到 2 个及以上 → AMD / Intel / NVIDIA 通用异常判据；
-    /// ② 单版本下 SM6\DXCache NVPH 文件缺失 / 0KB 损坏判定（仅 N 卡且驱动 ≥572.83 时下结论）；
+    /// ② 单版本下 SM6\DXCache（缺少目录时回退 SM5\DXCache）的 NVPH 文件缺失 / 0KB 损坏判定（仅 N 卡且驱动 ≥572.83 时下结论）；
     ///    617.14 与 591/610/616 共用问题驱动判定；更高版本若 ≥256MB NVPH 少于两个，也判为驱动异常。
     /// </summary>
     Task<ShaderDiagnosis> DiagnoseAsync();

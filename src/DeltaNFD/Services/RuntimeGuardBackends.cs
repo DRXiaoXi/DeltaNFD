@@ -102,7 +102,7 @@ internal sealed class GuardStateStore : IGuardStateStore
         if (!File.Exists(_path)) return new();
         if (new FileInfo(_path).Length > 1024 * 1024) throw new InvalidDataException("防护状态文件过大。");
         var result = JsonSerializer.Deserialize<GuardProtectionState>(File.ReadAllText(_path)) ?? throw new InvalidDataException("防护状态为空。");
-        if (result.Version != 1 || result.Ifeo is null || result.Acls is null ||
+        if (result.Version != 1 || result.Ifeo is null || result.Acls is null || result.LegacyAclRepairs is null ||
             result.Ifeo.Any(e => !RuntimeGuardProtection.Names.Contains(e.Name, StringComparer.OrdinalIgnoreCase) || !e.Marker.StartsWith(RuntimeGuardProtection.OwnerPrefix, StringComparison.Ordinal)) ||
             result.Ifeo.Select(e => e.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() != result.Ifeo.Count)
             throw new InvalidDataException("防护状态结构无效。");
@@ -113,6 +113,11 @@ internal sealed class GuardStateStore : IGuardStateStore
             _ = RuntimeGuardProtection.NormalizeDacl(acl.Original);
             _ = RuntimeGuardProtection.NormalizeDacl(acl.Applied);
         }
+        foreach (var repair in result.LegacyAclRepairs)
+            if (!Path.IsPathFullyQualified(repair.Path) || string.IsNullOrWhiteSpace(repair.Identity) ||
+                !RuntimeGuardProtection.TryRemoveLegacyExecuteRule(repair.Path, repair.Before, out var after) ||
+                RuntimeGuardProtection.NormalizeDacl(after) != RuntimeGuardProtection.NormalizeDacl(repair.After))
+                throw new InvalidDataException("旧 UE4 修复记录无效。");
         return result;
     }
     public void Save(GuardProtectionState state)

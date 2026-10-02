@@ -19,6 +19,16 @@ public static class PluginTrust
         "宿主不能保证备份真实、改动可恢复、反作弊兼容或插件不逃逸；不能据此宣传“零封号风险”。",
     ];
 
+    /// <summary>索引条目版本（导入后页面展示用；权限用途来自导入时冗余记录）。</summary>
+    public static IReadOnlyList<string> AuthorizationChecklist(PluginIndexEntry entry, string packageSha256, bool signed) =>
+        AuthorizationChecklist(new PluginManifest(
+            entry.SchemaVersion, entry.Id, entry.Name, entry.Author, entry.Version, PluginContract.ProtocolVersion,
+            PluginContract.ProtocolMajorVersion, PluginContract.ProtocolMinorVersion,
+            new PluginHostRange(AppVersion.Current, new Version(int.MaxValue, 0, 0)),
+            new PluginBackend(Path.GetFileName(entry.EntryExecutable), "x64"),
+            entry.Permissions.Select(p => new PluginPermission(p.Id, p.Purpose)).ToList(),
+            new PluginCapabilities(false, false), []), packageSha256, signed);
+
     /// <summary>详情页固定展示的信任边界说明（规范第 1 节）。</summary>
     public static string TrustBoundaryNotice() =>
         "插件后端是完全受信任的管理员程序。能力声明、确认弹窗、协议校验和独立进程都不是权限沙箱；" +

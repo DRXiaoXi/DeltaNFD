@@ -28,6 +28,9 @@ jobs:
       - name: Frame feature state checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-feature-checks
 
+      - name: Shader SM5 fallback and SM6 priority checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --shader-path-checks
+
       - name: Frame power backup and lifecycle safety checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-power-safety-checks
 
@@ -37,6 +40,45 @@ jobs:
       # 拓展插件规范 1.0 合同：manifest/ui/IPC 解析器验证用例 + 示例包文件与信任提示检查（纯逻辑，不装插件）
       - name: Plugin contract checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-contract-checks
+
+      # 拓展插件 .dnfdplugin 无执行导入：恶意 ZIP/超限/加密/替换/回滚夹具（全部在临时目录，不装真实插件）
+      - name: Plugin import checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-import-checks
+
+      # 拓展插件管理服务：授权完整性/启停/配置/卸载/ui 读取（临时目录，不启动插件进程）
+      - name: Plugin manager checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-manager-checks
+
+      # 拓展插件运行时：真实测试后端进程走完整管道协议（启动/握手/invoke/取消/超时/崩溃/BUSY/stop 排空）
+      - name: Plugin runtime end-to-end checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-runtime-checks
+
+      - name: Plugin stability and handover evidence checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-stability-checks
+
+      - name: Plugin integrity and restart evidence checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-integrity-checks
+
+      - name: Plugin diagnostics privacy and storage checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-diagnostics-checks
+
+      - name: Plugin UI source and XAML wiring checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-ui-wiring-checks
+
+      - name: Plugin adversarial response checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-adversarial-checks
+
+      # 拓展插件备份/恢复：落账、状态机、幂等恢复、失败重试、资源冲突（真实测试后端，临时目录）
+      - name: Plugin backup and restore checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-restore-checks
+
+      # 拓展插件持续运行：Job 不设 kill-on-close 的自主存活验证 + 心跳/失联/崩溃不重启（真实子进程）
+      - name: Plugin continuous runtime checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-continuous-checks
+
+      # 拓展插件脱机移交：prepare/commit、自主存活、排空重连、身份不符保留记录（真实子进程）
+      - name: Plugin offline handoff checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-offline-checks
 
       # 拓展插件只读示例后端真实端到端：构建独立示例工程后走 hello/ready 握手 + report + stop
       - name: Plugin example backend end-to-end

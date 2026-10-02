@@ -221,6 +221,21 @@
                                       HorizontalAlignment="Right" VerticalAlignment="Center"
                                       Toggled="OfflineModeToggle_Toggled" />
                     </Grid>
+                    <Grid ColumnSpacing="16" Padding="0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="允许插件在脱机模式下运行" FontWeight="SemiBold" />
+                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                       Text="默认关闭。开启后，已单独授权脱机自主运行的插件会在移交后继续驻留（非零进程，不适用零进程验收）；主程序与官方助手仍全部退出。关闭此开关会先重连并停止所有已移交插件，再走零进程脱机。" />
+                        </StackPanel>
+                        <ToggleSwitch x:Name="AllowPluginsOfflineToggle" Grid.Column="1"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center"
+                                      Toggled="AllowPluginsOfflineToggle_Toggled" />
+                    </Grid>
                     <Button x:Name="OfflineModeStartButton" Content="准备脱机启动 / 应用当前游戏"
                             Style="{StaticResource AccentButtonStyle}"
                             HorizontalAlignment="Left" IsEnabled="False"

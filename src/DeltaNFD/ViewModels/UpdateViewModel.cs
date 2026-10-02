@@ -269,6 +269,10 @@ public partial class UpdateViewModel : ObservableObject
             ActionButtonText = "重新尝试安装";
             StatusText = "下载完成并通过校验，正在启动安装程序…";
 
+            using var pluginGate = ServiceLocator.PluginRuntime.BlockNewOperations();
+            var pluginBlocker = await PluginLifecycleGuard.PrepareHandoverAsync(ServiceLocator.Plugins, ServiceLocator.PluginRuntime, "软件更新");
+            if (pluginBlocker.Length > 0) { StatusText = pluginBlocker; Severity = InfoBarSeverity.Error; return; }
+
             var offline = await new OfflineModeCoordinator().PrepareForRemovalAsync(restoreCpuSets: false);
             if (!offline.Success)
             {
