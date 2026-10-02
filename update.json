@@ -5,12 +5,12 @@
   "channel": "alpha",
   "mandatory": false,
   "minimumSupportedVersion": "",
-  "publishedAtUtc": "2026-10-02T17:07:57Z",
+  "publishedAtUtc": "2026-10-02T17:12:01Z",
   "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.90.0",
   "notes": "# PreBeta0.9 / 0.90.0\n\n## 更新内容\n\n- 加入拓展插件管理、独立后端通信、授权确认、持续运行及脱机移交基础功能。\n- 加入插件结构化诊断日志和只读运行历史，支持筛选、分批加载及错误详情。\n- 修复插件操作界面未显示、恢复异常逃逸、恢复结果被刷新清空、取消后备份未保存、不同插件备份标识冲突以及首次导入误报替换。\n- 补齐插件文件校验、独立授权、未知运行记录阻挡、升级失败回滚和已知子进程排空检查。\n- 修复运行库防护的 UE4 权限残留处理与关闭状态反馈。\n- Intel 平台禁用 HPET 优化入口，保留已有设置的一键恢复通道。\n- 着色器检测新增 SM5/DXCache 回退路径，首页与着色器页保持一致；驱动版本未知时仍不做深度结构结论。\n\n## 重要说明\n\n这是预发布版本。主程序 Release x64 已构建，后端隔离回归已通过；真实 GUI/UAC、Windows 10/11 双系统及安装卸载虚拟机验收尚未完成。\n\n管理员插件是完全受信任的第三方程序。前后端分离不是沙箱，也不代表反作弊兼容或安全认证；只运行可信来源的插件。\n\n普通插件宿主崩溃后的完整接管、全部自主子进程追踪、多实例目标、诊断导出及完整包目录权限保护仍待完善。未知或停止未确认的记录会阻止交接，不应手动删除来绕过检查。\n\n本轮没有在开发机执行真实系统优化、游戏操作或安装程序。首次使用前建议保留个人配置和系统备份。",
   "installers": [
     {
-      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.90.0/%E4%B8%89%E8%A7%92%E5%B8%A7%E4%B8%8D%E6%8E%89%E6%B4%B2_DeltaNFD_%E5%AE%89%E8%A3%85%E5%8C%85_0.90.0_x64.exe",
+      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.90.0/DeltaNFD_Setup_0.90.0_x64.exe",
       "sizeBytes": 163625864,
       "sha256": "c324ac707b93e30e9287d4e282a2b163bf0440b0de99339394ef1e2d97a6676b"
     }
