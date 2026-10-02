@@ -4,11 +4,12 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:DeltaNFD.ViewModels">
 
-    <ScrollViewer>
+    <ScrollViewer IsEnabled="{x:Bind ViewModel.NormalModeControlsEnabled, Mode=OneWay}">
         <StackPanel MaxWidth="1080" Padding="28,20,28,32" Spacing="16">
 
             <StackPanel Spacing="4">
                 <TextBlock Text="CPU实验室" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="{x:Bind TargetLabel}" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}" />
                 <TextBlock Text="CPU 信息与核心调度（实验功能，逐步完善中）" Style="{StaticResource PageSubtitleStyle}" />
             </StackPanel>
 
@@ -66,14 +67,6 @@
                                Style="{StaticResource CardDescStyle}" />
                     <TextBlock Text="{x:Bind ViewModel.TopologyText, Mode=OneWay}"
                                Style="{StaticResource CardDescStyle}" />
-
-                    <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" Margin="0,4" />
-
-                    <TextBlock Text="关键判定" FontWeight="SemiBold" FontSize="13" />
-                    <TextBlock Text="{x:Bind ViewModel.HybridText, Mode=OneWay}"
-                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
-                    <TextBlock Text="{x:Bind ViewModel.HtText, Mode=OneWay}"
-                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
 
@@ -101,7 +94,21 @@
             <Border Style="{StaticResource CardBorderStyle}"
                     Visibility="{x:Bind ViewModel.ShowDualCcd, Mode=OneWay}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="双CCD 专属调度" Style="{StaticResource SectionTitleStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="双CCD 专属调度" Style="{StaticResource SectionTitleStyle}"
+                                   VerticalAlignment="Center" />
+                        <Border Style="{StaticResource ChipBorderStyle}"
+                                Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                VerticalAlignment="Center">
+                            <TextBlock Text="实验性" FontSize="10" Opacity="0.75" />
+                        </Border>
+                        <Border Style="{StaticResource ChipBorderStyle}"
+                                Background="#33E5484D"
+                                VerticalAlignment="Center">
+                            <TextBlock Text="会导致 CPU 发热和功耗上升" FontSize="10"
+                                       Foreground="#FFE5484D" />
+                        </Border>
+                    </StackPanel>
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="游戏独占一个 CCD，所有其他进程推到另一个 CCD，让游戏获得最大的 CPU 资源。CPU0 留给系统中断和内核进程以保障系统流畅度下限。" />
 
@@ -185,6 +192,12 @@
                         </StackPanel>
                     </Grid>
 
+                    <InfoBar IsOpen="{x:Bind ViewModel.PowerLockNoticeVisible, Mode=OneWay}"
+                             Severity="Warning"
+                             Title="帧格「电源计划锁定」已开启"
+                             Message="{x:Bind ViewModel.PowerLockNoticeText, Mode=OneWay}"
+                             IsClosable="False" />
+
                     <TextBlock Text="{x:Bind ViewModel.SchemeStatusText, Mode=OneWay}"
                                Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                 </StackPanel>
@@ -196,6 +209,12 @@
                     <TextBlock Text="异类调度策略" Style="{StaticResource SectionTitleStyle}" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="Windows 对混合架构 CPU（大小核 / 异构核心）的调度偏好，按当前电源计划交流/直流同时设置，选择后立即生效。仅对支持异构调度的平台有实际意义（Intel 大小核 / 部分 AMD 异构配置）。两个线程调度策略取值 0–5（5=自动，系统默认，让 Windows 自行选择落核偏好）；「生效的异类策略」为总策略（0–4，Windows 官方仅以编号命名，默认 4）。" />
+
+                    <InfoBar IsOpen="{x:Bind ViewModel.PowerLockNoticeVisible, Mode=OneWay}"
+                             Severity="Warning"
+                             Title="帧格「电源计划锁定」已开启"
+                             Message="{x:Bind ViewModel.PowerLockNoticeText, Mode=OneWay}"
+                             IsClosable="False" />
 
                     <ItemsControl ItemsSource="{x:Bind ViewModel.HeteroItems}">
                         <ItemsControl.ItemTemplate>
@@ -255,7 +274,7 @@
                 <StackPanel Spacing="10">
                     <TextBlock Text="单CCD 优化调度" Style="{StaticResource SectionTitleStyle}" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                               Text="把三角洲进程的 CPU0 让出来：系统中断和内核进程集中在 CPU0，游戏在其余核心运行，减少调度抖动。对全部 AMD 机型可用（双CCD 机型不做 CCD 隔离、只想把 CPU0 留给系统时同样适用）。规则持久化：游戏未运行时点击即登记，游戏启动后由轮询自动应用并持续保持，恢复全部核心即解除。" />
+                               Text="把目标游戏进程的 CPU0 让出来：系统中断和内核进程集中在 CPU0，游戏在其余核心运行，减少调度抖动。对全部 AMD 机型可用（双CCD 机型不做 CCD 隔离、只想把 CPU0 留给系统时同样适用）。规则持久化：游戏未运行时点击即登记，游戏启动后由轮询自动应用并持续保持，恢复全部核心即解除。" />
                     <TextBlock Text="{x:Bind ViewModel.GameStatusText, Mode=OneWay}"
                                Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
@@ -272,7 +291,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- CPU 亲和性（Process Lasso 风格，仅三角洲进程） -->
+            <!-- CPU 亲和性（Process Lasso 风格，仅目标游戏进程） -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
                     <Grid ColumnSpacing="16">
@@ -290,7 +309,7 @@
                                 </Border>
                             </StackPanel>
                             <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                       Text="勾选允许三角洲运行的核心；游戏运行期间持续保持硬亲和性。关闭规则或清空勾选时，恢复本工具记录的原亲和性。单/双 CCD 专属调度激活时，本规则自动让位。" />
+                                       Text="勾选允许目标游戏运行的核心；游戏运行期间持续保持硬亲和性。关闭规则或清空勾选时，恢复本工具记录的原亲和性。单/双 CCD 专属调度激活时，本规则自动让位。" />
                         </StackPanel>
 
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">

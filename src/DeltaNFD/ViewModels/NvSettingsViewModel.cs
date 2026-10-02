@@ -192,7 +192,7 @@ public partial class NvSettingsViewModel : ObservableObject
                 return;
             }
 
-            StatusText = "正在读取三角洲的驱动配置…";
+            StatusText = $"正在读取 {ServiceLocator.GameTarget.Current.DisplayName} 的驱动配置…";
             var values = await _nv.GetGameSettingValuesAsync();
             if (values is null)
             {
@@ -284,7 +284,7 @@ public partial class NvSettingsViewModel : ObservableObject
                 row.SetActual(index, text);
             }
 
-            StatusText = $"就绪 · 配置目标：{DeltaForceLocator.GameProcessName}.exe（首次应用时自动创建）";
+            StatusText = $"就绪 · 配置目标：{ServiceLocator.GameTarget.Current.DisplayName}（首次应用时自动创建独立配置）";
         }
         finally
         {

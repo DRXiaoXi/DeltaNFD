@@ -153,6 +153,49 @@ public sealed class CpuTopologyService : ICpuTopologyService
     private static readonly object AffinityRuleLock = new();
     private static readonly Dictionary<int, (DateTime StartTime, nint OriginalMask)> AffinityRuleOriginals = new();
 
+    /// <summary>脱机切换前检查：只有能归属到本工具原值备份的限制才允许继续还原。</summary>
+    public static bool CanSafelyRestoreAffinityRuleForOffline(ulong expectedRuleMask, out string reason)
+    {
+        reason = "";
+        using var targetOperation = GameTargetService.Default.BeginOperation();
+        var allMask = RuleAvailableMask.Value;
+        if (allMask == 0) { reason = "无法确认 CPU 亲和性拓扑。"; return false; }
+
+        foreach (var process in GameTargetService.Default.GetProcesses())
+        {
+            using (process)
+            {
+                try
+                {
+                    var started = process.StartTime.ToUniversalTime();
+                    var current = process.ProcessorAffinity;
+                    bool hasMatchingBackup;
+                    lock (AffinityRuleLock)
+                        hasMatchingBackup = AffinityRuleOriginals.TryGetValue(process.Id, out var backup) && backup.StartTime == started;
+
+                    if (current != (nint)allMask && !hasMatchingBackup)
+                    {
+                        reason = current == (nint)expectedRuleMask
+                            ? $"PID {process.Id} 正在使用亲和性规则掩码，但没有本工具原值备份。"
+                            : $"PID {process.Id} 已有限制性硬亲和性，无法确认归属。";
+                        return false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    reason = $"无法检查目标 PID {process.Id} 的硬亲和性：{ex.Message}";
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    public static bool HasAffinityRuleRestorePending
+    {
+        get { lock (AffinityRuleLock) return AffinityRuleOriginals.Count != 0; }
+    }
+
     internal static ulong GetSingleGroupAffinityMask(IReadOnlyList<CpuCoreInfo> cores, IReadOnlyList<int> groupLpCounts)
     {
         if (groupLpCounts.Count != 1 || groupLpCounts[0] is < 1 or > 64 || cores.Count == 0)
@@ -192,14 +235,16 @@ public sealed class CpuTopologyService : ICpuTopologyService
     }
 
     /// <summary>
-    /// CPU 亲和性规则 tick（HANDOFF §27）：把掩码持续保持到三角洲进程（硬锁核）。
+    /// CPU 亲和性规则 tick（HANDOFF §27）：把掩码持续保持到目标游戏进程（硬锁核）。
     /// 互斥：双CCD / 单CCD 调度激活时让位（避免两套锁核互相覆盖）。
     /// </summary>
     public static void ApplyAffinityRuleTick(ulong mask) =>
-        ApplyAffinityRuleTick(mask, () => Process.GetProcessesByName(DeltaForceLocator.GameProcessName));
+        ApplyAffinityRuleTick(mask, () => GameTargetService.Default.GetProcesses());
 
     internal static void ApplyAffinityRuleTick(ulong mask, Func<Process[]> getProcesses)
     {
+        if (OfflineModeGuard.BlocksNormalAutomation) return;
+        using var targetOperation = GameTargetService.Default.BeginOperation();
         var availableMask = RuleAvailableMask.Value;
         if (mask == 0 || availableMask == 0 || (mask & ~availableMask) != 0)
         {
@@ -234,7 +279,7 @@ public sealed class CpuTopologyService : ICpuTopologyService
 
                         if (ApplyHardAffinity(process, mask))
                         {
-                            Log.Info($"CPU亲和性：三角洲 PID {pid} 已锁定掩码 0x{mask:X}");
+                            Log.Info($"CPU亲和性：目标游戏 PID {pid} 已锁定掩码 0x{mask:X}");
                         }
                     }
                     catch (Exception ex) { Log.Warn($"CPU亲和性：应用失败：{ex.Message}"); }
@@ -248,6 +293,7 @@ public sealed class CpuTopologyService : ICpuTopologyService
 
     public static void RestoreAffinityRule()
     {
+        using var targetOperation = GameTargetService.Default.BeginOperation();
         lock (AffinityRuleLock)
         {
             if (DualCcdSchedulingActive || SingleCcdExcludeActive)
@@ -264,17 +310,18 @@ public sealed class CpuTopologyService : ICpuTopologyService
                     if (process.StartTime.ToUniversalTime() == original.StartTime)
                     {
                         process.ProcessorAffinity = original.OriginalMask;
-                        Log.Info($"CPU亲和性：三角洲 PID {pid} 已恢复原掩码 0x{(ulong)original.OriginalMask:X}");
+                        Log.Info($"CPU亲和性：目标游戏 PID {pid} 已恢复原掩码 0x{(ulong)original.OriginalMask:X}");
                     }
                     AffinityRuleOriginals.Remove(pid);
                 }
                 catch (ArgumentException) { AffinityRuleOriginals.Remove(pid); }
                 catch (Exception ex) { Log.Warn($"CPU亲和性：PID {pid} 恢复失败：{ex.Message}"); }
             }
+            GameTargetService.Default.SetRestoreFailure("CPU亲和性", AffinityRuleOriginals.Count != 0);
         }
     }
 
-    public Task<bool> IsGameRunningAsync() => Task.Run(DeltaForceLocator.IsGameRunning);
+    public Task<bool> IsGameRunningAsync() => Task.Run(GameTargetService.Default.IsRunning);
 
     // ---------------- 双CCD 调度 ----------------
 
@@ -306,7 +353,7 @@ public sealed class CpuTopologyService : ICpuTopologyService
     private static bool IsDualCcdExempt(Process process) =>
         process.Id <= 4 ||
         DualCcdExemptNames.Contains(process.ProcessName) ||
-        process.ProcessName.Equals(DeltaForceLocator.GameProcessName, StringComparison.OrdinalIgnoreCase);
+        GameTargetService.Default.ProtectFromCleanup(process);
 
     /// <summary>
     /// 把进程软锁核到掩码（CPU 集 = 调度器偏好，忙时可溢出）：
@@ -365,6 +412,9 @@ public sealed class CpuTopologyService : ICpuTopologyService
 
     public Task<OperationResult> ApplyDualCcdSchedulingAsync(int gameCcdIndex) => Task.Run(async () =>
     {
+        if (OfflineModeGuard.BlocksNormalAutomation)
+            return OperationResult.Fail("脱机模式或恢复流程中，普通双 CCD 调度已暂停。");
+        using var targetOperation = GameTargetService.Default.BeginOperation();
         Log.Info($"双CCD调度：应用（游戏→CCD{gameCcdIndex}）");
         var topology = await GetTopologyAsync();
         if (!topology.IsAmdMultiCcd || topology.Ccds.Count != 2 ||
@@ -389,7 +439,7 @@ public sealed class CpuTopologyService : ICpuTopologyService
 
         // 游戏进程：硬锁核（对齐 CPU 亲和性规则的技术标准，HANDOFF §27）
         var gameApplied = 0;
-        foreach (var process in Process.GetProcessesByName(DeltaForceLocator.GameProcessName))
+        foreach (var process in GameTargetService.Default.GetProcesses())
         {
             using (process)
             {
@@ -400,7 +450,7 @@ public sealed class CpuTopologyService : ICpuTopologyService
                 }
                 catch (Exception ex)
                 {
-                    return OperationResult.Fail($"三角洲硬锁核失败：{ex.Message}");
+                    return OperationResult.Fail($"目标游戏硬锁核失败：{ex.Message}");
                 }
             }
         }
@@ -444,9 +494,9 @@ public sealed class CpuTopologyService : ICpuTopologyService
         // 强制覆写异类策略（生效=4，线程/短线程=0）；失败只记日志不影响调度
         await ForceGamingHeteroPolicyAsync();
 
-        var gameNote = gameApplied > 0 ? "" : "（三角洲当前未运行，启动后将由持续覆盖自动补锁）";
+        var gameNote = gameApplied > 0 ? "" : "（目标游戏当前未运行，启动后将由持续覆盖自动补锁）";
         return OperationResult.Ok(
-            $"双CCD调度已生效：三角洲 → 硬锁核 CCD{gameCcdIndex}（0x{gameMask:X}）{gameNote}，其他进程 → 软锁核 CCD{1 - gameCcdIndex}（0x{otherMask:X}）"
+            $"双CCD调度已生效：目标游戏 → 硬锁核 CCD{gameCcdIndex}（0x{gameMask:X}）{gameNote}，其他进程 → 软锁核 CCD{1 - gameCcdIndex}（0x{otherMask:X}）"
             + $"（本次已锁 {locked} 个进程，{denied} 个因拒绝访问跳过，新进程由轮询持续补锁）。CPU0 留给系统。");
     });
 
@@ -457,13 +507,15 @@ public sealed class CpuTopologyService : ICpuTopologyService
     /// </summary>
     public static void ApplyCpuSchedulingTick()
     {
+        if (OfflineModeGuard.BlocksNormalAutomation) return;
+        using var targetOperation = GameTargetService.Default.BeginOperation();
         lock (DualCcdLock)
         {
             if (SingleCcdExcludeActive)
             {
                 var excludeCpu0Mask = RuleAvailableMask.Value & ~1UL;
                 if (excludeCpu0Mask == 0) return;
-                foreach (var process in Process.GetProcessesByName(DeltaForceLocator.GameProcessName))
+                foreach (var process in GameTargetService.Default.GetProcesses())
                 {
                     using (process)
                     {
@@ -473,7 +525,7 @@ public sealed class CpuTopologyService : ICpuTopologyService
             }
             else if (DualCcdSchedulingActive)
             {
-                foreach (var process in Process.GetProcessesByName(DeltaForceLocator.GameProcessName))
+                foreach (var process in GameTargetService.Default.GetProcesses())
                 {
                     using (process)
                     {
@@ -515,6 +567,7 @@ public sealed class CpuTopologyService : ICpuTopologyService
 
     public Task<OperationResult> RevertDualCcdSchedulingAsync() => Task.Run(async () =>
     {
+        using var targetOperation = GameTargetService.Default.BeginOperation();
         Log.Info("双CCD调度：撤销");
         var allMask = RuleAvailableMask.Value;
         if (allMask == 0)
@@ -553,33 +606,39 @@ public sealed class CpuTopologyService : ICpuTopologyService
         }
 
         // 游戏硬锁核还原全核（旧版撤销不还原 ProcessorAffinity，游戏会一直锁在游戏 CCD 上）
-        foreach (var process in Process.GetProcessesByName(DeltaForceLocator.GameProcessName))
+        var targetRestoreFailed = false;
+        foreach (var process in GameTargetService.Default.GetProcesses())
         {
             using (process)
             {
-                try { ApplyHardAffinity(process, allMask); } catch { }
+                try { ApplyHardAffinity(process, allMask); } catch { targetRestoreFailed = true; }
             }
         }
 
         // 单CCD/双CCD 都已不在生效：还原异类策略原值
         await RestoreHeteroPolicyIfIdleAsync();
 
-        return OperationResult.Ok($"已撤销双CCD调度：{reverted} 个进程恢复全核调度，三角洲硬锁核已还原，异类策略已还原。");
+        GameTargetService.Default.SetRestoreFailure("双CCD游戏锁核", targetRestoreFailed);
+        return targetRestoreFailed ? OperationResult.Fail("目标游戏亲和性还原失败，请重试恢复后再切换目标。")
+            : OperationResult.Ok($"已撤销双CCD调度：{reverted} 个进程恢复全核调度，目标游戏硬锁核已还原，异类策略已还原。");
     });
 
     // ---------------- 单CCD 排除 CPU0 ----------------
 
     public async Task<OperationResult> ExcludeCpu0FromGameAsync()
     {
+        if (OfflineModeGuard.BlocksNormalAutomation)
+            return OperationResult.Fail("脱机模式或恢复流程中，普通单 CCD 调度已暂停。");
+        using var targetOperation = GameTargetService.Default.BeginOperation();
         Log.Info("单CCD优化：排除 CPU0");
         var excludeCpu0Mask = RuleAvailableMask.Value & ~1UL;
         if (excludeCpu0Mask == 0)
             return OperationResult.Fail("当前处理器拓扑无法安全排除 CPU0（需要单处理器组且至少两个可用逻辑处理器）。");
 
-        var gameRunning = DeltaForceLocator.IsGameRunning();
+        var gameRunning = GameTargetService.Default.IsRunning();
         var applied = 0;
         var problems = new List<string>();
-        foreach (var process in Process.GetProcessesByName(DeltaForceLocator.GameProcessName))
+        foreach (var process in GameTargetService.Default.GetProcesses())
         {
             using (process)
             {
@@ -604,21 +663,22 @@ public sealed class CpuTopologyService : ICpuTopologyService
         await ForceGamingHeteroPolicyAsync();
 
         return gameRunning
-            ? OperationResult.Ok("已将三角洲排除 CPU0（硬锁核，对当前会话立即生效）。")
-            : OperationResult.Ok("三角洲当前未运行——排除 CPU0 规则已就绪，游戏启动后由轮询自动应用并持续保持。");
+            ? OperationResult.Ok("已将目标游戏排除 CPU0（硬锁核，对当前会话立即生效）。")
+            : OperationResult.Ok("目标游戏当前未运行——排除 CPU0 规则已就绪，游戏启动后由轮询自动应用并持续保持。");
     }
 
     public async Task<OperationResult> RestoreGameFullCoresAsync()
     {
+        using var targetOperation = GameTargetService.Default.BeginOperation();
         Log.Info("单CCD优化：恢复全部核心");
         var allMask = RuleAvailableMask.Value;
         if (allMask == 0)
             return OperationResult.Fail("当前处理器拓扑无法安全恢复进程亲和性，请检查处理器组配置。");
 
-        var gameRunning = DeltaForceLocator.IsGameRunning();
+        var gameRunning = GameTargetService.Default.IsRunning();
         SingleCcdExcludeActive = false;
         var applied = 0;
-        foreach (var process in Process.GetProcessesByName(DeltaForceLocator.GameProcessName))
+        foreach (var process in GameTargetService.Default.GetProcesses())
         {
             using (process)
             {
@@ -629,11 +689,12 @@ public sealed class CpuTopologyService : ICpuTopologyService
 
         await RestoreHeteroPolicyIfIdleAsync();
 
+        GameTargetService.Default.SetRestoreFailure("单CCD游戏锁核", gameRunning && applied == 0);
         return gameRunning
             ? (applied > 0
-                ? OperationResult.Ok("已恢复三角洲到全部核心的默认调度。")
+                ? OperationResult.Ok("已恢复目标游戏到全部核心的默认调度。")
                 : OperationResult.Fail("恢复失败。"))
-            : OperationResult.Ok("已恢复：三角洲未运行，排除 CPU0 规则已解除（异类策略已还原原值）。");
+            : OperationResult.Ok("已恢复：目标游戏未运行，排除 CPU0 规则已解除（异类策略已还原原值）。");
     }
 
     // ---------------- 异类策略联动（单CCD/双CCD 调度启用时强制覆写，解除时还原） ----------------
@@ -709,21 +770,24 @@ public sealed class CpuTopologyService : ICpuTopologyService
             }
 
             backup = _heteroOverrideBackup;
-            _heteroOverrideBackup = null;
         }
 
         try
         {
+            var failed = false;
             foreach (var item in backup)
             {
-                await ServiceLocator.Power.SetHeteroPolicyValuesAsync(item.Guid, item.AcValue, item.DcValue);
+                var result = await ServiceLocator.Power.SetHeteroPolicyValuesAsync(item.Guid, item.AcValue, item.DcValue);
+                failed |= !result.Success;
             }
-
-            Log.Info("异类策略：已还原为调度启用前的原值");
+            if (!failed) lock (HeteroOverrideLock) _heteroOverrideBackup = null;
+            GameTargetService.Default.SetRestoreFailure("CPU异类策略", failed);
+            Log.Info(failed ? "异类策略：还原未完成，保留备份供重试" : "异类策略：已还原为调度启用前的原值");
         }
         catch (Exception ex)
         {
             Log.Error("异类策略：还原原值失败（可在异类策略卡手动设置）", ex);
+            GameTargetService.Default.SetRestoreFailure("CPU异类策略", true);
         }
     }
 

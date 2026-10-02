@@ -197,6 +197,15 @@ public interface IBxService
 
 public sealed class BxService : IBxService
 {
+    internal const string FullHyperVItemName = "HyperVOffFull";
+    private readonly Lazy<ISystemTweakService> _fullHyperV;
+    public BxService() : this(() => new SystemTweakService()) { }
+    internal BxService(Func<ISystemTweakService> factory) { _fullHyperV = new(factory); }
+
+    internal Task<OperationResult> ApplyFullHyperVAsync(bool turnOn) => turnOn
+        ? _fullHyperV.Value.DisableAsync(SystemTweak.HyperVAndVbs)
+        : _fullHyperV.Value.RestoreAsync(SystemTweak.HyperVAndVbs);
+
     private const string NotElevated = "请以管理员身份运行本程序后再使用系统优化功能。";
 
     private sealed record PnpDeviceState(string InstanceId, bool? Enabled);
@@ -251,7 +260,7 @@ public sealed class BxService : IBxService
     public async Task<BxState> GetItemStateAsync(BxItem item) =>
         (await GetItemStatesAsync([item]))[item];
 
-    public Task<Dictionary<BxItem, BxState>> GetItemStatesAsync(IReadOnlyList<BxItem> items) => Task.Run(() =>
+    public Task<Dictionary<BxItem, BxState>> GetItemStatesAsync(IReadOnlyList<BxItem> items) => Task.Run(async () =>
     {
         // 批量查询：一次性拉取系统全部计划任务状态，再在内存里逐条评估。
         // 任务状态快照带 2 分钟 TTL 缓存（全库扫描/多栏目连续加载只起一次 PowerShell；
@@ -267,8 +276,19 @@ public sealed class BxService : IBxService
         }
 
         var result = new Dictionary<BxItem, BxState>();
+        bool? fullHyperVStatus = null;
+        if (items.Any(i => i.Name == FullHyperVItemName))
+        {
+            try { fullHyperVStatus = await _fullHyperV.Value.IsHyperVFullyDisabledAsync(); }
+            catch (Exception ex) { Log.Error("完整 Hyper-V 状态读取失败", ex); }
+        }
         foreach (var item in items)
         {
+            if (item.Name == FullHyperVItemName)
+            {
+                result[item] = fullHyperVStatus is null ? BxState.Unknown : fullHyperVStatus.Value ? BxState.On : BxState.Off;
+                continue;
+            }
             BxTaskState Lookup(string path)
             {
                 var normalized = "\\" + path.TrimStart('\\');
@@ -281,7 +301,7 @@ public sealed class BxService : IBxService
             var diagnostics = new List<string>();
             var state = EvaluateItem(item, Lookup, diagnostics);
             result[item] = state;
-            if (state is BxState.Mixed or BxState.Unknown or BxState.NotApplicable)
+            if (diagnostics.Count > 0 || state is BxState.Mixed or BxState.Unknown or BxState.NotApplicable)
             {
                 var evidence = diagnostics.Count > 0 ? string.Join("；", diagnostics) : "没有得到足以细分原因的状态证据";
                 Log.Info($"扩展库状态诊断：{item.Name} → {state}；依据：{evidence}");
@@ -365,7 +385,7 @@ public sealed class BxService : IBxService
             {
                 anyOn = true;
             }
-            else if (state == BxTaskState.Missing) { anyMissing = true; diagnostics.Add($"计划任务不存在：\\{op.Path.TrimStart('\\')}"); }
+            else if (state == BxTaskState.Missing) { anyMissing = true; diagnostics.Add($"计划任务不存在（不适用，跳过，不计为执行失败）：\\{op.Path.TrimStart('\\')}"); }
             else { anyUnknown = true; diagnostics.Add($"计划任务状态查询失败：\\{op.Path.TrimStart('\\')}（批量任务快照不可用）"); }
         }
 
@@ -569,7 +589,6 @@ public sealed class BxService : IBxService
 
         if (anyUnknown) return BxState.Unknown;
         if (anyMissing && !anyOn && !anyOff) return BxState.NotApplicable;
-        if (anyMissing) return BxState.Mixed;
 
         if (anyOn && !anyOff)
         {
@@ -765,7 +784,7 @@ public sealed class BxService : IBxService
             : null;
     });
 
-    public async Task<OperationResult> ApplyGearAsync(BxItem item, int gearIndex) => await Task.Run(async () =>
+    public async Task<OperationResult> ApplyGearAsync(BxItem item, int gearIndex) => await Task.Run(() =>
     {
         if (!ElevationHelper.IsElevated)
         {
@@ -848,6 +867,8 @@ public sealed class BxService : IBxService
         }
 
         Log.Info($"扩展库应用开始：{item.Name}；目标={(turnOn ? "优化" : "还原")}");
+        // 仅通过带原状态备份的深度后端执行，JSON 的固定 OFF 命令不得用于还原。
+        if (item.Name == FullHyperVItemName) return await ApplyFullHyperVAsync(turnOn);
 
         var regOps = item.Tweaks.Where(t => IsRegType(t.TweakType)).ToList();
         var taskOps = item.Tweaks.Where(t => t.TweakType == "TASK").ToList();
@@ -2010,7 +2031,7 @@ public sealed class BxService : IBxService
         "cnghwassist", "hvcrash", "dmvsc", "msrpc", "storqosflt", "peauth",
     };
 
-    public Task<OperationResult> ApplyServiceGroupAsync(BxServiceGroup group, bool turnOn) => Task.Run(async () =>
+    public Task<OperationResult> ApplyServiceGroupAsync(BxServiceGroup group, bool turnOn) => Task.Run(() =>
     {
         if (!ElevationHelper.IsElevated)
         {
@@ -2122,17 +2143,24 @@ public sealed class BxService : IBxService
         if (denied.Count > 0)
             Log.Warn($"服务组写入未完成：{group.Id}；count={denied.Count}；services=[{string.Join(",", denied)}]");
 
-        var result = SummarizeServiceGroup(services.Count, done, denied.Concat(guarded).Concat(stopFailed));
+        var result = SummarizeServiceGroup(services.Count, done, denied.Concat(stopFailed), guarded);
         Log.Info($"服务组应用判定：{group.Id}；target={(turnOn ? "禁用" : "恢复默认")}；requested={services.Count}；startValueWritten={done}；protectedOrBootGuardSkipped={guarded.Count}；deniedOrMissing={denied.Count}；stopFailed={stopFailed.Count}；result={result.Message}");
         return result;
     });
 
-    internal static OperationResult SummarizeServiceGroup(int total, int done, IEnumerable<string> failed)
+    internal static OperationResult SummarizeServiceGroup(int total, int done, IEnumerable<string> failed, IEnumerable<string>? skipped = null)
     {
         var failedNames = failed.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var summary = $"启动模式已写入 {done}/{total} 个服务";
         if (failedNames.Count > 0)
             return OperationResult.Fail($"{summary}；未处理：{string.Join("、", failedNames)}。");
+        var skippedNames = (skipped ?? []).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (skippedNames.Count > 0 && done + skippedNames.Count == total)
+        {
+            var message = $"{summary}；受保护项安全跳过 {skippedNames.Count} 个：{string.Join("、", skippedNames)}。" +
+                (done == 0 ? "没有修改任何服务。" : "可操作项已完成。");
+            return done == 0 ? OperationResult.Skip(message) : OperationResult.Ok(message);
+        }
         return done > 0 && done == total ? OperationResult.Ok(summary + "。")
             : OperationResult.Fail(total == 0 ? "没有找到组内可操作的服务。" : summary + "，部分成员未完成。");
     }

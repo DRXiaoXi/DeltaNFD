@@ -18,7 +18,7 @@ public sealed partial class MainWindow : Window
     private bool _exitRequested;
 
     /// <summary>当前公告版本标识（发布新公告时更新此值，老用户会再收到一次弹窗）。</summary>
-    private const string CurrentAnnouncementVersion = "OpenAlphaV0.83";
+    private const string CurrentAnnouncementVersion = "OpenAlphaV0.89";
 
     /// <summary>本次进程是否已检查过公告（Activated 每次激活都会触发，只处理一次）。</summary>
     private bool _announcementChecked;
@@ -31,6 +31,9 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ServiceLocator.GameTarget.Changed += OnGameTargetChanged;
+        Closed += (_, _) => ServiceLocator.GameTarget.Changed -= OnGameTargetChanged;
+        UpdateGameTargetNavigation();
 
         Title = "三角帧不掉洲 · 三角洲行动优化工具";
         // 标题栏版本号：唯一来源是程序集 InformationalVersion（csproj 的 <InformationalVersion>，
@@ -61,7 +64,7 @@ public sealed partial class MainWindow : Window
         // 首次启动公告：ContentFrame 挂载完成（XamlRoot 就绪）后弹出，每个公告版本只弹一次
         ContentFrame.Loaded += ContentFrame_Loaded;
 
-        if (AppSettingsStore.Read().CloseToTrayEnabled)
+        if (!OfflineModeGuard.BlocksNormalAutomation && AppSettingsStore.Read().CloseToTrayEnabled)
         {
             CreateTrayIcon();
         }
@@ -75,6 +78,13 @@ public sealed partial class MainWindow : Window
 
         // 发现新版本时在「设置」导航项上挂提示徽标（服务可能在后台线程触发）
         ServiceLocator.Update.AvailabilityChanged += OnUpdateAvailabilityChanged;
+    }
+
+    private void OnGameTargetChanged(GameTarget target) => DispatcherQueue.TryEnqueue(UpdateGameTargetNavigation);
+    private void UpdateGameTargetNavigation()
+    {
+        foreach (var item in NavView.MenuItems.OfType<NavigationViewItem>())
+            if (item.Tag?.ToString() is "shader" or "ace") item.IsEnabled = !ServiceLocator.GameTarget.IsCustom;
     }
 
     private async void ContentFrame_Loaded(object sender, RoutedEventArgs e)
@@ -308,7 +318,7 @@ public sealed partial class MainWindow : Window
 
     private async Task EnsureGameDirectoryOnStartupAsync()
     {
-        if (DeltaForceLocator.FindRoots().Any())
+        if (ServiceLocator.GameTarget.IsCustom || DeltaForceLocator.FindRoots().Any())
         {
             return;
         }
@@ -416,6 +426,13 @@ public sealed partial class MainWindow : Window
     {
         if (_exitRequested)
         {
+            return;
+        }
+
+        if (OfflineModeGuard.BlocksNormalAutomation)
+        {
+            _trayIcon?.Dispose();
+            _trayIcon = null;
             return;
         }
 
@@ -562,6 +579,9 @@ public sealed partial class MainWindow : Window
         Application.Current.Exit();
     }
 
+    /// <summary>脱机助手已完成启动握手后，主界面直接退出，不进入托盘驻留。</summary>
+    public void ExitAfterOfflineHelper() => ExitApplication();
+
     private TrayIconWindow? GetOrCreateTrayIcon()
     {
         if (_trayIcon is not null)
@@ -622,6 +642,11 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (ServiceLocator.GameTarget.IsCustom && item.Tag?.ToString() is "shader" or "ace")
+        {
+            NavView.SelectedItem = NavView.MenuItems[0];
+            return;
+        }
         Type pageType = item.Tag?.ToString() switch
         {
             "system" => typeof(SystemOptimizePage),

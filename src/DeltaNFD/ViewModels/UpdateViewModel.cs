@@ -269,6 +269,14 @@ public partial class UpdateViewModel : ObservableObject
             ActionButtonText = "重新尝试安装";
             StatusText = "下载完成并通过校验，正在启动安装程序…";
 
+            var offline = await new OfflineModeCoordinator().PrepareForRemovalAsync(restoreCpuSets: false);
+            if (!offline.Success)
+            {
+                StatusText = "更新暂缓：" + offline.Message;
+                Severity = InfoBarSeverity.Error;
+                return;
+            }
+
             var launch = await _update.LaunchInstallerAsync(manifest, download.InstallerPath);
             if (!launch.Success)
             {

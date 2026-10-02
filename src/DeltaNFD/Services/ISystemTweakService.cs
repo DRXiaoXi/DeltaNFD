@@ -57,6 +57,8 @@ public interface ISystemTweakService
 {
     /// <summary>读取全部优化项当前状态（读注册表 + bcdedit + MMAgent 查询，纯只读）。</summary>
     Task<List<TweakStatus>> GetStatusesAsync();
+    /// <summary>完整 Hyper-V 关闭状态，包含可选功能；null 表示查询失败。</summary>
+    Task<bool?> IsHyperVFullyDisabledAsync();
 
     /// <summary>
     /// 关闭指定功能（重启后生效）。

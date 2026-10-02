@@ -568,5 +568,208 @@
       }
     ],
     "IconPath": "ShieldAccountOutline"
+  },
+  {
+    "Name": "HyperVOffFull",
+    "Risk": "High",
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard",
+        "Key": "EnableVirtualizationBasedSecurity",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "ON", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity",
+        "Key": "Enabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "ON", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\CredentialGuard",
+        "Key": "Enabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "ON", "OPTIMAL" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "CMD",
+        "Path": "",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "ON", "OPTIMAL" ],
+            "Value": "bcdedit.exe /set hypervisorlaunchtype off"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "bcdedit.exe /set hypervisorlaunchtype auto"
+          }
+        ]
+      },
+      {
+        "TweakType": "CMD",
+        "Path": "",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "ON", "OPTIMAL" ],
+            "Value": "dism.exe /Online /NoRestart /Disable-Feature /FeatureName:Microsoft-Hyper-V-All"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "dism.exe /Online /NoRestart /Enable-Feature /FeatureName:Microsoft-Hyper-V-All /All"
+          }
+        ]
+      },
+      {
+        "TweakType": "CMD",
+        "Path": "",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "ON", "OPTIMAL" ],
+            "Value": "dism.exe /Online /NoRestart /Disable-Feature /FeatureName:Microsoft-Hyper-V"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "dism.exe /Online /NoRestart /Enable-Feature /FeatureName:Microsoft-Hyper-V /All"
+          }
+        ]
+      },
+      {
+        "TweakType": "CMD",
+        "Path": "",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "ON", "OPTIMAL" ],
+            "Value": "dism.exe /Online /NoRestart /Disable-Feature /FeatureName:Microsoft-Hyper-V-Hypervisor"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "dism.exe /Online /NoRestart /Enable-Feature /FeatureName:Microsoft-Hyper-V-Hypervisor /All"
+          }
+        ]
+      },
+      {
+        "TweakType": "CMD",
+        "Path": "",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "ON", "OPTIMAL" ],
+            "Value": "dism.exe /Online /NoRestart /Disable-Feature /FeatureName:Microsoft-Hyper-V-Services"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "dism.exe /Online /NoRestart /Enable-Feature /FeatureName:Microsoft-Hyper-V-Services /All"
+          }
+        ]
+      },
+      {
+        "TweakType": "CMD",
+        "Path": "",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "ON", "OPTIMAL" ],
+            "Value": "dism.exe /Online /NoRestart /Disable-Feature /FeatureName:Microsoft-Hyper-V-Tools-All"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "dism.exe /Online /NoRestart /Enable-Feature /FeatureName:Microsoft-Hyper-V-Tools-All /All"
+          }
+        ]
+      },
+      {
+        "TweakType": "CMD",
+        "Path": "",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "ON", "OPTIMAL" ],
+            "Value": "dism.exe /Online /NoRestart /Disable-Feature /FeatureName:Microsoft-Hyper-V-Management-Clients"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "dism.exe /Online /NoRestart /Enable-Feature /FeatureName:Microsoft-Hyper-V-Management-Clients /All"
+          }
+        ]
+      },
+      {
+        "TweakType": "CMD",
+        "Path": "",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "ON", "OPTIMAL" ],
+            "Value": "dism.exe /Online /NoRestart /Disable-Feature /FeatureName:Microsoft-Hyper-V-Management-PowerShell"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "dism.exe /Online /NoRestart /Enable-Feature /FeatureName:Microsoft-Hyper-V-Management-PowerShell /All"
+          }
+        ]
+      },
+      {
+        "TweakType": "CMD",
+        "Path": "",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "ON", "OPTIMAL" ],
+            "Value": "dism.exe /Online /NoRestart /Disable-Feature /FeatureName:HypervisorPlatform"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "dism.exe /Online /NoRestart /Enable-Feature /FeatureName:HypervisorPlatform /All"
+          }
+        ]
+      },
+      {
+        "TweakType": "CMD",
+        "Path": "",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "ON", "OPTIMAL" ],
+            "Value": "dism.exe /Online /NoRestart /Disable-Feature /FeatureName:VirtualMachinePlatform"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "dism.exe /Online /NoRestart /Enable-Feature /FeatureName:VirtualMachinePlatform /All"
+          }
+        ]
+      }
+    ]
   }
 ]

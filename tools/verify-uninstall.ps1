@@ -106,6 +106,31 @@ if (-not (Test-Path $unins)) {
     Write-Host '  [FAIL] unins000.exe missing - cannot test uninstall' -ForegroundColor Red
     exit 1
 }
+$guardRoot = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options'
+$guardNames = @('vc_redist.x64.exe','vc_redist.x86.exe','vc_redist.arm64.exe','vcredist_x64.exe','vcredist_x86.exe','vcredist_ia64.exe','vcredist.exe','DXSETUP.exe','dxwebsetup.exe','UE4PrereqSetup_x64.exe','UE4PrereqSetup_x86.exe')
+$guardStatePath = Join-Path $env:ProgramData 'Delta NFD\RuntimeGuard\state.json'
+$aclBefore = @()
+if (Test-Path -LiteralPath $guardStatePath) {
+    $guardBefore = [IO.File]::ReadAllText($guardStatePath) | ConvertFrom-Json
+    $aclBefore = @($guardBefore.Acls)
+}
+$legacyAbsent = @()
+$legacyPath = Join-Path $appData 'backups.json'
+if (Test-Path -LiteralPath $legacyPath) {
+    $legacyAbsent = @([IO.File]::ReadAllText($legacyPath) | ConvertFrom-Json | Where-Object {
+        $_.ValueName -eq 'Debugger' -and $_.ValueKind -eq 'None' -and $_.KeyPath -like '*Image File Execution Options*'
+    } | ForEach-Object { Split-Path $_.KeyPath -Leaf })
+}
+$expectedAbsent = @($guardNames | Where-Object {
+    $key = Get-Item -LiteralPath (Join-Path $guardRoot $_) -ErrorAction SilentlyContinue
+    if ($null -eq $key) { return $false }
+    try {
+        $owner = $key.GetValue('DeltaNFD_RuntimeGuard_Owner')
+        $debugger = $key.GetValue('Debugger', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+        ($owner -like 'DeltaNFD.RuntimeGuard/1/*/absent') -or
+            ($legacyAbsent -contains $_ -and $null -eq $owner -and $null -eq $key.GetValue('RuntimeGuardHotPatch_Owner') -and $debugger -eq '%windir%\System32\taskkill.exe')
+    } finally { $key.Dispose() }
+})
 $proc = Start-Process -FilePath $unins -ArgumentList '/VERYSILENT', '/NORESTART', '/SUPPRESSMSGBOXES' -PassThru -Wait
 Write-Host "  uninstaller exit code: $($proc.ExitCode)"
 # 延迟自删链（cmd ping ≈5s）+ 空目录清理需要几秒收尾
@@ -113,6 +138,27 @@ Write-Host '  waiting 12s for the delayed self-delete chain (cmd ping delay ~5s)
 Start-Sleep -Seconds 12
 
 Write-Phase 'Phase 4 - everything must be GONE after uninstall'
+$results += Test-Artifact 'owned runtime IFEO marker' {
+    foreach ($name in $guardNames) {
+        $key = Get-Item -LiteralPath (Join-Path $guardRoot $name) -ErrorAction SilentlyContinue
+        if ($null -ne $key) { try { if ($key.GetValue('DeltaNFD_RuntimeGuard_Owner') -like 'DeltaNFD.RuntimeGuard/1/*') { return $true } } finally { $key.Dispose() } }
+    }
+    $false
+} $false
+$results += Test-Artifact 'legacy owned runtime IFEO residue' {
+    foreach ($name in $expectedAbsent) {
+        $key = Get-Item -LiteralPath (Join-Path $guardRoot $name) -ErrorAction SilentlyContinue
+        if ($null -ne $key) { try { if ($null -ne $key.GetValue('Debugger')) { return $true } } finally { $key.Dispose() } }
+    }
+    $false
+} $false
+foreach ($acl in $aclBefore) {
+    $results += Test-Artifact ('original UE4 ACL: ' + (Split-Path $acl.Path -Leaf)) {
+        $current = (Get-Acl -LiteralPath $acl.Path).GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access)
+        $expected = [Security.AccessControl.RawSecurityDescriptor]::new($acl.Original).GetSddlForm([Security.AccessControl.AccessControlSections]::Access)
+        $current -eq $expected
+    } $true
+}
 $results += Test-Artifact 'install dir'                { Test-Path $InstallDir } $false
 $results += Test-Artifact 'unins000.exe leftover'      { Test-Path (Join-Path $InstallDir 'unins000.exe') } $false
 $results += Test-Artifact 'unins000.dat leftover'      { Test-Path (Join-Path $InstallDir 'unins000.dat') } $false

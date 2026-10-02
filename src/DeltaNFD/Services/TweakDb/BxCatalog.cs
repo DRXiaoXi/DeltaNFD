@@ -422,7 +422,7 @@ public static class BxCatalog
         new("svc-print", ["Spooler", "PrintScanBroker", "PrintNotify", "Fax"]),
         new("svc-remote", ["RemoteRegistry", "TermService", "UmRdpService", "SessionEnv", "RemoteAccess"]),
         new("svc-hyperv", ["vmcompute", "HvHost", "vmickvpexchange", "vmicguestinterface", "vmicheartbeat", "vmicrdv", "vmicshutdown", "vmictimesync", "vmicvmsession", "vmicvss"]),
-        new("svc-hdd", ["SysMain", "rdyboost"]),
+        new("svc-hdd", ["SysMain"]),
         new("svc-index", ["WSearch"]),
         new("svc-datausage", ["DusmSvc"]),
         new("svc-autorun", ["ShellHWDetection"]),

@@ -8,6 +8,8 @@ public sealed class OperationResult
     public bool Success { get; init; }
 
     public string Message { get; init; } = "";
+    /// <summary>安全跳过且未修改；不是执行失败，也不计作已应用。</summary>
+    public bool IsSkipped { get; init; }
 
     /// <summary>需要注销登录才能生效（显卡型号伪装）。</summary>
     public bool RequiresLogoff { get; init; }
@@ -33,4 +35,6 @@ public sealed class OperationResult
 
     public static OperationResult Fail(string message)
         => new() { Success = false, Message = message };
+    public static OperationResult Skip(string message)
+        => new() { Success = true, IsSkipped = true, Message = message };
 }

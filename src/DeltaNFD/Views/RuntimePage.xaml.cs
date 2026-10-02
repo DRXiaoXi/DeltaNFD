@@ -29,8 +29,8 @@ public sealed partial class RuntimePage : Page
             XamlRoot = XamlRoot,
             Title = "修复运行库？",
             Content = "修复分两步：\n"
-                      + "① 卸载检测到的全部 v14 伪装运行库条目\n"
-                      + "② 静默运行内置的 VC++ AIO 修复包（SHA256 校验），重装 2005–2022 全系列官方运行库\n"
+                      + "① 卸载检测到的全部 Visual C++ 运行库条目\n"
+                      + "② 静默运行内置的 VC++ AIO 安装器（SHA256 校验），重装 2005–2026 全系列运行库并复检\n"
                       + "· 约 3–5 分钟，期间请勿关闭电脑\n\n"
                       + "⚠ 重要提醒：修复会改变系统运行库环境——如果你近期有在用 C++ 写东西"
                       + "（开发环境依赖特定的运行库版本），请谨慎修复。\n\n"
@@ -55,8 +55,12 @@ public sealed partial class RuntimePage : Page
         await new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = result.Success ? "修复完成" : "修复失败",
-            Content = result.Message,
+            Title = result.Success ? (result.RequiresReboot ? "修复通过，需重启" : "修复完成") : "修复未完成",
+            Content = new ScrollViewer
+            {
+                MaxHeight = 420,
+                Content = new TextBlock { Text = result.Message, TextWrapping = TextWrapping.Wrap },
+            },
             CloseButtonText = "知道了",
             DefaultButton = ContentDialogButton.Close,
         }.ShowAsync();

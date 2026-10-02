@@ -81,6 +81,9 @@ public sealed class RuntimeGuardStatus
     public required int IfeoCount { get; init; }
 
     public required int IfeoTotal { get; init; }
+    public int IfeoManagedCount { get; init; }
+    public int IfeoExternalCount { get; init; }
+    public bool Ue4RestorePending { get; init; }
 
     /// <summary>是否找到了三角洲的 UE4 前置包（运行库载体）。</summary>
     public required bool Ue4PrereqFound { get; init; }
@@ -116,8 +119,8 @@ public interface IRuntimeGuardService
 
     /// <summary>
     /// 重装运行库：先卸载系统上全部 C++ 运行库（MSI 用 msiexec /x、INF 族用其卸载命令、
-    /// Bundle 用静默卸载串），再**静默**运行内置的 VC++ AIO 修复包（/ai 参数，全程无窗口；
-    /// 运行前做 SHA256 校验）重装 2005–2026 全系列 x86+x64 官方运行库。约 3–5 分钟。
+    /// Bundle 用静默卸载串），再静默运行内置 AIO Installer.cmd /quiet；
+    /// 卸载前做 SHA256 校验，逐包保留结果与详细日志，重装后复检分支版本。约 3–5 分钟。
     /// </summary>
     Task<OperationResult> RepairVcRedistAsync(IProgress<string>? progress = null);
 

@@ -8,8 +8,24 @@ using Microsoft.Win32;
 namespace DeltaNFD.Services;
 
 /// <summary>
+/// 机箱形态三态判定：旧版 IsDesktopPcAsync 把「笔记本」和「无法确定」都归为 false，
+/// 对黑屏拦截够用，但界面角标必须区分二者（角标只说「笔记本不适用」，不能把不确定说成笔记本）。
+/// </summary>
+internal enum ChassisKind
+{
+    /// <summary>无法确定（查询失败 / 机箱类型未定义）：按非笔记本处理 —— 不显示角标，也不拦截功能。</summary>
+    Unknown,
+
+    /// <summary>桌面形态（含机架 / 密封机箱）。</summary>
+    Desktop,
+
+    /// <summary>便携形态（笔记本 / 平板 / 一体机等）。</summary>
+    Laptop,
+}
+
+/// <summary>
 /// 帧格服务的真实实现：
-/// - DWM 功能：后台每 2 秒检测三角洲进程；启用时游戏启动后自动结束 dwm.exe（系统立即自动拉起新 DWM）。
+/// - DWM 功能：后台每 2 秒检测目标游戏进程；启用时游戏启动后自动结束 dwm.exe（系统立即自动拉起新 DWM）。
 /// - 旧版帧格显卡伪装设置只作升级兼容：启动时清除旧配置，并还原仍处于伪装状态的显卡。
 /// 激活状态与全部开关持久化在 %APPDATA%\Delta NFD\settings.json，跨重启保持。
 /// </summary>
@@ -24,6 +40,11 @@ public sealed class FrameService : IFrameService
     private readonly object _gate = new();
     private readonly IGpuSpoofService _spoof = ServiceLocator.GpuSpoof;
     private readonly FrameTweaksService _frameTweaks = new();
+    private readonly FramePowerLifecycle _powerLifecycle = new();
+    private readonly SemaphoreSlim _modeTransition = new(1, 1);
+    private bool _powerLockReady;
+    private bool _lastTweaksRestoreSucceeded = true;
+    private string _lockedPowerSchemeGuid = "";
 
     /// <summary>构造时若在 UI 线程（ServiceLocator 首次访问发生在页面构造）则捕获派发器，
     /// 保证 PropertyChanged 在 UI 线程触发，x:Bind 才能安全更新。</summary>
@@ -47,6 +68,8 @@ public sealed class FrameService : IFrameService
     private bool _powerSaveLatencyEnabled;
     private bool _nicPowerSavingOff = true;
     private bool _usbSuspendOff = true;
+    private bool _pcieAspmOff = true;
+    private bool _isLaptopChassis;
     private GpuSpoofApplyMode _gpuSpoofApplyMode = GpuSpoofApplyMode.Reboot;
     private string _gpuSpoofRegistryPath = "";
     private string _gpuSpoofFakeName = "";
@@ -69,19 +92,26 @@ public sealed class FrameService : IFrameService
         }
 
         LoadSettings();
-        MigrateLegacyFrameGpuSpoof();
-        _statusText = DescribeStatus();
+        var automationBlocked = OfflineModeGuard.BlocksNormalAutomation;
+        _lockedPowerSchemeGuid = AppSettingsStore.Read().FramePowerLockedSchemeGuid;
+        if (_frameModeActive && _powerPlanLockEnabled && !string.IsNullOrWhiteSpace(AppSettingsStore.Read().FramePowerPreviousSchemeGuid))
+            AppSettingsStore.Update(s => s.FramePowerRestorePending = true);
+        if (_frameModeActive && !automationBlocked) _powerLifecycle.Start();
+        else if (_frameTweaks.HasPowerSchemeContentSnapshot || AppSettingsStore.Read().FramePowerRestorePending)
+            GameTargetService.Default.SetRestoreFailure("帧格电源计划", true);
+        if (!automationBlocked) MigrateLegacyFrameGpuSpoof();
+        _statusText = automationBlocked ? "脱机模式或恢复流程中；普通自动化已暂停" : DescribeStatus();
         RefreshDualCcdArmState();
 
         // 帧格模式跨重启保持：开机自启场景立即恢复加速系统响应模式（核心常驻环等）
-        if (_frameModeActive)
+        if (_frameModeActive && !automationBlocked)
         {
             UpdateResponseBoostState();
             _ = MigrateLegacyAutostartTaskAsync();
         }
 
         // 开机自愈：帧格模式激活状态下若伪装名被系统重置（如驱动重装），静默重写
-        if (_frameModeActive)
+        if (_frameModeActive && !automationBlocked)
         {
             _ = SelfHealSpoofAsync();
             _ = SelfHealDualCcdAsync();
@@ -89,19 +119,23 @@ public sealed class FrameService : IFrameService
             _ = SelfHealFrameTweaksAsync();
         }
         var startupSettings = AppSettingsStore.Read();
-        if (startupSettings.TempSpoofRestorePending)
+        if (startupSettings.TempSpoofRestorePending && !automationBlocked)
         {
             // 临时重启生效伪装的收尾：登录后还原原显卡型号
             _ = RestoreTempSpoofAtLogonAsync();
         }
-        else if (!_frameModeActive)
+        else if (!_frameModeActive && !automationBlocked)
         {
             // 清理还原/退出流程中断后遗留的一次性登录任务。
             _ = DisableLogonAutostartAsync();
         }
 
         ServiceLocator.GameMonitor.Tick += OnGameMonitorTick;
-        _ = RestorePersistentCpuSchedulingAsync();
+        if (!automationBlocked) _ = RestorePersistentCpuSchedulingAsync();
+
+        // 机箱形态（笔记本 / 台式机 / 无法确定）探测一次即可：结果供帧格页显示「笔记本不适用」
+        // 并作为后端跳过依据。异步执行，不阻塞构造与界面。
+        _ = ProbeLaptopChassisAsync();
     }
 
     /// <summary>应用启动后重新登记 CPU 亲和性规则及已保存的立即生效调度。</summary>
@@ -109,6 +143,7 @@ public sealed class FrameService : IFrameService
     {
         try
         {
+            if (OfflineModeGuard.BlocksNormalAutomation) return;
             var settings = AppSettingsStore.Read();
             var frameDualWillRestore = settings.FrameModeActive
                 && settings.DualCcdArmed
@@ -151,6 +186,11 @@ public sealed class FrameService : IFrameService
         get => _dwmRestartOnGameStart;
         set
         {
+            if (value && OfflineModeGuard.BlocksNormalAutomation)
+            {
+                Log.Warn("脱机模式或恢复流程中，拒绝启用自动 DWM 重启。");
+                return;
+            }
             if (_dwmRestartOnGameStart == value)
             {
                 return;
@@ -205,8 +245,8 @@ public sealed class FrameService : IFrameService
 
     public string PowerPlanLockText =>
         string.IsNullOrWhiteSpace(_powerLockTargetGuid)
-            ? "开启一键帧格模式时记住并锁定你当前的电源计划（不切换别的计划），游戏期间每 30 秒检查一次，防止被其他程序改成省电方案；退出帧格模式时解除锁定并还原。"
-            : "开启一键帧格模式时切换并锁定到你选择的电源计划，游戏期间每 30 秒检查一次，被改走会自动切回；退出帧格模式时还原为开启前的原计划。";
+            ? "开启一键帧格模式时记住并锁定你当前的电源计划（不切换别的计划），并快照该计划的全部设置；游戏期间每 30 秒检查一次，既防止被其他程序改成省电方案，也会把被改动的计划内容（含 CPU实验室 的「异类调度策略」）按快照自动还原。帧格自己临时改写的省电项（USB 选择性暂停 / PCIE 链接状态电源管理）不在保护范围内。退出帧格模式时解除锁定并还原。"
+            : "开启一键帧格模式时切换并锁定到你选择的电源计划，并快照该计划的全部设置；游戏期间每 30 秒检查一次，被改走会自动切回，被改动的计划内容（含 CPU实验室 的「异类调度策略」）也会按快照自动还原。帧格自己临时改写的省电项（USB 选择性暂停 / PCIE 链接状态电源管理）不在保护范围内。退出帧格模式时还原为开启前的原计划。";
 
     public bool GpuSpoofEnabled
     {
@@ -303,7 +343,7 @@ public sealed class FrameService : IFrameService
 
     private CoreParkingLoop? _parkingLoop;
     private readonly object _perfGate = new();
-    private readonly HashSet<int> _ecoQosAppliedPids = [];
+    private readonly Dictionary<int, GameProcessIdentity> _ecoQosAppliedPids = [];
     private bool _perfTimerActive;
     private int _parkedCoreCount = -1;
 
@@ -529,10 +569,35 @@ public sealed class FrameService : IFrameService
         }
     }
 
+    /// <summary>子开关③：关闭 PCIe 省电（电源计划「PCI Express → 链接状态电源管理」ASPM = 关闭）。</summary>
+    public bool PcieAspmOffEnabled
+    {
+        get => _pcieAspmOff;
+        set
+        {
+            if (_pcieAspmOff == value)
+            {
+                return;
+            }
+
+            _pcieAspmOff = value;
+            SaveSettings();
+            OnPropertyChanged();
+            UpdateStatus();
+        }
+    }
+
+    /// <summary>
+    /// 本机是否为笔记本形态（惰性探测的缓存结果，进程内最多探测一次）。
+    /// 探测完成前为 false；确认是笔记本后触发 PropertyChanged，帧格页据此显角标 + 置灰。
+    /// 「无法确定」不置为 true —— 角标只说「笔记本不适用」，不能把不确定说成笔记本。
+    /// </summary>
+    public bool IsLaptopChassis => _isLaptopChassis;
+
     /// <summary>内存清理状态文字（上次清理时间与释放量）。</summary>
     public string MemoryCleanStatusText => _memoryCleanStatusText;
 
-    /// <summary>游戏内自动清理开关：三角洲运行期间内存占用达到阈值时自动清理。</summary>
+    /// <summary>游戏内自动清理开关：目标游戏运行期间内存占用达到阈值时自动清理。</summary>
     public bool MemoryCleanGameAutoEnabled
     {
         get => _memoryCleanGameAutoEnabled;
@@ -648,6 +713,8 @@ public sealed class FrameService : IFrameService
             }
 
             _frameModeActive = value;
+            if (value) _powerLifecycle.Start();
+            else { _powerLifecycle.Stop(); _powerLockReady = false; }
             SaveSettings();
             OnPropertyChanged();
             OnPropertyChanged(nameof(FrameModeEnabled));
@@ -692,6 +759,16 @@ public sealed class FrameService : IFrameService
 
     public async Task<OperationResult> ActivateFrameModeAsync()
     {
+        if (OfflineModeGuard.BlocksNormalAutomation)
+            return OperationResult.Fail("脱机模式或恢复流程正在运行，普通帧格模式已锁定。");
+        await _modeTransition.WaitAsync();
+        try { return await ActivateFrameModeCoreAsync(); }
+        finally { _modeTransition.Release(); }
+    }
+
+    private async Task<OperationResult> ActivateFrameModeCoreAsync()
+    {
+        using var targetOperation = GameTargetService.Default.BeginOperation();
         if (!ElevationHelper.IsElevated)
         {
             Log.Warn("帧格激活失败：未以管理员运行");
@@ -699,6 +776,13 @@ public sealed class FrameService : IFrameService
         }
 
         Log.Info("── 开启一键帧格模式 ──");
+        if (_frameModeActive) return OperationResult.Ok("帧格模式已激活，未重复应用。");
+        // 上次退出未完成时先按旧备份重试恢复，失败则拒绝重新应用，避免覆盖原值。
+        _powerLifecycle.Stop();
+        var pendingPower = await RevertPowerLockAsync();
+        var pendingTweaks = await RevertFrameTweaksAsync();
+        if (!pendingPower.Success || !_lastTweaksRestoreSucceeded)
+            return OperationResult.Fail("旧帧格恢复记录尚未处理完成，未开启新一轮帧格：" + pendingPower.Message + pendingTweaks);
         // 旧版帧格伪装配置会在服务启动时迁移清除；此判定仅保留作兼容保护。
         var useSpoof = IsGpuSpoofInFrame && _gpuSpoofEnabled;
         var appliedImmediately = false;
@@ -816,6 +900,14 @@ public sealed class FrameService : IFrameService
 
     public async Task<OperationResult> DeactivateFrameModeAsync()
     {
+        await _modeTransition.WaitAsync();
+        try { return await DeactivateFrameModeCoreAsync(); }
+        finally { _modeTransition.Release(); }
+    }
+
+    private async Task<OperationResult> DeactivateFrameModeCoreAsync()
+    {
+        using var targetOperation = GameTargetService.Default.BeginOperation();
         if (!ElevationHelper.IsElevated)
         {
             Log.Warn("帧格退出失败：未以管理员运行");
@@ -884,9 +976,9 @@ public sealed class FrameService : IFrameService
 
         var dualNote = await RevertArmedDualCcdAsync();
         var powerNote = await RevertPowerLockAsync();
-        var notes = dualNote + powerNote;
+        var notes = dualNote + powerNote.Message;
         if (dualNote.Length > 0) Log.Info("帧格退出·双CCD：" + dualNote.Trim());
-        if (powerNote.Length > 0) Log.Info("帧格退出·电源锁定：" + powerNote.Trim());
+        if (powerNote.Message.Length > 0) Log.Info("帧格退出·电源锁定：" + powerNote.Message.Trim());
 
         // 前台加速响应 + 降低省电延迟：退出帧格时还原全部临时改写
         var tweaksNote = await RevertFrameTweaksAsync();
@@ -894,6 +986,10 @@ public sealed class FrameService : IFrameService
 
         // 加速系统响应模式：帧格退出后全部还原（开关设置保留）
         UpdateResponseBoostState();
+
+        if (!powerNote.Success || !_lastTweaksRestoreSucceeded)
+            return new OperationResult { Success = false, RequiresReboot = needsReboot,
+                Message = "帧格已停用，但部分设置恢复未完成，已保留恢复记录，请再次执行退出恢复。" + notes };
 
         if (!useSpoof)
         {
@@ -977,7 +1073,10 @@ public sealed class FrameService : IFrameService
     // ---------------- 前台加速响应 + 降低省电延迟（帧格激活临时改写，退出还原） ----------------
 
     /// <summary>帧格开启时：按开关应用前台加速响应与降低省电延迟的临时改写。</summary>
-    private async Task<string> ApplyFrameTweaksAsync()
+    private async Task<string> ApplyFrameTweaksAsync() =>
+        await _powerLifecycle.CurrentAsync(_ => ApplyFrameTweaksCoreAsync()) ?? "";
+
+    private async Task<string> ApplyFrameTweaksCoreAsync()
     {
         try
         {
@@ -986,11 +1085,16 @@ public sealed class FrameService : IFrameService
                 return "";
             }
 
+            // 笔记本形态：网卡省电全禁 / 关闭 PCIe 省电在界面上标为「笔记本不适用」，
+            // 后端同款拦截（探测结果为进程内缓存，不会反复起 PowerShell）。
+            var laptopExcluded = await GetChassisKindAsync() == ChassisKind.Laptop;
             var result = await _frameTweaks.ApplyAsync(
                 _foregroundBoostEnabled && _foregroundResponsiveness,
                 _foregroundBoostEnabled && _foregroundPriority,
                 _powerSaveLatencyEnabled && _nicPowerSavingOff,
-                _powerSaveLatencyEnabled && _usbSuspendOff);
+                _powerSaveLatencyEnabled && _usbSuspendOff,
+                _powerSaveLatencyEnabled && _pcieAspmOff,
+                laptopExcluded);
             Log.Info($"帧格·临时优化：应用结果={(result.Success ? "成功" : "失败")}，说明={result.Message}");
             return result.Success
                 ? (result.Message.Length > 0 ? " " + result.Message.TrimEnd('。') + "。" : "")
@@ -1004,11 +1108,15 @@ public sealed class FrameService : IFrameService
     }
 
     /// <summary>帧格退出时：还原全部前台加速响应与降低省电延迟的临时改写。</summary>
-    private async Task<string> RevertFrameTweaksAsync()
+    private Task<string> RevertFrameTweaksAsync() => _powerLifecycle.ExclusiveAsync(RevertFrameTweaksCoreAsync);
+
+    private async Task<string> RevertFrameTweaksCoreAsync()
     {
         try
         {
             var result = await _frameTweaks.RevertAsync();
+            _lastTweaksRestoreSucceeded = result.Success;
+            GameTargetService.Default.SetRestoreFailure("帧格临时优化", !result.Success);
             Log.Info($"帧格·临时优化：还原结果={(result.Success ? "成功" : "失败")}，说明={result.Message}");
             if (!result.Success)
             {
@@ -1020,6 +1128,8 @@ public sealed class FrameService : IFrameService
         catch (Exception ex)
         {
             Log.Error("帧格·临时优化：还原异常", ex);
+            _lastTweaksRestoreSucceeded = false;
+            GameTargetService.Default.SetRestoreFailure("帧格临时优化", true);
             return $" 帧格临时优化还原失败：{ex.Message}";
         }
     }
@@ -1030,6 +1140,7 @@ public sealed class FrameService : IFrameService
     /// </summary>
     private async Task SelfHealFrameTweaksAsync()
     {
+        var generation = _powerLifecycle.Generation;
         try
         {
             await Task.Delay(TimeSpan.FromSeconds(12));
@@ -1049,12 +1160,16 @@ public sealed class FrameService : IFrameService
             if (foregroundWanted && !FrameTweaksService.IsForegroundBoostApplied() ||
                 powerSaveWanted && !FrameTweaksService.IsPowerSaveLatencyApplied())
             {
-                var result = await _frameTweaks.ApplyAsync(
+                var laptopExcluded = await GetChassisKindAsync() == ChassisKind.Laptop;
+                var result = await _powerLifecycle.CurrentAsync(_ => _frameTweaks.ApplyAsync(
                     foregroundWanted && _foregroundResponsiveness,
                     foregroundWanted && _foregroundPriority,
                     powerSaveWanted && _nicPowerSavingOff,
-                    powerSaveWanted && _usbSuspendOff);
-                Log.Info($"帧格·临时优化：开机自愈结果={(result.Success ? "成功" : "失败")}，说明={result.Message}");
+                    powerSaveWanted && _usbSuspendOff,
+                    powerSaveWanted && _pcieAspmOff,
+                    laptopExcluded), expectedGeneration: generation);
+                if (result is not null)
+                    Log.Info($"帧格·临时优化：开机自愈结果={(result.Success ? "成功" : "失败")}，说明={result.Message}");
             }
         }
         catch (Exception ex)
@@ -1068,6 +1183,7 @@ public sealed class FrameService : IFrameService
     /// <summary>按当前开关与游戏状态统一换挡三个机制（幂等；由开关 setter、帧格启停、游戏轮询触发）。</summary>
     private void UpdateResponseBoostState()
     {
+        using var targetOperation = GameTargetService.Default.BeginOperation();
         lock (_perfGate)
         {
             var boostOn = _frameModeActive && _responseBoostEnabled;
@@ -1091,28 +1207,33 @@ public sealed class FrameService : IFrameService
             var timerWanted = boostOn && _responseBoostTimer && _isGameRunning;
             if (timerWanted && !_perfTimerActive)
             {
-                _perfTimerActive = Native.ProcessPerf.TimerRequestHighResolution();
-                Log.Info(_perfTimerActive
-                    ? "加速响应：定时器分辨率请求 0.5ms 已生效"
-                    : "加速响应：定时器分辨率请求失败（NtSetTimerResolution 返回非 0）");
+                var request = Native.ProcessPerf.RequestTimerResolutionHighDetailed();
+                _perfTimerActive = request.Succeeded;
+                Log.Info(request.DiagnosticText(_perfTimerActive
+                    ? "加速响应：定时器分辨率请求成功"
+                    : "加速响应：定时器分辨率请求失败"));
             }
             else if (!timerWanted && _perfTimerActive)
             {
-                Native.ProcessPerf.TimerReleaseResolution();
-                _perfTimerActive = false;
-                Log.Info("加速响应：定时器分辨率请求已释放");
+                var release = Native.ProcessPerf.ReleaseTimerResolutionDetailed();
+                _perfTimerActive = !release.Succeeded;
+                Log.Info(release.DiagnosticText(_perfTimerActive
+                    ? "加速响应：释放定时器分辨率请求失败，将重试"
+                    : "加速响应：定时器分辨率请求已释放"));
             }
 
             // ② EcoQoS：帧格激活 + 子开关开时逐个游戏 PID 应用；条件不满足时恢复
             if (boostOn && _responseBoostEcoQos && _isGameRunning)
             {
-                foreach (var process in Process.GetProcessesByName(GameProcessName))
+                foreach (var process in GameTargetService.Default.GetProcesses())
                 {
                     using (process)
                     {
-                        if (_ecoQosAppliedPids.Add(process.Id))
+                        var identity = GameTargetService.Default.Identify(process);
+                        if (identity is not null && (!_ecoQosAppliedPids.TryGetValue(process.Id, out var old) || old != identity))
                         {
                             var ok = Native.ProcessPerf.DisablePowerThrottling(process.Id);
+                            if (ok) _ecoQosAppliedPids[process.Id] = identity;
                             Log.Info($"加速响应：游戏进程 PID {process.Id} 禁用电源限制（EcoQoS）{(ok ? "成功" : "失败（可能受保护）")}");
                         }
                     }
@@ -1120,13 +1241,19 @@ public sealed class FrameService : IFrameService
             }
             else if (_ecoQosAppliedPids.Count > 0)
             {
-                foreach (var pid in _ecoQosAppliedPids)
+                foreach (var (pid, identity) in _ecoQosAppliedPids.ToArray())
                 {
-                    Native.ProcessPerf.RestorePowerThrottling(pid);
+                    try
+                    {
+                        using var process = Process.GetProcessById(pid);
+                        if (process.HasExited || process.StartTime.ToUniversalTime() != identity.StartTimeUtc ||
+                            (GameTargetService.Default.Matches(process, identity) && Native.ProcessPerf.RestorePowerThrottling(pid)))
+                            _ecoQosAppliedPids.Remove(pid);
+                    }
+                    catch (ArgumentException) { _ecoQosAppliedPids.Remove(pid); }
+                    catch { }
                 }
-
-                Log.Info($"加速响应：已恢复 {_ecoQosAppliedPids.Count} 个游戏进程的电源限制系统控制");
-                _ecoQosAppliedPids.Clear();
+                GameTargetService.Default.SetRestoreFailure("EcoQoS", _ecoQosAppliedPids.Count != 0);
             }
         }
     }
@@ -1249,7 +1376,10 @@ public sealed class FrameService : IFrameService
     /// 指定了目标计划就切换过去并锁定；未指定则记住并锁定当前计划（不切换）。
     /// 之后游戏期间周期性重新套用，防止省电/游戏优化程序擅自改电源计划。
     /// </summary>
-    private async Task<string> ApplyPowerLockAsync()
+    private async Task<string> ApplyPowerLockAsync(bool resume = false, long? generation = null) =>
+        await _powerLifecycle.CurrentAsync(_ => ApplyPowerLockCoreAsync(resume), expectedGeneration: generation) ?? "";
+
+    private async Task<string> ApplyPowerLockCoreAsync(bool resume)
     {
         try
         {
@@ -1257,6 +1387,9 @@ public sealed class FrameService : IFrameService
             {
                 return "";
             }
+            _powerLockReady = false;
+            if (!resume && _frameTweaks.HasPowerSchemeContentSnapshot)
+                return "电源锁定未应用：上次内容恢复记录仍存在，请先退出帧格重试恢复。";
 
             // 必须运行期取 ServiceLocator.Power（构造期初始化顺序未定）
             var power = ServiceLocator.Power;
@@ -1271,17 +1404,32 @@ public sealed class FrameService : IFrameService
             }
 
             // 指定目标计划：不存在（被删除）则回退为锁定当前计划
-            var targetGuid = _powerLockTargetGuid;
+            var savedPrevious = AppSettingsStore.Read().FramePowerPreviousSchemeGuid;
+            var targetGuid = resume ? !string.IsNullOrWhiteSpace(_lockedPowerSchemeGuid) ? _lockedPowerSchemeGuid
+                : !string.IsNullOrWhiteSpace(_powerLockTargetGuid) ? _powerLockTargetGuid : savedPrevious
+                : _powerLockTargetGuid;
             if (!string.IsNullOrWhiteSpace(targetGuid) &&
                 schemes.All(s => !s.Guid.Equals(targetGuid, StringComparison.OrdinalIgnoreCase)))
             {
+                if (resume) return "电源锁定自愈停止：原锁定计划已不存在，未切换或覆盖恢复记录。";
                 Log.Warn($"帧格·电源锁定：配置目标 {targetGuid} 不在系统计划列表中，回退锁定当前计划 {active.Guid}");
                 targetGuid = "";
             }
 
             // 记住开启前的原计划（退出时还原），再切到目标计划
-            AppSettingsStore.Update(s => s.FramePowerPreviousSchemeGuid = active.Guid);
+            if (resume && string.IsNullOrWhiteSpace(savedPrevious))
+                return "电源锁定自愈停止：原计划恢复记录缺失，未重新定义原计划。";
             var lockGuid = string.IsNullOrWhiteSpace(targetGuid) ? active.Guid : targetGuid;
+            if (!resume) AppSettingsStore.Update(s =>
+            {
+                s.FramePowerPreviousSchemeGuid = active.Guid;
+                s.FramePowerLockedSchemeGuid = lockGuid;
+                s.FramePowerRestorePending = true;
+            });
+            var saved = AppSettingsStore.Read();
+            if (!saved.FramePowerRestorePending || !Guid.TryParse(saved.FramePowerPreviousSchemeGuid, out _))
+                return "电源锁定未应用：原计划恢复记录保存失败，未切换计划。";
+            _lockedPowerSchemeGuid = lockGuid;
             var result = await power.SetSchemeAsync(lockGuid);
             Log.Info($"帧格·电源锁定：应用结果={(result.Success ? "成功" : "失败")}，锁定 GUID={lockGuid}，原计划 GUID={active.Guid}，说明={result.Message}");
             if (!result.Success)
@@ -1289,9 +1437,33 @@ public sealed class FrameService : IFrameService
                 return $"电源计划锁定失败：{result.Message}";
             }
 
+            // 内容锁定：快照锁定计划的全部 AC/DC 设置，之后由守护比对并按快照自动还原。
+            // 帧格自己临时改写的省电项（USB 选择性暂停 / PCIe ASPM）由 FrameTweaksService
+            // 在快照与差异校验中统一排除，否则守护会把帧格的临时改写改回去。
+            var laptop = await GetChassisKindAsync() == ChassisKind.Laptop;
+            var snapshot = await _frameTweaks.SnapshotPowerSchemeContentAsync(lockGuid,
+                _powerSaveLatencyEnabled && _usbSuspendOff,
+                _powerSaveLatencyEnabled && _pcieAspmOff && !laptop);
+            if (snapshot.Success)
+            {
+                Log.Info($"帧格·电源锁定：计划内容已快照（{snapshot.Message}），GUID={lockGuid}");
+            }
+            else
+            {
+                GameTargetService.Default.SetRestoreFailure("帧格电源计划", true);
+                return "电源计划内容快照失败，守护未启动，请退出帧格恢复原计划：" + snapshot.Message;
+            }
+            _lockedPowerSchemeGuid = lockGuid;
+            AppSettingsStore.Update(s => s.FramePowerLockedSchemeGuid = lockGuid);
+            _powerLockReady = true;
+
+            var contentNote = snapshot.Success
+                ? "并已快照该计划的全部设置（游戏期间被改动会自动还原）"
+                : $"但计划内容快照失败（{snapshot.Message}），本次仅锁定计划本身";
+
             return string.IsNullOrWhiteSpace(targetGuid)
-                ? $"电源计划已锁定为当前计划「{active.Name}」（游戏期间防止被修改）。"
-                : $"电源计划已切换并锁定为「{schemes.First(s => s.Guid.Equals(lockGuid, StringComparison.OrdinalIgnoreCase)).Name}」（游戏期间防止被修改）。";
+                ? $"电源计划已锁定为当前计划「{active.Name}」（游戏期间防止被修改），{contentNote}。"
+                : $"电源计划已切换并锁定为「{schemes.First(s => s.Guid.Equals(lockGuid, StringComparison.OrdinalIgnoreCase)).Name}」（游戏期间防止被修改），{contentNote}。";
         }
         catch (Exception ex)
         {
@@ -1301,32 +1473,59 @@ public sealed class FrameService : IFrameService
     }
 
     /// <summary>帧格退出时：电源锁定解除，还原到锁定时记录的用户计划（并停止周期保护）。</summary>
-    private async Task<string> RevertPowerLockAsync()
+    private Task<OperationResult> RevertPowerLockAsync() => _powerLifecycle.ExclusiveAsync(RevertPowerLockCoreAsync);
+
+    private async Task<OperationResult> RevertPowerLockCoreAsync()
     {
         try
         {
-            if (!_powerPlanLockEnabled)
+            var settings = AppSettingsStore.Read();
+            var previous = settings.FramePowerPreviousSchemeGuid;
+            // 旧版退出成功后也会留下 previous 字段；没有快照/待恢复标记时只是历史记录，不能据此切换计划。
+            if (!_frameTweaks.HasPowerSchemeContentSnapshot && !settings.FramePowerRestorePending)
             {
-                return "";
+                return OperationResult.Ok("");
             }
 
-            var previous = AppSettingsStore.Read().FramePowerPreviousSchemeGuid;
+            // 解除锁定前做最后一次计划内容校验：把锁定期间被改动的设置按快照还原。
+            // 必须放在切换回原计划「之前」—— 内容还原会 /setactive 锁定计划，顺序反了会把刚还原的原计划又切走。
+            var expected = !string.IsNullOrWhiteSpace(_lockedPowerSchemeGuid) ? _lockedPowerSchemeGuid
+                : !string.IsNullOrWhiteSpace(_powerLockTargetGuid) ? _powerLockTargetGuid : previous;
+            var content = _frameTweaks.HasPowerSchemeContentSnapshot
+                ? await _frameTweaks.VerifyAndRestorePowerSchemeContentAsync(expected)
+                : OperationResult.Ok("内容快照未创建，未执行内容恢复。");
+            var restoredNote = " " + content.Message;
             if (string.IsNullOrWhiteSpace(previous))
             {
+                GameTargetService.Default.SetRestoreFailure("帧格电源计划", true);
                 Log.Warn("帧格·电源锁定：退出时没有记录原计划 GUID，无法自动还原");
-                return "";
+                return OperationResult.Fail("电源计划还原未完成：原计划记录缺失，已保留快照。" + restoredNote);
             }
 
             var result = await ServiceLocator.Power.SetSchemeAsync(previous);
+            var cleanup = result.Success && content.Success ? _frameTweaks.DiscardPowerSchemeContentSnapshot() : OperationResult.Ok("");
+            var complete = result.Success && content.Success && cleanup.Success;
+            if (complete)
+            {
+                _lockedPowerSchemeGuid = "";
+                AppSettingsStore.Update(s => { s.FramePowerPreviousSchemeGuid = ""; s.FramePowerLockedSchemeGuid = ""; s.FramePowerRestorePending = false; });
+                var cleared = AppSettingsStore.Read();
+                if (cleared.FramePowerRestorePending || !string.IsNullOrWhiteSpace(cleared.FramePowerPreviousSchemeGuid))
+                {
+                    complete = false;
+                    cleanup = OperationResult.Fail("原值已恢复，但恢复标记未能持久化清理。");
+                }
+            }
+            GameTargetService.Default.SetRestoreFailure("帧格电源计划", !complete);
             Log.Info($"帧格·电源锁定：退出还原结果={(result.Success ? "成功" : "失败")}，原计划 GUID={previous}，说明={result.Message}");
-            return result.Success
-                ? "电源计划已还原为用户原计划，锁定解除。"
-                : $"电源计划还原失败：{result.Message}";
+            return complete ? OperationResult.Ok("电源计划已还原为用户原计划，锁定解除。" + restoredNote)
+                : OperationResult.Fail($"电源计划还原未完成，已保留恢复记录：{result.Message} {content.Message} {cleanup.Message}");
         }
         catch (Exception ex)
         {
             Log.Error("帧格·电源锁定：退出还原异常", ex);
-            return $"电源计划还原失败：{ex.Message}";
+            GameTargetService.Default.SetRestoreFailure("帧格电源计划", true);
+            return OperationResult.Fail($"电源计划还原失败：{ex.Message}");
         }
     }
 
@@ -1334,8 +1533,9 @@ public sealed class FrameService : IFrameService
     private int _powerGuardPollCount;
 
     /// <summary>周期检查：帧格 + 电源锁定启用时，若激活计划被其他程序改走，自动切回用户计划。</summary>
-    private async Task GuardPowerLockTickAsync()    {
-        if (!_frameModeActive || !_powerPlanLockEnabled)
+    private async Task GuardPowerLockTickAsync()
+    {
+        if (!_frameModeActive || !_powerPlanLockEnabled || !_powerLockReady)
         {
             return;
         }
@@ -1347,19 +1547,24 @@ public sealed class FrameService : IFrameService
 
         _powerGuardPollCount = 0;
 
+        await _powerLifecycle.CurrentAsync(token => GuardPowerLockCoreAsync(token), skipIfBusy: true);
+    }
+
+    private async Task<string> GuardPowerLockCoreAsync(CancellationToken token)
+    {
+
         try
         {
             // 锁定期望计划：指定了目标计划用目标，否则用开启时记录的原（当前）计划
-            var expected = !string.IsNullOrWhiteSpace(_powerLockTargetGuid)
-                ? _powerLockTargetGuid
-                : AppSettingsStore.Read().FramePowerPreviousSchemeGuid;
+            var expected = _lockedPowerSchemeGuid;
             if (string.IsNullOrWhiteSpace(expected))
             {
-                return;
+                return "";
             }
 
             var power = ServiceLocator.Power;
             var schemes = await power.GetSchemesAsync();
+            token.ThrowIfCancellationRequested();
             var active = schemes.FirstOrDefault(s => s.IsActive);
             if (active is not null && !active.Guid.Equals(expected, StringComparison.OrdinalIgnoreCase))
             {
@@ -1369,16 +1574,32 @@ public sealed class FrameService : IFrameService
             }
             else if (active is null)
                 Log.Warn($"电源锁定守护：未能识别当前活动计划，期望 GUID={expected}");
+
+            // 计划「内容」守护：锁定期间设置明细被其他程序（或用户）改动时，按快照逐项自动还原。
+            // 帧格临时改写的省电项（USB 选择性暂停 / PCIe ASPM）不在快照内，因此不会被改回 ——
+            // 排除清单集中在 FrameTweaksService.FrameManagedPowerSettings，快照与这里都引用它。
+            var contentNote = await _frameTweaks.VerifyAndRestorePowerSchemeContentAsync(expected, token);
+            if (!contentNote.Success)
+            {
+                Log.Warn("电源锁定守护：" + contentNote.Message);
+            }
+            else if (contentNote.Message.Length > 0)
+            {
+                Log.Info("电源锁定守护：" + contentNote.Message);
+            }
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             Log.Error("电源锁定守护：检查或重锁失败", ex);
         }
+        return "";
     }
 
     /// <summary>开机（登录自启动）且帧格模式保持激活时，重新锁定用户电源计划（防止被其他程序改回）。</summary>
     private async Task SelfHealPowerLockAsync()
     {
+        var generation = _powerLifecycle.Generation;
         try
         {
             await Task.Delay(TimeSpan.FromSeconds(10));
@@ -1387,7 +1608,7 @@ public sealed class FrameService : IFrameService
                 return;
             }
 
-            var note = await ApplyPowerLockAsync();
+            var note = await ApplyPowerLockAsync(resume: true, generation: generation);
             if (!string.IsNullOrWhiteSpace(note))
                 Log.Info("帧格·电源锁定：开机自愈结果=" + note);
         }
@@ -1748,34 +1969,81 @@ public sealed class FrameService : IFrameService
 
     /// <summary>
     /// 判断是否台式机（机箱类型）：台式机允许对正在输出画面的显卡重载（有 45 秒恢复 + 60 秒亮屏确认双兜底）；
-    /// 笔记本/未知形态一律硬拦截。
+    /// 笔记本/未知形态一律硬拦截。语义与旧的单次探测实现完全一致（Desktop ⇒ true，Laptop/Unknown ⇒ false），
+    /// 只是改为复用缓存的形态探测，调用方行为不变。
     /// </summary>
-    private static async Task<bool> IsDesktopPcAsync()
+    private static async Task<bool> IsDesktopPcAsync() => await GetChassisKindAsync() == ChassisKind.Desktop;
+
+    /// <summary>形态探测的进程内缓存：每个进程最多起一次 PowerShell（旧实现每次调用都会起，耗时且抖动）。</summary>
+    private static readonly object ChassisProbeGate = new();
+    private static Task<ChassisKind>? _chassisProbe;
+
+    /// <summary>SMBIOS ChassisTypes：8/9/10/11/12/14/18/21/30/31/32 = 便携设备。</summary>
+    private static readonly int[] LaptopChassisTypes = [8, 9, 10, 11, 12, 14, 18, 21, 30, 31, 32];
+
+    /// <summary>3/4/5/6/7/15/16 = 桌面形态，23/24 等为机架/密封。</summary>
+    private static readonly int[] DesktopChassisTypes = [3, 4, 5, 6, 7, 15, 16, 23, 24];
+
+    /// <summary>机箱形态探测（三态，进程内只跑一次；探测失败/无匹配一律 Unknown）。</summary>
+    internal static Task<ChassisKind> GetChassisKindAsync()
     {
-        var (code, stdout, _) = await RunPowerShellAsync(
-            "(Get-CimInstance Win32_SystemEnclosure).ChassisTypes -join ','", TimeSpan.FromSeconds(20));
-        if (code != 0 || string.IsNullOrWhiteSpace(stdout))
+        lock (ChassisProbeGate)
         {
-            return false;
+            return _chassisProbe ??= ProbeChassisKindCoreAsync();
         }
+    }
 
-        var chassisTypes = stdout
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(s => int.TryParse(s, out var v) ? v : 0)
-            .Where(v => v > 0)
-            .ToList();
-
-        // SMBIOS ChassisTypes：8/9/10/11/12/14/18/21/30/31/32 = 便携设备
-        int[] laptopTypes = [8, 9, 10, 11, 12, 14, 18, 21, 30, 31, 32];
-        // 3/4/5/6/7/15/16 = 桌面形态，23/24 等为机架/密封
-        int[] desktopTypes = [3, 4, 5, 6, 7, 15, 16, 23, 24];
-
-        if (chassisTypes.Any(laptopTypes.Contains))
+    private static async Task<ChassisKind> ProbeChassisKindCoreAsync()
+    {
+        try
         {
-            return false;
-        }
+            var (code, stdout, _) = await RunPowerShellAsync(
+                "(Get-CimInstance Win32_SystemEnclosure).ChassisTypes -join ','", TimeSpan.FromSeconds(20));
+            if (code != 0 || string.IsNullOrWhiteSpace(stdout))
+            {
+                return ChassisKind.Unknown;
+            }
 
-        return chassisTypes.Any(desktopTypes.Contains);
+            var chassisTypes = stdout
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => int.TryParse(s, out var v) ? v : 0)
+                .Where(v => v > 0)
+                .ToList();
+
+            if (chassisTypes.Any(LaptopChassisTypes.Contains))
+            {
+                return ChassisKind.Laptop;
+            }
+
+            return chassisTypes.Any(DesktopChassisTypes.Contains) ? ChassisKind.Desktop : ChassisKind.Unknown;
+        }
+        catch
+        {
+            return ChassisKind.Unknown;
+        }
+    }
+
+    /// <summary>
+    /// 启动时把形态探测结果落到 <see cref="IsLaptopChassis"/>（仅笔记本为 true，供帧格页显角标 + 置灰）。
+    /// 探测本身每进程只跑一次，这里不再重复查询。
+    /// </summary>
+    private async Task ProbeLaptopChassisAsync()
+    {
+        try
+        {
+            if (await GetChassisKindAsync() != ChassisKind.Laptop)
+            {
+                return;
+            }
+
+            _isLaptopChassis = true;
+            OnPropertyChanged(nameof(IsLaptopChassis));
+            Log.Info("帧格：检测到笔记本形态 —— 「网卡省电全禁」「关闭 PCIe 省电」按笔记本不适用处理");
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("帧格：机箱形态探测失败：" + ex.Message);
+        }
     }
 
     // ---------------- 登录自启动任务 ----------------
@@ -1787,24 +2055,22 @@ public sealed class FrameService : IFrameService
     {
         try
         {
+            if (OfflineModeGuard.BlocksNormalAutomation)
+                return OperationResult.Fail("脱机模式或恢复流程正在运行，已禁止创建帧格登录任务。");
             var exePath = Environment.ProcessPath;
             if (string.IsNullOrWhiteSpace(exePath))
             {
                 return OperationResult.Fail("无法确定本程序路径。");
             }
 
-            var (code, stdout, stderr) = await RunProcessCaptureAsync(
-                "schtasks.exe",
-                $"/Create /TN {AutostartTaskName} /TR \"\\\"{exePath}\\\"\" /SC ONLOGON /RL HIGHEST /F",
-                TimeSpan.FromSeconds(30));
+            var created = await OfflineTaskOwnership.EnsureOwnedTaskAsync(AutostartTaskName, exePath);
+            if (!created.Success) return created;
 
-            if (code != 0)
-                return OperationResult.Fail(FirstLine(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr));
-
-            if (!await DeleteTaskIfPresentAsync(LegacyAutostartTaskName))
+            var legacy = await OfflineTaskOwnership.RemoveOwnedTaskAsync(LegacyAutostartTaskName, exePath);
+            if (!legacy.Success)
             {
-                await DeleteTaskIfPresentAsync(AutostartTaskName);
-                return OperationResult.Fail("新登录任务已创建，但旧版任务无法移除；为避免重复启动，已回滚新任务。");
+                await OfflineTaskOwnership.RemoveOwnedTaskAsync(AutostartTaskName, exePath);
+                return OperationResult.Fail("新登录任务已创建，但旧版任务无法安全移除；已尝试回滚新任务：" + legacy.Message);
             }
 
             return OperationResult.Ok("登录自启动任务已创建。");
@@ -1822,12 +2088,10 @@ public sealed class FrameService : IFrameService
     {
         try
         {
-            var hadTask = await TaskExistsAsync(AutostartTaskName) || await TaskExistsAsync(LegacyAutostartTaskName);
-            var currentRemoved = await DeleteTaskIfPresentAsync(AutostartTaskName);
-            var legacyRemoved = await DeleteTaskIfPresentAsync(LegacyAutostartTaskName);
-            return currentRemoved && legacyRemoved
-                ? OperationResult.Ok(hadTask ? "登录自启动任务已移除。" : "登录自启动任务无需移除。")
-                : OperationResult.Fail("删除登录自启动任务失败；请以管理员权限重试。");
+            var current = await OfflineTaskOwnership.RemoveOwnedTaskAsync(AutostartTaskName);
+            if (!current.Success) return current;
+            var legacy = await OfflineTaskOwnership.RemoveOwnedTaskAsync(LegacyAutostartTaskName);
+            return legacy.Success ? OperationResult.Ok("本工具登录自启动任务已移除或不存在。") : legacy;
         }
         catch (Exception ex)
         {
@@ -1837,36 +2101,20 @@ public sealed class FrameService : IFrameService
 
     private async Task MigrateLegacyAutostartTaskAsync()
     {
-        if (!await TaskExistsAsync(LegacyAutostartTaskName))
+        var legacy = await OfflineTaskOwnership.InspectAsync(LegacyAutostartTaskName);
+        if (legacy.State == OfflineScheduledTaskState.Missing)
             return;
+        if (legacy.State != OfflineScheduledTaskState.Owned)
+        {
+            Log.Warn("帧格登录任务迁移跳过：旧任务归属无法确认，未修改计划任务。");
+            return;
+        }
 
         var result = await EnableAutostartAsync();
         if (!result.Success)
             Log.Warn($"帧格登录任务迁移失败：{result.Message}");
         else
             Log.Info("帧格登录任务已从旧产品名称迁移到 Delta NFD。");
-    }
-
-    private static async Task<bool> TaskExistsAsync(string taskName)
-    {
-        var (code, _, _) = await RunProcessCaptureAsync("schtasks.exe", $"/Query /TN {taskName}", TimeSpan.FromSeconds(15));
-        return code == 0;
-    }
-
-    private static async Task<bool> DeleteTaskIfPresentAsync(string taskName)
-    {
-        if (!await TaskExistsAsync(taskName))
-            return true;
-
-        var (code, stdout, stderr) = await RunProcessCaptureAsync(
-            "schtasks.exe", $"/Delete /TN {taskName} /F", TimeSpan.FromSeconds(30));
-        if (code != 0 && await TaskExistsAsync(taskName))
-        {
-            Log.Warn($"帧格登录任务删除失败：{taskName}；{FirstLine(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr)}");
-            return false;
-        }
-
-        return true;
     }
 
     // ---------------- 手动重启 DWM ----------------
@@ -1877,6 +2125,8 @@ public sealed class FrameService : IFrameService
 
     private void OnGameMonitorTick(bool gameRunning, int? unusedProcessId)
     {
+        if (OfflineModeGuard.BlocksNormalAutomation) return;
+        using var targetOperation = GameTargetService.Default.BeginOperation();
         if (gameRunning != _isGameRunning)
         {
             IsGameRunning = gameRunning;
@@ -1888,7 +2138,7 @@ public sealed class FrameService : IFrameService
             UpdateStatus();
         }
 
-        // 「游戏启动自动重启 DWM」：三角洲启动后延迟 5 秒再执行——进程刚拉起时集中加载资源，
+        // 「游戏启动自动重启 DWM」：目标游戏启动后延迟 5 秒再执行——进程刚拉起时集中加载资源，
         // 此刻重启 DWM 容易放大卡顿；等初始化窗口过去再重启（游戏早已运行超 5 秒则立即执行）
         if (gameRunning && _dwmRestartOnGameStart && !_dwmHandledForSession
             && GetGameUptime() >= DwmRestartDelayAfterGameStart)
@@ -1901,14 +2151,14 @@ public sealed class FrameService : IFrameService
                 : "DWM：游戏启动，自动重启 DWM 失败");
 
             StatusText = result.Success
-                ? $"三角洲运行中 · 已自动重启 DWM（{DateTime.Now:HH:mm:ss}）"
-                : $"三角洲运行中 · 自动重启 DWM 失败（可在帧格页手动重试）";
+                ? $"目标游戏运行中 · 已自动重启 DWM（{DateTime.Now:HH:mm:ss}）"
+                : $"目标游戏运行中 · 自动重启 DWM 失败（可在帧格页手动重试）";
         }
 
         // 电源计划防改检查（内部自带约 30 秒一次的节流）
         _ = GuardPowerLockTickAsync();
 
-        // CPU 亲和性规则（CPU实验室；仅三角洲进程，硬锁核持续保持，互斥让位见 CpuTopologyService）
+        // CPU 亲和性规则（CPU实验室；仅目标游戏进程，硬锁核持续保持，互斥让位见 CpuTopologyService）
         var affinitySettings = AppSettingsStore.Read();
         if (affinitySettings.GameAffinityRuleEnabled && affinitySettings.GameAffinityRuleMask != 0)
         {
@@ -1958,26 +2208,26 @@ public sealed class FrameService : IFrameService
             var foregroundPart = _foregroundBoostEnabled ? " · 前台加速" : "";
             var powerSavePart = _powerSaveLatencyEnabled ? " · 省电延迟" : "";
             var memCleanPart = _memoryCleanEnabled ? " · 内存清理" : "";
-            var gamePart = _isGameRunning ? " · 三角洲运行中…" : "";
+            var gamePart = " · " + GameTargetService.Default.Status;
             return $"帧格模式运行中{spoofPart}{powerPart}{dualPart}{boostPart}{foregroundPart}{powerSavePart}{memCleanPart}{gamePart}";
         }
 
-        return _isGameRunning ? "三角洲运行中…" : "已启用 · 等待三角洲启动…";
+        return GameTargetService.Default.Status;
     }
 
     // ---------------- 进程操作（DWM） ----------------
 
-    /// <summary>三角洲启动后延迟多久才自动重启 DWM（避开游戏初始化窗口）。</summary>
+    /// <summary>目标游戏启动后延迟多久才自动重启 DWM（避开游戏初始化窗口）。</summary>
     private static readonly TimeSpan DwmRestartDelayAfterGameStart = TimeSpan.FromSeconds(5);
 
 
     /// <summary>
-    /// 三角洲主进程已运行时长（按进程真实 StartTime 计算，不受 2 秒轮询粒度影响）。
+    /// 目标游戏主进程已运行时长（按进程真实 StartTime 计算，不受 2 秒轮询粒度影响）。
     /// 进程已退出（竞态）或 StartTime 读取失败时返回超过延迟的值，视为"已过延迟"按原行为立即执行。
     /// </summary>
     private static TimeSpan GetGameUptime()
     {
-        var processes = Process.GetProcessesByName(GameProcessName);
+        var processes = GameTargetService.Default.GetProcesses();
         if (processes.Length == 0)
         {
             return TimeSpan.FromMinutes(1);
@@ -2067,6 +2317,7 @@ public sealed class FrameService : IFrameService
         _powerSaveLatencyEnabled = s.FramePowerSaveLatencyEnabled;
         _nicPowerSavingOff = s.FrameNicPowerSavingOffEnabled;
         _usbSuspendOff = s.FrameUsbSuspendOffEnabled;
+        _pcieAspmOff = s.FramePcieAspmOffEnabled;
         _gpuSpoofApplyMode = s.GpuSpoofApplyMode == nameof(GpuSpoofApplyMode.DeviceRestart)
             ? GpuSpoofApplyMode.DeviceRestart
             : GpuSpoofApplyMode.Reboot;
@@ -2103,6 +2354,7 @@ public sealed class FrameService : IFrameService
                 s.FramePowerSaveLatencyEnabled = _powerSaveLatencyEnabled;
                 s.FrameNicPowerSavingOffEnabled = _nicPowerSavingOff;
                 s.FrameUsbSuspendOffEnabled = _usbSuspendOff;
+                s.FramePcieAspmOffEnabled = _pcieAspmOff;
                 s.FrameModeActive = _frameModeActive;
             });
         }

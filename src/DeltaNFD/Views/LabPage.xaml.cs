@@ -8,6 +8,7 @@ namespace DeltaNFD.Views;
 
 public sealed partial class LabPage : Page
 {
+    public string TargetLabel => "当前主进程：" + DeltaNFD.Services.GameTargetService.Default.Current.DisplayName;
     public LabViewModel ViewModel { get; } = new();
 
     public LabPage()

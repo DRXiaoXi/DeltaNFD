@@ -101,7 +101,8 @@ public sealed class NvProfileService : INvProfileService
             "NVIDIA Corporation", "Drs", "nvdrsdb1.bin"),
     ];
 
-    private static string GameExeName => DeltaForceLocator.GameProcessName + ".exe";
+    private static string GameExeName => GameTargetService.Default.Current.IsCustom
+        ? GameTargetService.Default.Current.ExecutablePath : DeltaForceLocator.GameProcessName + ".exe";
 
     // ---------------- 设置目录（ID 与取值均在本机驱动 596.36 实测 + NVIDIA Profile Inspector 源码核对） ----------------
 
@@ -275,6 +276,8 @@ public sealed class NvProfileService : INvProfileService
 
     public Task<Dictionary<uint, (bool HasOverride, uint Value)>?> GetGameSettingValuesAsync() => Task.Run(() =>
     {
+        using var targetOperation = GameTargetService.Default.BeginOperation();
+        if (GameTargetService.Default.IsCustom && !File.Exists(GameExeName)) return null;
         try
         {
             return NvApiDrs.GetApplicationSettings(GameExeName, [.. Catalog.Select(c => c.Id)]);
@@ -287,6 +290,8 @@ public sealed class NvProfileService : INvProfileService
 
     public Task<OperationResult> ApplyGameSettingsAsync(IReadOnlyList<(uint Id, uint? Value)> changes) => Task.Run(() =>
     {
+        using var targetOperation = GameTargetService.Default.BeginOperation();
+        if (GameTargetService.Default.IsCustom && !File.Exists(GameExeName)) return OperationResult.Fail("目标 EXE 不存在，请重新选择。");
         if (!ElevationHelper.IsElevated)
         {
             return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
@@ -311,7 +316,7 @@ public sealed class NvProfileService : INvProfileService
         var expanded = ExpandCompanionChanges(changes);
 
         var (ok, message) = NvApiDrs.ApplyApplicationSettings(
-            GameExeName, "三角洲行动", expanded);
+            GameExeName, GameTargetService.Default.Current.DisplayName, expanded);
         if (ok)
         {
             Log.Info("NV设置：应用成功 —— " + message);

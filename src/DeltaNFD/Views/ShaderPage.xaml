@@ -75,7 +75,7 @@
                         <StackPanel Spacing="4">
                             <TextBlock Text="着色器健康检测" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                       Text="检测 PSOCache 的 GameVer 版本残留、NVPH 缓存文件缺失 / 损坏（0KB），以及 PARC 异常文件（N 卡检测到 .parc 即直接判为有问题）。仅对 N 卡下结论；A 卡 / I 卡自动跳过判定。" />
+                                       Text="检测 PSOCache 的 GameVer 版本残留、NVPH 缓存文件缺失 / 损坏（0KB）。仅对 N 卡下结论；A 卡 / I 卡自动跳过判定。" />
                         </StackPanel>
 
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">

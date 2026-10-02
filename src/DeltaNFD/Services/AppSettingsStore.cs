@@ -77,6 +77,11 @@ public sealed class AppSettings
     /// <summary>子开关②：关闭 USB 选择性暂停（全局 DisableSelectiveSuspend=1 + 电源计划 AC/DC），默认开。</summary>
     public bool FrameUsbSuspendOffEnabled { get; set; } = true;
 
+    /// <summary>子开关③：关闭 PCIe 省电（电源计划「PCI Express → 链接状态电源管理」ASPM 设为关闭），默认开。</summary>
+    public bool FramePcieAspmOffEnabled { get; set; } = true;
+    public string FramePowerLockedSchemeGuid { get; set; } = "";
+    public bool FramePowerRestorePending { get; set; }
+
     // ---- 旧版帧格显卡伪装迁移标记（保留以清理升级前的用户配置） ----
     /// <summary>旧版是否保存过临时帧格伪装配置；新版本启动时会清除并必要时还原原型号。</summary>
     public bool GpuSpoofFrameConfigured { get; set; }
@@ -100,6 +105,8 @@ public sealed class AppSettings
 
     // ---- 游戏进程 ----
     public bool GamePriorityEnabled { get; set; }
+    public bool CustomGameModeEnabled { get; set; }
+    public string CustomGameExecutablePath { get; set; } = "";
 
     // ---- 常规设置 ----
     public bool CloseToTrayEnabled { get; set; }

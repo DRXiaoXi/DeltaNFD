@@ -9,7 +9,8 @@
 
             <StackPanel Spacing="4">
                 <TextBlock Text="NVIDIA显卡设置" Style="{StaticResource PageTitleStyle}" />
-                <TextBlock Text="针对三角洲进程的驱动级设置（DLSS 模型 / 渲染比例 / 帧生成 / Smooth Motion / 抗锯齿 / 显存回退）" Style="{StaticResource PageSubtitleStyle}" />
+                <TextBlock Text="{x:Bind TargetLabel}" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}" />
+                <TextBlock Text="针对目标游戏进程的驱动级设置（DLSS 模型 / 渲染比例 / 帧生成 / Smooth Motion / 抗锯齿 / 显存回退）" Style="{StaticResource PageSubtitleStyle}" />
             </StackPanel>
 
             <!-- 环境状态 + 数据库锁定 -->
@@ -138,7 +139,7 @@
             <Border Style="{StaticResource CardBorderStyle}" Padding="20,14">
                 <StackPanel Spacing="6">
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                               Text="· 全部设置只写入三角洲进程（DeltaForceClient-Win64-Shipping.exe）的独立驱动配置，不影响其他游戏；首次应用时自动创建配置。" />
+                               Text="· 全部设置只写入目标游戏进程（DeltaForceClient-Win64-Shipping.exe）的独立驱动配置，不影响其他游戏；首次应用时自动创建配置。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="· 设置立即保存到驱动配置数据库，对之后启动的游戏会话生效；游戏正在运行时建议重启游戏后确认效果。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"

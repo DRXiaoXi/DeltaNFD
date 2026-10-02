@@ -9,6 +9,7 @@ namespace DeltaNFD.Views;
 
 public sealed partial class SystemOptimizePage : Page
 {
+    private bool _suppressBxToggle;
     public SystemOptimizeViewModel ViewModel { get; } = new();
 
     public SystemOptimizePage()
@@ -123,14 +124,31 @@ public sealed partial class SystemOptimizePage : Page
     }
 
     /// <summary>扩展优化库开关拨动：仅记录意图，应用由「应用更改」统一执行。</summary>
-    private void BxToggle_Toggled(object sender, RoutedEventArgs e)
+    private async void BxToggle_Toggled(object sender, RoutedEventArgs e)
     {
-        if (sender is not ToggleSwitch toggle || toggle.DataContext is not BxItemVm row)
+        if (_suppressBxToggle || sender is not ToggleSwitch toggle || toggle.DataContext is not BxItemVm row)
         {
             return;
         }
 
-        ViewModel.Bx.ToggleAsync(row, toggle.IsOn);
+        try
+        {
+            await ViewModel.Bx.ToggleAsync(row, toggle.IsOn);
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"扩展库开关意图处理失败：{row.DisplayName}", ex);
+            _suppressBxToggle = true;
+            try
+            {
+                row.IsOn = row.ActualOn;
+                row.HasUserIntent = false;
+                row.RefreshStateText(row.ActualState);
+                ViewModel.Bx.RefreshPendingFlags();
+            }
+            finally { _suppressBxToggle = false; }
+            ViewModel.Bx.StatusText = $"{row.DisplayName}：开关更改未完成，已撤回该项意图。{ex.Message}";
+        }
     }
 
     /// <summary>多档位条目：切换档位仅记录意图，应用由「应用更改」统一执行。</summary>

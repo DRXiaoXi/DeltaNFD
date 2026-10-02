@@ -25,9 +25,41 @@ jobs:
       - name: Build smoke test
         run: dotnet build tools/BackendSmokeTest/BackendSmokeTest.csproj -c Release
 
+      - name: Frame feature state checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-feature-checks
+
+      - name: Frame power backup and lifecycle safety checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-power-safety-checks
+
+      - name: Offline handoff and isolated CPU restore audit
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --offline-audit-checks
+
+      # 拓展插件规范 1.0 合同：manifest/ui/IPC 解析器验证用例 + 示例包文件与信任提示检查（纯逻辑，不装插件）
+      - name: Plugin contract checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-contract-checks
+
+      # 拓展插件只读示例后端真实端到端：构建独立示例工程后走 hello/ready 握手 + report + stop
+      - name: Plugin example backend end-to-end
+        run: |
+          dotnet build src/Example.Plugin.HardwareReport/Example.Plugin.HardwareReport.csproj -c Release -p:Platform=x64
+          dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-contract-e2e-checks
+
+      # 真实脱机助手端到端：真实进程握手/取消/单实例/180 秒超时；只对临时测试子进程写 CPU Sets
+      - name: Real offline helper end-to-end checks
+        run: |
+          $helper = (Resolve-Path 'src/DeltaNFD/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64/OfflineHelper/DeltaNFD.OfflineHelper.exe').Path
+          dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --offline-helper-e2e-checks --offline-helper-exe "$helper"
+
+      - name: Runtime repair result and diagnostics checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-repair-checks
+
       # 自动更新的离线逻辑校验（清单解析 / 哈希护栏 / 版本比较）：纯逻辑 + 临时目录，不联网、不改系统
       - name: Auto-update logic checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --update-checks
+
+      # 只读冒烟测试（枚举显卡 / 读取状态），不修改系统
+      - name: Runtime guard recovery logic and temporary ACL checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-guard-recovery-checks
 
       # 只读冒烟测试（枚举显卡 / 读取状态），不修改系统
       - name: Read-only smoke test

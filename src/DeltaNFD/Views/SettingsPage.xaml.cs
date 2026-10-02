@@ -39,10 +39,14 @@ public sealed partial class SettingsPage : Page
 
     /// <summary>程序化回写滑条时置 true，避免触发遮罩重复写设置。</summary>
     private bool _suppressDimSlider;
+    private readonly OfflineModeCoordinator _offlineMode = new();
+    private bool _suppressOfflineModeToggle;
+    private bool _offlineModeBusy;
 
     public SettingsPage()
     {
         InitializeComponent();
+        RefreshOfflineModeControls();
 
         // 关于卡 logo：ms-appx 资源加载失败时回退到绝对路径文件
         AboutLogoImage.ImageFailed += (_, _) =>
@@ -83,13 +87,18 @@ public sealed partial class SettingsPage : Page
         // 背景图片模式开关切换后状态文字跟随刷新（否则显示与现实相反）
         Loaded += (_, _) =>
         {
+            ServiceLocator.GameTarget.Changed -= OnGameTargetChanged;
+            ServiceLocator.GameTarget.Changed += OnGameTargetChanged;
+            RefreshTargetControls();
             BackgroundManager.Changed -= OnBackgroundChanged;
             BackgroundManager.Changed += OnBackgroundChanged;
             OnBackgroundChanged();
             Update.Attach();
+            RefreshOfflineModeControls();
         };
         Unloaded += (_, _) =>
         {
+            ServiceLocator.GameTarget.Changed -= OnGameTargetChanged;
             BackgroundManager.Changed -= OnBackgroundChanged;
             Update.Detach();
         };
@@ -102,8 +111,187 @@ public sealed partial class SettingsPage : Page
         UpdateGamePathStatus();
     }
 
+    private void RefreshOfflineModeControls()
+    {
+        if (!_offlineMode.TryReadState(out var state, out var error))
+        {
+            _suppressOfflineModeToggle = true;
+            OfflineModeToggle.IsOn = true;
+            OfflineModeToggle.IsEnabled = false;
+            _suppressOfflineModeToggle = false;
+            OfflineModeStartButton.IsEnabled = false;
+            OfflineModeStatusText.Text = error;
+            ViewModel.RefreshOfflineModeControls();
+            SetTargetControlsEnabled(false);
+            return;
+        }
+
+        _suppressOfflineModeToggle = true;
+        OfflineModeToggle.IsOn = state.OfflineModeEnabled ||
+            state.Status is OfflineModeStatus.Preparing or OfflineModeStatus.RestorePending or OfflineModeStatus.Failed;
+        OfflineModeToggle.IsEnabled = !_offlineModeBusy;
+        _suppressOfflineModeToggle = false;
+        OfflineModeStartButton.IsEnabled = !_offlineModeBusy && state.OfflineModeEnabled &&
+            state.SavedPreferences is not null &&
+            (state.Status is OfflineModeStatus.Ready or OfflineModeStatus.Kept or OfflineModeStatus.Failed);
+        OfflineModeStatusText.Text = state.Message;
+        ViewModel.RefreshOfflineModeControls();
+        SetTargetControlsEnabled(!_offlineModeBusy && !state.BlocksNormalAutomation);
+    }
+
+    private void SetTargetControlsEnabled(bool enabled)
+    {
+        if (CustomGameModeToggle is null) return;
+        var target = ServiceLocator.GameTarget.Current;
+        CustomGameModeToggle.IsEnabled = enabled && !_targetSelectionBusy;
+        SelectGameExeButton.IsEnabled = enabled && !_targetSelectionBusy;
+        GamePathBox.IsEnabled = enabled && !target.IsCustom && !_targetSelectionBusy;
+        PickGameFolderButton.IsEnabled = enabled && !target.IsCustom && !_targetSelectionBusy;
+        ClearGamePathButton.IsEnabled = enabled && !target.IsCustom && !_targetSelectionBusy;
+        SaveGamePathButton.IsEnabled = enabled && !target.IsCustom && !_targetSelectionBusy;
+    }
+
+    private async void OfflineModeToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_suppressOfflineModeToggle || _offlineModeBusy) return;
+        var enable = OfflineModeToggle.IsOn;
+        if (!await ConfirmOfflineModeChangeAsync(enable))
+        {
+            RefreshOfflineModeControls();
+            return;
+        }
+
+        _offlineModeBusy = true;
+        RefreshOfflineModeControls();
+        OperationResult result;
+        try
+        {
+            result = enable
+                ? await _offlineMode.EnableAsync()
+                : await _offlineMode.DisableAsync();
+        }
+        catch (Exception ex)
+        {
+            result = OperationResult.Fail("脱机模式切换异常：" + ex.Message);
+            Services.Log.Error("脱机模式切换异常", ex);
+        }
+        finally { _offlineModeBusy = false; }
+
+        RefreshOfflineModeControls();
+        OfflineModeStatusText.Text = result.Message;
+    }
+
+    private async Task<bool> ConfirmOfflineModeChangeAsync(bool enable)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = enable ? "启用脱机模式" : "关闭脱机模式",
+            Content = new TextBlock
+            {
+                Text = enable
+                    ? "启用前会尝试还原普通帧格、锁核与调度，并关闭本工具的自启动和托盘驻留。原偏好会保存；恢复不完整时会拒绝进入。助手只处理原游戏平台启动的目标进程，不启动、不注入游戏。"
+                    : "将先还原脱机 CPU Sets，再恢复普通参数；不会自动开启帧格、锁核、自启动或托盘，原启用偏好会另存。进程已退出或 PID 已复用时不会触碰新进程；身份无法确认或还原失败时保留记录。",
+                TextWrapping = TextWrapping.Wrap,
+            },
+            PrimaryButtonText = enable ? "启用" : "关闭并恢复",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
+    private async void OfflineModeStartButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_offlineModeBusy) return;
+        _offlineModeBusy = true;
+        RefreshOfflineModeControls();
+        OperationResult result;
+        try { result = await _offlineMode.StartHelperAsync(); }
+        catch (Exception ex)
+        {
+            result = OperationResult.Fail("启动脱机助手异常：" + ex.Message);
+            Services.Log.Error("启动脱机助手异常", ex);
+        }
+        finally { _offlineModeBusy = false; }
+
+        OfflineModeStatusText.Text = result.Message;
+        RefreshOfflineModeControls();
+        if (result.Success)
+            App.MainWindow?.ExitAfterOfflineHelper();
+    }
+
     private void OnBackgroundChanged() =>
         BackgroundStatusText.Text = DescribeBackground(BackgroundManager.ResolveCurrent());
+
+    private bool _updatingTargetControls;
+    private bool _targetSelectionBusy;
+    private void OnGameTargetChanged(GameTarget target) => DispatcherQueue.TryEnqueue(RefreshTargetControls);
+    private void RefreshTargetControls()
+    {
+        if (CustomGameModeToggle is null) return;
+        _updatingTargetControls = true;
+        var target = ServiceLocator.GameTarget.Current;
+        var normalAutomationEnabled = !OfflineModeGuard.BlocksNormalAutomation;
+        GamePathBox.IsEnabled = normalAutomationEnabled && !target.IsCustom;
+        PickGameFolderButton.IsEnabled = normalAutomationEnabled && !target.IsCustom;
+        ClearGamePathButton.IsEnabled = normalAutomationEnabled && !target.IsCustom;
+        SaveGamePathButton.IsEnabled = normalAutomationEnabled && !target.IsCustom;
+        CustomGameModeToggle.IsOn = target.IsCustom;
+        CustomGameModeToggle.IsEnabled = normalAutomationEnabled && !_targetSelectionBusy;
+        SelectGameExeButton.IsEnabled = normalAutomationEnabled && !_targetSelectionBusy;
+        TargetFileNameText.Text = "当前主进程：" + target.DisplayName;
+        TargetFilePathText.Text = target.IsCustom ? target.ExecutablePath : "三角洲默认主进程";
+        var blocker = ServiceLocator.GameTarget.GetSwitchBlocker();
+        TargetModeStatusText.Text = blocker.Length == 0 ? ServiceLocator.GameTarget.Status : blocker;
+        _updatingTargetControls = false;
+        UpdateGamePathStatus();
+    }
+    private Task<string?> PickGameExeAsync()
+    {
+        var owner = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+        return Task.FromResult(Native.FolderPickerDialog.PickExecutable(owner, AppSettingsStore.Read().CustomGameExecutablePath));
+    }
+    private async void CustomGameMode_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_updatingTargetControls || _targetSelectionBusy) return;
+        await ChangeGameTargetAsync(CustomGameModeToggle.IsOn, false);
+    }
+    private async void SelectGameExe_Click(object sender, RoutedEventArgs e) => await ChangeGameTargetAsync(true, true);
+    private async Task ChangeGameTargetAsync(bool enabled, bool choose)
+    {
+        if (OfflineModeGuard.BlocksNormalAutomation)
+        {
+            TargetModeStatusText.Text = "脱机模式或恢复流程中，暂不能切换游戏目标。";
+            RefreshTargetControls();
+            return;
+        }
+        if (_targetSelectionBusy) return;
+        _targetSelectionBusy = true;
+        CustomGameModeToggle.IsEnabled = SelectGameExeButton.IsEnabled = false;
+        string? message = null;
+        try
+        {
+            var blocker = ServiceLocator.GameTarget.GetSwitchBlocker();
+            if (blocker.Length > 0) { message = blocker; return; }
+            var existing = AppSettingsStore.Read().CustomGameExecutablePath;
+            string? path = null;
+            if (choose || (enabled && !System.IO.File.Exists(existing)))
+            {
+                path = await PickGameExeAsync();
+                if (path is null) return;
+            }
+            var result = await ServiceLocator.GameTarget.ChangeAsync(enabled, path);
+            message = result.Message;
+        }
+        catch (Exception ex) { message = "目标选择失败：" + ex.Message; Log.Error(message, ex); }
+        finally
+        {
+            _targetSelectionBusy = false;
+            RefreshTargetControls();
+            if (message is not null) TargetModeStatusText.Text = message;
+        }
+    }
 
     private static string DescribeBackground(string? current) => current is null
         ? "当前未使用背景图（Mica 云母背景）"
@@ -178,6 +366,8 @@ public sealed partial class SettingsPage : Page
 
     private void PickGameFolderButton_Click(object sender, RoutedEventArgs e)
     {
+        if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "脱机模式或恢复流程中，游戏目录不可更改。"; return; }
+        if (ServiceLocator.GameTarget.IsCustom) { GamePathStatusText.Text = GameTargetService.DeltaOnlyMessage; return; }
         if (App.MainWindow is null)
         {
             return;
@@ -205,6 +395,8 @@ public sealed partial class SettingsPage : Page
 
     private void SaveGamePathButton_Click(object sender, RoutedEventArgs e)
     {
+        if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "脱机模式或恢复流程中，游戏目录不可更改。"; return; }
+        if (ServiceLocator.GameTarget.IsCustom) { GamePathStatusText.Text = GameTargetService.DeltaOnlyMessage; return; }
         var path = GamePathBox.Text?.Trim() ?? "";
         if (path.Length > 0)
         {
@@ -224,6 +416,8 @@ public sealed partial class SettingsPage : Page
 
     private void ClearGamePathButton_Click(object sender, RoutedEventArgs e)
     {
+        if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "脱机模式或恢复流程中，游戏目录不可更改。"; return; }
+        if (ServiceLocator.GameTarget.IsCustom) { GamePathStatusText.Text = GameTargetService.DeltaOnlyMessage; return; }
         GamePathBox.Text = "";
         AppSettingsStore.Update(s => s.GameRootOverride = "");
         UpdateGamePathStatus();
@@ -231,6 +425,7 @@ public sealed partial class SettingsPage : Page
 
     private void UpdateGamePathStatus()
     {
+        if (ServiceLocator.GameTarget.IsCustom) { GamePathStatusText.Text = GameTargetService.DeltaOnlyMessage; return; }
         var overridePath = AppSettingsStore.Read().GameRootOverride ?? "";
         var roots = DeltaForceLocator.FindRoots().ToList();
 

@@ -58,8 +58,6 @@ public partial class DashboardViewModel : ObservableObject
 
     [ObservableProperty] private string powerPlanText = "--";
     [ObservableProperty] private string enabledOptimizesText = "0 / 0";
-    [ObservableProperty] private string lastReclaimedText = "尚未优化";
-
     [ObservableProperty] private bool isOptimizing;
     [ObservableProperty] private double optimizeProgress;
     [ObservableProperty] private string optimizeStatusText = "就绪";
@@ -158,6 +156,12 @@ public partial class DashboardViewModel : ObservableObject
 
     private async Task LoadShaderHealthAsync()
     {
+        if (ServiceLocator.GameTarget.IsCustom)
+        {
+            ShaderHealthState = DashboardHealthState.NotApplicable;
+            ShaderStatusText = GameTargetService.DeltaOnlyMessage;
+            return;
+        }
         // 与着色器页读取同一后端：PSOCache GameVer 通用临时判定 + NVIDIA 驱动体检。
         var diag = await ServiceLocator.Shader.DiagnoseAsync();
         var status = await ServiceLocator.Shader.GetStatusAsync();
@@ -191,9 +195,24 @@ public partial class DashboardViewModel : ObservableObject
 
     private async Task LoadAceHealthAsync()
     {
+        if (ServiceLocator.GameTarget.IsCustom)
+        {
+            AceHealthState = DashboardHealthState.NotApplicable;
+            AceStatusText = GameTargetService.DeltaOnlyMessage;
+            return;
+        }
         // 与 ACE 页一致执行完整的组件/服务/目录/注册表扫描，并补充 ACE-CORE 冗余检查。
         var scan = await ServiceLocator.Ace.ScanAsync();
         var core = await ServiceLocator.Ace.CheckCoreFilesAsync();
+
+        // 必须先判"已暂停"：三角洲运行中时后端跳过检测（未读取任何 ACE 信息），
+        // 空的 Services/Paths 若照常往下走会被误读成"本机很干净"。
+        if (scan.BlockedByGame || core.Level == AceCoreCheckLevel.Blocked)
+        {
+            AceHealthState = DashboardHealthState.NotApplicable;
+            AceStatusText = "三角洲进程运行中，已暂停 ACE 检测（未读取 ACE 组件）；退出游戏后重新检测。";
+            return;
+        }
 
         if (core.Level == AceCoreCheckLevel.Failed)
         {
@@ -261,11 +280,10 @@ public partial class DashboardViewModel : ObservableObject
             OptimizeProgress = Math.Min(100, OptimizeProgress + 100.0 / _optimizer.FullOptimizeStepCount);
         });
 
-        var report = await _optimizer.RunFullOptimizeAsync(progress);
+        await _optimizer.RunFullOptimizeAsync(progress);
 
         OptimizeProgress = 100;
         OptimizeStatusText = "优化完成";
-        LastReclaimedText = $"上次释放 {report.ReclaimedMemoryMb / 1024.0:0.0} GB 内存";
         IsOptimizing = false;
 
         // 重读真实状态，避免展示与实际不符的占位数据

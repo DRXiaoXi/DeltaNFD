@@ -35,6 +35,11 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        if (Environment.GetCommandLineArgs().Contains("--restore-runtime-guard-for-uninstall", StringComparer.Ordinal))
+        {
+            _ = RestoreRuntimeGuardForUninstallAsync();
+            return;
+        }
         if (!SingleInstanceGuard.TryBecomePrimary())
         {
             Application.Current.Exit();
@@ -78,6 +83,22 @@ public partial class App : Application
                 _ => ElementTheme.Default,
             });
         SetAccentColor(TryParseColor(s.AccentColor, out var c) ? c : DefaultAccent, persist: false);
+    }
+
+    private static async Task RestoreRuntimeGuardForUninstallAsync()
+    {
+        var code = 2;
+        try
+        {
+            var offline = await new OfflineModeCoordinator().PrepareForRemovalAsync(restoreCpuSets: true);
+            Log.Info("卸载前脱机恢复：" + offline.Message);
+            if (!offline.Success) { Environment.Exit(2); return; }
+            var result = await new RuntimeGuardService().DisableAsync();
+            Log.Info("卸载前运行库防护恢复：" + result.Message);
+            code = result.Success ? 0 : 2;
+        }
+        catch (Exception ex) { Log.Error("卸载前运行库防护恢复异常", ex); }
+        Environment.Exit(code);
     }
 
     /// <summary>切换应用主题（设置页调用）。</summary>

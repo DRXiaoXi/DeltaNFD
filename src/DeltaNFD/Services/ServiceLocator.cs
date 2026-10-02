@@ -5,6 +5,20 @@ namespace DeltaNFD.Services;
 /// </summary>
 public static class ServiceLocator
 {
+    public static GameTargetService GameTarget => GameTargetService.Default;
+    static ServiceLocator()
+    {
+        GameTarget.RuntimeBlockers = () =>
+        {
+            var reasons = new List<string>();
+            if (AppSettingsStore.Read().FramePowerRestorePending ||
+                File.Exists(Path.Combine(AppDataPaths.Root, "frame_power_scheme_snapshot.json")))
+                reasons.Add("帧格电源设置待恢复");
+            if (FrameLazy.IsValueCreated && FrameLazy.Value.FrameModeActive) reasons.Add("帧格模式");
+            if (CpuTopologyService.DualCcdSchedulingActive || CpuTopologyService.SingleCcdExcludeActive) reasons.Add("CPU 调度");
+            return reasons;
+        };
+    }
     private static readonly Lazy<ISystemOptimizer> SystemOptimizerLazy = new(() => new RealSystemOptimizer());
     private static readonly Lazy<IGpuOptimizer> GpuOptimizerLazy = new(() => new MockGpuOptimizer());
     private static readonly Lazy<IGpuSpoofService> GpuSpoofLazy = new(() => new GpuSpoofService());
@@ -19,7 +33,7 @@ public static class ServiceLocator
     private static readonly Lazy<IShaderService> ShaderLazy = new(() => new ShaderService());
     private static readonly Lazy<IAppControlService> AppControlLazy = new(() => new AppControlService());
     private static readonly Lazy<ICpuTopologyService> CpuLazy = new(() => new CpuTopologyService());
-    private static readonly Lazy<TweakDb.IBxService> BxLazy = new(() => new TweakDb.BxService());
+    private static readonly Lazy<TweakDb.IBxService> BxLazy = new(() => new TweakDb.BxService(() => SystemTweaks));
     private static readonly Lazy<INvProfileService> NvProfileLazy = new(() => new NvProfileService());
     private static readonly Lazy<IPagefileService> PagefileLazy = new(() => new PagefileService());
     private static readonly Lazy<GameProcessMonitor> GameMonitorLazy = new(() => new GameProcessMonitor());

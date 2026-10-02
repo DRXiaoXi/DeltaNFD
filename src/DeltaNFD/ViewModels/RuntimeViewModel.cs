@@ -110,7 +110,7 @@ public partial class RuntimeViewModel : ObservableObject
         OnPropertyChanged(nameof(UninstallV14Enabled));
     }
 
-    /// <summary>静默运行内置 AIO 修复包（/ai 参数，全程无窗口）：卸载全部 C++ 运行库后重装 2005–2026 全系列官方运行库。</summary>
+    /// <summary>静默重装运行库，逐包记录安装结果，并在完成后复检。</summary>
     public async Task<OperationResult?> RepairAsync()
     {
         if (IsRepairing)
@@ -123,7 +123,15 @@ public partial class RuntimeViewModel : ObservableObject
         {
             var progress = new Progress<string>(s => RepairStatusText = s);
             var result = await _guard.RepairVcRedistAsync(progress);
-            await LoadAsync();
+            RepairStatusText = result.Success ? "修复流程及分支复检通过。" : "修复未完成，请查看失败明细及诊断目录。";
+            try { await LoadAsync(); }
+            catch (Exception ex)
+            {
+                Log.Error("运行库修复：页面刷新检测失败", ex);
+                CheckText = "页面检测刷新失败：" + ex.Message;
+                return new OperationResult { Success = false, RequiresReboot = result.RequiresReboot,
+                    Message = result.Message + "\n页面检测刷新失败：" + ex.Message };
+            }
             return result;
         }
         finally
@@ -232,7 +240,7 @@ public partial class RuntimeViewModel : ObservableObject
     {
         var status = await _guard.GetStatusAsync();
         _guardStateKnown = true;
-        GuardIsEnabled = status.IfeoCount > 0 || status.Ue4PrereqDenied;
+        GuardIsEnabled = status.IfeoManagedCount > 0 || status.Ue4PrereqDenied || status.Ue4RestorePending;
         GuardIsPartial = GuardIsEnabled && (!status.IfeoApplied ||
             (status.Ue4PrereqFound && !status.Ue4PrereqDenied));
         OnPropertyChanged(nameof(GuardToggleEnabled));
@@ -243,7 +251,10 @@ public partial class RuntimeViewModel : ObservableObject
                   : "")
             : GuardIsEnabled
                 ? $"防护部分生效：IFEO {status.IfeoCount}/{status.IfeoTotal}，部分安装器可能仍被拦截；可关闭以清理残留"
-                : $"防护未开启（IFEO {status.IfeoCount}/{status.IfeoTotal}）——三角洲可安装运行库";
+                : $"本工具防护未开启（IFEO {status.IfeoCount}/{status.IfeoTotal}）";
+        if (status.IfeoExternalCount > 0)
+            GuardStatusText += $"；另有 {status.IfeoExternalCount} 项外部/归属不明拦截，请在创建它的工具中处理。";
+        if (status.Ue4RestorePending) GuardStatusText += "；UE4 原文件权限恢复记录仍保留。";
     }
 
     /// <summary>切换防护模式。返回后端结果供页面弹窗；完成后重读真实状态。</summary>

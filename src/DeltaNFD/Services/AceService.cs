@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
@@ -8,15 +8,53 @@ namespace DeltaNFD.Services;
 public sealed class AceService : IAceService
 {
     private readonly TweakBackupStore _backups;
+    private readonly GameTargetService _target;
+
+    /// <summary>「三角洲进程是否在运行」的判定。默认查真实进程；冒烟测试可注入以覆盖暂停分支。</summary>
+    private readonly Func<bool> _deltaRunning;
 
     public AceService() : this(TweakBackupStore.Default)
     {
     }
 
-    public AceService(TweakBackupStore backups)
+    public AceService(TweakBackupStore backups, GameTargetService? target = null)
+        : this(backups, target, static () => IsProcessRunning(DeltaForceLocator.GameProcessName))
+    {
+    }
+
+    internal AceService(TweakBackupStore backups, GameTargetService? target, Func<bool> deltaRunning)
     {
         _backups = backups;
+        _target = target ?? GameTargetService.Default;
+        _deltaRunning = deltaRunning;
     }
+
+    // ---------------- 检测闸门 ----------------
+
+    /// <summary>
+    /// 三角洲进程运行中时的"已暂停检测"占位结果：**不含任何 ACE 读取**。
+    /// 把三角洲同时列入 Running/Blocking，使 <see cref="AceScanResult.CanClean"/> 为 false——
+    /// 检测被暂停时绝不能让 UI 误判为"可清理"。
+    /// </summary>
+    private static AceScanResult BlockedScan() => new()
+    {
+        BlockedByGame = true,
+        RunningProcesses = [DeltaForceLocator.GameProcessName],
+        BlockingProcesses = [DeltaForceLocator.GameProcessName],
+        Services = [],
+        Paths = [],
+        RegistryKeys = [],
+    };
+
+    /// <summary>三角洲进程运行中时的"已跳过 ACE-CORE 检测"占位结果（未读取 ACE 目录）。</summary>
+    private static AceCoreCheckResult BlockedCore() => new()
+    {
+        Level = AceCoreCheckLevel.Blocked,
+        SysCount = 0,
+        Files = [],
+        Summary = "三角洲进程正在运行——已暂停 ACE 检测，未读取 ACE 安装目录。",
+        Advice = "请完全退出三角洲后再重新检测；检测与清理会在游戏退出后自动恢复。",
+    };
 
     /// <summary>ACE 服务清单（与官方卸载程序一致）。</summary>
     private static readonly string[] AceServices =
@@ -61,6 +99,20 @@ public sealed class AceService : IAceService
 
     public Task<AceScanResult> ScanAsync() => Task.Run(() =>
     {
+        using var operation = _target.BeginOperation();
+        if (_target.IsCustom) return new AceScanResult
+        {
+            BlockedByGame = false,
+            RunningProcesses = [], BlockingProcesses = [GameTargetService.DeltaOnlyMessage], Services = [], Paths = [], RegistryKeys = [],
+        };
+
+        // 需求：三角洲进程运行时禁止对 ACE 组件做检测——直接返回，不读取任何 ACE 信息。
+        if (_deltaRunning())
+        {
+            Log.Info("ACE 检测：跳过组件扫描（三角洲进程运行中）");
+            return BlockedScan();
+        }
+
         var running = new List<string>();
         var blocking = new List<string>();
 
@@ -99,6 +151,15 @@ public sealed class AceService : IAceService
                 },
             };
         }).ToList();
+
+        // 上面只读了 HKLM\SYSTEM 的服务项，不碰 ACE 文件；但接下来要真正遍历 ACE 安装目录
+        // （GetDirectorySizeMb 递归统计数百 MB），所以在动手前再确认一次：若三角洲在枚举期间
+        // 启动，立刻收手，保证游戏运行时绝不读取 ACE 目录。
+        if (_deltaRunning())
+        {
+            Log.Info("ACE 检测：扫描途中三角洲进程启动，已中止 ACE 目录读取");
+            return BlockedScan();
+        }
 
         var installDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "AntiCheatExpert");
@@ -139,6 +200,7 @@ public sealed class AceService : IAceService
 
         return new AceScanResult
         {
+            BlockedByGame = false,
             RunningProcesses = running,
             BlockingProcesses = blocking,
             Services = services,
@@ -154,6 +216,8 @@ public sealed class AceService : IAceService
     public async Task<OperationResult> CleanAsync(IProgress<string>? progress = null)
         => await Task.Run(async () =>
         {
+            using var operation = _target.BeginOperation();
+            if (_target.IsCustom) return OperationResult.Fail(GameTargetService.DeltaOnlyMessage);
             var result = await CleanCoreAsync(progress);
             return result;
         });
@@ -336,6 +400,20 @@ public sealed class AceService : IAceService
 
     public Task<AceCoreCheckResult> CheckCoreFilesAsync() => Task.Run(() =>
     {
+        using var operation = _target.BeginOperation();
+        if (_target.IsCustom) return new AceCoreCheckResult
+        {
+            Level = AceCoreCheckLevel.None, SysCount = 0, Files = [], Summary = GameTargetService.DeltaOnlyMessage, Advice = "",
+        };
+
+        // 需求：三角洲进程运行时禁止对 ACE 组件做检测——ACE-CORE 检测要递归枚举
+        // C:\Program Files\AntiCheatExpert 下全部 *.sys，是纯粹"碰"ACE 的操作，必须先拦。
+        if (_deltaRunning())
+        {
+            Log.Info("ACE 检测：跳过 ACE-CORE 冗余检测（三角洲进程运行中）");
+            return BlockedCore();
+        }
+
         var root = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "AntiCheatExpert");
         if (!Directory.Exists(root))

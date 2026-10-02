@@ -25,9 +25,30 @@
     <Compile Include="..\..\src\DeltaNFD\Native\MemoryPurge.cs" />
     <Compile Include="..\..\src\DeltaNFD\Native\ProcessPerf.cs" />
     <Compile Include="..\..\src\DeltaNFD\Native\CpuSets.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Native\OfflineCpuSetCatalog.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\AdvancedTweakService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\AceService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\AppSettingsStore.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineModeState.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineHelperSession.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineHelperCompletion.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineHelperDeadline.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineModeStateStore.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineCpuSetPlanner.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineCpuSetScheduler.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineModeExecutionLock.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineTaskOwnership.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineModeGuard.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginContract.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginPath.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginManifestParser.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginUiParser.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginIpc.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginTrust.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\FrameFeatureState.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\FramePowerLifecycle.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\FrameTweaksService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\GameTargetService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\AppDataPaths.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\AppVersion.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\CpuPlanService.cs" />
@@ -53,6 +74,9 @@
     <Compile Include="..\..\src\DeltaNFD\Services\CcdTopologyDetector.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\ICpuTopologyService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\RuntimeGuardService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\RuntimeRepairDiagnostics.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\RuntimeGuardProtection.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\RuntimeGuardBackends.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\IRuntimeGuardService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\DeltaForceLocator.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\IShaderService.cs" />
@@ -66,6 +90,7 @@
 
   <ItemGroup>
     <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.1" />
   </ItemGroup>
 
   <!-- DefenderGuard 的配置数据文件（冒烟测试的 Defender 状态只读查询要用） -->

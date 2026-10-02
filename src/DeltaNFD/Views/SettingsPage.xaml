@@ -14,6 +14,23 @@
 
             <!-- 外观 -->
             <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <ToggleSwitch x:Name="CustomGameModeToggle" Header="不玩三角洲辣" Toggled="CustomGameMode_Toggled" />
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel Spacing="4">
+                            <TextBlock x:Name="TargetFileNameText" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock x:Name="TargetFilePathText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button x:Name="SelectGameExeButton" Grid.Column="1" Click="SelectGameExe_Click" VerticalAlignment="Top" ToolTipService.ToolTip="选择主进程 EXE">
+                            <FontIcon Glyph="&#xE8B7;" />
+                        </Button>
+                    </Grid>
+                    <TextBlock x:Name="TargetModeStatusText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="4">
                     <TextBlock Text="外观" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
 
@@ -144,6 +161,7 @@
                             <TextBlock Text="登录 Windows 后自动运行（计划任务，不弹 UAC）" Style="{StaticResource CardDescStyle}" />
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1" IsOn="{x:Bind ViewModel.AutoStart, Mode=TwoWay}"
+                                      IsEnabled="{x:Bind ViewModel.NormalAutomationSettingsEnabled, Mode=OneWay}"
                                       OnContent="" OffContent="" MinWidth="0" Margin="0"
                                       HorizontalAlignment="Right" VerticalAlignment="Center" />
                     </Grid>
@@ -158,6 +176,7 @@
                             <TextBlock Text="开启后关闭窗口将驻留托盘；未开启时，若帧格或 CPU 调度正在运行，关闭窗口会提示是否开启后台运行。" Style="{StaticResource CardDescStyle}" />
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1" IsOn="{x:Bind ViewModel.MinimizeToTray, Mode=TwoWay}"
+                                      IsEnabled="{x:Bind ViewModel.NormalAutomationSettingsEnabled, Mode=OneWay}"
                                       OnContent="" OffContent="" MinWidth="0" Margin="0"
                                       HorizontalAlignment="Right" VerticalAlignment="Center" />
                     </Grid>
@@ -182,6 +201,35 @@
                 </StackPanel>
             </Border>
 
+            <!-- 脱机模式：一次性助手；不常驻、不替代游戏平台启动游戏 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="脱机模式" Style="{StaticResource SectionTitleStyle}"
+                               AutomationProperties.HeadingLevel="Level2" />
+                    <Grid ColumnSpacing="16" Padding="0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="启动后零进程脱机模式" FontWeight="SemiBold" />
+                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                       Text="启用前会停用并还原普通帧格、锁核与调度，并关闭本工具自启动和托盘驻留；原偏好会保存。准备时由临时助手等待目标游戏（最多 180 秒），本工具不会启动游戏、绕过游戏平台或反作弊。助手只操作本轮，完成或超时后退出。" />
+                        </StackPanel>
+                        <ToggleSwitch x:Name="OfflineModeToggle" Grid.Column="1"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center"
+                                      Toggled="OfflineModeToggle_Toggled" />
+                    </Grid>
+                    <Button x:Name="OfflineModeStartButton" Content="准备脱机启动 / 应用当前游戏"
+                            Style="{StaticResource AccentButtonStyle}"
+                            HorizontalAlignment="Left" IsEnabled="False"
+                            Click="OfflineModeStartButton_Click" />
+                    <TextBlock x:Name="OfflineModeStatusText" Style="{StaticResource CardDescStyle}"
+                               TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                </StackPanel>
+            </Border>
+
             <!-- 三角洲目录识别 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
@@ -199,9 +247,9 @@
                         </Grid.ColumnDefinitions>
                         <TextBox x:Name="GamePathBox" VerticalAlignment="Center"
                                  PlaceholderText="例如 D:\WeGameApps\rail_apps\DeltaForce(2001918)" />
-                        <Button Grid.Column="1" Content="浏览" Click="PickGameFolderButton_Click" />
-                        <Button Grid.Column="2" Content="清除" Click="ClearGamePathButton_Click" />
-                        <Button Grid.Column="3" Content="保存" Style="{StaticResource AccentButtonStyle}"
+                        <Button x:Name="PickGameFolderButton" Grid.Column="1" Content="浏览" Click="PickGameFolderButton_Click" />
+                        <Button x:Name="ClearGamePathButton" Grid.Column="2" Content="清除" Click="ClearGamePathButton_Click" />
+                        <Button x:Name="SaveGamePathButton" Grid.Column="3" Content="保存" Style="{StaticResource AccentButtonStyle}"
                                 Click="SaveGamePathButton_Click" />
                     </Grid>
 
@@ -333,6 +381,74 @@
                                Text="本工具的大部分优化功能已真实生效（详见 README），关闭 Defender/更新禁用等高危项会降低系统安全性，使用时请自行权衡并遵守游戏用户协议。" />
                     <TextBlock FontSize="11" Opacity="0.5" TextWrapping="Wrap"
                                Text="显卡驱动级设置（低延迟 / 数字振动等）尚未实现，当前为演示数据。" />
+                </StackPanel>
+            </Border>
+
+            <!-- 致谢名单 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="致谢名单" Style="{StaticResource SectionTitleStyle}"
+                               AutomationProperties.HeadingLevel="Level2" />
+
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Style="{StaticResource CardBorderStyle}" Padding="12">
+                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                         StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                    <Ellipse.Fill>
+                                        <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/token-provider.jpg"
+                                                    Stretch="UniformToFill" />
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <StackPanel Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="Token提供者" Style="{StaticResource CardDescStyle}" />
+                                    <TextBlock Text="怜爱" FontSize="16" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="1" Style="{StaticResource CardBorderStyle}" Padding="12">
+                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                         StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                    <Ellipse.Fill>
+                                        <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/lead-tester.jpg"
+                                                    Stretch="UniformToFill" />
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <StackPanel Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="头号测试员" Style="{StaticResource CardDescStyle}" />
+                                    <TextBlock Text="14代耐电王" FontSize="16" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Border Background="{StaticResource AppAccentSoftBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="14">
+                        <StackPanel Spacing="7">
+                            <TextBlock Text="感谢lynshen提供的算力支持！" FontWeight="SemiBold" />
+                            <TextBlock Text="想更低成本调用主流大模型？" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                <TextBlock Text="来" VerticalAlignment="Center" />
+                                <HyperlinkButton Content="www.lynshen.org" NavigateUri="https://www.lynshen.org/"
+                                                 Padding="0" VerticalAlignment="Center" />
+                                <TextBlock Text="：" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Text="全场国产模型低至 0.55x，GLM-5.3-Flash、DeepSeek-V4.1-Flash 低至 0.2x，GPT 全系模型也低至 0.2x。"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="kimi 限时0.2x" TextWrapping="Wrap" />
+                            <TextBlock Text="充值时输入优惠码 9W435Q7C，还可再享 5% 充值优惠。"
+                                       TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                            <TextBlock Text="交流群:1124358530" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Border>
 

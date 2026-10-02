@@ -107,33 +107,37 @@ public static class ProcessPerf
     [DllImport("ntdll.dll")]
     private static extern int NtQueryTimerResolution(out uint minimumTime100ns, out uint maximumTime100ns, out uint currentTime100ns);
 
-    private const uint Desired5000Us = 5000; // 0.5ms = 5000 × 100ns
+    private const uint DesiredHalfMillisecond100ns = 5000;
 
     /// <summary>把系统定时器分辨率请求提升到 0.5ms（对本进程生效；结合「计时器分辨率常驻」优化可全局生效）。</summary>
-    public static bool TimerRequestHighResolution()
+    public static bool TimerRequestHighResolution() => RequestTimerResolutionHighDetailed().Succeeded;
+
+    public static TimerResolutionRequestResult RequestTimerResolutionHighDetailed()
     {
         try
         {
-            var status = NtSetTimerResolution(Desired5000Us, true, out _);
-            return status == 0;
+            var status = NtSetTimerResolution(DesiredHalfMillisecond100ns, true, out var actual100ns);
+            return new TimerResolutionRequestResult(true, status, DesiredHalfMillisecond100ns, actual100ns, QueryTimerResolutionMs());
         }
         catch
         {
-            return false;
+            return new TimerResolutionRequestResult(false, -1, DesiredHalfMillisecond100ns, 0, QueryTimerResolutionMs());
         }
     }
 
     /// <summary>释放本进程的高分辨率定时器请求（分辨率回归系统其余请求决定）。</summary>
-    public static bool TimerReleaseResolution()
+    public static bool TimerReleaseResolution() => ReleaseTimerResolutionDetailed().Succeeded;
+
+    public static TimerResolutionRequestResult ReleaseTimerResolutionDetailed()
     {
         try
         {
-            var status = NtSetTimerResolution(0, false, out _);
-            return status == 0;
+            var status = NtSetTimerResolution(0, false, out var actual100ns);
+            return new TimerResolutionRequestResult(true, status, 0, actual100ns, QueryTimerResolutionMs());
         }
         catch
         {
-            return false;
+            return new TimerResolutionRequestResult(false, -1, 0, 0, QueryTimerResolutionMs());
         }
     }
 
@@ -147,11 +151,31 @@ public static class ProcessPerf
                 return null;
             }
 
-            return current100ns / 10000.0 / 1000.0;
+            return ConvertTimerResolution100nsToMilliseconds(current100ns);
         }
         catch
         {
             return null;
         }
     }
+
+    internal static double ConvertTimerResolution100nsToMilliseconds(uint value100ns)
+        => value100ns / 10000.0;
+}
+
+public readonly record struct TimerResolutionRequestResult(
+    bool CallCompleted,
+    int NtStatus,
+    uint Requested100ns,
+    uint ReturnedActual100ns,
+    double? SystemCurrentMilliseconds)
+{
+    public bool Succeeded => CallCompleted && NtStatus >= 0;
+    public double RequestedMilliseconds => ProcessPerf.ConvertTimerResolution100nsToMilliseconds(Requested100ns);
+    public double ReturnedActualMilliseconds => ProcessPerf.ConvertTimerResolution100nsToMilliseconds(ReturnedActual100ns);
+
+    public string DiagnosticText(string action)
+        => $"{action}：请求={RequestedMilliseconds:0.####}ms/{Requested100ns}×100ns，" +
+           $"NTSTATUS=0x{unchecked((uint)NtStatus):X8}，返回实际={ReturnedActualMilliseconds:0.####}ms/{ReturnedActual100ns}×100ns，" +
+           $"系统读数={(SystemCurrentMilliseconds.HasValue ? $"{SystemCurrentMilliseconds.Value:0.####}ms" : "不可读")}";
 }

@@ -90,14 +90,14 @@ installer\make-installer.cmd
 
 自动更新读取仓库 `main` 分支根目录的 `update.json`，比对版本后会提示用户下载对应安装包。发布步骤：
 
-1. 同步四处版本号（`src/DeltaNFD/DeltaNFD.csproj` 的 `Version` / `InformationalVersion`、`MainWindow` 的首启公告常量、`installer/DeltaNFD.iss` 的 `MyAppVersion` / `MyAppDisplayVersion`）。
+1. 同步主程序和官方助手 csproj 的 `Version` / `InformationalVersion`、`MainWindow` 的首启公告常量，以及安装脚本的 `MyAppVersion` / `MyAppDisplayVersion`。
 2. 运行 `installer\make-installer.cmd` 生成安装包。
 3. 用 `installer\make-update-manifest.ps1` 生成清单（会写入 SHA256、字节数与显示版本，并打印发布清单）：
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File installer\make-update-manifest.ps1 `
-     -InstallerPath "<安装包路径>" -Version 0.83.0 `
-     -InstallerUrl "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.83.0/<附件名>" `
+     -InstallerPath "<安装包路径>" -Version 0.89.0 `
+     -InstallerUrl "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.89.0/<附件名>" `
      -NotesFile "<更新说明.txt>"
    ```
 

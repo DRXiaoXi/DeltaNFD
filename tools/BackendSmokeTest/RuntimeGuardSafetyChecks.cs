@@ -55,7 +55,13 @@ internal static class RuntimeGuardSafetyChecks
             }
             catch (IOException) { }
 
-            var status = await new RuntimeGuardService(store).GetStatusAsync();
+            try
+            {
+                await new RuntimeGuardService(store).GetStatusAsync();
+                // Machines with no legacy guard need not inspect the corrupt legacy store.
+            }
+            catch (JsonException) { Console.WriteLine("损坏的旧防护归属记录被拒绝使用"); }
+            var status = await new RuntimeGuardService(new TweakBackupStore(Path.Combine(root, "clean.json"))).GetStatusAsync();
             Console.WriteLine($"运行库防护只读检查通过：IFEO {status.IfeoCount}/{status.IfeoTotal}；备份损坏时拒绝覆盖");
         }
         finally

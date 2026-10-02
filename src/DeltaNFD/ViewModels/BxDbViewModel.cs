@@ -382,6 +382,14 @@ public partial class BxDbViewModel : ObservableObject
                 });
 
                 // 明细：枚举全部底层操作，让用户看清每一项到底动了什么
+                if (i.Name == BxService.FullHyperVItemName)
+                {
+                    row.Details.Add("· 引导与安全设置：备份原值，关闭 hypervisor 启动、VBS、HVCI 和 Credential Guard");
+                    row.Details.Add("· 可选功能：记录可读取的原状态，禁用已启用的 Hyper-V / 虚拟机平台功能");
+                    row.Details.Add("· 已存在的 HvHost / vmms 服务：停止并改为按需启动，保留原启动类型备份");
+                    row.Details.Add("· 还原：使用首次原状态备份，不统一启用全部功能；原值未知的项目不擅自修改");
+                    return row;
+                }
                 foreach (var t in i.Tweaks)
                 {
                     switch (t.TweakType)
@@ -870,6 +878,7 @@ public partial class BxDbViewModel : ObservableObject
         ApplyProgress = 0;
         var appliedOk = 0;
         var appliedFail = 0;
+        var appliedSkipped = 0;
         Log.Info($"扩展库：应用 {pending.Count} 项（{string.Join("、", pending.Select(p => p.DisplayName))}）");
         try
         {
@@ -904,7 +913,12 @@ public partial class BxDbViewModel : ObservableObject
                         result = await _bx.ApplyItemAsync(row.Item!, row.IsOn);
                     }
 
-                    if (result.Success)
+                    if (result.IsSkipped)
+                    {
+                        appliedSkipped++;
+                        Log.Info($"扩展库：{row.DisplayName} 安全跳过 —— {result.Message}");
+                    }
+                    else if (result.Success)
                     {
                         appliedOk++;
                     }
@@ -929,10 +943,10 @@ public partial class BxDbViewModel : ObservableObject
             }
 
             ApplyProgress = 100;
-            ApplyProgressText = $"应用完成：成功 {appliedOk} / {pending.Count}";
+            ApplyProgressText = $"完成：已应用 {appliedOk}，跳过 {appliedSkipped}，失败 {appliedFail}";
 
-            Log.Info($"扩展库：应用完成，成功 {appliedOk} 项，失败 {appliedFail} 项");
-            StatusText = $"已应用 {appliedOk} 项" + (appliedFail > 0 ? $"，失败 {appliedFail} 项（详情见上）。" : "。");
+            Log.Info($"扩展库：应用完成，成功 {appliedOk} 项，安全跳过 {appliedSkipped} 项，失败 {appliedFail} 项");
+            StatusText = $"已应用 {appliedOk} 项，安全跳过 {appliedSkipped} 项" + (appliedFail > 0 ? $"，失败 {appliedFail} 项（详情见上）。" : "。");
             UpdateBackupSummary();
 
             // 优化后收尾：移除会话排除项 + 需要时恢复实时保护（结果在状态刷新后提醒）

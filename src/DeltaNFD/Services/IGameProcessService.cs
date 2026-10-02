@@ -19,6 +19,10 @@ public interface IGameProcessService : INotifyPropertyChanged
 
     /// <summary>最近一次自动提权的状态文字。</summary>
     string StatusText { get; }
+    OperationResult ApplyPriorityNow();
+
+    /// <summary>脱机切换前安全关闭自动提权；目标当前为 High 且无本工具原值备份时拒绝还原。</summary>
+    OperationResult DisableGamePriorityForOffline();
 
     /// <summary>扫描可清理的后台进程（排除系统关键进程与本程序）。</summary>
     Task<List<ProcessInfo>> GetScannableProcessesAsync();

@@ -51,6 +51,8 @@ public partial class LabViewModel : ObservableObject
 {
     private readonly ICpuTopologyService _cpu = ServiceLocator.Cpu;
 
+    public bool NormalModeControlsEnabled => !OfflineModeGuard.BlocksNormalAutomation;
+
     public ObservableCollection<CcdItemVm> CcdItems { get; } = new();
 
     /// <summary>处理器场景切换按钮（0 自动 / 1 Intel / 2 AMD 单CCD / 3 AMD 双CCD）。</summary>
@@ -81,8 +83,6 @@ public partial class LabViewModel : ObservableObject
     [ObservableProperty] private string ccdAdvice = "";
     [ObservableProperty] private bool ccdVisible;
     [ObservableProperty] private string gameStatusText = "";
-    [ObservableProperty] private string hybridText = "检测中…";
-    [ObservableProperty] private string htText = "检测中…";
     [ObservableProperty] private bool dualCcdVisible;
     [ObservableProperty] private bool dualCcdEnabled;
     [ObservableProperty] private int dualCcdGameCcdIndex;
@@ -140,7 +140,7 @@ public partial class LabViewModel : ObservableObject
             }
 
             _isGameRunning = value;
-            GameStatusText = value ? "三角洲运行中" : "三角洲未运行";
+            GameStatusText = ServiceLocator.GameTarget.Status;
             OnPropertyChanged();
         }
     }
@@ -317,11 +317,6 @@ public partial class LabViewModel : ObservableObject
             CpuNameText = topology.CpuName;
             VendorText = topology.Vendor;
             TopologyText = $"物理核心 {topology.PhysicalCores} · 逻辑处理器 {topology.LogicalProcessors} · 处理器组 {topology.GroupCount}";
-            HybridText = topology.IsHybrid
-                ? $"是（{topology.PCoreCount} 性能核 + {topology.ECoreCount} 效率核）"
-                : "否";
-            HtText = topology.HasHyperThreading ? "已启用" : "未启用";
-
             DualCcdVisible = topology.IsAmdMultiCcd && topology.Ccds.Count == 2 &&
                 topology.GroupCount == 1 && topology.Ccds.All(c => c.Group == 0);
 
@@ -374,6 +369,9 @@ public partial class LabViewModel : ObservableObject
             // 异类调度策略状态（后台刷新不阻塞页面）
             _ = RefreshHeteroPoliciesAsync();
 
+            // 帧格「电源计划锁定」冲突提醒（该功能会改回本页对电源计划内容的修改）
+            RefreshPowerLockNotice();
+
             // 无省电电源计划状态（后台刷新不阻塞页面）
             _ = RefreshSchemeStatusAsync();
 
@@ -397,7 +395,7 @@ public partial class LabViewModel : ObservableObject
             DualCcdApplyModeIndex = Math.Clamp(stored.DualCcdApplyModeIndex, 0, 1);
             DualCcdGameCcdIndex = Math.Clamp(stored.DualCcdGameCcdIndex, 0, Math.Max(0, DualCcdChoices.Count - 1));
             SingleCcdStatusText = stored.SingleCcdExcludeCpu0Enabled
-                ? "单CCD规则已保存：工具启动后自动恢复，三角洲启动时排除 CPU0。"
+                ? "单CCD规则已保存：工具启动后自动恢复，目标游戏启动时排除 CPU0。"
                 : "单CCD规则未启用。";
             DualCcdStatusText = stored.DualCcdArmed
                 ? $"已登记帧格生效：帧格开启时游戏使用 CCD{stored.DualCcdGameCcdIndex}，退出帧格后撤销。"
@@ -415,7 +413,7 @@ public partial class LabViewModel : ObservableObject
         }
     }
 
-    // ---------------- CPU 亲和性规则（Process Lasso 风格，仅三角洲进程） ----------------
+    // ---------------- CPU 亲和性规则（Process Lasso 风格，仅目标游戏进程） ----------------
 
     /// <summary>当前勾选核心的掩码。</summary>
     public ulong AffinityRuleMask
@@ -444,15 +442,16 @@ public partial class LabViewModel : ObservableObject
     /// <summary>手动立即应用一次亲和性规则（互斥与冷却遵循服务逻辑）。</summary>
     public async Task ApplyAffinityNowAsync()
     {
+        using var targetOperation = ServiceLocator.GameTarget.BeginOperation();
         var mask = AppSettingsStore.Read().GameAffinityRuleMask;
         if (mask == 0)
         {
-            GameAffinityStatusText = "尚未勾选任何核心（请先勾选允许三角洲运行的核心）。";
+            GameAffinityStatusText = "尚未勾选任何核心（请先勾选允许目标游戏运行的核心）。";
             return;
         }
 
         await Task.Run(() => CpuTopologyService.ApplyAffinityRuleTick(mask));
-        GameAffinityStatusText = $"已应用掩码 0x{mask:X}（三角洲运行中持续保持）。";
+        GameAffinityStatusText = $"已应用掩码 0x{mask:X}（目标游戏运行中持续保持）。";
     }
 
     /// <summary>亲和性快捷按钮（仅 CCD0 / 仅 CCD1）是否显示（双CCD 机型才有第二个 CCD）。</summary>
@@ -613,6 +612,7 @@ public partial class LabViewModel : ObservableObject
     /// <summary>应用双CCD专属调度：立即生效模式马上调整亲和性；帧格生效模式登记到帧格模式随开关自动启停。</summary>
     public async Task<OperationResult?> ApplyDualCcdAsync()
     {
+        using var targetOperation = ServiceLocator.GameTarget.BeginOperation();
         if (IsApplying)
         {
             return null;
@@ -679,6 +679,7 @@ public partial class LabViewModel : ObservableObject
     /// <summary>撤销双CCD专属调度（恢复所有进程到全部核心，并清除帧格联动登记）。</summary>
     public async Task<OperationResult?> RevertDualCcdAsync()
     {
+        using var targetOperation = ServiceLocator.GameTarget.BeginOperation();
         if (IsApplying)
         {
             return null;
@@ -747,6 +748,7 @@ public partial class LabViewModel : ObservableObject
     /// <summary>排除 CPU0（单CCD 优化调度）。</summary>
     public async Task<OperationResult?> ExcludeCpu0Async()
     {
+        using var targetOperation = ServiceLocator.GameTarget.BeginOperation();
         if (SingleCcdBusy)
         {
             return null;
@@ -782,9 +784,10 @@ public partial class LabViewModel : ObservableObject
         }
     }
 
-    /// <summary>恢复三角洲到全部核心。</summary>
+    /// <summary>恢复目标游戏到全部核心。</summary>
     public async Task<OperationResult?> RestoreFullCoresAsync()
     {
+        using var targetOperation = ServiceLocator.GameTarget.BeginOperation();
         if (SingleCcdBusy)
         {
             return null;
@@ -895,6 +898,7 @@ public partial class LabViewModel : ObservableObject
 
             // 帧格电源锁定开启期间激活会被锁定守卫立刻改回目标计划，跳过自动激活并说明
             var settings = AppSettingsStore.Read();
+            RefreshPowerLockNotice();
             if (settings.FrameModeActive && settings.FramePowerLockEnabled)
             {
                 await RefreshSchemeStatusCoreAsync();
@@ -923,7 +927,11 @@ public partial class LabViewModel : ObservableObject
                 ? "导入后已自动激活，立即生效。"
                 : $"自动激活失败：{activate.Message}——可点击「切换到无省电电源计划」重试。";
             await RefreshSchemeStatusCoreAsync();
-            SchemeStatusText = activateNote + "；" + SchemeStatusText;
+            // 帧格未生效但锁定已开启：现在可以激活，但帧格一旦激活会把计划内容改回锁定时的状态 → 提醒先关闭。
+            var lockNotice = PowerLockConflictNotice();
+            SchemeStatusText = activateNote + "；"
+                + (lockNotice.Length > 0 ? lockNotice + "\n" : "")
+                + SchemeStatusText;
         }
         catch (Exception ex)
         {
@@ -1076,6 +1084,38 @@ public partial class LabViewModel : ObservableObject
 
     public bool HasHeteroItems => HeteroItems.Count > 0;
 
+    // ---------------- 帧格「电源计划锁定」冲突提醒 ----------------
+
+    /// <summary>帧格「电源计划锁定」开启时，提示用户先关闭它（否则本页对电源计划内容的修改会被改回）。</summary>
+    [ObservableProperty] private bool powerLockNoticeVisible;
+
+    [ObservableProperty] private string powerLockNoticeText = "";
+
+    /// <summary>
+    /// 帧格「电源计划锁定」会强制并**钉住**电源计划内容，因此本页对异类调度策略 /
+    /// 无省电电源计划的修改会被它改回。开启时返回提醒文案，未开启返回空串。
+    /// </summary>
+    private static string PowerLockConflictNotice()
+    {
+        var settings = AppSettingsStore.Read();
+        if (!settings.FramePowerLockEnabled)
+        {
+            return "";
+        }
+
+        return settings.FrameModeActive
+            ? "⚠ 帧格「电源计划锁定」正在生效：它会把电源计划内容改回锁定时的状态，你刚才的修改随后会被改回。"
+              + "请先到帧格页关闭「电源计划锁定」再修改。"
+            : "⚠ 帧格「电源计划锁定」已开启：帧格激活后会把电源计划内容改回锁定时的状态，你现在改的内容届时会被改回。"
+              + "建议先到帧格页关闭该功能。";
+    }
+
+    private void RefreshPowerLockNotice()
+    {
+        PowerLockNoticeText = PowerLockConflictNotice();
+        PowerLockNoticeVisible = PowerLockNoticeText.Length > 0;
+    }
+
     /// <summary>用户在下拉选择新值后应用（交流/直流同时设置）。</summary>
     public async Task<OperationResult?> ApplyHeteroPolicyAsync(HeteroPolicyVm item)
     {
@@ -1089,7 +1129,9 @@ public partial class LabViewModel : ObservableObject
         try
         {
             var result = await ServiceLocator.Power.SetHeteroPolicyAsync(item.SettingGuid, value);
-            HeteroStatusText = $"{item.Title}：{result.Message}";
+            var notice = PowerLockConflictNotice();
+            HeteroStatusText = $"{item.Title}：{result.Message}" + (notice.Length > 0 ? "\n" + notice : "");
+            RefreshPowerLockNotice();
             item.CurrentText = $"当前值：{value}";
             return result;
         }
@@ -1219,6 +1261,7 @@ public partial class LabViewModel : ObservableObject
     /// <summary>把已通过校验的方案应用到本机（亲和性勾选 + 规则开关 + 异类调度策略）。</summary>
     public async Task<bool> ImportPlanAsync(CpuPlanService.CpuPlan plan)
     {
+        using var targetOperation = ServiceLocator.GameTarget.BeginOperation();
         try
         {
             // 1. 亲和性：以「已勾选核心」为准重建掩码，避免掩码与核心列表互相矛盾

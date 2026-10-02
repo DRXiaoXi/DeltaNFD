@@ -29,6 +29,20 @@ internal static class SystemOptimizePhaseTwoThreeChecks
         var partial = BxService.SummarizeServiceGroup(3, 2, ["ServiceB"]);
         Assert(!partial.Success && partial.Message.Contains("ServiceB"), "service partial failure");
         Assert(BxService.SummarizeServiceGroup(2, 2, []).Success, "service complete success");
+        var protectedOnly = BxService.SummarizeServiceGroup(1, 0, [], ["rdyboost"]);
+        Assert(protectedOnly.Success && protectedOnly.IsSkipped && protectedOnly.Message.Contains("没有修改"), "protected-only group is skipped, not applied or failed");
+        var guardedPartial = BxService.SummarizeServiceGroup(2, 1, [], ["rdyboost"]);
+        Assert(guardedPartial.Success && !guardedPartial.IsSkipped && guardedPartial.Message.Contains("安全跳过"), "completed eligible services with guard skip");
+        Assert(!BxService.SummarizeServiceGroup(3, 1, ["Denied"], ["rdyboost"]).Success, "real write failure is not hidden by safety skip");
+        Assert(!BxService.SummarizeServiceGroup(1, 0, []).Success, "unexplained incomplete service operation remains failure");
+        Assert(!BxService.SummarizeServiceGroup(0, 0, []).Success, "empty service group not claimed applied");
+
+        var sysMain = BxCatalog.ServiceGroups.Single(g => g.Id == "svc-hdd");
+        Assert(sysMain.Services.SequenceEqual(new[] { "SysMain" }), "ReadyBoost removed from batch disable group");
+        Assert(sysMain.Name.Contains("SysMain") && sysMain.Desc.Contains("rdyboost"), "SysMain metadata accurately describes scope");
+        var uwp = BxCatalog.Database["basic"].Single(i => i.Name == "setsuwpwork");
+        Assert(uwp.Tweaks.Count == 2 && uwp.Tweaks.All(t => t.Path.StartsWith("HKCU", StringComparison.OrdinalIgnoreCase)), "UWP entry writes only current-user settings");
+        Assert(uwp.Tweaks.Select(t => t.Key).Order().SequenceEqual(new[] { "BackgroundAppGlobalToggle", "GlobalUserDisabled" }), "UWP background switches preserved");
 
         var backup = BxService.MakeUsbPowerBackup("00000000-0000-0000-0000-000000000001", 0, null);
         Assert(backup.Count == 3 && backup[1].Data == "0" && backup[2].ValueKind == 0, "USB power original values");

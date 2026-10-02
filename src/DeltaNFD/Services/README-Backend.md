@@ -74,6 +74,12 @@ Toggle ON = 应用优化值（走备份库），OFF = 还原默认。除原有 4
 5. **文件**：`%ProgramFiles%\AntiCheatExpert` 整树 + 游戏目录 AntiCheatExpert；
    被占用文件走 `MoveFileEx(MOVEFILE_DELAY_UNTIL_REBOOT)` 重启后删除
 - 扫描：`ScanAsync()` 列出运行中的 ACE/游戏进程、服务、目录体积、注册表残留（纯只读）
+- **检测闸门（用户明确要求）**：三角洲进程运行时 `ScanAsync()` / `CheckCoreFilesAsync()` **整体跳过**，
+  分别返回 `AceScanResult.BlockedByGame = true` / `AceCoreCheckLevel.Blocked`——不读 ACE 服务、
+  不遍历 ACE 目录、不查 ACE 注册表，避免在反作弊运行期间触碰其组件。`BlockedScan()` 同时把三角洲列入
+  `BlockingProcesses`，使 `CanClean = false`（暂停期间绝不能被判为"可清理"）。`ScanAsync()` 在真正遍历
+  ACE 目录前会**再确认一次**，以防游戏在服务枚举期间启动。ACE 页与主页健康卡均识别该状态，
+  并按游戏进程变化自动暂停 / 恢复。判定只看三角洲本体；`sguard64` 常驻**不**触发暂停（仅由「一键清除」拒绝）。
 - 下次启动游戏时 ACE 会自动重新安装（UI 已注明）
 
 ## 着色器维护（IShaderService）
@@ -132,6 +138,33 @@ Hyper-V/VBS 项的恢复（`RestoreAsync(SystemTweak.HyperVAndVbs)`）：`bcdedi
   `ActivateFrameModeAsync()` / `DeactivateFrameModeAsync()`**，确认对话框等 UI 流程统一在 `Views/FrameModeFlow.cs`。
 - 开启 / 退出：按帧格页的各项开关执行并停止 DWM、双 CCD、电源锁定与响应加速等帧格专属行为；GPU 伪装不再作为帧格功能提供。
 - 登录任务 `DeltaNFD_FrameMode` 仍由帧格启动流程及临时显卡伪装恢复流程共用；临时 GPU 伪装只允许在帧格未激活时使用重启流程。
+
+### 帧格临时优化：前台加速响应 / 降低省电延迟
+
+- 「降低省电延迟」总开关下有三个子开关：① 网卡省电全禁（网卡类键 `EnablePowerManagement=0` + `PnPCapabilities=24`）；
+  ② 关闭 USB 选择性暂停（全局 `DisableSelectiveSuspend=1` + 电源计划 AC/DC）；③ **关闭 PCIe 省电**
+  （当前电源计划的「PCI Express → 链接状态电源管理 (ASPM)」写 0，子组 `501a4d13-…`，设置 `ee12f906-…`）。
+- 电源计划类改写（USB/PCIe）各自单独备份原 AC/DC 值到 `frame_usb_power.json` / `frame_pcie_power.json`，
+  退出帧格时还原；`powercfg` 输出按 0x 令牌解析，**注意 `NumberStyles.HexNumber` 不接受 `0x` 前缀**，
+  必须先去前缀再按 long 解析（DWORD 索引可达 0xFFFFFFFF）。
+- **笔记本不适用**：机箱形态经 `Win32_SystemEnclosure.ChassisTypes` 三态判定（Desktop / Laptop / Unknown，缓存一次）。
+  `Laptop` ⇒ 网卡省电全禁与关闭 PCIe 省电**前端置灰 + 后端跳过**（记为「跳过」而非失败，不污染帧格激活状态）；
+  `Unknown` ⇒ 不显示徽章、不禁用、照常应用（fail-open，绝不冒充笔记本）。USB 选择性暂停不受此限制。
+- `IsPowerSaveLatencyApplied()`（开机自愈的判定）必须同时要求注册表备份 + 两个电源计划备份文件存在；
+  只看注册表备份会让新机制被判为「已应用」而静默跳过补应用。
+
+### 电源计划锁定（强制计划 + 内容不可被修改）
+
+- 帧格开启时：未指定目标计划则记住并锁定当前计划（不切换），指定则切换过去；退出时还原开启前的计划。
+- **内容锁定**：锁定瞬间对锁定的计划做**全量 AC/DC 快照**（`frame_power_scheme_snapshot.json`），
+  帧格期间每约 30 秒（沿用 `_powerGuardPollCount < 15` 节流）比对，发现漂移就写回并记日志。
+  解析 `powercfg /q` 输出采用**本地化安全**的结构化解析（按 GUID 行分块，块内含 0x 值的最后两个为该设置的 AC/DC）。
+  无法解析时返回 null 而不是当成「一切正常」。
+- **排除清单 `FrameManagedPowerSettings`（唯一定义处）**：USB 选择性暂停与 PCIe ASPM 由帧格「降低省电延迟」
+  临时改写，内容锁定必须排除它们，否则 30 秒守护会把帧格的临时改写改回、退出还原又和锁定互相覆盖。
+  快照过滤与差异校验都引用该清单（差异校验再防御性复查一次）。
+- 退出顺序：先做一次内容校验还原，再切回用户原计划（因为还原的 `/setactive` 作用于锁定计划）；
+  还原计划设置时只在「备份所属计划仍是当前激活计划」时才 `/setactive`，避免锁定已解除后又被切回锁定目标。
 
 ### 临时显卡伪装的重启还原
 
@@ -228,3 +261,14 @@ dotnet run --project tools\BackendSmokeTest
 ```
 
 用来在不跑 UI 的情况下验证后端逻辑。**它不包含任何伪装/关闭操作**。
+
+### 隔离脱机助手端到端测试
+
+专项测试与上述默认只读入口不同：它启动真实助手，仅对自己创建的测试子进程写入并还原 CPU Sets，包含真实 180 秒超时。必须先构建主工程（会构建/复制助手）及测试工程，再显式指定本次构建的绝对助手路径。示例为默认 x64 Debug 输出；隔离构建需替换为实际输出路径：
+
+```powershell
+$helper = (Resolve-Path 'src/DeltaNFD/bin/x64/Debug/net8.0-windows10.0.19041.0/win-x64/OfflineHelper/DeltaNFD.OfflineHelper.exe').Path
+dotnet run --project tools/BackendSmokeTest -- --offline-helper-e2e-checks --offline-helper-exe "$helper"
+```
+
+测试拒绝自动寻找 Debug/Release 旧产物，并先以无副作用的隔离协议探针核验助手。设置、状态、日志和锁使用 `_buildcheck/offline-helper-e2e/<GUID>/`；目录标记、代次和无重解析父路径必须匹配，失败不回退真实 APPDATA。不再备份/覆盖用户设置。结束确认测试进程退出并删除本轮完整目录；失败保留错误，不以静默清理冒充通过。普通程序未使用测试参数时仍使用原数据目录和迁移逻辑。

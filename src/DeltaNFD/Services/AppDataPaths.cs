@@ -6,6 +6,26 @@ public static class AppDataPaths
     public const string DirectoryName = "Delta NFD";
     private const string LegacyDirectoryName = "DeltaOptimizer";
     private static readonly Lazy<string> RootPath = new(ResolveRoot, LazyThreadSafetyMode.ExecutionAndPublication);
+    private static string? _isolatedRoot;
+
+    internal static void ConfigureIsolatedTestRoot(string path, Guid testId)
+    {
+        if (RootPath.IsValueCreated || _isolatedRoot is not null)
+            throw new InvalidOperationException("测试数据根必须在任何默认服务初始化之前配置。");
+        if (testId == Guid.Empty || !Path.IsPathFullyQualified(path))
+            throw new ArgumentException("测试数据根和代次无效。");
+        var full = Path.GetFullPath(path);
+        if (Path.GetFileName(full) != testId.ToString("N") ||
+            Path.GetFileName(Path.GetDirectoryName(full)) != "offline-helper-e2e")
+            throw new ArgumentException("测试数据根必须位于独立 offline-helper-e2e/GUID 目录。");
+        for (var directory = new DirectoryInfo(full); directory is not null; directory = directory.Parent)
+            if ((directory.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new IOException("测试数据根不允许重解析父目录。");
+        var marker = Path.Combine(full, "isolated-test.marker");
+        if ((File.GetAttributes(marker) & FileAttributes.ReparsePoint) != 0 || File.ReadAllText(marker) != testId.ToString("D"))
+            throw new InvalidDataException("测试数据根缺少匹配的标记。");
+        _isolatedRoot = full;
+    }
 
     public static string Root => RootPath.Value;
     public static string? MigrationWarning { get; private set; }
@@ -33,6 +53,7 @@ public static class AppDataPaths
 
     private static string ResolveRoot()
     {
+        if (_isolatedRoot is not null) return _isolatedRoot;
         var root = ResolveRootAt(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), out var warning);
         MigrationWarning = warning;
         return root;

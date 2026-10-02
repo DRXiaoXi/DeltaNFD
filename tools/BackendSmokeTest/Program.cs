@@ -1,5 +1,151 @@
 using DeltaNFD.Services;
 
+if (args.Contains("--offline-helper-e2e-child", StringComparer.OrdinalIgnoreCase))
+{
+    OfflineHelperE2EChecks.RunChild();
+    return;
+}
+
+if (args.Contains("--plugin-contract-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { BackendSmokeTest.PluginContractChecks.Run(args); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--plugin-contract-e2e-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { BackendSmokeTest.PluginContractChecks.Run(args); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--offline-helper-e2e-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await OfflineHelperE2EChecks.RunAsync(args); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--offline-audit-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await OfflineAuditChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--offline-audit-child", StringComparer.OrdinalIgnoreCase))
+{
+    await Task.Delay(TimeSpan.FromSeconds(90));
+    return;
+}
+
+if (args.Contains("--offline-cpu-set-native-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await OfflineCpuSetNativeChecks.RunIsolatedAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+if (args.Contains("--offline-cpu-set-native-child", StringComparer.OrdinalIgnoreCase))
+{
+    try { OfflineCpuSetNativeChecks.RunCurrentProcess(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--offline-cpu-set-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { OfflineCpuSetCatalogChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--offline-state-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { OfflineModeStateChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--offline-cpu-plan-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { OfflineCpuSetPlannerChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--offline-task-ownership-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { OfflineTaskOwnershipChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--offline-timer-unit-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { OfflineTimerResolutionChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--frame-power-safety-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await FramePowerSafetyChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--runtime-installer-fixture", StringComparer.OrdinalIgnoreCase))
+{
+    var logIndex = Array.FindIndex(args, a => a.Equals("/L*V", StringComparison.OrdinalIgnoreCase));
+    var packageIndex = Array.FindIndex(args, a => a.Equals("/i", StringComparison.OrdinalIgnoreCase));
+    if (logIndex < 0 || packageIndex < 0) { Environment.ExitCode = 2; return; }
+    var path = Path.GetFullPath(args[logIndex + 1]);
+    var prefix = Path.Combine(Path.GetTempPath(), "DeltaNFD_RepairChecks_");
+    if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) { Environment.ExitCode = 2; return; }
+    var fail = args[packageIndex + 1].Contains("2005", StringComparison.OrdinalIgnoreCase);
+    File.WriteAllText(path, fail ? "Error 1935 HRESULT: 0x80070005" : "MainEngineThread is returning 3010", System.Text.Encoding.Unicode);
+    Environment.ExitCode = fail ? 1603 : 3010;
+    return;
+}
+
+if (args.Contains("--runtime-repair-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await RuntimeRepairChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--frame-feature-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { FrameFeatureChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--runtime-guard-recovery-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await RuntimeGuardRecoveryChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--game-target-test-child"))
+{
+    using var child = args.Length > 1 ? System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(args[1], "--game-target-test-child")
+        { UseShellExecute = false, CreateNoWindow = true }) : null;
+    if (child is not null) Console.WriteLine(child.Id);
+    await Task.Delay(TimeSpan.FromSeconds(60));
+    if (child is not null && !child.HasExited) { child.Kill(); await child.WaitForExitAsync(); }
+    return;
+}
+if (args.Contains("--game-target-checks"))
+{
+    try { await GameTargetChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 ﻿// 只读冒烟测试：只枚举显卡、读取优化项状态、查询 VBS 运行时。
 // 绝不调用 SpoofAsync / RestoreAsync / DisableAsync —— 那些会真实改动系统。
 if (args.Contains("--affinity-test-child", StringComparer.OrdinalIgnoreCase))
@@ -53,6 +199,13 @@ if (args.Contains("--power-scheme-checks", StringComparer.OrdinalIgnoreCase))
 if (args.Contains("--runtime-guard-safety-checks", StringComparer.OrdinalIgnoreCase))
 {
     try { await RuntimeGuardSafetyChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--ace-guard-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await AceGuardChecks.RunAsync(); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }

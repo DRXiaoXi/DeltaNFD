@@ -11,6 +11,14 @@ function Assert-Safety([bool]$Condition, [string]$Message) {
 $uninstall = $source.Substring($source.IndexOf('procedure CurUninstallStepChanged('))
 $pre = $uninstall.Substring(0, $uninstall.IndexOf('if CurUninstallStep <> usPostUninstall'))
 Assert-Safety ($pre.Contains('if not KillAppProcesses()') -and $pre.Contains('Abort;')) 'Process verification must precede file uninstall and abort on failure'
+Assert-Safety ($pre.Contains('if not RestoreRuntimeGuardBeforeUninstall()')) 'Runtime protection is restored before uninstall deletes files or backups'
+Assert-Safety ($source.Contains("'--restore-runtime-guard-for-uninstall'")) 'Uninstaller invokes the shared headless restore path'
+Assert-Safety ($source.Contains('ewWaitUntilTerminated, ResultCode) and (ResultCode = 0)')) 'Uninstaller waits for successful restore exit code'
+$appSource = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\src\DeltaNFD\App.xaml.cs'))
+Assert-Safety ($appSource.IndexOf('"--restore-runtime-guard-for-uninstall"') -lt $appSource.IndexOf('SingleInstanceGuard.TryBecomePrimary()')) 'Headless restore runs before GUI single-instance handling'
+$headless = [regex]::Match($appSource, 'private static async Task RestoreRuntimeGuardForUninstallAsync\(\)[\s\S]+?Environment.Exit\(code\);').Value
+Assert-Safety ($headless.Contains('DisableAsync()') -and -not $headless.Contains('ServiceLocator.Frame')) 'Headless restore does not start frame optimizations'
+Assert-Safety ($headless.Contains('PrepareForRemovalAsync(restoreCpuSets: true)')) 'Headless restore drains offline helper and restores CPU Sets before uninstall'
 Assert-Safety (-not $uninstall.Substring($pre.Length).Contains('KillAppProcesses();')) 'No late process termination after file uninstall'
 Assert-Safety ($source.Contains('function PreserveBackupFiles') -and $source.Contains('CopyFile(Src, Dst, True)')) 'Backup copying returns status and cannot overwrite existing files'
 Assert-Safety ($source.Contains('GetSHA256OfFile(Src) <> GetSHA256OfFile(Dst)')) 'Backup copies are verified before deletion'

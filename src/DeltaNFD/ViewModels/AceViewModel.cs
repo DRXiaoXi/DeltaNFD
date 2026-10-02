@@ -21,6 +21,16 @@ public partial class AceViewModel : ObservableObject
     [ObservableProperty] private bool coreCheckBusy;
     [ObservableProperty] private bool hasBlockers;
 
+    /// <summary>三角洲进程运行中 → 已暂停 ACE 检测（不读取任何 ACE 信息）。</summary>
+    [ObservableProperty] private bool detectionPaused;
+
+    /// <summary>暂停原因提示（仅在 <see cref="DetectionPaused"/> 为 true 时有意义）。</summary>
+    [ObservableProperty] private string detectionPauseText = "";
+
+    private const string PausedNotice =
+        "三角洲进程正在运行——已按需求暂停 ACE 组件检测，未读取任何 ACE 服务 / 目录 / 注册表项。" +
+        "请完全退出游戏后点「重新扫描」。";
+
     public bool CleanRefreshEnabled => !IsBusy;
 
     partial void OnIsBusyChanged(bool value)
@@ -38,12 +48,46 @@ public partial class AceViewModel : ObservableObject
 
     public string CoreCheckButtonText => CoreCheckBusy ? "检测中…" : "开始检测";
 
-    public bool CanCheckCore => !CoreCheckBusy;
+    public bool CanCheckCore => !CoreCheckBusy && !DetectionPaused;
 
     partial void OnCoreCheckBusyChanged(bool value)
     {
         OnPropertyChanged(nameof(CoreCheckButtonText));
         OnPropertyChanged(nameof(CanCheckCore));
+    }
+
+    partial void OnDetectionPausedChanged(bool value) => OnPropertyChanged(nameof(CanCheckCore));
+
+    // ---------------- 随游戏进程状态自动暂停 / 恢复 ----------------
+
+    /// <summary>
+    /// 订阅共享的游戏进程状态：三角洲启动 → 立刻切到"已暂停检测"并禁用检测按钮；
+    /// 三角洲退出 → 自动重新检测。页面用 Loaded/Unloaded 调用（导航每次新建页面实例）。
+    /// </summary>
+    public void AttachGameState()
+    {
+        var gameProcess = ServiceLocator.GameProcess;
+        gameProcess.PropertyChanged -= OnGameProcessChanged;
+        gameProcess.PropertyChanged += OnGameProcessChanged;
+    }
+
+    public void DetachGameState() => ServiceLocator.GameProcess.PropertyChanged -= OnGameProcessChanged;
+
+    private async void OnGameProcessChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(IGameProcessService.IsGameRunning))
+        {
+            return;
+        }
+
+        try
+        {
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("ACE 页跟随游戏进程状态刷新失败", ex);
+        }
     }
 
     partial void OnIsCleaningChanged(bool value) => RefreshFlags();
@@ -67,6 +111,25 @@ public partial class AceViewModel : ObservableObject
         try
         {
             var scan = await _ace.ScanAsync();
+
+            if (scan.BlockedByGame)
+            {
+                DetectionPaused = true;
+                DetectionPauseText = PausedNotice;
+                HasBlockers = false;
+                ServicesText = "ACE 服务：已暂停检测（三角洲运行中）";
+                PathsText = "ACE 文件目录：已暂停检测（三角洲运行中）";
+                RegistryText = "ACE 注册表项：已暂停检测（三角洲运行中）";
+                ScanSummary = "已暂停 ACE 组件检测：三角洲进程运行中。";
+                CanClean = false;
+
+                // 同一闸门刷新 ACE-CORE 卡片：后端会立即返回 Blocked，不读取 ACE 目录。
+                await CheckCoreFilesAsync();
+                return;
+            }
+
+            DetectionPaused = false;
+            DetectionPauseText = "";
 
             if (scan.BlockingProcesses.Count > 0)
             {
@@ -152,6 +215,15 @@ public partial class AceViewModel : ObservableObject
         {
             var result = await _ace.CheckCoreFilesAsync();
 
+            if (result.Level == AceCoreCheckLevel.Blocked)
+            {
+                // 三角洲在扫描/检测期间启动也会走到这里——保持"已暂停"一致。
+                DetectionPaused = true;
+                DetectionPauseText = PausedNotice;
+                CoreCheckText = "⏸ " + result.Summary + "\n👉 " + result.Advice;
+                return;
+            }
+
             var text = new StringBuilder();
             text.AppendLine(DescribeLevel(result.Level) + result.Summary);
             foreach (var line in result.Files)
@@ -173,6 +245,7 @@ public partial class AceViewModel : ObservableObject
         AceCoreCheckLevel.Normal => "✓ ",
         AceCoreCheckLevel.Abnormal => "⚠ ",
         AceCoreCheckLevel.Failed => "⛔ ",
+        AceCoreCheckLevel.Blocked => "⏸ ",
         _ => "ℹ ",
     };
 }

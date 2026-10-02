@@ -18,9 +18,25 @@ internal static class SystemOptimizePhaseOneChecks
         Check(BxState.Off, BxTaskState.Enabled, BxTaskState.Enabled);
         Check(BxState.On, BxTaskState.Disabled, BxTaskState.Disabled);
         Check(BxState.Mixed, BxTaskState.Enabled, BxTaskState.Disabled);
-        Check(BxState.Mixed, BxTaskState.Disabled, BxTaskState.Missing);
+        Check(BxState.On, BxTaskState.Disabled, BxTaskState.Missing);
+        Check(BxState.Off, BxTaskState.Enabled, BxTaskState.Missing);
+        Check(BxState.On, BxTaskState.Missing, BxTaskState.Disabled);
         Check(BxState.NotApplicable, BxTaskState.Missing, BxTaskState.Missing);
         Check(BxState.Unknown, BxTaskState.Unknown, BxTaskState.Disabled);
+        Check(BxState.Unknown, BxTaskState.Unknown, BxTaskState.Missing);
+        Check(BxState.Unknown, BxTaskState.Missing, BxTaskState.Unknown);
+
+        var mixedItem = new BxItem
+        {
+            Name = "SyntheticRegAndMissingTask",
+            Tweaks = [new BxTweak
+            {
+                TweakType = "REG", Path = @"HKCU\Software\DeltaNFD\MissingTest-" + Guid.NewGuid().ToString("N"), Key = "Value",
+                Values = [new BxValueEntry { ValueTypes = ["DEFAULT"], Value = "Null" }, new BxValueEntry { ValueTypes = ["OPTIMAL"], Value = "1" }],
+            }, new BxTweak { TweakType = "TASK", Path = @"\Test\Missing" }],
+        };
+        Assert(service.EvaluateItemForSnapshot(mixedItem, _ => BxTaskState.Missing) == BxState.Off,
+            "missing task must not hide a non-optimized registry value");
 
         var variants = new[]
         {

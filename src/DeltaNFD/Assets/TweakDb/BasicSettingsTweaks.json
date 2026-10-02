@@ -279,21 +279,6 @@
             "Value": "0"
           }
         ]
-      },
-      {
-        "TweakType": "REG",
-        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Services\\embeddedmode",
-        "Key": "Start",
-        "Values": [
-          {
-            "ValueTypes": [ "DEFAULT", "ON" ],
-            "Value": "3"
-          },
-          {
-            "ValueTypes": [ "OPTIMAL", "BEST", "OFF" ],
-            "Value": "4"
-          }
-        ]
       }
     ],
     "IconPath": "CogRefresh"

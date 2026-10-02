@@ -54,8 +54,8 @@ public sealed class GameProcessService : IGameProcessService
     private readonly Microsoft.UI.Dispatching.DispatcherQueue? _dispatcher;
     private bool _gamePriorityEnabled;
     private bool _isGameRunning;
-    private bool _priorityAppliedForSession;
-    private int? _lastProcessId;
+    private readonly object _priorityGate = new();
+    private readonly Dictionary<int, (GameProcessIdentity Identity, ProcessPriorityClass Original)> _priorities = [];
     private string _statusText = "";
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -100,13 +100,17 @@ public sealed class GameProcessService : IGameProcessService
         get => _gamePriorityEnabled;
         set
         {
+            if (value && OfflineModeGuard.BlocksNormalAutomation)
+            {
+                Log.Warn("脱机模式或恢复流程中，拒绝开启自动游戏优先级。");
+                return;
+            }
             if (_gamePriorityEnabled == value)
             {
                 return;
             }
 
             _gamePriorityEnabled = value;
-            _priorityAppliedForSession = false;
             SaveSetting(value);
             _gamePriorityEnabled = LoadSetting();
             StatusText = DescribeStatus();
@@ -116,6 +120,7 @@ public sealed class GameProcessService : IGameProcessService
                 var monitor = ServiceLocator.GameMonitor;
                 OnGameMonitorTick(monitor.IsRunning, monitor.ProcessId);
             }
+            else RestorePriorities();
         }
     }
 
@@ -138,52 +143,119 @@ public sealed class GameProcessService : IGameProcessService
 
     private void OnGameMonitorTick(bool running, int? processId)
     {
-        if (_lastProcessId != processId)
-        {
-            _lastProcessId = processId;
-            _priorityAppliedForSession = false;
-        }
-
+        using var operation = GameTargetService.Default.BeginOperation();
         var enabled = AppSettingsStore.Read().GamePriorityEnabled;
         if (enabled != _gamePriorityEnabled)
         {
             _gamePriorityEnabled = enabled;
-            _priorityAppliedForSession = false;
             OnPropertyChanged(nameof(GamePriorityEnabled));
         }
 
         if (running != _isGameRunning)
         {
             IsGameRunning = running;
-            if (!running)
-            {
-                _priorityAppliedForSession = false;
-            }
-
             StatusText = DescribeStatus();
         }
 
-        if (running && _gamePriorityEnabled && !_priorityAppliedForSession && processId.HasValue)
+        if (!_gamePriorityEnabled) { RestorePriorities(); return; }
+        if (running) _ = ApplyPriorityNow();
+    }
+
+    public OperationResult ApplyPriorityNow()
+    {
+        using var operation = GameTargetService.Default.BeginOperation();
+        if (OfflineModeGuard.BlocksNormalAutomation) return OperationResult.Fail("脱机模式或恢复流程中，自动优先级已暂停。");
+        if (!LoadSetting()) return OperationResult.Fail("自动优先级未开启。");
+        var applied = 0;
+        var failed = 0;
+        lock (_priorityGate)
+        foreach (var gameProcess in GameTargetService.Default.GetProcesses())
         {
-            _priorityAppliedForSession = true;
-            try
+            using (gameProcess)
             {
-                using (var gameProcess = Process.GetProcessById(processId.Value))
+                try
                 {
-                    gameProcess.Refresh();
+                    var identity = GameTargetService.Default.Identify(gameProcess);
+                    if (identity is null || !GameTargetService.Default.Matches(gameProcess, identity)) continue;
+                    if (_priorities.TryGetValue(identity.Id, out var old) && old.Identity.StartTimeUtc != identity.StartTimeUtc)
+                        _priorities.Remove(identity.Id);
                     if (gameProcess.PriorityClass != ProcessPriorityClass.High)
                     {
+                        _priorities.TryAdd(identity.Id, (identity, gameProcess.PriorityClass));
                         gameProcess.PriorityClass = ProcessPriorityClass.High;
-                        StatusText = $"三角洲运行中 · 优先级已提升至 High（{DateTime.Now:HH:mm:ss}）";
                     }
+                    applied++;
                 }
-            }
-            catch
-            {
-                // 权限不足或进程刚退出：本会话不再重试
-                StatusText = "三角洲运行中 · 优先级提升失败（权限不足）";
+                catch { failed++; }
             }
         }
+        lock (_priorityGate) GameTargetService.Default.SetRestoreFailure("自动优先级", _priorities.Count != 0 && !LoadSetting());
+        StatusText = applied > 0
+            ? $"{GameTargetService.Default.Current.DisplayName} · 优先级 High（{applied} 个实例）"
+            : failed > 0 ? "目标优先级提升失败，稍后重试。" : GameTargetService.Default.Status;
+        return applied > 0 ? OperationResult.Ok(StatusText) : OperationResult.Fail(StatusText);
+    }
+
+    public OperationResult DisableGamePriorityForOffline()
+    {
+        using var operation = GameTargetService.Default.BeginOperation();
+        if (!_gamePriorityEnabled && !AppSettingsStore.Read().GamePriorityEnabled)
+            return OperationResult.Ok("自动游戏优先级已关闭。");
+
+        foreach (var process in GameTargetService.Default.GetProcesses())
+        {
+            using (process)
+            {
+                try
+                {
+                    var identity = GameTargetService.Default.Identify(process);
+                    if (identity is null) return OperationResult.Fail("目标进程身份无法确认，未关闭自动优先级。");
+                    if (process.PriorityClass != ProcessPriorityClass.High) continue;
+                    lock (_priorityGate)
+                    {
+                        if (!_priorities.TryGetValue(identity.Id, out var saved) || saved.Identity.StartTimeUtc != identity.StartTimeUtc)
+                            return OperationResult.Fail($"目标 PID {identity.Id} 已是 High，但没有本工具原优先级备份；为避免覆盖第三方状态，未关闭自动优先级。");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return OperationResult.Fail($"无法核对目标 PID {process.Id} 的优先级：{ex.Message}");
+                }
+            }
+        }
+
+        if (_gamePriorityEnabled) GamePriorityEnabled = false;
+        else
+        {
+            SaveSetting(false);
+            RestorePriorities();
+        }
+        if (AppSettingsStore.Read().GamePriorityEnabled)
+            return OperationResult.Fail("自动优先级设置未能持久化关闭。");
+        lock (_priorityGate)
+            if (_priorities.Count != 0)
+                return OperationResult.Fail("自动优先级已关闭，但仍有原值待恢复记录。");
+        return OperationResult.Ok("自动游戏优先级已关闭，目标进程原优先级已还原或无需还原。");
+    }
+
+    private void RestorePriorities()
+    {
+        using var operation = GameTargetService.Default.BeginOperation();
+        lock (_priorityGate)
+        foreach (var (id, saved) in _priorities.ToArray())
+        {
+            try
+            {
+                using var p = Process.GetProcessById(id);
+                if (p.HasExited || p.StartTime.ToUniversalTime() != saved.Identity.StartTimeUtc) { _priorities.Remove(id); continue; }
+                if (!GameTargetService.Default.Matches(p, saved.Identity)) continue;
+                if (p.PriorityClass == ProcessPriorityClass.High) p.PriorityClass = saved.Original;
+                _priorities.Remove(id);
+            }
+            catch (ArgumentException) { _priorities.Remove(id); }
+            catch { }
+        }
+        GameTargetService.Default.SetRestoreFailure("自动优先级", _priorities.Count != 0);
     }
 
     private string DescribeStatus()
@@ -193,7 +265,7 @@ public sealed class GameProcessService : IGameProcessService
             return "进程优先级提升未启用";
         }
 
-        return _isGameRunning ? "三角洲运行中…" : "已启用 · 等待三角洲启动…";
+        return GameTargetService.Default.Status;
     }
 
     // ---------------- 进程扫描 / 结束 / 内存整理 ----------------
@@ -209,7 +281,7 @@ public sealed class GameProcessService : IGameProcessService
             {
                 try
                 {
-                    if (process.Id == selfPid || ProtectedProcesses.Contains(process.ProcessName))
+                    if (process.Id == selfPid || ProtectedProcesses.Contains(process.ProcessName) || GameTargetService.Default.ProtectFromCleanup(process))
                     {
                         continue;
                     }
@@ -257,8 +329,14 @@ public sealed class GameProcessService : IGameProcessService
     {
         try
         {
+            using var operation = GameTargetService.Default.BeginOperation();
             var target = Process.GetProcessById(process.Pid);
-            target.Kill(entireProcessTree: true);
+            if (ProtectedProcesses.Contains(target.ProcessName) || GameTargetService.Default.ProtectFromCleanup(target))
+            {
+                target.Dispose();
+                return OperationResult.Fail("不能清理目标游戏或受保护进程。");
+            }
+            target.Kill(entireProcessTree: false);
             await target.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
             target.Dispose();
 
@@ -296,12 +374,14 @@ public sealed class GameProcessService : IGameProcessService
     public Task<double> TrimWorkingSetAsync(IEnumerable<ProcessInfo> processes, IProgress<string>? progress = null)
         => Task.Run(() =>
         {
+            using var targetOperation = GameTargetService.Default.BeginOperation();
             var freedMb = 0.0;
             foreach (var info in processes)
             {
                 try
                 {
                     using var process = Process.GetProcessById(info.Pid);
+                    if (ProtectedProcesses.Contains(process.ProcessName) || GameTargetService.Default.ProtectFromCleanup(process)) continue;
                     var before = process.WorkingSet64;
                     if (!EmptyWorkingSet(process.Handle))
                     {
@@ -327,7 +407,7 @@ public sealed class GameProcessService : IGameProcessService
 
     // ---------------- 设置持久化（共享 AppSettingsStore） ----------------
 
-    private static bool LoadSetting() => AppSettingsStore.Read().GamePriorityEnabled;
+    private static bool LoadSetting() => !OfflineModeGuard.BlocksNormalAutomation && AppSettingsStore.Read().GamePriorityEnabled;
 
     private static void SaveSetting(bool value)
         => AppSettingsStore.Update(s => s.GamePriorityEnabled = value);

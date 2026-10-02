@@ -7,6 +7,7 @@ namespace DeltaNFD.Views;
 
 public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
 {
+    public string TargetLabel => "当前主进程：" + DeltaNFD.Services.GameTargetService.Default.Current.DisplayName;
     public NvSettingsViewModel ViewModel { get; } = new();
 
     /// <summary>非 N 卡（或 NVAPI 不可用）且检测已完成时显示提示（加载中不闪红）。</summary>

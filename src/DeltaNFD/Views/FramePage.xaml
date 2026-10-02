@@ -3,11 +3,12 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <ScrollViewer>
+    <ScrollViewer IsEnabled="{x:Bind NormalModeControlsEnabled, Mode=OneWay}">
         <StackPanel MaxWidth="1080" Padding="28,20,28,32" Spacing="16">
 
             <StackPanel Spacing="4">
                 <TextBlock Text="帧格" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="{x:Bind TargetLabel}" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}" />
                 <TextBlock Text="游戏运行期间的自动化帧数保障功能，随开随用" Style="{StaticResource PageSubtitleStyle}" />
             </StackPanel>
 
@@ -49,7 +50,7 @@
                 <StackPanel Spacing="8">
                     <TextBlock Text="帧格功能" Style="{StaticResource SectionTitleStyle}" />
 
-                    <!-- 功能：三角洲启动时重启 DWM -->
+                    <!-- 功能：目标游戏启动时重启 DWM -->
                     <Grid ColumnSpacing="16" Padding="0,10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -58,15 +59,15 @@
 
                         <StackPanel Spacing="4" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock Text="三角洲启动时重启 DWM" FontWeight="SemiBold" />
+                                <TextBlock Text="目标游戏启动时重启 DWM" FontWeight="SemiBold" />
                                 <Border Style="{StaticResource ChipBorderStyle}"
                                         Background="{ThemeResource ControlFillColorDefaultBrush}">
                                     <TextBlock Text="DeltaForceClient-Win64-Shipping.exe" FontSize="10" Opacity="0.75" />
                                 </Border>
                             </StackPanel>
                             <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                       Text="在部分电脑上启动三角洲后，DWM（桌面窗口管理器）进程会出现异常高的 CPU 占用。启用后，会在三角洲进程运行时重启 DWM 以恢复 DWM 正常占用；系统会立即自动拉起新的 DWM，屏幕闪烁一下属正常现象。" />
-                            <TextBlock Text="{x:Bind FrameSrv.StatusText, Mode=OneWay}"
+                                       Text="在部分电脑上启动目标游戏后，DWM（桌面窗口管理器）进程会出现异常高的 CPU 占用。启用后，会在目标游戏进程运行时重启 DWM 以恢复 DWM 正常占用；系统会立即自动拉起新的 DWM，屏幕闪烁一下属正常现象。" />
+                            <TextBlock Text="{x:Bind DwmStatusText, Mode=OneWay}"
                                        FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
                         </StackPanel>
 
@@ -91,6 +92,12 @@
                                         Background="{ThemeResource ControlFillColorDefaultBrush}">
                                     <TextBlock Text="powercfg" FontSize="10" Opacity="0.75" />
                                 </Border>
+                                <Border Style="{StaticResource ChipBorderStyle}"
+                                        Background="#33E5484D"
+                                        Visibility="{x:Bind FrameSrv.PowerPlanLockEnabled, Mode=OneWay}">
+                                    <TextBlock Text="锁定期间自动还原计划内容" FontSize="10"
+                                               Foreground="#FFE5484D" />
+                                </Border>
                             </StackPanel>
                             <TextBlock Text="{x:Bind FrameSrv.PowerPlanLockText, Mode=OneWay}"
                                        Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
@@ -102,6 +109,9 @@
                                           IsEnabled="{x:Bind FrameSrv.FeaturesEditable, Mode=OneWay}"
                                           SelectionChanged="PowerLockTargetCombo_SelectionChanged" />
                             </StackPanel>
+                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                       Visibility="{x:Bind FrameSrv.PowerPlanLockEnabled, Mode=OneWay}"
+                                       Text="注意：锁定保护的不只是「哪个计划处于激活」，还包括该计划的「内容」——游戏期间每 30 秒校验一次它的全部交流/直流设置，被其他程序或手动改动的项会按锁定开启时的快照自动还原，包括 CPU实验室 写入的「异类调度策略」三项。因此在锁定开启期间对该计划的任何调整都不会保留；需要保留请先关闭本锁定或退出帧格模式。帧格自己临时改写的省电项（USB 选择性暂停 / PCIE 链接状态电源管理）不在保护范围内，退出帧格时照常还原。" />
                         </StackPanel>
 
                         <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
@@ -123,7 +133,7 @@
                                 <TextBlock Text="加速系统响应模式（不改电源计划）" FontWeight="SemiBold" />
                                 <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                            Text="三项机制让系统在帧格期间保持「随时就绪」：核心常驻（防核心停放）+ 游戏进程禁电源限制 + 定时器 0.5ms。全部为运行时行为——不写系统配置、不碰任何电源计划，退出帧格或关闭本工具后自动恢复、零残留。总开关关闭时三项全部停止。" />
-                                <TextBlock Text="{x:Bind FrameSrv.StatusText, Mode=OneWay}"
+                                <TextBlock Text="{x:Bind ResponseStatusText, Mode=OneWay}"
                                            FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
                             </StackPanel>
 
@@ -149,7 +159,7 @@
                                                    Text="帧格激活全程：高频轮询逐核停靠状态并把轮询线程轮流钉到每个核心，让核心来不及深度停靠——「靠活动而非电源策略」实现核心常驻待命，降低突发调度的唤醒延迟。状态文字实时显示当前停靠核心数。" />
                                     </StackPanel>
                                     <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsOn="{x:Bind FrameSrv.ResponseBoostCoreParkingEnabled, Mode=TwoWay}"
+                                                  IsOn="{x:Bind CoreParkingSelected, Mode=TwoWay}"
                                                   IsEnabled="{x:Bind SubTogglesEditable, Mode=OneWay}"
                                                   OnContent="" OffContent="" MinWidth="0" Margin="0"
                                                   HorizontalAlignment="Right" />
@@ -163,10 +173,10 @@
                                     <StackPanel Spacing="2" VerticalAlignment="Center">
                                         <TextBlock Text="游戏进程禁电源限制" FontWeight="SemiBold" FontSize="13" />
                                         <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" FontSize="11"
-                                                   Text="游戏运行期间：对三角洲进程禁用 EcoQoS 电源限制（强制高性能电源状态），游戏内重启后自动对新进程重新应用，退出自动交还系统控制。" />
+                                                   Text="游戏运行期间：对目标游戏进程禁用 EcoQoS 电源限制（强制高性能电源状态），游戏内重启后自动对新进程重新应用，退出自动交还系统控制。" />
                                     </StackPanel>
                                     <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsOn="{x:Bind FrameSrv.ResponseBoostEcoQosEnabled, Mode=TwoWay}"
+                                                  IsOn="{x:Bind EcoQosSelected, Mode=TwoWay}"
                                                   IsEnabled="{x:Bind SubTogglesEditable, Mode=OneWay}"
                                                   OnContent="" OffContent="" MinWidth="0" Margin="0"
                                                   HorizontalAlignment="Right" />
@@ -183,7 +193,7 @@
                                                    Text="帧格激活且游戏运行期间：把系统定时器分辨率请求提升到 0.5ms，帧间隔更稳、输入延迟更低；游戏退出自动释放。配合系统优化·UP推荐的「计时器分辨率常驻」可全局生效。" />
                                     </StackPanel>
                                     <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsOn="{x:Bind FrameSrv.ResponseBoostTimerEnabled, Mode=TwoWay}"
+                                                  IsOn="{x:Bind TimerSelected, Mode=TwoWay}"
                                                   IsEnabled="{x:Bind SubTogglesEditable, Mode=OneWay}"
                                                   OnContent="" OffContent="" MinWidth="0" Margin="0"
                                                   HorizontalAlignment="Right" />
@@ -204,7 +214,7 @@
                                 <TextBlock Text="前台加速响应" FontWeight="SemiBold" />
                                 <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                            Text="帧格期间把系统调度参数临时切换为前台优先：后台资源预留从 20% 降到 10%，前台（游戏）获得更长的处理器时间片与调度加速。开启帧格时写入，退出帧格时自动还原为开启前的原值（如果你已在系统优化里应用过同款优化，还原后仍保持优化值）。" />
-                                <TextBlock Text="{x:Bind FrameSrv.StatusText, Mode=OneWay}"
+                                <TextBlock Text="{x:Bind ForegroundStatusText, Mode=OneWay}"
                                            FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
                             </StackPanel>
 
@@ -230,7 +240,7 @@
                                                    Text="把 Windows 为后台程序预留的 CPU 资源比例从默认 20% 降到 10%（SystemResponsiveness=10），多媒体/后台任务让出更多 CPU 时间给游戏。对应系统优化·调整里的「系统后台资源预留」。" />
                                     </StackPanel>
                                     <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsOn="{x:Bind FrameSrv.ForegroundResponsivenessEnabled, Mode=TwoWay}"
+                                                  IsOn="{x:Bind ResponsivenessSelected, Mode=TwoWay}"
                                                   IsEnabled="{x:Bind ForegroundSubTogglesEditable, Mode=OneWay}"
                                                   OnContent="" OffContent="" MinWidth="0" Margin="0"
                                                   HorizontalAlignment="Right" />
@@ -247,7 +257,7 @@
                                                    Text="启用前台程序优先的处理器调度策略（0x1A）：短时间片 + 前台高加速，游戏获得更多 CPU 时间片，后台任务自动让路。对应系统优化·调整里的「前台游戏优先调度」。" />
                                     </StackPanel>
                                     <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsOn="{x:Bind FrameSrv.ForegroundPriorityEnabled, Mode=TwoWay}"
+                                                  IsOn="{x:Bind PrioritySelected, Mode=TwoWay}"
                                                   IsEnabled="{x:Bind ForegroundSubTogglesEditable, Mode=OneWay}"
                                                   OnContent="" OffContent="" MinWidth="0" Margin="0"
                                                   HorizontalAlignment="Right" />
@@ -267,8 +277,8 @@
                             <StackPanel Spacing="4" VerticalAlignment="Center">
                                 <TextBlock Text="降低省电延迟" FontWeight="SemiBold" />
                                 <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                           Text="帧格期间临时关闭网卡与 USB 的省电休眠，消除设备从低功耗态唤醒带来的延迟毛刺：网卡掉 ping、键鼠/手柄/声卡短暂卡顿爆音。开启帧格时写入，退出帧格时自动还原。笔记本用户注意：开启期间耗电会略增。" />
-                                <TextBlock Text="{x:Bind FrameSrv.StatusText, Mode=OneWay}"
+                                           Text="帧格期间临时关闭网卡、USB 与 PCIe 链路的省电休眠，消除设备从低功耗态唤醒带来的延迟毛刺：网卡掉 ping、键鼠/手柄/声卡短暂卡顿爆音、PCIe 链路唤醒抖动。开启帧格时写入，退出帧格时自动还原。笔记本用户注意：开启期间耗电会略增；「网卡省电全禁」与「关闭PCIE省电」在笔记本上不适用（会显示角标并置灰，也不会被执行），「关闭 USB 选择性暂停」仍可正常使用。" />
+                                <TextBlock Text="{x:Bind PowerSaveStatusText, Mode=OneWay}"
                                            FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
                             </StackPanel>
 
@@ -289,13 +299,21 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Spacing="2" VerticalAlignment="Center">
-                                        <TextBlock Text="网卡省电全禁" FontWeight="SemiBold" FontSize="13" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="网卡省电全禁" FontWeight="SemiBold" FontSize="13" />
+                                            <Border Style="{StaticResource ChipBorderStyle}"
+                                                    Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                                    Visibility="{x:Bind LaptopExcludedBadgeVisible, Mode=OneWay}">
+                                                <TextBlock Text="笔记本不适用" FontSize="10"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            </Border>
+                                        </StackPanel>
                                         <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" FontSize="11"
                                                    Text="关闭所有物理网卡的「允许计算机关闭此设备以节约电源」（EnablePowerManagement=0 + PnPCapabilities=24），降低网络延迟与断流；立即生效。对应系统优化·调整里的「网卡省电全禁」。" />
                                     </StackPanel>
                                     <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsOn="{x:Bind FrameSrv.NicPowerSavingOffEnabled, Mode=TwoWay}"
-                                                  IsEnabled="{x:Bind PowerSaveSubTogglesEditable, Mode=OneWay}"
+                                                  IsOn="{x:Bind NicSelected, Mode=TwoWay}"
+                                                  IsEnabled="{x:Bind LaptopExcludedSubTogglesEditable, Mode=OneWay}"
                                                   OnContent="" OffContent="" MinWidth="0" Margin="0"
                                                   HorizontalAlignment="Right" />
                                 </Grid>
@@ -311,8 +329,33 @@
                                                    Text="阻止系统在空闲时挂起 USB 设备（全局注册表 DisableSelectiveSuspend=1 + 当前电源计划交流/直流设置），解决键鼠/手柄/声卡短暂卡顿、掉线、爆音。对应系统优化·调整里的「关闭 USB 选择性暂停」。" />
                                     </StackPanel>
                                     <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsOn="{x:Bind FrameSrv.UsbSuspendOffEnabled, Mode=TwoWay}"
+                                                  IsOn="{x:Bind UsbSelected, Mode=TwoWay}"
                                                   IsEnabled="{x:Bind PowerSaveSubTogglesEditable, Mode=OneWay}"
+                                                  OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                                  HorizontalAlignment="Right" />
+                                </Grid>
+
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="关闭PCIE省电" FontWeight="SemiBold" FontSize="13" />
+                                            <Border Style="{StaticResource ChipBorderStyle}"
+                                                    Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                                    Visibility="{x:Bind LaptopExcludedBadgeVisible, Mode=OneWay}">
+                                                <TextBlock Text="笔记本不适用" FontSize="10"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            </Border>
+                                        </StackPanel>
+                                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" FontSize="11"
+                                                   Text="把当前电源计划的「PCI Express → 链接状态电源管理」（ASPM）交流/直流都设为「关闭」，避免空闲的 PCIe 链路进入 L0s/L1 低功耗态后唤醒带来的延迟毛刺；立即生效，退出帧格自动还原为开启前的原值。" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                                  IsOn="{x:Bind PcieSelected, Mode=TwoWay}"
+                                                  IsEnabled="{x:Bind LaptopExcludedSubTogglesEditable, Mode=OneWay}"
                                                   OnContent="" OffContent="" MinWidth="0" Margin="0"
                                                   HorizontalAlignment="Right" />
                                 </Grid>
@@ -341,7 +384,7 @@
                                 </Border>
                             </StackPanel>
                             <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                       Text="清空系统待备内存列表（standby list），把文件缓存占用的物理内存立即释放为可用内存，给三角洲腾出干净空间。开启帧格模式时自动执行一次；之后游戏运行期间每 30 秒检查一次，内存占用达到下方设定阈值时自动清理（默认 80%，可调 30–95；10 分钟冷却，避免反复清空文件缓存反而变卡）。也可随时点「立即清理」手动执行。纯运行时行为，不写任何系统配置。" />
+                                       Text="清空系统待备内存列表（standby list），把文件缓存占用的物理内存立即释放为可用内存，给目标游戏腾出干净空间。开启帧格模式时自动执行一次；之后游戏运行期间每 30 秒检查一次，内存占用达到下方设定阈值时自动清理（默认 80%，可调 30–95；10 分钟冷却，避免反复清空文件缓存反而变卡）。也可随时点「立即清理」手动执行。纯运行时行为，不写任何系统配置。" />
                             <TextBlock Text="{x:Bind FrameSrv.MemoryCleanStatusText, Mode=OneWay}"
                                        FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
                         </StackPanel>
@@ -366,7 +409,7 @@
                         <StackPanel Spacing="3" VerticalAlignment="Center">
                             <TextBlock Text="游戏内自动清理" FontWeight="SemiBold" FontSize="13" />
                             <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" FontSize="11"
-                                       Text="三角洲运行期间，系统内存占用达到设定百分比时自动清空待备内存列表（10 分钟冷却，防止反复清空反而变卡）。" />
+                                       Text="目标游戏运行期间，系统内存占用达到设定百分比时自动清空待备内存列表（10 分钟冷却，防止反复清空反而变卡）。" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBox MinWidth="64"
@@ -430,11 +473,11 @@
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="· 帧格功能在本程序运行期间持续生效，每次游戏会话只自动重启一次 DWM；游戏退出后重新等待下一次启动。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                               Text="· 开启「电源计划锁定」后，一键帧格模式会锁定你选择的计划（默认当前计划，防止被其他程序改成省电方案），退出时自动解除并还原原计划。" />
+                               Text="· 开启「电源计划锁定」后，一键帧格模式会锁定你选择的计划（默认当前计划，防止被其他程序改成省电方案），并快照该计划的全部设置：游戏期间被改动的计划内容（含 CPU实验室 的「异类调度策略」）会按快照自动还原；退出时自动解除并还原原计划。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="· 「加速系统响应模式」三项机制全部为运行时行为：不写系统配置、不修改任何电源计划，退出帧格/关闭工具后自动恢复，重启无残留。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                               Text="· 「前台加速响应」与「降低省电延迟」在开启帧格时写入系统调度/省电设置，退出帧格时自动还原为开启前的原值；原值备份独立保存，重启后退出帧格仍能完整还原。" />
+                               Text="· 「前台加速响应」与「降低省电延迟」在开启帧格时写入系统调度/省电设置（降低省电延迟含电源计划的 USB 选择性暂停与 PCI Express 链接状态电源管理 ASPM），退出帧格时自动还原为开启前的原值；原值备份独立保存，重启后退出帧格仍能完整还原。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="· 帧格模式意外退出（如进程被结束）时，上述临时改写不会自动还原；重新打开本工具后再次开启/退出帧格模式即可还原。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"

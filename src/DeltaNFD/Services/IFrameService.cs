@@ -14,7 +14,7 @@ public enum GpuSpoofApplyMode
 
 /// <summary>
 /// 帧格服务：游戏运行期间的自动化帧数保障功能。
-/// "一键帧格模式" = 启用所有帧格功能（主界面总开关，与帧格选项页共享同一份设置）。
+/// "一键帧格模式" = 激活已选择的帧格功能（主界面总开关，与帧格选项页共享同一份设置）。
 /// 总开关的开启/关闭请走 <see cref="ActivateFrameModeAsync"/> / <see cref="DeactivateFrameModeAsync"/> 流程
 /// （由 UI 层负责确认对话框）。
 /// </summary>
@@ -98,6 +98,16 @@ public interface IFrameService : INotifyPropertyChanged
 
     /// <summary>子开关②：关闭 USB 选择性暂停（全局注册表 + 电源计划 AC/DC）。</summary>
     bool UsbSuspendOffEnabled { get; set; }
+
+    /// <summary>子开关③：关闭 PCIe 省电（电源计划「PCI Express → 链接状态电源管理」ASPM 设为关闭）。</summary>
+    bool PcieAspmOffEnabled { get; set; }
+
+    /// <summary>
+    /// 本机是否为笔记本形态（三态探测的缓存结果：无法确定按非笔记本处理）。
+    /// true 时帧格页对「网卡省电全禁」「关闭 PCIe 省电」显示「笔记本不适用」角标并置灰，
+    /// 后端应用时也一并不做这两项。探测为异步，完成前恒为 false，完成后触发 PropertyChanged。
+    /// </summary>
+    bool IsLaptopChassis { get; }
 
     // ---- 帧格功能：内存清理（实验性；清空待备内存列表） ----
 

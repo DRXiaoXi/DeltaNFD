@@ -29,6 +29,12 @@
                     <TextBlock Text="{x:Bind ViewModel.ScanSummary, Mode=OneWay}"
                                Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
 
+                    <InfoBar IsOpen="{x:Bind ViewModel.DetectionPaused, Mode=OneWay}"
+                             Severity="Informational"
+                             Title="已暂停 ACE 检测"
+                             Message="{x:Bind ViewModel.DetectionPauseText, Mode=OneWay}"
+                             IsClosable="False" />
+
                     <InfoBar IsOpen="{x:Bind ViewModel.HasBlockers, Mode=OneWay}"
                              Severity="Warning"
                              Title="检测到阻止清理的进程"
@@ -104,6 +110,8 @@
             <!-- 说明 -->
             <Border Style="{StaticResource CardBorderStyle}" Padding="20,14">
                 <StackPanel Spacing="6">
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· 三角洲进程运行时，本页的组件扫描与 ACE-CORE 冗余检测会整体暂停：完全不读取 ACE 服务、目录与注册表项，避免在反作弊运行期间触碰其组件。游戏退出后自动恢复，也可手动点「重新扫描」。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="· sguard64.exe（反作弊守卫）或游戏本体运行时，本功能会拒绝执行——请先完全退出游戏（含后台 sguard64 进程）。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"

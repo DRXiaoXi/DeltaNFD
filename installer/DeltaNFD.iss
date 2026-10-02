@@ -1,10 +1,8 @@
 ; 三角帧不掉洲（Delta No FPS Drops / Delta NFD）安装脚本 · Inno Setup 6
 ; 编译：ISCC.exe DeltaNFD.iss
-; 产物：Output\三角帧不掉洲_DeltaNFD_安装包_0.83.0_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
+; 产物：三角帧不掉洲_DeltaNFD_安装包_0.89.0_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
 ;
-; 版本说明：0.83.0 是**最终对外版本号**。内部迭代期间曾短暂用过 0.84.0，
-; 后按用户要求统一回落为 0.83.0（见 HANDOFF §38）。若看到 §33~§37 里写 0.84，
-; 那是当时的历史记录，不是当前版本。
+; 当前对外版本：0.89.0 / OpenAlphaV0.89。旧版迭代记录不代表当前版本。
 ;
 ; 卸载设计（OpenAlphaV0.83 重写，见 HANDOFF §34）：
 ;   1. 卸载前结束残留的 DeltaNFD 进程（托盘驻留时进程仍在跑，会导致文件删不掉）；
@@ -16,11 +14,12 @@
 ;   %APPDATA%\DeltaOptimizer、%LOCALAPPDATA%\Delta NFD 及登录任务全部残留。
 
 #define MyAppName "三角帧不掉洲"
+#define MyAppShortcutName "三角帧不掉洲"
 #define MyAppShortName "Delta NFD"
 #define MyAppEnglishName "Delta No FPS Drops"
 #define MyAppDisplayName "三角帧不掉洲（Delta NFD）"
-#define MyAppVersion "0.83.0"
-#define MyAppDisplayVersion "OpenAlphaV0.83"
+#define MyAppVersion "0.89.0"
+#define MyAppDisplayVersion "OpenAlphaV0.89"
 #define MyAppExeName "DeltaNFD.exe"
 ; 登录任务名（与 AppControlService / FrameService 创建的一致）
 #define AutoStartTaskName "DeltaNFD_AutoStart"
@@ -41,7 +40,7 @@ AppPublisher=逐梦之子-晓夕
 AppPublisherURL=https://space.bilibili.com/630440925
 DefaultDirName={autopf}\{#MyAppShortName}
 UsePreviousAppDir=no
-DefaultGroupName={#MyAppDisplayName}
+DefaultGroupName={#MyAppShortcutName}
 UsePreviousGroup=no
 DisableProgramGroupPage=yes
 UninstallDisplayName={#MyAppDisplayName}
@@ -72,7 +71,7 @@ Name: "chinese"; MessagesFile: "ChineseSimplified.isl"
 Type: files; Name: "{app}\DeltaOptimizer.*"
 
 [CustomMessages]
-chinese.CreateDesktopIcon=在桌面创建「三角帧不掉洲（Delta NFD）」快捷方式(&D)
+chinese.CreateDesktopIcon=在桌面创建「三角帧不掉洲」快捷方式(&D)
 chinese.AdditionalIcons=附加选项：
 chinese.RunAfterInstall=安装完成后启动 {#MyAppDisplayName}
 
@@ -83,9 +82,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppDisplayName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\卸载 {#MyAppDisplayName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppDisplayName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\{#MyAppShortcutName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\卸载 {#MyAppShortcutName}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\{#MyAppShortcutName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 ; 应用清单要求管理员权限；沿用已提权安装器的令牌启动，避免以普通用户凭据启动失败。
@@ -507,6 +506,24 @@ begin
   Result := UninstallKeepBackups;
 end;
 
+function RestoreRuntimeGuardBeforeUninstall(): Boolean;
+var
+  ResultCode: Integer;
+  ExePath: String;
+begin
+  Result := False;
+  ResultCode := -1;
+  ExePath := ExpandConstant('{app}\{#MyAppExeName}');
+  if not FileExists(ExePath) then
+  begin
+    Log('卸载：防护恢复程序缺失，停止卸载以保留状态。');
+    Exit;
+  end;
+  Result := Exec(ExePath, '--restore-runtime-guard-for-uninstall',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+  Log('卸载：运行库防护恢复退出码=' + IntToStr(ResultCode));
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   RootDir, DataDir, LegacyDataDir, LocalDataDir, LocalLegacyDir: String;
@@ -524,6 +541,13 @@ begin
       Abort;
     end;
     AskWhatToKeep();
+    if not RestoreRuntimeGuardBeforeUninstall() then
+    begin
+      Log('卸载：防护恢复未完成，未删除程序和备份。');
+      if not UninstallSilent then
+        MsgBox('脱机调度或运行库防护恢复未完成，已停止卸载以保留程序和恢复记录。请在设置页处理脱机恢复，或在运行库页关闭防护并处理权限/归属冲突后重试。详情见应用日志。', mbError, MB_OK);
+      Abort;
+    end;
     Exit;
   end;
 

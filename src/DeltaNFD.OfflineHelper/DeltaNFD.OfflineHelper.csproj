@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>DeltaNFD.OfflineHelper</RootNamespace>
+    <AssemblyName>DeltaNFD.OfflineHelper</AssemblyName>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseAppHost>true</UseAppHost>
+    <Version>0.89.0</Version>
+    <InformationalVersion>OpenAlphaV0.89</InformationalVersion>
+    <WindowsPackageType>None</WindowsPackageType>
+  </PropertyGroup>
+
+  <!-- Link only the non-WinUI BCL/native code needed by the temporary helper. -->
+  <ItemGroup>
+    <Compile Include="..\DeltaNFD\Native\CpuSets.cs" Link="Native\CpuSets.cs" />
+    <Compile Include="..\DeltaNFD\Native\OfflineCpuSetCatalog.cs" Link="Native\OfflineCpuSetCatalog.cs" />
+    <Compile Include="..\DeltaNFD\Native\Privilege.cs" Link="Native\Privilege.cs" />
+    <Compile Include="..\DeltaNFD\Services\AppDataPaths.cs" Link="Services\AppDataPaths.cs" />
+    <Compile Include="..\DeltaNFD\Services\AppSettingsStore.cs" Link="Services\AppSettingsStore.cs" />
+    <Compile Include="..\DeltaNFD\Services\CcdTopologyDetector.cs" Link="Services\CcdTopologyDetector.cs" />
+    <Compile Include="..\DeltaNFD\Services\CpuTopologyService.cs" Link="Services\CpuTopologyService.cs" />
+    <Compile Include="..\DeltaNFD\Services\DeltaForceLocator.cs" Link="Services\DeltaForceLocator.cs" />
+    <Compile Include="..\DeltaNFD\Services\ElevationHelper.cs" Link="Services\ElevationHelper.cs" />
+    <Compile Include="..\DeltaNFD\Services\GameTargetService.cs" Link="Services\GameTargetService.cs" />
+    <Compile Include="..\DeltaNFD\Services\ICpuTopologyService.cs" Link="Services\ICpuTopologyService.cs" />
+    <Compile Include="..\DeltaNFD\Services\IPowerService.cs" Link="Services\IPowerService.cs" />
+    <Compile Include="..\DeltaNFD\Services\Log.cs" Link="Services\Log.cs" />
+    <Compile Include="..\DeltaNFD\Services\OfflineCpuSetPlanner.cs" Link="Services\OfflineCpuSetPlanner.cs" />
+    <Compile Include="..\DeltaNFD\Services\OfflineCpuSetScheduler.cs" Link="Services\OfflineCpuSetScheduler.cs" />
+    <Compile Include="..\DeltaNFD\Services\OfflineModeExecutionLock.cs" Link="Services\OfflineModeExecutionLock.cs" />
+    <Compile Include="..\DeltaNFD\Services\OfflineHelperSession.cs" Link="Services\OfflineHelperSession.cs" />
+    <Compile Include="..\DeltaNFD\Services\OfflineHelperCompletion.cs" Link="Services\OfflineHelperCompletion.cs" />
+    <Compile Include="..\DeltaNFD\Services\OfflineHelperDeadline.cs" Link="Services\OfflineHelperDeadline.cs" />
+    <Compile Include="..\DeltaNFD\Services\OfflineModeGuard.cs" Link="Services\OfflineModeGuard.cs" />
+    <Compile Include="..\DeltaNFD\Services\OfflineModeState.cs" Link="Services\OfflineModeState.cs" />
+    <Compile Include="..\DeltaNFD\Services\OfflineModeStateStore.cs" Link="Services\OfflineModeStateStore.cs" />
+    <Compile Include="..\DeltaNFD\Services\OperationResult.cs" Link="Services\OperationResult.cs" />
+    <Compile Include="..\DeltaNFD\Services\TweakBackupStore.cs" Link="Services\TweakBackupStore.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="obj\**\*.cs" />
+  </ItemGroup>
+</Project>

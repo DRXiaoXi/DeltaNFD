@@ -1,6 +1,4 @@
 using System.ComponentModel;
-using System.Diagnostics;
-
 namespace DeltaNFD.Services;
 
 /// <summary>应用级控制：开机自动启动、关闭后最小化到托盘。</summary>
@@ -50,24 +48,40 @@ public sealed class AppControlService : IAppControlService
         }
     }
 
-    public void SetCloseToTray(bool enable) => CloseToTrayEnabled = enable;
+    public void SetCloseToTray(bool enable)
+    {
+        if (enable && OfflineModeGuard.BlocksNormalAutomation)
+        {
+            Log.Warn("脱机模式或恢复流程中，拒绝开启托盘驻留。");
+            CloseToTrayEnabled = false;
+            return;
+        }
+        CloseToTrayEnabled = enable;
+    }
 
     public async Task<bool> IsAutoStartEnabledAsync()
     {
-        if (await TaskExistsAsync(AutoStartTaskName))
-            return true;
-
-        if (!await TaskExistsAsync(LegacyAutoStartTaskName))
+        if (OfflineModeGuard.BlocksNormalAutomation) return false;
+        var current = await OfflineTaskOwnership.InspectAsync(AutoStartTaskName);
+        var legacy = await OfflineTaskOwnership.InspectAsync(LegacyAutoStartTaskName);
+        if (current.State == OfflineScheduledTaskState.ForeignOrUnknown || legacy.State == OfflineScheduledTaskState.ForeignOrUnknown)
+        {
+            Log.Warn("自启动状态查询发现归属未知的同名计划任务，未将其当作本工具自启动。");
             return false;
+        }
+        if (current.State == OfflineScheduledTaskState.Owned) return current.Enabled;
+        if (legacy.State != OfflineScheduledTaskState.Owned || !legacy.Enabled) return false;
 
         var migration = await SetAutoStartAsync(enable: true);
-        if (!migration.Success)
-            Log.Warn($"旧版自启动任务迁移失败：{migration.Message}");
-        return true;
+        if (!migration.Success) Log.Warn($"旧版自启动任务迁移失败：{migration.Message}");
+        var migrated = await OfflineTaskOwnership.InspectAsync(AutoStartTaskName);
+        return migrated.State == OfflineScheduledTaskState.Owned && migrated.Enabled;
     }
 
     public async Task<OperationResult> SetAutoStartAsync(bool enable)
     {
+        if (enable && OfflineModeGuard.BlocksNormalAutomation)
+            return OperationResult.Fail("脱机模式或恢复流程正在运行，已禁止开机自动启动。");
         var exePath = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(exePath))
         {
@@ -76,122 +90,20 @@ public sealed class AppControlService : IAppControlService
 
         if (enable)
         {
-            var (code, stdout, stderr) = await RunCaptureAsync(
-                "schtasks.exe",
-                $"/Create /TN {AutoStartTaskName} /TR \"\\\"{exePath}\\\"\" /SC ONLOGON /RL HIGHEST /F",
-                TimeSpan.FromSeconds(30));
-
-            if (code != 0)
+            var create = await OfflineTaskOwnership.EnsureOwnedTaskAsync(AutoStartTaskName, exePath);
+            if (!create.Success) return OperationResult.Fail("创建开机自启动任务失败：" + create.Message);
+            var legacy = await OfflineTaskOwnership.RemoveOwnedTaskAsync(LegacyAutoStartTaskName, exePath);
+            if (!legacy.Success)
             {
-                var reason = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
-                return OperationResult.Fail($"创建开机自启动任务失败：{FirstLine(reason)}");
-            }
-
-            if (!await DeleteTaskIfPresentAsync(LegacyAutoStartTaskName))
-            {
-                await DeleteTaskIfPresentAsync(AutoStartTaskName);
-                return OperationResult.Fail("已创建新自启动任务，但无法移除旧版任务；为避免重复启动，已回滚新任务。");
+                await OfflineTaskOwnership.RemoveOwnedTaskAsync(AutoStartTaskName, exePath);
+                return OperationResult.Fail("新任务已创建，但旧任务无法安全移除；已尝试回滚新任务：" + legacy.Message);
             }
             return OperationResult.Ok("已开启开机自动启动（登录后自动运行，不弹 UAC）。");
         }
 
-        var legacyRemoved = await DeleteTaskIfPresentAsync(LegacyAutoStartTaskName);
-        var (delCode, delStdout, delStderr) = await RunCaptureAsync(
-            "schtasks.exe",
-            $"/Delete /TN {AutoStartTaskName} /F",
-            TimeSpan.FromSeconds(30));
-
-        if (delCode == 0)
-        {
-            return legacyRemoved
-                ? OperationResult.Ok("已关闭开机自动启动。")
-                : OperationResult.Fail("新任务已关闭，但旧版自启动任务仍存在，请以管理员权限重试。");
-        }
-
-        // 删除失败 ≠ 任务不存在：复核任务是否仍在，仍在则如实报失败（否则开关状态与系统脱节）
-        if (await TaskExistsAsync(AutoStartTaskName) || await TaskExistsAsync(LegacyAutoStartTaskName))
-        {
-            var reason = string.IsNullOrWhiteSpace(delStderr) ? delStdout : delStderr;
-            return OperationResult.Fail($"关闭开机自启动失败：{FirstLine(reason)}");
-        }
-
-        return legacyRemoved
-            ? OperationResult.Ok("开机自动启动本就未开启。")
-            : OperationResult.Fail("旧版自启动任务仍存在，请以管理员权限重试。");
-    }
-
-    private static async Task<bool> TaskExistsAsync(string taskName)
-    {
-        var (code, _, _) = await RunCaptureAsync(
-            "schtasks.exe", $"/Query /TN {taskName}", TimeSpan.FromSeconds(15));
-        return code == 0;
-    }
-
-    private static async Task<bool> DeleteTaskIfPresentAsync(string taskName)
-    {
-        if (!await TaskExistsAsync(taskName))
-            return true;
-
-        var (code, stdout, stderr) = await RunCaptureAsync(
-            "schtasks.exe", $"/Delete /TN {taskName} /F", TimeSpan.FromSeconds(30));
-        if (code != 0 && await TaskExistsAsync(taskName))
-        {
-            Log.Warn($"旧版自启动任务删除失败：{taskName}；{FirstLine(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr)}");
-            return false;
-        }
-
-        return true;
-    }
-
-    // ---------------- 进程调用 ----------------
-
-    private static async Task<(int Code, string StdOut, string StdErr)> RunCaptureAsync(
-        string fileName, string arguments, TimeSpan timeout)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = fileName,
-            Arguments = arguments,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-
-        using var process = Process.Start(psi);
-        if (process is null)
-        {
-            return (-1, "", $"无法启动 {fileName}");
-        }
-
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-
-        try
-        {
-            await process.WaitForExitAsync().WaitAsync(timeout);
-        }
-        catch (TimeoutException)
-        {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-            }
-            catch
-            {
-                // 进程可能已自行退出
-            }
-
-            return (-1, "", "执行超时");
-        }
-
-            return (process.ExitCode, await stdoutTask, await stderrTask);
-    }
-
-    private static string FirstLine(string text)
-    {
-        var trimmed = text.Trim();
-        var lineBreak = trimmed.IndexOfAny(['\r', '\n']);
-        return lineBreak > 0 ? trimmed[..lineBreak] : trimmed;
+        var currentRemoved = await OfflineTaskOwnership.RemoveOwnedTaskAsync(AutoStartTaskName, exePath);
+        if (!currentRemoved.Success) return currentRemoved;
+        var legacyRemoved = await OfflineTaskOwnership.RemoveOwnedTaskAsync(LegacyAutoStartTaskName, exePath);
+        return legacyRemoved.Success ? OperationResult.Ok("已关闭本工具的开机自动启动。") : legacyRemoved;
     }
 }

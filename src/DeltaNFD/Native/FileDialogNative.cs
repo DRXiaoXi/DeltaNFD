@@ -15,14 +15,26 @@ internal static class FolderPickerDialog
     private const int HrCancelled = unchecked((int)0x800704C7);
 
     /// <summary>弹出文件夹选择框。返回所选目录全路径；用户取消返回 null。</summary>
-    public static string? Pick(nint ownerHwnd, string? initialFolder)
+    public static string? Pick(nint ownerHwnd, string? initialFolder) => PickCore(ownerHwnd, initialFolder, true);
+
+    public static string? PickExecutable(nint ownerHwnd, string? initialFile) =>
+        PickCore(ownerHwnd, File.Exists(initialFile) ? Path.GetDirectoryName(initialFile) : null, false);
+
+    private static string? PickCore(nint ownerHwnd, string? initialFolder, bool folderOnly)
     {
         var ownerWasEnabled = ownerHwnd != nint.Zero && IsWindowEnabled(ownerHwnd);
         var dialog = (IFileOpenDialog)new FileOpenDialogCom();
         try
         {
             dialog.GetOptions(out var options);
-            dialog.SetOptions(options | FosPickfolders | FosForceFilesystem);
+            dialog.SetOptions(folderOnly ? options | FosPickfolders | FosForceFilesystem
+                : (options & ~FosPickfolders & ~0x200u) | FosForceFilesystem | 0x1000u | 0x800u | 0x4u);
+            if (!folderOnly)
+            {
+                dialog.SetFileTypes(1, [new FilterSpec { Name = "应用程序 (*.exe)", Pattern = "*.exe" }]);
+                dialog.SetDefaultExtension("exe");
+                dialog.SetTitle("选择主进程 EXE");
+            }
 
             if (!string.IsNullOrEmpty(initialFolder) && Directory.Exists(initialFolder))
             {
@@ -73,6 +85,13 @@ internal static class FolderPickerDialog
         }
     }
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct FilterSpec
+    {
+        [MarshalAs(UnmanagedType.LPWStr)] public string Name;
+        [MarshalAs(UnmanagedType.LPWStr)] public string Pattern;
+    }
+
     [ComImport]
     [Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")]
     private class FileOpenDialogCom
@@ -87,7 +106,7 @@ internal static class FolderPickerDialog
         [PreserveSig]
         int Show(nint hwndOwner);
 
-        void SetFileTypes(uint cFileTypes, nint rgFilterSpec);
+        void SetFileTypes(uint cFileTypes, [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 0)] FilterSpec[] rgFilterSpec);
         void SetFileTypeIndex(uint iFileType);
         void GetFileTypeIndex(out uint piFileType);
         void Advise(nint pfde, out uint pdwCookie);

@@ -27,6 +27,14 @@ public sealed class AcePathInfo
 /// <summary>ACE 扫描结果（只读快照）。</summary>
 public sealed class AceScanResult
 {
+    /// <summary>
+    /// true = 三角洲进程正在运行，已按需求**完全跳过**组件检测：
+    /// 未读取 ACE 服务、未遍历 ACE 目录、未查询 ACE 注册表项。
+    /// 此时 <see cref="Services"/> / <see cref="Paths"/> / <see cref="RegistryKeys"/> 全为空，
+    /// **不代表"本机没装 ACE"**，消费方必须先判断本标志再解读这些列表。
+    /// </summary>
+    public required bool BlockedByGame { get; init; }
+
     /// <summary>正在运行的 ACE / 游戏相关进程。</summary>
     public required List<string> RunningProcesses { get; init; }
 
@@ -61,6 +69,9 @@ public enum AceCoreCheckLevel
 
     /// <summary>扫描目录失败，不能据此判定 ACE 状态。</summary>
     Failed,
+
+    /// <summary>三角洲进程运行中，已跳过检测（未读取 ACE 目录），不能据此判定 ACE 状态。</summary>
+    Blocked,
 }
 
 /// <summary>ACE-CORE 冗余检测结果（纯只读）。</summary>

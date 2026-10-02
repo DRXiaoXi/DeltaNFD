@@ -12,8 +12,23 @@ internal sealed class GameProcessMonitor
     internal event Action<bool, int?>? Tick;
     internal bool IsRunning { get; private set; }
     internal int? ProcessId { get; private set; }
+    internal IReadOnlyList<GameProcessIdentity> Processes { get; private set; } = [];
+    internal long Generation { get; private set; }
 
-    internal GameProcessMonitor() => _ = RunAsync();
+    internal GameProcessMonitor()
+    {
+        GameTargetService.Default.Changed += _ =>
+        {
+            void Clear()
+            {
+                IsRunning = false; ProcessId = null; Processes = []; Generation = GameTargetService.Default.Current.Generation;
+                foreach (Action<bool, int?> handler in Tick?.GetInvocationList() ?? [])
+                    try { handler(false, null); } catch (Exception ex) { Log.Error("目标切换监控刷新失败", ex); }
+            }
+            if (_dispatcher is null || _dispatcher.HasThreadAccess) Clear(); else _dispatcher.TryEnqueue(Clear);
+        };
+        _ = RunAsync();
+    }
 
     private async Task RunAsync()
     {
@@ -22,8 +37,11 @@ internal sealed class GameProcessMonitor
             await Task.Delay(Interval).ConfigureAwait(false);
             try
             {
-                var processes = Process.GetProcessesByName(DeltaForceLocator.GameProcessName);
-                var id = processes.Length > 0 ? processes[0].Id : (int?)null;
+                using var operation = GameTargetService.Default.BeginOperation();
+                var generation = GameTargetService.Default.Current.Generation;
+                var processes = GameTargetService.Default.GetProcesses(forceRefresh: true);
+                var identities = processes.Select(GameTargetService.Default.Identify).OfType<GameProcessIdentity>().ToArray();
+                var id = identities.Length > 0 ? identities[0].Id : (int?)null;
                 foreach (var process in processes)
                 {
                     process.Dispose();
@@ -31,6 +49,10 @@ internal sealed class GameProcessMonitor
 
                 void Deliver()
                 {
+                    using var delivery = GameTargetService.Default.BeginOperation();
+                    if (GameTargetService.Default.Current.Generation != generation) return;
+                    Generation = generation;
+                    Processes = identities;
                     ProcessId = id;
                     IsRunning = id.HasValue;
                     foreach (Action<bool, int?> subscriber in Tick?.GetInvocationList().Cast<Action<bool, int?>>() ?? [])

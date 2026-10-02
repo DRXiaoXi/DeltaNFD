@@ -350,7 +350,9 @@ public static class NvApiDrs
                 var profile = FindOrCreateProfile(session, appExeName, createWhenMissing: true, out var created, profileDisplayName);
                 if (profile == IntPtr.Zero)
                 {
-                    return (false, "未找到也无法创建该程序的驱动配置。");
+                    return (false, System.IO.Path.IsPathFullyQualified(appExeName)
+                        ? "驱动无法建立与完整 EXE 路径一致的独立配置，已拒绝写入，不会改写同名应用配置。"
+                        : "未找到也无法创建该程序的驱动配置。");
                 }
 
                 var ok = 0;
@@ -497,6 +499,8 @@ public static class NvApiDrs
         IntPtr session, string appExeName, bool createWhenMissing, out bool created, string profileDisplayName = "Delta NFD")
     {
         created = false;
+        if (System.IO.Path.IsPathFullyQualified(appExeName))
+            return FindCustomProfile(session, appExeName, createWhenMissing, out created);
         var app = NewApplication(appExeName);
         var profile = IntPtr.Zero;
         var st = _findApp!(session, appExeName, ref profile, ref app);
@@ -564,6 +568,41 @@ public static class NvApiDrs
     }
 
     private const string ProfileName = "Delta NFD - 三角洲行动";
+    internal static bool IsExactCustomApplication(string requested, string registered) =>
+        System.IO.Path.IsPathFullyQualified(registered) &&
+        System.IO.Path.GetFullPath(requested).Equals(System.IO.Path.GetFullPath(registered), StringComparison.OrdinalIgnoreCase);
+
+    private static IntPtr FindCustomProfile(IntPtr session, string path, bool create, out bool created)
+    {
+        created = false;
+        if (_findProfile is null || _getProfileInfo is null) return IntPtr.Zero;
+        var name = DeltaNFD.Services.GameTargetService.CustomProfileName(path);
+        var profile = IntPtr.Zero;
+        var found = _findProfile(session, name, ref profile) == StatusOk && profile != IntPtr.Zero;
+        if (!found)
+        {
+            if (!create) return IntPtr.Zero;
+            var info = new NvDrsProfile { version = (uint)(Marshal.SizeOf<NvDrsProfile>() | (1 << 16)), profileName = name };
+            if (_createProfile!(session, ref info, ref profile) != StatusOk || profile == IntPtr.Zero) return IntPtr.Zero;
+            created = true;
+        }
+        var existing = NewApplication(path);
+        var associated = IntPtr.Zero;
+        var lookup = _findApp!(session, path, ref associated, ref existing);
+        if (lookup != StatusOk || associated != profile || !IsExactCustomApplication(path, existing.appName))
+        {
+            if (!create) return IntPtr.Zero;
+            var application = NewApplication(path);
+            if (_createApp!(session, profile, ref application) != StatusOk) return IntPtr.Zero;
+            existing = NewApplication(path);
+            associated = IntPtr.Zero;
+            if (_findApp(session, path, ref associated, ref existing) != StatusOk || associated != profile ||
+                !IsExactCustomApplication(path, existing.appName)) return IntPtr.Zero;
+        }
+        var check = new NvDrsProfile { version = (uint)(Marshal.SizeOf<NvDrsProfile>() | (1 << 16)), profileName = "" };
+        return _getProfileInfo(session, profile, ref check) == StatusOk && check.numOfApps == 1 && check.profileName == name
+            ? profile : IntPtr.Zero;
+    }
     private const string LegacyProfileName = "DeltaOptimizer DeltaForce";
 
     /// <summary>Rename our former NVIDIA DRS profile in place so existing driver settings remain attached.</summary>

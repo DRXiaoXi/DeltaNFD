@@ -1,18 +1,18 @@
 {
-    "schemaVersion":  1,
-    "version":  "0.83.0",
-    "displayVersion":  "OpenAlphaV0.83",
-    "channel":  "alpha",
-    "mandatory":  false,
-    "minimumSupportedVersion":  "",
-    "publishedAtUtc":  "2026-09-30T13:18:22Z",
-    "releasePageUrl":  "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.83.0",
-    "notes":  "OpenAlphaV0.83 更新内容：\n\n升级说明：0.82.0 及更早版本没有本轮更新器，需要先手动安装此版本；后续更新仅在已发布版本高于本机时提供。\n验证说明：编译及后端检查已通过，真实安装/卸载端到端尚待隔离虚拟机验证。\n\n· 帧格新增「前台加速响应」：系统后台资源预留降低 + 前台游戏优先调度，退出帧格自动还原\n· 帧格新增「降低省电延迟」：网卡省电全禁 + 关闭 USB 选择性暂停，退出帧格自动还原\n· 内存清理卡片新增「可能导致性能下降」红色提示标签\n· 改进卸载清理：先确认安装目录内进程退出；保留备份时复制并校验，失败保留原数据；清理不跟随目录联接\n· CPU实验室「CPU 亲和性」支持 Intel 大小核：正确识别 P 核 / E 核，新增「仅 P 核」「仅 E 核」快捷键，核心勾选项标注 P/E\n· 着色器健康检测新增 PARC 判定：N 卡在 SM6\\DXCache 检测到 .parc 文件即直接判为着色器异常\n· 安装包内置默认背景图；主页隐藏「优化检测」分数栏目；着色器页移除运行库提醒\n· 标题栏显示当前版本号\n· 新增软件更新：读取 GitHub 已发布最高版本（包含 Alpha），仅安装高于本机的版本；支持配置备用源，同版本不重装、低版本不降级\n· 更新安装器沿用现有安装目录，执行前重新确认最新版并校验安装包大小与 SHA256，持锁防止替换\n· CPU实验室新增「优化方案」保存 / 分享 / 导入：导出为 txt（含 CPU 型号、核心数、线程数、异类调度策略、CPU 亲和性），可分享给同款 CPU 的人导入；导入时校验 CPU 型号与核心数/线程数完全一致，不一致拒绝导入",
-    "installers":  [
-                       {
-                           "url":  "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.83.0/DeltaNFD_Setup_0.83.0_x64.exe",
-                           "sizeBytes":  141173926,
-                           "sha256":  "15b1392e77949d0776ab82545b43722b660bf3ae6bbd1add40e6159a988d916b"
-                       }
-                   ]
+  "schemaVersion": 1,
+  "version": "0.89.0",
+  "displayVersion": "OpenAlphaV0.89",
+  "channel": "alpha",
+  "mandatory": false,
+  "minimumSupportedVersion": "",
+  "publishedAtUtc": "2026-10-02T05:59:57Z",
+  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.89.0",
+  "notes": "# OpenAlphaV0.89\n\n数值版本：0.89.0。Alpha 测试版。\n\n## 更新内容\n\n- 新增“不玩三角洲辣”自定义主进程模式，通用优化按所选 EXE 完整路径识别；三角洲专用功能按模式限制。\n- 改进 AMD CCD、CPU 拓扑和 NVIDIA 识别；修正帧格功能状态联动、页面订阅及共享进程监控。\n- 完善系统优化原值备份、执行结果、失败日志和恢复流程；强化电源计划和 Hyper-V 改动的检查及失败记录保留。\n- 修正运行库防护与修复自锁、卸载前恢复、UE4 权限恢复和运行库安装失败诊断。\n- 新增脱机模式源码及独立短时助手：目标启动后执行一次 DWM/软 CPU Sets，任务结束退出；游戏重启需要重新准备。\n- 脱机助手隔离测试完成应用/还原、等待取消、单实例和真实 180 秒超时验证；测试不再覆盖真实用户配置。\n- 提供拓展插件技术规范、数据合同解析器与独立只读示例。插件导入、设置宿主及自主脱机插件功能尚未实现，不能在当前版本导入第三方插件。\n\n## 使用与验证边界\n\n- 建议先备份配置，以管理员身份使用；系统级优化可能影响其他软件，失败原值记录请保留用于恢复。\n- 脱机模式仍属实验阶段：尚未完成真实 GUI/UAC、真实 DWM、双 CCD 助手完整流程和 Windows 10 虚拟机验收；未实现电源 ACL 锁定或无驻留固定 0.5ms。\n- 编译及隔离后端检查不等同真实安装/卸载兼容性验证，也不代表反作弊认可或零风险保证。\n- 自动更新仅提供高于本机版本的发布。0.82.0 及更早客户端需手动安装支持更新器的版本。",
+  "installers": [
+    {
+      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.89.0/DeltaNFD_Setup_0.89.0_x64.exe",
+      "sizeBytes": 163560303,
+      "sha256": "c7c84d0a70201feaaed3dc456cdee2be30f7830dab6d4a6a1bc1ead542b93cb7"
+    }
+  ]
 }

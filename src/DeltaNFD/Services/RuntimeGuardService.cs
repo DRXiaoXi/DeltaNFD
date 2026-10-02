@@ -5,315 +5,58 @@ using Microsoft.Win32;
 namespace DeltaNFD.Services;
 
 /// <summary>
-/// 运行库保护的真实实现（IFEO 劫持 + UE4Prereq Deny-Execute ACL，全部可还原）。
+/// 运行库保护：IFEO 与 UE4 ACL 写前备份、写后复核，外部修改或旧版权限缺少备份时拒绝盲目还原。
 /// 拦截范围 = 所有运行库安装器：VC++ 全系列（2005~2022）、DirectX 运行库、UE4/UE5 前置包等，
 /// 无论来源是游戏、启动器还是手动安装，一律按文件名拦截。
 /// </summary>
 public sealed class RuntimeGuardService : IRuntimeGuardService
 {
-    private const string IfeoRoot = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
-    private const string DebuggerValue = @"%windir%\System32\taskkill.exe";
-
-    /// <summary>IFEO 拦截的运行库安装器名单（注册表键名不区分大小写，大小写变体无需重复建键）。</summary>
-    private static readonly string[] IfeoInstallerNames =
-    [
-        // VC++ 2015-2022 统一安装器
-        "vc_redist.x64.exe",
-        "vc_redist.x86.exe",
-        "vc_redist.arm64.exe",
-        // VC++ 2005 / 2008 / 2010 / 2012 / 2013
-        "vcredist_x64.exe",
-        "vcredist_x86.exe",
-        "vcredist_ia64.exe",
-        "vcredist.exe",
-        // DirectX 运行库
-        "DXSETUP.exe",
-        "dxwebsetup.exe",
-        // UE4 / UE5 前置包（游戏自带运行库合集）
-        "UE4PrereqSetup_x64.exe",
-        "UE4PrereqSetup_x86.exe",
-    ];
-
-    /// <summary>UE4 前置包在游戏目录内的相对路径。</summary>
-    private const string Ue4PrereqRelativePath = @"Engine\Extras\Redist\en-us";
-    private readonly TweakBackupStore _backups;
-
-    public RuntimeGuardService() : this(TweakBackupStore.Default)
-    {
-    }
-
-    public RuntimeGuardService(TweakBackupStore backups)
-    {
-        _backups = backups;
-    }
-
-    // ---------------- 状态 ----------------
+    private readonly RuntimeGuardProtection _protection;
+    public RuntimeGuardService() : this(TweakBackupStore.Default) { }
+    public RuntimeGuardService(TweakBackupStore backups) => _protection = new RuntimeGuardProtection(backups);
+    internal RuntimeGuardService(RuntimeGuardProtection protection) => _protection = protection;
 
     public async Task<RuntimeGuardStatus> GetStatusAsync()
     {
         var redists = await Task.Run(GetInstalledRedists);
-        var ue4Path = await FindUe4PrereqAsync();
-
-        var ifeoApplied = CountIfeoApplied();
-        var denied = ue4Path.Length > 0 && await IsExecuteDeniedAsync(ue4Path);
-
+        var path = await FindUe4PrereqAsync();
+        var state = _protection.Probe(path);
         return new RuntimeGuardStatus
         {
-            InstalledRedists = redists,
-            IfeoApplied = ifeoApplied == IfeoInstallerNames.Length,
-            IfeoCount = ifeoApplied,
-            IfeoTotal = IfeoInstallerNames.Length,
-            Ue4PrereqFound = ue4Path.Length > 0,
-            Ue4PrereqPath = ue4Path,
-            Ue4PrereqDenied = denied,
+            InstalledRedists = redists, IfeoCount = state.Blocked, IfeoTotal = RuntimeGuardProtection.Names.Length,
+            IfeoApplied = state.Managed == RuntimeGuardProtection.Names.Length && state.External == 0,
+            IfeoManagedCount = state.Managed, IfeoExternalCount = state.External,
+            Ue4PrereqFound = path.Length > 0 || state.PendingAcl, Ue4PrereqPath = path,
+            Ue4PrereqDenied = state.FileDenied, Ue4RestorePending = state.PendingAcl,
         };
     }
-
-    private static int CountIfeoApplied()
+    public Task<OperationResult> EnableAsync() => Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
     {
-        var ifeoApplied = 0;
-        foreach (var name in IfeoInstallerNames)
-        {
-            using var key = Registry.LocalMachine.OpenSubKey($@"{IfeoRoot}\{name}");
-            if (key?.GetValue("Debugger") as string == DebuggerValue)
-            {
-                ifeoApplied++;
-            }
-        }
-
-        return ifeoApplied;
-    }
-
-    private static (string? Value, RegistryValueKind Kind) ReadDebugger(string keyPath)
+        if (!ElevationHelper.IsElevated) return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
+        var path = FindUe4PrereqAsync().GetAwaiter().GetResult();
+        var result = _protection.Enable(path);
+        PersistGuardState(path);
+        Log.Info("运行库防护开启结果：" + result.Message);
+        return result;
+    }));
+    public Task<OperationResult> DisableAsync() => Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
     {
-        using var key = Registry.LocalMachine.OpenSubKey(keyPath);
-        if (key is null || !key.GetValueNames().Contains("Debugger", StringComparer.OrdinalIgnoreCase))
-            return (null, RegistryValueKind.None);
+        if (!ElevationHelper.IsElevated) return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
+        var path = FindUe4PrereqAsync().GetAwaiter().GetResult();
+        var result = _protection.Disable(path);
+        PersistGuardState(path);
+        Log.Info("运行库防护恢复结果：" + result.Message);
+        return result;
+    }));
 
-        var kind = key.GetValueKind("Debugger");
-        var value = key.GetValue("Debugger", null, RegistryValueOptions.DoNotExpandEnvironmentNames);
-        if (kind is not (RegistryValueKind.String or RegistryValueKind.ExpandString) || value is not string text)
-            throw new InvalidDataException($"IFEO Debugger 原值不是可安全备份的字符串：HKLM\\{keyPath}");
-        return (text, kind);
-    }
-
-    private static RegistryKey? OpenIfeoForWrite(string name, bool createIfMissing)
-    {
-        var keyPath = $@"{IfeoRoot}\{name}";
-        using var readKey = Registry.LocalMachine.OpenSubKey(keyPath);
-        if (readKey is not null)
-        {
-            return Registry.LocalMachine.OpenSubKey(keyPath,
-                RegistryKeyPermissionCheck.ReadWriteSubTree,
-                RegistryRights.SetValue)
-                ?? throw new UnauthorizedAccessException($"无权写入 IFEO 键：HKLM\\{keyPath}");
-        }
-
-        if (!createIfMissing)
-            return null;
-
-        using var parent = Registry.LocalMachine.OpenSubKey(IfeoRoot,
-            RegistryKeyPermissionCheck.ReadWriteSubTree, RegistryRights.CreateSubKey);
-        if (parent is null)
-            throw new UnauthorizedAccessException($"无权在 IFEO 下创建子键：HKLM\\{IfeoRoot}");
-        return parent.CreateSubKey(name, RegistryKeyPermissionCheck.ReadWriteSubTree)
-            ?? throw new UnauthorizedAccessException($"无法创建 IFEO 键：HKLM\\{keyPath}");
-    }
-
-    private List<string> RestoreIfeoEntries(IEnumerable<string> names)
-    {
-        var problems = new List<string>();
-        foreach (var name in names)
-        {
-            var keyPath = $@"{IfeoRoot}\{name}";
-            var stage = "读取备份";
-            try
-            {
-                var backup = _backups.GetStrict("HKLM", keyPath, "Debugger");
-                if (backup is null)
-                    continue;
-
-                stage = "还原注册表";
-                using (var key = OpenIfeoForWrite(name, backup.ValueKind != RegistryValueKind.None))
-                {
-                    if (backup.ValueKind == RegistryValueKind.None)
-                        key?.DeleteValue("Debugger", throwOnMissingValue: false);
-                    else
-                        key!.SetValue("Debugger", backup.Data, backup.ValueKind);
-                }
-
-                stage = "清理备份";
-                _backups.RemoveStrict("HKLM", keyPath, "Debugger");
-            }
-            catch (Exception ex)
-            {
-                Log.Error($"运行库防护：IFEO {name} {stage}失败", ex);
-                problems.Add($"IFEO {name} {stage}：{DescribeError(ex)}");
-            }
-        }
-
-        return problems;
-    }
-
-    private static string DescribeError(Exception ex) =>
-        $"{ex.GetType().Name} (0x{ex.HResult:X8}): {ex.Message}";
-
-    private static string SummarizeProblems(IReadOnlyList<string> problems) =>
-        string.Join("；", problems.Take(3)) +
-        (problems.Count > 3 ? $"；另有 {problems.Count - 3} 项，详见日志" : "");
-
-    private async Task<RuntimeGuardStatus?> PersistActualGuardStateAsync()
+    private void PersistGuardState(string path)
     {
         try
         {
-            var status = await GetStatusAsync();
-            AppSettingsStore.Update(s => s.RuntimeGuardEnabled = status.IfeoCount > 0 || status.Ue4PrereqDenied);
-            return status;
+            var state = _protection.Probe(path);
+            AppSettingsStore.Update(s => s.RuntimeGuardEnabled = state.Managed > 0 || state.FileDenied || state.PendingAcl);
         }
-        catch (Exception ex)
-        {
-            Log.Error("运行库防护：复核实际状态失败", ex);
-            return null;
-        }
-    }
-
-    // ---------------- 开启 / 关闭 ----------------
-
-    public async Task<OperationResult> EnableAsync()
-    {
-        Log.Info("运行库防护：开启（IFEO + ACL）");
-        if (!ElevationHelper.IsElevated)
-        {
-            return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
-        }
-
-        var problems = new List<string>();
-        var writtenNames = new List<string>();
-
-        // 1. IFEO 劫持（备份原 Debugger 值后写入 taskkill）
-        foreach (var name in IfeoInstallerNames)
-        {
-            var stage = "读取原值";
-            try
-            {
-                var keyPath = $@"{IfeoRoot}\{name}";
-                var (current, kind) = ReadDebugger(keyPath);
-                stage = "保存备份";
-                _backups.SaveStrict(new RegistryValueBackup
-                {
-                    Hive = "HKLM",
-                    Id = TweakBackupStore.MakeId("HKLM", keyPath, "Debugger"),
-                    KeyPath = keyPath,
-                    ValueName = "Debugger",
-                    ValueKind = kind,
-                    Data = current ?? "",
-                    CreatedAt = DateTimeOffset.Now,
-                });
-
-                stage = "写入注册表";
-                using var key = OpenIfeoForWrite(name, createIfMissing: true);
-                key!.SetValue("Debugger", DebuggerValue, RegistryValueKind.String);
-                writtenNames.Add(name);
-            }
-            catch (Exception ex)
-            {
-                Log.Error($"运行库防护：IFEO {name} {stage}失败", ex);
-                problems.Add($"IFEO {name} {stage}：{DescribeError(ex)}");
-                if (stage == "保存备份")
-                    break;
-            }
-        }
-
-        if (problems.Count == 0)
-        {
-            try
-            {
-                var count = CountIfeoApplied();
-                if (count != IfeoInstallerNames.Length)
-                    problems.Add($"IFEO 写入后复核仅生效 {count}/{IfeoInstallerNames.Length} 项");
-            }
-            catch (Exception ex)
-            {
-                Log.Error("运行库防护：IFEO 写入后复核失败", ex);
-                problems.Add($"IFEO 复核：{DescribeError(ex)}");
-            }
-        }
-
-        if (problems.Count > 0)
-        {
-            var rollbackProblems = RestoreIfeoEntries(writtenNames);
-            var status = await PersistActualGuardStateAsync();
-            var rollbackText = rollbackProblems.Count == 0 ? "本次已写入的 IFEO 项已回滚"
-                : $"回滚仍有 {rollbackProblems.Count} 项失败：{SummarizeProblems(rollbackProblems)}";
-            var stateText = status is null ? "无法复核最终状态" : $"当前 IFEO {status.IfeoCount}/{status.IfeoTotal}";
-            return OperationResult.Fail($"拦截开启失败：{SummarizeProblems(problems)}；{rollbackText}；{stateText}。");
-        }
-
-        // 2. UE4Prereq 文件 ACL 是额外防护；失败不撤销已完整生效的 IFEO。
-        var ue4Note = "未在游戏目录找到 UE4 前置包。";
-        try
-        {
-            var ue4Path = await FindUe4PrereqAsync();
-            if (ue4Path.Length > 0)
-            {
-                var acl = await SetExecuteDenyAsync(ue4Path, deny: true);
-                ue4Note = acl.Success ? "UE4 前置包已拒绝执行。" : $"UE4 前置包未能单独拦截：{acl.Message}";
-                if (!acl.Success) Log.Warn("运行库防护：" + ue4Note);
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Error("运行库防护：UE4 前置包 ACL 处理失败", ex);
-            ue4Note = $"UE4 前置包未能单独拦截：{DescribeError(ex)}";
-        }
-
-        var finalStatus = await PersistActualGuardStateAsync();
-        if (finalStatus is null || !finalStatus.IfeoApplied)
-            return OperationResult.Fail("IFEO 写入完成，但无法确认全部防护仍在生效；请查看日志并重新检测状态。");
-
-        return OperationResult.Ok($"运行库拦截已开启：{IfeoInstallerNames.Length} 个安装器名已劫持。{ue4Note}");
-    }
-
-    public async Task<OperationResult> DisableAsync()
-    {
-        Log.Info("运行库防护：关闭（移除 IFEO + ACL）");
-        if (!ElevationHelper.IsElevated)
-        {
-            return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
-        }
-
-        var problems = RestoreIfeoEntries(IfeoInstallerNames);
-
-        // 2. 还原 UE4Prereq ACL
-        try
-        {
-            var ue4Path = await FindUe4PrereqAsync();
-            if (ue4Path.Length > 0 && await IsExecuteDeniedAsync(ue4Path))
-            {
-                var acl = await SetExecuteDenyAsync(ue4Path, deny: false);
-                if (!acl.Success)
-                    problems.Add(acl.Message);
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Error("运行库防护：UE4 前置包 ACL 还原失败", ex);
-            problems.Add($"UE4 前置包 ACL 还原：{DescribeError(ex)}");
-        }
-
-        var finalStatus = await PersistActualGuardStateAsync();
-        if (finalStatus is null)
-            problems.Add("无法复核最终防护状态");
-        else if (finalStatus.IfeoCount > 0 || finalStatus.Ue4PrereqDenied)
-            problems.Add($"仍有拦截残留：IFEO {finalStatus.IfeoCount}/{finalStatus.IfeoTotal}" +
-                (finalStatus.Ue4PrereqDenied ? "，UE4 前置包仍被拒绝执行" : ""));
-
-        if (problems.Count > 0)
-        {
-            return OperationResult.Fail($"拦截关闭未完成：{SummarizeProblems(problems)}");
-        }
-
-        return OperationResult.Ok("运行库拦截已关闭，三角洲将可以正常安装运行库。");
+        catch (Exception ex) { Log.Error("运行库防护状态无法复核", ex); }
     }
 
     // ---------------- 已装运行库枚举 ----------------
@@ -425,7 +168,7 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
                 }
 
                 var version = sub.GetValue("DisplayVersion") as string ?? "";
-                var arch = displayName.Contains("(x64)", StringComparison.OrdinalIgnoreCase) ? "x64"
+                var arch = System.Text.RegularExpressions.Regex.IsMatch(displayName, @"\bx64\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase) ? "x64"
                     : displayName.Contains("(arm64)", StringComparison.OrdinalIgnoreCase) ? "arm64"
                     : "x86";
                 var uninstall = sub.GetValue("UninstallString") as string ?? "";
@@ -599,8 +342,8 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
     // ---------------- 修复/重装运行库（卸载全部 C++ → AIO 重装 → 官方 2015-2022 钉装） ----------------
 
     /// <summary>解包后的 AIO 清单和安装脚本 SHA256（锁定经过核验的完整安装内容）。</summary>
-    private const string RepairPayloadManifestSha256 = "D9F991DD9E3C37A9968FD3558884B03F96CD85DBFF5226F26F05B3C31C3FCE94";
-    private const string RepairInstallerCmdSha256 = "2C7FC692833C2B1263DDE90882C3D0E4C569B1F59666C48FDEE9B4FE77009901";
+    private const string RepairPayloadManifestSha256 = "6C3CDC91281CFAF0A5BB23F511A5E4914BA7A6520CC84E73286693AE69DE7D0A";
+    private const string RepairInstallerCmdSha256 = "2AA2A7EA0C0FE74044FC6B521B98A107127012E684105D8BC4762690AAF9F7F6";
 
     /// <summary>内置官方 2015-2022 运行库安装包（x64/x86）的 SHA256（防篡改校验）。</summary>
     private static readonly (string File, string Sha256)[] V14InstallerSha256 =
@@ -609,8 +352,25 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         ("VCRedist2015-2022-x86.exe", "DD1A8BE03398367745A87A5E35BEBDAB00FDAD080CF42AF0C3F20802D08C25D4"),
     ];
 
-    public async Task<OperationResult> RepairVcRedistAsync(IProgress<string>? progress = null)
+    public Task<OperationResult> RepairVcRedistAsync(IProgress<string>? progress = null) =>
+        Task.Run(() =>
+        {
+            try { return RuntimeGuardProtection.Exclusive(() => RepairVcRedistCoreAsync(progress).GetAwaiter().GetResult()); }
+            catch (Exception ex)
+            {
+                Log.Error("运行库修复：流程未正常完成", ex);
+                return OperationResult.Fail("运行库修复未完成：" + ex.Message + "。请查看日志，不要立即重复卸载重装。");
+            }
+        });
+
+    private async Task<OperationResult> RepairVcRedistCoreAsync(IProgress<string>? progress)
     {
+        var blocker = _protection.RepairBlocker(await FindUe4PrereqAsync());
+        if (blocker is not null)
+        {
+            Log.Warn("运行库修复：预检拒绝，尚未卸载运行库；" + blocker);
+            return OperationResult.Fail(blocker);
+        }
         Log.Info("运行库修复：开始（卸载全部 → AIO 重装）");
         if (!ElevationHelper.IsElevated)
         {
@@ -627,6 +387,7 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         }
         catch (Exception ex)
         {
+            Log.Error("运行库修复：安装内容校验异常，尚未卸载运行库", ex);
             return OperationResult.Fail($"运行库安装包校验失败，尚未更改现有运行库：{ex.Message}");
         }
 
@@ -638,16 +399,38 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
 
         Log.Info(packageCheck.Message);
 
+        RuntimeRepairDiagnostics diagnostics;
+        try { diagnostics = new RuntimeRepairDiagnostics(Log.LogDirectory); }
+        catch (Exception ex)
+        {
+            Log.Error("运行库修复：诊断目录创建失败，尚未卸载运行库", ex);
+            return OperationResult.Fail($"无法创建修复诊断目录，尚未更改运行库：{ex.Message}");
+        }
+        Log.Info($"运行库修复：诊断目录={diagnostics.DirectoryPath}；开始UTC={diagnostics.StartedUtc:O}");
+        var installationIssues = new List<string>();
+
         // 1) 卸载系统上全部 Visual C++ 运行库条目（确保 C++ 库纯净）
         var scan = await ScanVcRedistsAsync();
+        diagnostics.Save("before-scan.json", scan);
+        Log.Info($"运行库修复：卸载前条目={scan.All.Count}；异常={scan.Abnormal.Count}；非最适={scan.Suboptimal.Count}");
         var all = scan.All;
         var uninstalled = 0;
         var failed = new List<string>();
+        var uninstallRebootNeeded = false;
 
         foreach (var entry in all)
         {
             progress?.Report($"正在卸载：{entry.DisplayName}");
-            var result = await UninstallVcRedistEntryAsync(entry);
+            Log.Info($"运行库修复·卸载开始：名称={entry.DisplayName}；架构={entry.Architecture}；版本={entry.DisplayVersion}；类型={entry.UninstallKind}；键={entry.KeyName}");
+            var result = await UninstallVcRedistEntryAsync(entry, diagnostics.DirectoryPath);
+            uninstallRebootNeeded |= result.RequiresReboot;
+            Log.Info($"运行库修复·卸载结果：名称={entry.DisplayName}；成功={result.Success}；需重启={result.RequiresReboot}；说明={result.Message}");
+            if (!result.Success && result.Message.StartsWith("卸载超时", StringComparison.Ordinal))
+            {
+                diagnostics.Save("uninstall-timeout.json", new { Entry = entry, Result = result, Uninstalled = uninstalled });
+                return new OperationResult { Success = false, RequiresReboot = uninstallRebootNeeded,
+                    Message = $"{entry.DisplayName}：{result.Message}；停止后续卸载及重装，已有部分旧条目可能被卸载。诊断目录：{diagnostics.DirectoryPath}" };
+            }
             if (result.Success)
             {
                 uninstalled++;
@@ -659,6 +442,8 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         }
 
         progress?.Report($"已卸载 {uninstalled}/{all.Count} 个运行库条目。");
+        diagnostics.Save("uninstall-failures.json", failed);
+        installationIssues.AddRange(failed.Select(f => "旧条目卸载未确认成功：" + f));
 
         // 2) 使用解包后的完整 AIO 安装脚本；安装数据已在卸载前完成逐文件校验。
         var installerCmdPath = Path.Combine(repairPackageRoot, "Installer.cmd");
@@ -675,15 +460,20 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
                 WindowStyle = ProcessWindowStyle.Hidden,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
             };
+            psi.Environment["DELTANFD_REPAIR_LOG_DIR"] = diagnostics.DirectoryPath;
+            Log.Info($"运行库修复·AIO 启动：程序={psi.FileName}；参数={psi.Arguments}；工作目录={psi.WorkingDirectory}；超时=20分钟");
             using var process = Process.Start(psi);
             if (process is null)
             {
-                return OperationResult.Fail("修复程序启动失败。");
+                return OperationResult.Fail("修复程序启动失败；旧运行库可能已卸载。诊断目录：" + diagnostics.DirectoryPath);
             }
 
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
+            using var outputCancellation = new CancellationTokenSource();
+            var stdoutTask = diagnostics.CaptureOutputAsync(process.StandardOutput, "aio-stdout.log", outputCancellation.Token);
+            var stderrTask = diagnostics.CaptureOutputAsync(process.StandardError, "aio-stderr.log", outputCancellation.Token);
 
             try
             {
@@ -695,27 +485,33 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
                 try
                 {
                     process.Kill(entireProcessTree: true);
+                    await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
                 }
                 catch
                 {
-                    // 提权进程可能杀不掉：如实告知用户
+                    Log.Warn("运行库修复：超时后未确认安装器已结束，禁止立即重复修复。");
                 }
 
+                outputCancellation.Cancel();
+                await Task.WhenAll(stdoutTask, stderrTask);
+                diagnostics.CollectInstallerEvents();
+                diagnostics.Save("aio-timeout.json", new { Pid = process.Id, TimeUtc = DateTime.UtcNow, Uninstalled = uninstalled });
+                Log.Error($"运行库修复：AIO 超时；PID={process.Id}；诊断目录={diagnostics.DirectoryPath}");
                 return OperationResult.Fail(
                     "修复包运行超过 20 分钟未结束，已停止等待并尝试结束安装器。" +
-                    "请确认没有游戏/安装程序占用后重新执行修复。");
+                    "旧运行库可能已卸载，当前修复未完成；请确认安装器已结束，不要立即重复修复。诊断目录：" + diagnostics.DirectoryPath);
             }
 
-            LogInstallerOutput("标准输出", await stdoutTask);
-            LogInstallerOutput("错误输出", await stderrTask);
+            outputCancellation.CancelAfter(TimeSpan.FromSeconds(5));
+            await Task.WhenAll(stdoutTask, stderrTask);
 
             var exitCode = process.ExitCode;
-            if (exitCode is not (0 or 3010))
-            {
-                return OperationResult.Fail($"AIO 安装脚本退出码 {exitCode}——请关闭所有游戏/安装程序后重试。");
-            }
+            Log.Info($"运行库修复·AIO 结束：PID={process.Id}；退出码={exitCode}；需重启={exitCode == 3010}");
+            var packages = new List<RuntimePackageResult>();
+            try { packages = diagnostics.ReadPackageResults(); }
+            catch (Exception ex) { installationIssues.Add("逐包结果未确认：" + ex.Message); Log.Error("运行库修复：逐包结果读取失败", ex); }
 
-            var rebootNeeded = exitCode == 3010;
+            var rebootNeeded = exitCode == 3010 || uninstallRebootNeeded;
 
             // 3) 官方 2015-2022 运行库（x64/x86）静默钉装，保证 v14 分支达到基线 14.42.34433
             var v14Notes = new List<string>();
@@ -726,6 +522,7 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
                 if (!File.Exists(v14Path))
                 {
                     v14Notes.Add($"{label} 未找到内置安装包");
+                    installationIssues.Add(v14Notes[^1]);
                     continue;
                 }
 
@@ -740,28 +537,32 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
                 catch (Exception ex)
                 {
                     v14Notes.Add($"{label} 校验失败（{ex.Message}）");
+                    installationIssues.Add(v14Notes[^1]);
                     continue;
                 }
 
                 if (!hash.Equals(sha256, StringComparison.OrdinalIgnoreCase))
                 {
                     v14Notes.Add($"{label} SHA256 校验失败，已跳过安装");
+                    installationIssues.Add(v14Notes[^1]);
                     continue;
                 }
 
                 var v14Psi = new ProcessStartInfo
                 {
                     FileName = v14Path,
-                    Arguments = "/install /quiet /norestart",
+                    Arguments = $"/install /quiet /norestart /log \"{Path.Combine(diagnostics.DirectoryPath, file + ".log")}\"",
                     UseShellExecute = true,
                     Verb = "runas",
                 };
                 try
                 {
+                    Log.Info($"运行库修复·v14 启动：名称={label}；程序={v14Path}；参数={v14Psi.Arguments}；超时=10分钟");
                     using var v14Proc = Process.Start(v14Psi);
                     if (v14Proc is null)
                     {
                         v14Notes.Add($"{label} 启动失败");
+                        installationIssues.Add(v14Notes[^1]);
                         continue;
                     }
 
@@ -774,6 +575,7 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
                         try
                         {
                             v14Proc.Kill(entireProcessTree: true);
+                            await v14Proc.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
                         }
                         catch
                         {
@@ -781,44 +583,68 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
                         }
 
                         v14Notes.Add($"{label} 安装超时");
+                        installationIssues.Add(v14Notes[^1]);
                         continue;
                     }
 
-                    // 0=安装成功 1638=同版本或更高版本已存在 3010=需要重启
+                    Log.Info($"运行库修复·v14 结束：名称={label}；退出码={v14Proc.ExitCode}");
+                    // 1638 只代表版本冲突，最终必须通过分支复检，不能直接视为成功。
                     switch (v14Proc.ExitCode)
                     {
                         case 0:
                             v14Notes.Add($"{label} 已安装");
                             break;
                         case 1638:
-                            v14Notes.Add($"{label} 已有同版本或更高版本");
+                            v14Notes.Add($"{label} 返回版本冲突 1638，等待复检确认");
                             break;
                         case 3010:
+                        case 1641:
                             v14Notes.Add($"{label} 已安装（需重启）");
                             rebootNeeded = true;
                             break;
                         default:
                             v14Notes.Add($"{label} 退出码 {v14Proc.ExitCode}");
+                            installationIssues.Add(v14Notes[^1]);
                             break;
                     }
                 }
                 catch (Exception ex)
                 {
                     v14Notes.Add($"{label} 安装异常（{ex.Message}）");
+                    installationIssues.Add(v14Notes[^1]);
                 }
             }
 
-            var failNote = failed.Count > 0 ? $"（{failed.Count} 个旧条目卸载失败：{string.Join("；", failed.Take(2))}）" : "";
-            var summary =
-                $"运行库重装完成：已卸载 {uninstalled} 个旧条目{failNote}，重装 2005–2026 全系列官方运行库；" +
-                $"2015-2022 基线（14.42.34433）——{string.Join("；", v14Notes)}。";
-            return rebootNeeded
-                ? OperationResult.Ok(summary + "部分组件需要重启电脑后完全生效。", requiresReboot: true)
-                : OperationResult.Ok(summary);
+            diagnostics.Save("v14-results.json", v14Notes);
+            progress?.Report("正在复检所有运行库分支并归档安装诊断…");
+            VcRedistScanReport? after = null;
+            try { after = await ScanVcRedistsAsync(); diagnostics.Save("after-scan.json", after); }
+            catch (Exception ex) { installationIssues.Add("修复后扫描异常：" + ex.Message); Log.Error("运行库修复：复检失败", ex); }
+            if (after is not null)
+            {
+                Log.Info($"运行库修复·复检：条目={after.All.Count}；异常={after.Abnormal.Count}；非最适={after.Suboptimal.Count}");
+                foreach (var item in after.Suboptimal)
+                    Log.Warn($"运行库修复·未达标分支：{item.Branch}；检测版本={item.InstalledVersion}；要求={item.RecommendedVersion}");
+            }
+            var assemblyErrors = diagnostics.CollectInstallerEvents();
+            var finalResult = RuntimeRepairDiagnostics.BuildResult(exitCode, packages, installationIssues, after,
+                rebootNeeded, diagnostics.DirectoryPath, assemblyErrors);
+            var diagnosticWarnings = diagnostics.Issues;
+            if (diagnosticWarnings.Length > 0)
+                finalResult = new OperationResult { Success = finalResult.Success, RequiresReboot = finalResult.RequiresReboot,
+                    Message = finalResult.Message + "\n诊断采集警告（不等于安装失败）：" + string.Join("；", diagnosticWarnings.Take(3)) };
+            diagnostics.Save("summary.json", new { Result = finalResult, Packages = packages, Issues = installationIssues,
+                DiagnosticWarnings = diagnosticWarnings, Uninstalled = uninstalled });
+            Log.Info($"运行库修复·最终结果：成功={finalResult.Success}；需重启={finalResult.RequiresReboot}；{finalResult.Message}");
+            progress?.Report(finalResult.Success ? "修复流程及分支复检通过。" : "修复未完成，请查看失败明细及诊断目录。");
+            return finalResult;
         }
         catch (Exception ex)
         {
-            return OperationResult.Fail($"修复运行库失败：{ex.Message}");
+            Log.Error("运行库修复：安装流程异常", ex);
+            diagnostics.Save("fatal-error.json", new { Exception = ex.ToString(), TimeUtc = DateTime.UtcNow, Uninstalled = uninstalled });
+            diagnostics.CollectInstallerEvents();
+            return OperationResult.Fail($"修复运行库失败，旧运行库可能已卸载：{ex.Message}。诊断目录：{diagnostics.DirectoryPath}");
         }
     }
 
@@ -942,24 +768,7 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream));
     }
 
-    private static void LogInstallerOutput(string streamName, string output)
-    {
-        var text = output.Trim();
-        if (text.Length == 0)
-        {
-            return;
-        }
-
-        const int maxCharacters = 4000;
-        if (text.Length > maxCharacters)
-        {
-            text = text[^maxCharacters..];
-        }
-
-        Log.Info($"运行库 AIO 安装器{streamName}：{text}");
-    }
-
-    private static async Task<OperationResult> UninstallVcRedistEntryAsync(VcRedistEntry entry)
+    private static async Task<OperationResult> UninstallVcRedistEntryAsync(VcRedistEntry entry, string? diagnosticDirectory = null)
     {
         try
         {
@@ -970,19 +779,22 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
                     var psi = new ProcessStartInfo
                     {
                         FileName = "msiexec.exe",
-                        Arguments = $"/x {entry.KeyName} /qn /norestart",
+                        Arguments = $"/x {entry.KeyName} /qn /norestart" + (diagnosticDirectory is null ? ""
+                            : $" /L*V \"{Path.Combine(diagnosticDirectory, "uninstall-" + Guid.NewGuid().ToString("N") + ".log")}\""),
                         UseShellExecute = false,
                         CreateNoWindow = true,
                     };
+                    Log.Info($"运行库卸载：程序={psi.FileName}；参数={psi.Arguments}；名称={entry.DisplayName}");
                     using var p = Process.Start(psi);
                     if (p is null)
                     {
                         return OperationResult.Fail("msiexec 启动失败");
                     }
 
-                    await p.WaitForExitAsync().WaitAsync(TimeSpan.FromMinutes(3));
-                    return p.ExitCode is 0 or 3010 or 1605
-                        ? OperationResult.Ok("已卸载。")
+                    await WaitForUninstallExitAsync(p);
+                    Log.Info($"运行库卸载：名称={entry.DisplayName}；PID={p.Id}；退出码={p.ExitCode}");
+                    return p.ExitCode is 0 or 3010 or 1641 or 1605
+                        ? OperationResult.Ok(p.ExitCode == 1605 ? "未登记此 MSI 产品（1605），未执行实际卸载。" : "已卸载。", requiresReboot: p.ExitCode is 3010 or 1641)
                         : OperationResult.Fail($"msiexec 退出码 {p.ExitCode}");
                 }
                 case "Inf":
@@ -1003,22 +815,42 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
                         UseShellExecute = false,
                         CreateNoWindow = true,
                     };
+                    Log.Info($"运行库卸载：程序={psi.FileName}；参数={psi.Arguments}；名称={entry.DisplayName}");
                     using var p2 = Process.Start(psi);
                     if (p2 is null)
                     {
                         return OperationResult.Fail("卸载命令启动失败");
                     }
 
-                    await p2.WaitForExitAsync().WaitAsync(TimeSpan.FromMinutes(3));
-                    return OperationResult.Ok("已卸载。");
+                    await WaitForUninstallExitAsync(p2);
+                    Log.Info($"运行库卸载：名称={entry.DisplayName}；PID={p2.Id}；退出码={p2.ExitCode}");
+                    return p2.ExitCode is 0 or 3010 or 1641
+                        ? OperationResult.Ok("卸载命令正常结束。", requiresReboot: p2.ExitCode is 3010 or 1641)
+                        : OperationResult.Fail($"卸载命令退出码 {p2.ExitCode}");
                 }
                 default:
                     return OperationResult.Fail("未知卸载机制");
             }
         }
+        catch (TimeoutException ex)
+        {
+            Log.Error("运行库卸载：超时", ex);
+            return OperationResult.Fail("卸载超时；已尝试结束进程，请确认安装器已停止，不要立即重复操作。");
+        }
         catch (Exception ex)
         {
             return OperationResult.Fail(ex.Message);
+        }
+    }
+
+    private static async Task WaitForUninstallExitAsync(Process process)
+    {
+        try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromMinutes(3)); }
+        catch (TimeoutException)
+        {
+            try { process.Kill(entireProcessTree: true); await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5)); }
+            catch (Exception ex) { Log.Error($"运行库卸载：无法确认超时进程已结束；PID={process.Id}", ex); }
+            throw;
         }
     }
 
@@ -1039,22 +871,10 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
             .ToList();
     }
 
-    /// <summary>IFEO 拦截是否处于生效状态（任一安装器名已劫持即视为生效——VC_redist 卸载器同受拦截）。</summary>
-    private static bool IsIfeoGuardActive()
-    {
-        foreach (var name in IfeoInstallerNames)
-        {
-            using var key = Registry.LocalMachine.OpenSubKey($@"{IfeoRoot}\{name}");
-            if (key?.GetValue("Debugger") as string == DebuggerValue)
-            {
-                return true;
-            }
-        }
+    public Task<OperationResult> UninstallV14Async(IProgress<string>? progress = null) =>
+        Task.Run(() => RuntimeGuardProtection.Exclusive(() => UninstallV14CoreAsync(progress).GetAwaiter().GetResult()));
 
-        return false;
-    }
-
-    public async Task<OperationResult> UninstallV14Async(IProgress<string>? progress = null)
+    private async Task<OperationResult> UninstallV14CoreAsync(IProgress<string>? progress)
     {
         Log.Info("运行库：单独卸载 v14 命名运行库（仅名字带 v14 的条目）");
         if (!ElevationHelper.IsElevated)
@@ -1062,12 +882,8 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
             return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
         }
 
-        // IFEO 拦截按文件名劫持 VC_redist.x64.exe 等——卸载器自身同受拦截，必须先关防护
-        if (IsIfeoGuardActive())
-        {
-            return OperationResult.Fail(
-                "「运行库防护模式」当前开启——VC_redist 卸载器自身也会被 IFEO 拦截。请先关闭防护，卸载完成后再重新开启。");
-        }
+        var blocker = _protection.RepairBlocker(await FindUe4PrereqAsync());
+        if (blocker is not null) return OperationResult.Fail(blocker);
 
         var targets = await GetV14EntriesAsync();
         if (targets.Count == 0)
@@ -1109,35 +925,6 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
     // ---------------- 三角洲 UE4 前置包定位 ----------------
 
     private static Task<string> FindUe4PrereqAsync() => DeltaForceLocator.FindUe4PrereqAsync();
-
-    // ---------------- ACL ----------------
-
-    private const string EveryoneSid = "*S-1-1-0";
-
-    private static async Task<OperationResult> SetExecuteDenyAsync(string filePath, bool deny)
-    {
-        var arguments = deny
-            ? $"/deny \"{EveryoneSid}:(X)\""
-            : $"/remove:d \"{EveryoneSid}\"";
-
-        var (code, stdout, stderr) = await RunCaptureAsync(
-            "icacls.exe", $"\"{filePath}\" {arguments}", TimeSpan.FromSeconds(20));
-        if (code != 0)
-        {
-            var reason = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
-            return OperationResult.Fail(
-                $"icacls 操作失败（{FirstLine(reason)}）——{filePath}");
-        }
-
-        return OperationResult.Ok(deny ? "已拒绝执行" : "已恢复执行权限");
-    }
-
-    private static async Task<bool> IsExecuteDeniedAsync(string filePath)
-    {
-        var (code, stdout, _) = await RunCaptureAsync("icacls.exe", $"\"{filePath}\"", TimeSpan.FromSeconds(20));
-        return code == 0 && stdout.Contains("(DENY)", StringComparison.OrdinalIgnoreCase) &&
-               stdout.Contains("(X)", StringComparison.OrdinalIgnoreCase);
-    }
 
     // ---------------- 注册表 / 进程工具 ----------------
 

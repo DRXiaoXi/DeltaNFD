@@ -13,6 +13,11 @@ public sealed partial class AcePage : Page
     {
         InitializeComponent();
 
+        // 导航每次新建页面实例 → 订阅必须随 Loaded/Unloaded 成对挂/摘，
+        // 否则会从长生命周期的游戏进程服务上泄漏（与 LabPage 同一套约定）。
+        Loaded += (_, _) => ViewModel.AttachGameState();
+        Unloaded += (_, _) => ViewModel.DetachGameState();
+
         _ = ViewModel.LoadAsync();
     }
 

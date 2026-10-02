@@ -18,6 +18,8 @@ public sealed class PowerLockTargetItem
 
 public sealed partial class FramePage : Page, INotifyPropertyChanged
 {
+    public string TargetLabel => "当前主进程：" + DeltaNFD.Services.GameTargetService.Default.Current.DisplayName;
+    public bool NormalModeControlsEnabled => !OfflineModeGuard.BlocksNormalAutomation;
     private static readonly SolidColorBrush GameRunningBrush =
         MakeBrush(0x22, 0xC5, 0x5E);
 
@@ -60,6 +62,84 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
     /// <summary>降低省电延迟子开关可用性：帧格未激活 && 总开关已开。</summary>
     public bool PowerSaveSubTogglesEditable => FrameSrv.FeaturesEditable && FrameSrv.PowerSaveLatencyEnabled;
 
+    /// <summary>
+    /// 「笔记本不适用」的两个子开关（网卡省电全禁 / 关闭 PCIe 省电）是否可编辑：
+    /// 在原有可用性基础上，笔记本形态一律置灰（只贴角标不置灰等于骗人）。
+    /// </summary>
+    public bool LaptopExcludedSubTogglesEditable => PowerSaveSubTogglesEditable && !FrameSrv.IsLaptopChassis;
+
+    /// <summary>「笔记本不适用」角标可见性（仅机箱形态确认为笔记本时为 true；无法确定不显示）。</summary>
+    public bool LaptopExcludedBadgeVisible => FrameSrv.IsLaptopChassis;
+
+    public string DwmStatusText => !FrameSrv.DwmRestartOnGameStart ? "未启用"
+        : FrameSrv.IsGameRunning ? "已选择 · 目标正在运行" : "已启用 · 等待目标启动";
+    public string ResponseStatusText => FrameFeatureState.Describe(FrameSrv.ResponseBoostEnabled,
+        FrameSrv.ResponseBoostCoreParkingEnabled || FrameSrv.ResponseBoostEcoQosEnabled || FrameSrv.ResponseBoostTimerEnabled,
+        FrameSrv.FrameModeEnabled);
+    public string ForegroundStatusText => FrameFeatureState.Describe(FrameSrv.ForegroundBoostEnabled,
+        FrameSrv.ForegroundResponsivenessEnabled || FrameSrv.ForegroundPriorityEnabled, FrameSrv.FrameModeEnabled);
+    public string PowerSaveStatusText => FrameFeatureState.Describe(FrameSrv.PowerSaveLatencyEnabled,
+        FrameSrv.NicPowerSavingOffEnabled || FrameSrv.UsbSuspendOffEnabled || FrameSrv.PcieAspmOffEnabled,
+        FrameSrv.FrameModeEnabled);
+
+    // 绑定回写可能由界面刷新触发；父功能关闭或帧格激活时不覆盖保存的子选项。
+    public bool CoreParkingSelected
+    {
+        get => FrameFeatureState.IsSelected(FrameSrv.ResponseBoostEnabled, FrameSrv.ResponseBoostCoreParkingEnabled);
+        set { if (SubTogglesEditable) FrameSrv.ResponseBoostCoreParkingEnabled = value; }
+    }
+    public bool EcoQosSelected
+    {
+        get => FrameFeatureState.IsSelected(FrameSrv.ResponseBoostEnabled, FrameSrv.ResponseBoostEcoQosEnabled);
+        set { if (SubTogglesEditable) FrameSrv.ResponseBoostEcoQosEnabled = value; }
+    }
+    public bool TimerSelected
+    {
+        get => FrameFeatureState.IsSelected(FrameSrv.ResponseBoostEnabled, FrameSrv.ResponseBoostTimerEnabled);
+        set { if (SubTogglesEditable) FrameSrv.ResponseBoostTimerEnabled = value; }
+    }
+    public bool ResponsivenessSelected
+    {
+        get => FrameFeatureState.IsSelected(FrameSrv.ForegroundBoostEnabled, FrameSrv.ForegroundResponsivenessEnabled);
+        set { if (ForegroundSubTogglesEditable) FrameSrv.ForegroundResponsivenessEnabled = value; }
+    }
+    public bool PrioritySelected
+    {
+        get => FrameFeatureState.IsSelected(FrameSrv.ForegroundBoostEnabled, FrameSrv.ForegroundPriorityEnabled);
+        set { if (ForegroundSubTogglesEditable) FrameSrv.ForegroundPriorityEnabled = value; }
+    }
+    public bool NicSelected
+    {
+        get => FrameFeatureState.IsSelected(FrameSrv.PowerSaveLatencyEnabled, FrameSrv.NicPowerSavingOffEnabled);
+        set { if (LaptopExcludedSubTogglesEditable) FrameSrv.NicPowerSavingOffEnabled = value; }
+    }
+    public bool UsbSelected
+    {
+        get => FrameFeatureState.IsSelected(FrameSrv.PowerSaveLatencyEnabled, FrameSrv.UsbSuspendOffEnabled);
+        set { if (PowerSaveSubTogglesEditable) FrameSrv.UsbSuspendOffEnabled = value; }
+    }
+    public bool PcieSelected
+    {
+        get => FrameFeatureState.IsSelected(FrameSrv.PowerSaveLatencyEnabled, FrameSrv.PcieAspmOffEnabled);
+        set { if (LaptopExcludedSubTogglesEditable) FrameSrv.PcieAspmOffEnabled = value; }
+    }
+
+    private static readonly string[] FeaturePresentationProperties =
+    {
+        nameof(DwmStatusText), nameof(ResponseStatusText), nameof(ForegroundStatusText), nameof(PowerSaveStatusText),
+        nameof(CoreParkingSelected), nameof(EcoQosSelected), nameof(TimerSelected),
+        nameof(ResponsivenessSelected), nameof(PrioritySelected), nameof(NicSelected), nameof(UsbSelected),
+        nameof(PcieSelected),
+        nameof(SubTogglesEditable), nameof(ForegroundSubTogglesEditable), nameof(PowerSaveSubTogglesEditable),
+        nameof(LaptopExcludedSubTogglesEditable), nameof(LaptopExcludedBadgeVisible),
+    };
+
+    private void RefreshFeaturePresentation()
+    {
+        foreach (var property in FeaturePresentationProperties)
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(property));
+    }
+
     public FramePage()
     {
         InitializeComponent();
@@ -69,6 +149,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
             FrameSrv.PropertyChanged += OnFramePropertyChanged;
             FrameSrv.RefreshDualCcdArmState();
             UpdateGameDot();
+            RefreshFeaturePresentation();
         };
         Unloaded += (_, _) => FrameSrv.PropertyChanged -= OnFramePropertyChanged;
         UpdateGameDot();
@@ -83,12 +164,16 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
             UpdateGameDot();
         }
 
-        if (e.PropertyName is nameof(IFrameService.FeaturesEditable) or nameof(IFrameService.ResponseBoostEnabled)
-            or nameof(IFrameService.ForegroundBoostEnabled) or nameof(IFrameService.PowerSaveLatencyEnabled))
+        if (e.PropertyName is null or "" or nameof(IFrameService.FeaturesEditable) or nameof(IFrameService.FrameModeEnabled)
+            or nameof(IFrameService.IsGameRunning) or nameof(IFrameService.DwmRestartOnGameStart)
+            or nameof(IFrameService.ResponseBoostEnabled) or nameof(IFrameService.ResponseBoostCoreParkingEnabled)
+            or nameof(IFrameService.ResponseBoostEcoQosEnabled) or nameof(IFrameService.ResponseBoostTimerEnabled)
+            or nameof(IFrameService.ForegroundBoostEnabled) or nameof(IFrameService.ForegroundResponsivenessEnabled)
+            or nameof(IFrameService.ForegroundPriorityEnabled) or nameof(IFrameService.PowerSaveLatencyEnabled)
+            or nameof(IFrameService.NicPowerSavingOffEnabled) or nameof(IFrameService.UsbSuspendOffEnabled)
+            or nameof(IFrameService.PcieAspmOffEnabled) or nameof(IFrameService.IsLaptopChassis))
         {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SubTogglesEditable)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ForegroundSubTogglesEditable)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PowerSaveSubTogglesEditable)));
+            RefreshFeaturePresentation();
         }
     }
 

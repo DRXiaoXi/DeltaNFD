@@ -36,7 +36,7 @@ public sealed class RealSystemOptimizer : ISystemOptimizer
             GpuUsage = 0,
             RamUsedGb = ramUsedGb,
             RamTotalGb = ramTotalGb,
-            IsGameRunning = IsProcessAlive(GameProcessName),
+            IsGameRunning = GameTargetService.Default.IsRunning(),
             PingMs = ping,
             PowerPlan = powerPlan,
         };
@@ -54,7 +54,7 @@ public sealed class RealSystemOptimizer : ISystemOptimizer
         new()
         {
             Name = ItemGamePriority,
-            Description = "检测到三角洲启动时自动把游戏进程优先级提升至 High",
+            Description = "检测到目标游戏启动时自动把游戏进程优先级提升至 High",
             IsEnabled = AppSettingsStore.Read().GamePriorityEnabled,
             IsRecommended = true,
         },
@@ -133,6 +133,7 @@ public sealed class RealSystemOptimizer : ISystemOptimizer
 
     public async Task<OptimizeReport> RunFullOptimizeAsync(IProgress<string>? progress, CancellationToken ct = default)
     {
+        using var targetOperation = GameTargetService.Default.BeginOperation();
         Log.Info("一键优化：开始");
         var report = new OptimizeReport();
         var settings = AppSettingsStore.Read();
@@ -142,20 +143,14 @@ public sealed class RealSystemOptimizer : ISystemOptimizer
         report.AppliedSteps.Add("扫描系统状态");
 
         // 1. 游戏进程优先级
-        if (settings.GamePriorityEnabled && IsProcessAlive(GameProcessName))
+        if (settings.GamePriorityEnabled && GameTargetService.Default.IsRunning())
         {
             try
             {
-                var processes = System.Diagnostics.Process.GetProcessesByName(GameProcessName);
-                foreach (var process in processes)
-                {
-                    using (process)
-                    {
-                        process.PriorityClass = System.Diagnostics.ProcessPriorityClass.High;
-                    }
-                }
+                var priority = gameProcess.ApplyPriorityNow();
+                if (!priority.Success) throw new InvalidOperationException(priority.Message);
 
-                progress?.Report("已将三角洲进程优先级提升至 High");
+                progress?.Report("已将目标游戏进程优先级提升至 High");
                 report.AppliedSteps.Add("游戏进程优先级 High");
             }
             catch

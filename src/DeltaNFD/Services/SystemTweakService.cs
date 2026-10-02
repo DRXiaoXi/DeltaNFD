@@ -97,7 +97,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
         var entries = _backups.GetAll();
         bool Has(string hive, string key, string value) => entries.Any(e => e.Id == TweakBackupStore.MakeId(hive, key, value));
         var result = new List<SystemTweak>();
-        if (Has("State", "HyperV", "LaunchType") ||
+        if (Has("State", "HyperV", "LaunchType") || Has("State", "HyperV", "FeatureBackupProtocol") ||
             HyperVFeatures.Any(f => Has("State", "HyperVFeatures", f)) ||
             Has("HKLM", ServicesRoot + @"\HvHost", "Start") ||
             Has("HKLM", ServicesRoot + @"\vmms", "Start") ||
@@ -113,6 +113,38 @@ public sealed partial class SystemTweakService : ISystemTweakService
         if (Has("HKLM", GraphicsDriversPath, "HwSchMode")) result.Add(SystemTweak.HardwareGpuScheduling);
         if (Has("HKLM", WSearchServicePath, "Start")) result.Add(SystemTweak.WSearchOff);
         return result;
+    }
+
+    public async Task<bool?> IsHyperVFullyDisabledAsync()
+    {
+        var launchType = await QueryHypervisorLaunchTypeAsync();
+        if (launchType == "unknown") return null;
+        if (!HyperVToState(launchType, ReadDword(DeviceGuardPath, "EnableVirtualizationBasedSecurity"),
+            ReadDword(HvciPath, "Enabled"), ReadDword(CredentialGuardPath, "Enabled")).IsOptimized) return false;
+        var features = string.Join(",", HyperVFeatures.Select(f => "'" + f + "'"));
+        var script = "$items = @(Get-WindowsOptionalFeature -Online -ErrorAction Stop | Where-Object { $_.FeatureName -in @("
+            + features + ") } | Select-Object FeatureName,@{Name='State';Expression={$_.State.ToString()}}); ConvertTo-Json -InputObject $items -Compress";
+        var (code, output, _) = await RunPowerShellAsync(script, TimeSpan.FromSeconds(30));
+        return code == 0 ? AssessHyperVFeatureStates(output) : null;
+    }
+
+    internal static bool? AssessHyperVFeatureStates(string? output)
+    {
+        if (string.IsNullOrWhiteSpace(output)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(output);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array) return null;
+            var hasEnabled = false;
+            foreach (var row in doc.RootElement.EnumerateArray())
+            {
+                var state = row.GetProperty("State").GetString();
+                if (state is "Enabled" or "EnablePending" or "DisablePending") hasEnabled = true;
+                else if (state is not ("Disabled" or "DisabledWithPayloadRemoved")) return null;
+            }
+            return !hasEnabled;
+        }
+        catch { return null; }
     }
 
     // ---------------- 状态查询 ----------------
@@ -249,7 +281,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
                 SystemTweak.HyperVAndVbs => await DisableHyperVAsync(),
                 SystemTweak.MemoryCompression => await DisableMmAgentWithBackupAsync("MemoryCompression", "-mc", "内存压缩"),
                 SystemTweak.PageCombining => await DisableMmAgentWithBackupAsync("PageCombining", "-PageCombining", "分页合并"),
-                SystemTweak.Prefetch => await ApplyPrefetchTrioOffAsync(),
+                SystemTweak.Prefetch => ApplyPrefetchTrioOff(),
 
                 // ---- 游戏微调包 ----
                 SystemTweak.MouseAccelerationOff => ApplyMouseAccelerationOff(),
@@ -287,7 +319,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
                 SystemTweak.HyperVAndVbs => await RestoreHyperVAsync(),
                 SystemTweak.MemoryCompression => await RestoreMmAgentAsync("MemoryCompression", "-mc", "内存压缩"),
                 SystemTweak.PageCombining => await RestoreMmAgentAsync("PageCombining", "-PageCombining", "分页合并"),
-                SystemTweak.Prefetch => await RestorePrefetchTrioAsync(),
+                SystemTweak.Prefetch => RestorePrefetchTrio(),
 
                 // ---- 游戏微调包（还原 = 写回备份的原始值） ----
                 SystemTweak.MouseAccelerationOff => RestoreMouseAcceleration(),
@@ -316,9 +348,11 @@ public sealed partial class SystemTweakService : ISystemTweakService
         var skipped = new List<string>();
 
         var launchType = await QueryHypervisorLaunchTypeAsync();
+        if (launchType is not ("auto" or "off"))
+            return OperationResult.Fail("无法读取 hypervisor 原启动状态，未开始修改。");
         if (launchType is "auto" or "off")
         {
-            _backups.Save(new RegistryValueBackup
+            _backups.SaveStrict(new RegistryValueBackup
             {
                 Hive = "State", KeyPath = "HyperV", ValueName = "LaunchType",
                 ValueKind = RegistryValueKind.String, Data = launchType, CreatedAt = DateTimeOffset.Now,
@@ -326,6 +360,12 @@ public sealed partial class SystemTweakService : ISystemTweakService
         }
 
         // 1. 通知引导程序不要启动 hypervisor
+        // 本协议保证未知功能不修改、有修改必有原状态备份，支持部分恢复后再次重试。
+        _backups.SaveStrict(new RegistryValueBackup
+        {
+            Hive = "State", KeyPath = "HyperV", ValueName = "FeatureBackupProtocol",
+            ValueKind = RegistryValueKind.String, Data = "1", CreatedAt = DateTimeOffset.Now,
+        });
         var (bcdCode, _, bcdError) = await RunProcessCaptureAsync(
             "bcdedit.exe", "/set hypervisorlaunchtype off", TimeSpan.FromSeconds(30));
         if (bcdCode == 0)
@@ -345,18 +385,25 @@ public sealed partial class SystemTweakService : ISystemTweakService
                 TimeSpan.FromSeconds(30));
             if (stateCode == 0 && stateText?.Trim() is "Enabled" or "Disabled")
             {
-                _backups.Save(new RegistryValueBackup
+                _backups.SaveStrict(new RegistryValueBackup
                 {
                     Hive = "State", KeyPath = "HyperVFeatures", ValueName = feature,
                     ValueKind = RegistryValueKind.String, Data = stateText.Trim(), CreatedAt = DateTimeOffset.Now,
                 });
             }
+            else
+            {
+                skipped.Add($"功能 {feature} 原状态无法可靠读取，未修改该功能");
+                continue;
+            }
+            if (stateText.Trim() == "Disabled") continue;
             var (code, _, _) = await RunProcessCaptureAsync(
                 "dism.exe", $"/Online /NoRestart /Disable-Feature /FeatureName:{feature}", TimeSpan.FromMinutes(3));
-            if (code == 0)
+            if (code is 0 or 3010)
             {
                 done.Add($"已禁用功能 {feature}");
             }
+            else skipped.Add($"功能 {feature} 禁用失败（退出码 {code}），保留恢复记录");
         }
 
         // 3. 停止 Hyper-V 相关服务并改为手动启动（改前备份原 Start，恢复时按备份还原）
@@ -415,10 +462,19 @@ public sealed partial class SystemTweakService : ISystemTweakService
             requiresReboot: true);
     }
 
+    internal static string BuildHyperVFeatureRestoreCommand(string feature, string originalState)
+    {
+        if (!HyperVFeatures.Contains(feature, StringComparer.Ordinal) || originalState is not ("Enabled" or "Disabled"))
+            throw new ArgumentException("无效的 Hyper-V 恢复记录");
+        return originalState == "Enabled" ? $"/Online /NoRestart /Enable-Feature /FeatureName:{feature} /All"
+            : $"/Online /NoRestart /Disable-Feature /FeatureName:{feature}";
+    }
+
     private async Task<OperationResult> RestoreHyperVAsync()
     {
         var done = new List<string>();
         var skipped = new List<string>();
+        var managed = _backups.Get("State", "HyperV", "FeatureBackupProtocol")?.Data == "1";
 
         // 只恢复修改前确实启用的项目，避免把用户原本关闭的功能擅自打开。
         var launchBackup = _backups.Get("State", "HyperV", "LaunchType");
@@ -433,31 +489,35 @@ public sealed partial class SystemTweakService : ISystemTweakService
             }
             else skipped.Add($"bcdedit 失败（{FirstLine(error)}）");
         }
-        else
+        else if (!managed)
         {
             skipped.Add("缺少 hypervisor 原启动状态备份，未改动引导配置");
         }
 
         var hasFeatureBackup = false;
-        foreach (var feature in HyperVFeatures)
+        var featureBackups = HyperVFeatures.Select(f => _backups.Get("State", "HyperVFeatures", f))
+            .Where(b => b is not null).Cast<RegistryValueBackup>()
+            .OrderBy(b => b.Data == "Enabled" ? 0 : 1).ToList();
+        foreach (var backup in featureBackups)
         {
-            var backup = _backups.Get("State", "HyperVFeatures", feature);
-            if (backup is null) continue;
+            var feature = backup.ValueName;
             hasFeatureBackup = true;
-            if (backup.Data == "Enabled")
+            if (backup.Data is not ("Enabled" or "Disabled"))
             {
-                var (code, _, _) = await RunProcessCaptureAsync(
-                    "dism.exe", $"/Online /NoRestart /Enable-Feature /FeatureName:{feature} /All", TimeSpan.FromMinutes(5));
-                if (code != 0)
-                {
-                    skipped.Add($"功能 {feature} 恢复失败");
-                    continue;
-                }
-                done.Add($"功能 {feature} 已还原");
+                skipped.Add($"功能 {feature} 原状态无效，保留备份且未修改");
+                continue;
             }
+            var (code, _, _) = await RunProcessCaptureAsync("dism.exe",
+                BuildHyperVFeatureRestoreCommand(feature, backup.Data), TimeSpan.FromMinutes(5));
+            if (code is not (0 or 3010))
+            {
+                skipped.Add($"功能 {feature} 恢复失败（退出码 {code}）");
+                continue;
+            }
+            done.Add($"功能 {feature} 已还原为 {backup.Data}");
             _backups.Remove("State", "HyperVFeatures", feature);
         }
-        if (!hasFeatureBackup)
+        if (!hasFeatureBackup && !managed)
         {
             skipped.Add("缺少可选功能原状态备份，未擅自启用 Hyper-V 功能");
         }
@@ -483,6 +543,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
         // 4. 按备份还原 DeviceGuard 各项（无备份的项跳过）
         foreach (var (keyPath, valueName, label) in DeviceGuardValues)
         {
+            if (managed && _backups.Get(keyPath, valueName) is null) continue;
             var result = RestoreDwordValue(keyPath, valueName, label);
             if (result.Success)
             {
@@ -494,7 +555,9 @@ public sealed partial class SystemTweakService : ISystemTweakService
             }
         }
 
-        if (done.Count == 0)
+        if (skipped.Count == 0 && managed)
+            _backups.Remove("State", "HyperV", "FeatureBackupProtocol");
+        if (done.Count == 0 && !managed)
         {
             return OperationResult.Fail($"恢复 Hyper-V / VBS 失败：{string.Join("；", skipped)}");
         }
@@ -851,7 +914,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
 
     // ---- 预读取三件套（Prefetch / ApplicationPreLaunch / OperationAPI） ----
 
-    private async Task<OperationResult> ApplyPrefetchTrioOffAsync()
+    private OperationResult ApplyPrefetchTrioOff()
     {
         var problems = new List<string>();
 
@@ -938,7 +1001,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
         key.SetValue(valueName, value, RegistryValueKind.DWord);
     }
 
-    private async Task<OperationResult> RestorePrefetchTrioAsync()
+    private OperationResult RestorePrefetchTrio()
     {
         var problems = new List<string>();
 

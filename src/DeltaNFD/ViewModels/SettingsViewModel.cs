@@ -27,6 +27,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string generalStatusText = "";
 
+    public bool NormalAutomationSettingsEnabled => !OfflineModeGuard.BlocksNormalAutomation;
+
+    public void RefreshOfflineModeControls() => OnPropertyChanged(nameof(NormalAutomationSettingsEnabled));
+
     /// <summary>显示版本（唯一来源：csproj 的 InformationalVersion，已去掉 SourceLink 提交哈希后缀）。</summary>
     public string VersionText => AppVersion.Text;
 
@@ -116,6 +120,15 @@ public partial class SettingsViewModel : ObservableObject
             return;
         }
 
+        if (value && OfflineModeGuard.BlocksNormalAutomation)
+        {
+            _suppressAutoStartChanged = true;
+            AutoStart = false;
+            _suppressAutoStartChanged = false;
+            GeneralStatusText = "脱机模式或恢复流程中，不能开启自启动。";
+            return;
+        }
+
         // 真实创建/删除登录自启动计划任务（管理员权限，登录自启不弹 UAC）
         _ = ApplyAutoStartAsync(value);
     }
@@ -140,6 +153,16 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_suppressTrayChanged)
         {
+            return;
+        }
+
+        if (value && OfflineModeGuard.BlocksNormalAutomation)
+        {
+            _appControl.SetCloseToTray(false);
+            _suppressTrayChanged = true;
+            MinimizeToTray = false;
+            _suppressTrayChanged = false;
+            GeneralStatusText = "脱机模式或恢复流程中，不能开启托盘驻留。";
             return;
         }
 

@@ -26,15 +26,20 @@ set "BIN=%BINBASE%\x64\Release\net8.0-windows10.0.19041.0\win-x64"
 set "PUB=%CD%\_buildcheck\installer-publish-%BUILD_ID%"
 set "PKG=%CD%\_buildcheck\installer-package-%BUILD_ID%"
 
-echo [1/4] Build Release x64 ...
+echo [1/5] Build Release x64 ...
 rem  Note: the bundled background image (Assets\background.png) IS shipped in the installer
 rem  since OpenAlphaV0.83. Do not pass -p:IncludeBundledBackground=false here.
 dotnet build src\DeltaNFD\DeltaNFD.csproj -c Release -p:Platform=x64 "-p:BaseIntermediateOutputPath=%OBJ%/" "-p:BaseOutputPath=%BINBASE%/"
 if errorlevel 1 goto :fail
 
-echo [2/4] Publish self-contained ...
+echo [2/5] Publish self-contained ...
 dotnet publish src\DeltaNFD\DeltaNFD.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 "-p:BaseIntermediateOutputPath=%OBJ%/" "-p:BaseOutputPath=%BINBASE%/" -o "%PUB%"
 if errorlevel 1 goto :fail
+
+echo [3/5] Publish standalone offline helper ...
+dotnet publish src\DeltaNFD.OfflineHelper\DeltaNFD.OfflineHelper.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o "%PUB%\OfflineHelper"
+if errorlevel 1 goto :fail
+if not exist "%PUB%\OfflineHelper\DeltaNFD.OfflineHelper.exe" goto :missing_offline_helper
 
 rem The bundled background image is part of the product since OpenAlphaV0.83.
 rem Fail loudly if it went missing: an installer without it silently falls back to
@@ -44,7 +49,7 @@ for %%F in ("%PUB%\Assets\background.*") do set "BGFOUND=%%F"
 if not defined BGFOUND goto :missing_background
 echo       background bundled: %BGFOUND%
 
-echo [3/4] Copy missing WinUI resources (xbf + app pri) ...
+echo [4/5] Copy missing WinUI resources (xbf + app pri) ...
 rem  /S: page xbf files live in subfolders (Views\...) matching source layout
 robocopy "%BIN%" "%PUB%" *.xbf DeltaNFD.pri /S /NFL /NDL /NJH /NP
 if errorlevel 8 goto :fail
@@ -56,7 +61,7 @@ if not exist "%ISCC%" (
   goto :fail
 )
 
-echo [4/4] Compile installer ...
+echo [5/5] Compile installer ...
 pushd installer
 "%ISCC%" "/O%PKG%" "/DPublishDir=%PUB%" DeltaNFD.iss
 if errorlevel 1 ( popd & goto :fail )
@@ -84,4 +89,10 @@ echo.
 echo [ERROR] The publish output has no Assets\background.* - the bundled background image is missing.
 echo The installer MUST ship it since OpenAlphaV0.83 (otherwise the app falls back to a plain Mica backdrop).
 echo Check that src\DeltaNFD\Assets\background.png exists and that IncludeBundledBackground is not set to false.
+exit /b 1
+
+:missing_offline_helper
+echo.
+echo [ERROR] The standalone offline helper is missing from the publish output.
+echo Check src\DeltaNFD.OfflineHelper and the .NET 8 x64 publish step.
 exit /b 1
