@@ -228,13 +228,12 @@ public sealed partial class MainWindow : Window
     {
         if (!AppSettingsStore.Read().AutoUpdateCheckEnabled)
         {
+            Services.Log.Info("更新：启动自动检查已关闭，未联网。");
             return;
         }
 
-        // 启动 10 秒后再联网：避开启动扫描与游戏进程抢资源
-        await Task.Delay(TimeSpan.FromSeconds(10));
-
         var result = await ServiceLocator.Update.CheckAsync(manual: false);
+        Services.Log.Info("更新：启动自动检查结果 → " + result.Status + "（" + result.Message + "）");
         if (result.Status is UpdateCheckStatus.Throttled or UpdateCheckStatus.Disabled)
         {
             return;
@@ -266,7 +265,6 @@ public sealed partial class MainWindow : Window
                 },
             },
             PrimaryButtonText = "去设置页更新",
-            SecondaryButtonText = result.Mandatory ? "" : "跳过此版本",
             CloseButtonText = "稍后",
             DefaultButton = ContentDialogButton.Primary,
         };
@@ -278,12 +276,6 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (choice == ContentDialogResult.Secondary && result.Manifest?.Version is { Length: > 0 } version)
-        {
-            AppSettingsStore.Update(s => s.SkippedUpdateVersion = version);
-            Services.Log.Info("更新：用户在启动提示里跳过版本 " + version);
-            ApplyUpdateBadge(false);
-        }
     }
 
     private void OnUpdateAvailabilityChanged(bool available)

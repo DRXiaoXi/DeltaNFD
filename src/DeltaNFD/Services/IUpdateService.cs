@@ -9,7 +9,7 @@ public enum UpdateCheckStatus
     /// <summary>发现新版本，可以下载安装。</summary>
     UpdateAvailable,
 
-    /// <summary>发现新版本，但用户对该版本选择了“跳过此版本”（强制更新时不会走到这里）。</summary>
+    /// <summary>旧版跳过状态，保留兼容；当前启动和手动检查不再屏蔽跳过的版本。</summary>
     Skipped,
 
     /// <summary>当前不是安装包安装的运行实例（开发构建 / 手动解压），不提供自动更新。</summary>
@@ -18,7 +18,7 @@ public enum UpdateCheckStatus
     /// <summary>设置里关闭了启动时自动检查（仅自动检查会返回）。</summary>
     Disabled,
 
-    /// <summary>距上次检查未达到节流间隔（仅自动检查会返回）。</summary>
+    /// <summary>旧节流状态，保留兼容；当前启动检查不再返回该状态。</summary>
     Throttled,
 
     /// <summary>网络失败 / 全部清单地址都取不到。</summary>
@@ -61,6 +61,7 @@ public sealed class UpdateConfig
     public int SchemaVersion { get; set; } = 1;
     public List<string>? ManifestUrls { get; set; }
     public List<string>? AllowedHosts { get; set; }
+    /// <summary>旧配置字段，保留读取兼容；启动检查不再使用。</summary>
     public int AutoCheckThrottleHours { get; set; } = 6;
     public int CheckTimeoutSeconds { get; set; } = 15;
     public int DownloadTimeoutMinutes { get; set; } = 60;
@@ -160,7 +161,7 @@ public interface IUpdateService
     /// <summary>最近一次检查结果（尚未检查时为 null）；页面重新打开时据此回显，不重复联网。</summary>
     UpdateCheckResult? LastResult { get; }
 
-    /// <summary>检查更新。<paramref name="manual"/> = 用户主动点击（忽略开关与节流）。</summary>
+    /// <summary>每次请求均检查更新；manual=true 忽略自动检查开关。安装位置与校验要求仍生效。</summary>
     Task<UpdateCheckResult> CheckAsync(bool manual, CancellationToken cancellationToken = default);
 
     /// <summary>下载并校验清单里的安装包；逐个地址回退，校验不过不落盘。</summary>

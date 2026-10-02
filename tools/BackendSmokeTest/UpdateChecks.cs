@@ -25,6 +25,7 @@ internal static class UpdateChecks
             RunLaunchSafetyChecks(tempRoot);
             RunInstallLocationChecks(tempRoot);
             RunThrottleChecks();
+            RunStartupSessionChecks();
             RunSemanticsChecks();
             RunConfigChecks(tempRoot);
             RunEffectiveConfigChecks(tempRoot);
@@ -338,7 +339,7 @@ internal static class UpdateChecks
 
     private static void RunThrottleChecks()
     {
-        Section("自动检查节流");
+        Section("旧节流函数兼容检查（启动流程已不使用）");
 
         var now = new DateTime(2026, 10, 1, 12, 0, 0, DateTimeKind.Utc);
         Check(!UpdateService.IsThrottled(null, 6, now), "从未检查过 → 不节流");
@@ -347,15 +348,70 @@ internal static class UpdateChecks
         Check(!UpdateService.IsThrottled(now.AddHours(2), 6, now), "时钟被回拨 → 不节流（避免永久不再检查）");
     }
 
+    private static void RunStartupSessionChecks()
+    {
+        Section("每次启动检查与仅新版提醒");
+        var config = UpdateService.LoadConfig(null);
+        var service = new UpdateService(config);
+        var settings = new AppSettings { AutoUpdateCheckEnabled = true, SkippedUpdateVersion = "2.0.0" };
+        var manifest = new UpdateManifest { Version = "2.0.0", Installers = [new UpdateInstallerInfo
+            { Url = "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v2.0.0/setup.exe", SizeBytes = 100, Sha256 = new string('a', 64) }] };
+        var json = JsonSerializer.Serialize(manifest);
+        var fetches = 0;
+        var timestamps = 0;
+        Task<string> Fetch(string url, CancellationToken token) { fetches++; return Task.FromResult(json); }
+        void Record(DateTime time) { timestamps++; settings.LastUpdateCheckUtc = time; }
+        foreach (var last in new[] { DateTime.UtcNow, DateTime.UtcNow.AddMinutes(-1), DateTime.UtcNow.AddDays(1) })
+        {
+            settings.LastUpdateCheckUtc = last;
+            var result = service.CheckForSessionAsync(settings, true, false, Fetch, Record).GetAwaiter().GetResult();
+            Check(result.HasUpdate, "刚检查/未来时间及旧跳过记录不屏蔽新版");
+        }
+        Check(fetches == 3 && timestamps == 3, "每次启动都实际调用更新源");
+        var failed = service.CheckForSessionAsync(settings, true, false,
+            (_, _) => Task.FromException<string>(new IOException("模拟断网")), Record).GetAwaiter().GetResult();
+        Check(failed.Status == UpdateCheckStatus.NetworkError && !failed.HasUpdate, "网络失败无新版弹窗");
+        Check(service.CheckForSessionAsync(settings, true, false, Fetch, Record).GetAwaiter().GetResult().HasUpdate,
+            "失败后下次启动立即重新检查");
+        var before = fetches;
+        settings.AutoUpdateCheckEnabled = false;
+        Check(service.CheckForSessionAsync(settings, true, false, Fetch, Record).GetAwaiter().GetResult().Status == UpdateCheckStatus.Disabled && fetches == before,
+            "关闭自动检查时不联网");
+        Check(service.CheckForSessionAsync(settings, true, true, Fetch, Record).GetAwaiter().GetResult().HasUpdate,
+            "关闭自动检查后手动仍可检查");
+        settings.AutoUpdateCheckEnabled = true;
+        before = fetches;
+        Check(service.CheckForSessionAsync(settings, false, false, Fetch, Record).GetAwaiter().GetResult().Status == UpdateCheckStatus.NotInstalled && fetches == before,
+            "开发/解压版仍不能冒充安装版");
+        manifest.Version = "0.0.0";
+        json = JsonSerializer.Serialize(manifest);
+        Check(!service.CheckForSessionAsync(settings, true, false, Fetch, Record).GetAwaiter().GetResult().HasUpdate,
+            "远端不高于本机时无新版弹窗");
+        Check(!service.CheckForSessionAsync(settings, true, false, (_, _) => Task.FromResult("{"), Record).GetAwaiter().GetResult().HasUpdate,
+            "损坏清单无新版弹窗");
+        for (var root = new DirectoryInfo(AppContext.BaseDirectory); root is not null; root = root.Parent)
+        {
+            if (!File.Exists(Path.Combine(root.FullName, "DeltaNFD.sln"))) continue;
+            var window = File.ReadAllText(Path.Combine(root.FullName, "src/DeltaNFD/MainWindow.xaml.cs"));
+            var start = window.IndexOf("private async Task CheckUpdatesOnStartupAsync()", StringComparison.Ordinal);
+            var end = window.IndexOf("private void OnUpdateAvailabilityChanged", start, StringComparison.Ordinal);
+            var startup = window[start..end];
+            Check(!startup.Contains("Task.Delay") && startup.IndexOf("if (!result.HasUpdate)", StringComparison.Ordinal) < startup.IndexOf("new ContentDialog", StringComparison.Ordinal),
+                "启动没有固定延迟且弹窗在新版判断之后");
+            Check(!startup.Contains("SkippedUpdateVersion"), "启动稍后不持久屏蔽新版本");
+            break;
+        }
+    }
+
     private static void RunSemanticsChecks()
     {
-        Section("更新判定语义（跳过 / 强制 / 已是最新）");
+        Section("版本判定与旧跳过函数兼容（实际检查不屏蔽版本）");
 
         var service = new UpdateService(UpdateService.LoadConfig(null));
 
         var skipped = new AppSettings { SkippedUpdateVersion = "0.83.0" };
         var skippedResult = service.Evaluate(new UpdateManifest { Version = "0.83.0" }, skipped, new Version(0, 82, 0));
-        Check(skippedResult.Status == UpdateCheckStatus.Skipped, "点过跳过的版本不再提示");
+        Check(skippedResult.Status == UpdateCheckStatus.Skipped, "旧纯判定接口保留跳过语义，实际请求显式忽略");
 
         var mandatoryResult = service.Evaluate(
             new UpdateManifest { Version = "0.83.0", Mandatory = true }, skipped, new Version(0, 82, 0));

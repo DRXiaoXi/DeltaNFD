@@ -10,7 +10,7 @@
   // 清华镜像只同步收录项目，目前不包含 DeltaNFD，不能当作通用 GitHub 代理。
   // allowedHosts  : 允许下载/取清单的主机白名单（精确匹配或子域后缀匹配）。
   //                 使用国内镜像时，必须把镜像主机追加到这里，否则一律拒绝下载。
-  // autoCheckThrottleHours : 启动时自动检查的最小间隔（小时）。
+  // autoCheckThrottleHours : 旧字段，保留兼容；现在每次启动都检查，不再按小时跳过。
   // checkTimeoutSeconds    : 取清单的超时（秒）。
   // downloadTimeoutMinutes : 下载安装包的单次静默超时（分钟，实际按“无数据”空闲计时）。
   // releasePageUrl         : 清单不可用 / 未安装版时，给用户手动下载的兜底页面。

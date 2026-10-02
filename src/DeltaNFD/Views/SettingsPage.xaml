@@ -312,7 +312,7 @@
                                     Style="{StaticResource AccentButtonStyle}"
                                     Click="PrimaryUpdateAction_Click"
                                     IsEnabled="{x:Bind Update.ActionEnabled, Mode=OneWay}" />
-                            <Button Content="跳过此版本" Click="SkipUpdateVersion_Click"
+                            <Button Content="稍后再更新" Click="SkipUpdateVersion_Click"
                                     IsEnabled="{x:Bind Update.SkipEnabled, Mode=OneWay}" />
                         </StackPanel>
                     </StackPanel>

@@ -96,6 +96,7 @@ public sealed class UpdateService : IUpdateService
         "objects.githubusercontent.com",
         "release-assets.githubusercontent.com"
       ],
+      // Legacy field; startup checks no longer use this interval.
       "autoCheckThrottleHours": 6,
       "checkTimeoutSeconds": 15,
       "downloadTimeoutMinutes": 60,
@@ -163,7 +164,6 @@ public sealed class UpdateService : IUpdateService
     {
         var config = _config;
         var settings = AppSettingsStore.Read();
-        var current = CurrentVersion;
 
         if (!manual)
         {
@@ -171,26 +171,32 @@ public sealed class UpdateService : IUpdateService
             {
                 return Simple(UpdateCheckStatus.Disabled, "已关闭启动时自动检查更新。");
             }
-
-            if (IsThrottled(settings.LastUpdateCheckUtc, config.AutoCheckThrottleHours, DateTime.UtcNow))
-            {
-                return Simple(UpdateCheckStatus.Throttled,
-                    $"距上次检查不足 {config.AutoCheckThrottleHours} 小时，本次跳过。");
-            }
         }
 
-        if (!IsInstalledCopy)
+        return await CheckForSessionAsync(settings, IsInstalledCopy, manual,
+            (url, ct) => FetchUpdateSourceAsync(url, config, ct),
+            time => AppSettingsStore.Update(s => s.LastUpdateCheckUtc = time), cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task<UpdateCheckResult> CheckForSessionAsync(AppSettings settings, bool installed, bool manual,
+        Func<string, CancellationToken, Task<string>> fetch, Action<DateTime> recordCheck,
+        CancellationToken cancellationToken = default)
+    {
+        if (!manual && !settings.AutoUpdateCheckEnabled)
+            return Simple(UpdateCheckStatus.Disabled, "已关闭启动时自动检查更新。");
+
+        if (!installed)
         {
             var message = "当前运行的不是安装包安装的版本（开发构建或手动解压运行），不提供自动更新。请前往发布页面手动下载安装包。";
             Log.Info("更新：" + message);
             return Simple(UpdateCheckStatus.NotInstalled, message);
         }
 
-        // 失败也记录时间：断网时不要每次启动都重试
-        AppSettingsStore.Update(s => s.LastUpdateCheckUtc = DateTime.UtcNow);
+        // 仅保留诊断时间，不以它阻止本次或下次启动的联网检查。
+        recordCheck(DateTime.UtcNow);
+        Log.Info($"更新：{(manual ? "手动" : "启动自动")}检查开始（每次启动检查，不使用旧节流/跳过记录）。");
 
-        return await CheckSourcesAsync(config, settings, current, manual,
-            (url, ct) => FetchUpdateSourceAsync(url, config, ct), cancellationToken).ConfigureAwait(false);
+        return await CheckSourcesAsync(_config, settings, CurrentVersion, manual, fetch, cancellationToken).ConfigureAwait(false);
     }
 
     internal async Task<UpdateCheckResult> CheckSourcesAsync(UpdateConfig config, AppSettings settings, Version current,
@@ -223,7 +229,7 @@ public sealed class UpdateService : IUpdateService
                 return Simple(UpdateCheckStatus.ManifestInvalid, "更新源数据不可用：" + reason);
             }
 
-            return Evaluate(manifest, settings, current, ignoreSkipped: manual);
+            return Evaluate(manifest, settings, current, ignoreSkipped: true);
         }
 
         var status = UpdateCheckStatus.NetworkError;

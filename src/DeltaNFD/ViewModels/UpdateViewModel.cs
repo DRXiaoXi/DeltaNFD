@@ -331,11 +331,10 @@ public partial class UpdateViewModel : ObservableObject
             return;
         }
 
-        AppSettingsStore.Update(s => s.SkippedUpdateVersion = manifest.Version);
-        Log.Info("更新：用户跳过版本 " + manifest.Version);
+        Log.Info("更新：用户本次暂缓版本 " + manifest.Version + "，下次启动仍会检查并提醒。");
 
         UpdateAvailable = false;
-        StatusText = $"已跳过 {AvailableVersionText}；下次发布新版本时仍会提示。";
+        StatusText = $"本次暂缓 {AvailableVersionText}；下次启动或手动检查仍会提醒。";
         Severity = InfoBarSeverity.Informational;
     }
 

@@ -170,10 +170,10 @@ public sealed class AppSettings
     /// <summary>启动后自动检查更新（关闭后仍可在设置页手动「检查更新」）。</summary>
     public bool AutoUpdateCheckEnabled { get; set; } = true;
 
-    /// <summary>上次实际发起更新检查的 UTC 时间（自动检查节流用；失败也记录，避免断网时反复重试）。</summary>
+    /// <summary>上次发起更新检查的 UTC 诊断时间；不再阻止每次启动检查。</summary>
     public DateTime? LastUpdateCheckUtc { get; set; }
 
-    /// <summary>用户点过「跳过此版本」的清单版本号；清单声明强制更新时忽略该项。</summary>
+    /// <summary>旧版跳过记录，保留设置兼容；现在每次启动及手动检查均不屏蔽新版提醒。</summary>
     public string SkippedUpdateVersion { get; set; } = "";
 
     /// <summary>已登记待安装的版本号（非空 = 更新流程已启动；升级后用它与当前版本比对判断成败）。</summary>
