@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "version": "0.90.0",
-  "displayVersion": "PreBeta0.9",
-  "channel": "alpha",
+  "version": "0.90.1",
+  "displayVersion": "Beta0.9",
+  "channel": "beta",
   "mandatory": false,
   "minimumSupportedVersion": "",
-  "publishedAtUtc": "2026-10-02T17:12:01Z",
-  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.90.0",
-  "notes": "# PreBeta0.9 / 0.90.0\n\n## 更新内容\n\n- 加入拓展插件管理、独立后端通信、授权确认、持续运行及脱机移交基础功能。\n- 加入插件结构化诊断日志和只读运行历史，支持筛选、分批加载及错误详情。\n- 修复插件操作界面未显示、恢复异常逃逸、恢复结果被刷新清空、取消后备份未保存、不同插件备份标识冲突以及首次导入误报替换。\n- 补齐插件文件校验、独立授权、未知运行记录阻挡、升级失败回滚和已知子进程排空检查。\n- 修复运行库防护的 UE4 权限残留处理与关闭状态反馈。\n- Intel 平台禁用 HPET 优化入口，保留已有设置的一键恢复通道。\n- 着色器检测新增 SM5/DXCache 回退路径，首页与着色器页保持一致；驱动版本未知时仍不做深度结构结论。\n\n## 重要说明\n\n这是预发布版本。主程序 Release x64 已构建，后端隔离回归已通过；真实 GUI/UAC、Windows 10/11 双系统及安装卸载虚拟机验收尚未完成。\n\n管理员插件是完全受信任的第三方程序。前后端分离不是沙箱，也不代表反作弊兼容或安全认证；只运行可信来源的插件。\n\n普通插件宿主崩溃后的完整接管、全部自主子进程追踪、多实例目标、诊断导出及完整包目录权限保护仍待完善。未知或停止未确认的记录会阻止交接，不应手动删除来绕过检查。\n\n本轮没有在开发机执行真实系统优化、游戏操作或安装程序。首次使用前建议保留个人配置和系统备份。",
+  "publishedAtUtc": "2026-10-03T09:40:25Z",
+  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.90.1",
+  "notes": "Beta0.9（数字版本 0.90.1）\n\n本版高于 PreBeta0.9（0.90.0），旧版自动更新可识别此次升级。\n\n- 拓展插件支持声明式侧栏入口，补齐恢复状态持久化、执行前资源冲突检查、文件校验快照及配置保存。\n- 运行库防护提供基础 V14 和完全防护，未开启时也能关闭或确认清理固定旧拦截；保留恢复证据。\n- 帧格旧电源备份缺失原值时，可确认保留当前值并归档记录、停用相关功能，再开启其他功能；不猜测原值。\n- 显卡伪装登记驱动基准；打开软件后在首页提醒驱动变化导致的失效，并提供重新应用与着色器缓存页面入口，不自动修改或清理。\n- 首页品牌区域跟随主题色，首启公告更新并加入反馈群二维码；包含当前致谢资源。\n\n编译与隔离回归已验证。真实驱动更换、完整 GUI/缩放/页面回收、Windows 10/11 双系统及第三方反作弊兼容性尚未全面验收。\n旧版伪装无监测基准，需要在新版重新应用一次。运行库、系统优化和驱动操作仍需用户自行确认。",
   "installers": [
     {
-      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.90.0/DeltaNFD_Setup_0.90.0_x64.exe",
-      "sizeBytes": 163625864,
-      "sha256": "c324ac707b93e30e9287d4e282a2b163bf0440b0de99339394ef1e2d97a6676b"
+      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.90.1/DeltaNFD_Setup_0.90.1_x64.exe",
+      "sizeBytes": 165193894,
+      "sha256": "263e93f98ffa3cf7e895dc1b705c1f742908f114864d917c699c7bf028d69f78"
     }
   ]
 }
