@@ -33,6 +33,35 @@ internal static class FramePowerSafetyChecks
             fake.Writes.Clear();
             result = await service.RevertPlanSettingAsync(Subgroup, Setting, "legacy.json", "legacy");
             Assert(!result.Success && fake.Writes.Count == 0 && File.Exists(Path.Combine(root, "legacy.json")), "旧空原值备份不得猜默认值或删除");
+            var oldPath = Path.Combine(root, "frame_usb_power.json");
+            var oldJson = $"{{\"Scheme\":\"{Scheme}\",\"Ac\":null,\"Dc\":null}}";
+            File.WriteAllText(oldPath, oldJson);
+            var incomplete = await service.GetIncompletePowerBackupsAsync();
+            Assert(incomplete.Count == 1 && incomplete[0].Reason.Contains("缺失"), "日志场景识别缺失的 USB 原值");
+            File.WriteAllText(oldPath, oldJson + " ");
+            Assert(!(await service.PreserveCurrentPowerValuesAsync(incomplete)).Success && File.Exists(oldPath) && fake.Writes.Count == 0,
+                "确认后的外部改动阻止归档且不写电源");
+            incomplete = await service.GetIncompletePowerBackupsAsync();
+            Assert((await service.PreserveCurrentPowerValuesAsync(incomplete)).Success && !File.Exists(oldPath) && fake.Writes.Count == 0,
+                "明确保留当前值后移出恢复队列，零电源写入");
+            var evidence = Directory.GetFiles(Path.Combine(root, "unresolved-frame-power")).Single();
+            Assert(File.ReadAllText(evidence) == oldJson + " ", "归档逐字保留原始证据");
+            Assert((await service.RevertPlanSettingAsync(Subgroup, Setting, "frame_usb_power.json", "USB")).Success,
+                "确认隔离后不再因空原值反复自锁");
+            File.WriteAllText(oldPath, $"{{\"Scheme\":\"{Scheme}\",\"Ac\":10,\"Dc\":20}}");
+            Assert((await service.GetIncompletePowerBackupsAsync()).Count == 0 &&
+                !(await service.PreserveCurrentPowerValuesAsync(incomplete)).Success && File.Exists(oldPath),
+                "完整备份必须精确还原，不能走隔离通道");
+            Assert((await service.RevertPlanSettingAsync(Subgroup, Setting, "frame_usb_power.json", "USB")).Success,
+                "有效备份保持原恢复行为");
+            File.WriteAllText(oldPath, "{bad-json");
+            incomplete = await service.GetIncompletePowerBackupsAsync();
+            Assert(incomplete.Count == 1 && (await service.PreserveCurrentPowerValuesAsync(incomplete)).Success,
+                "损坏 JSON 可确认留档而非删除");
+            File.WriteAllText(oldPath, "");
+            incomplete = await service.GetIncompletePowerBackupsAsync();
+            Assert(incomplete.Count == 1 && (await service.PreserveCurrentPowerValuesAsync(incomplete)).Success,
+                "历史零字节备份可确认留档");
 
             Assert((await service.SnapshotPowerSchemeContentAsync(Scheme)).Success, "首次快照");
             var original = File.ReadAllText(snapshot);

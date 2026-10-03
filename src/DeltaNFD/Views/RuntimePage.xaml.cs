@@ -133,19 +133,7 @@ public sealed partial class RuntimePage : Page
         {
             var requested = toggle.IsOn;
             var result = await ViewModel.SetGuardAsync(requested);
-            if (result is { Success: false } && ViewModel.CanRepairLegacyUe4Acl)
-            {
-                toggle.IsOn = ViewModel.GuardIsEnabled;
-                var confirm = new ContentDialog
-                {
-                    XamlRoot = XamlRoot, Title = "修复旧 UE4 权限残留？",
-                    Content = ViewModel.GuardUe4Path + "\n\n缺少旧版原始权限记录，无法证明规则来源。是否授权仅移除该文件一条显式 Everyone 拒绝执行规则？\n会先保存当前权限快照，保留其余权限及继承状态，不重置整个目录。取消则不修改。",
-                    PrimaryButtonText = "备份并修复", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
-                };
-                if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
-                result = await ViewModel.RepairLegacyUe4AclAsync();
-                if (result is { Success: true }) result = await ViewModel.SetGuardAsync(requested);
-            }
+            result = await RecoverLegacyAsync(result, requested);
             toggle.IsOn = ViewModel.GuardIsEnabled;
             if (result is { Success: false })
             {
@@ -162,5 +150,81 @@ public sealed partial class RuntimePage : Page
             await ViewModel.LoadGuardAsync();
         }
         finally { toggle.IsOn = ViewModel.GuardIsEnabled; _guardToggleHandling = false; }
+    }
+
+    private async Task<DeltaNFD.Services.OperationResult?> RecoverLegacyAsync(DeltaNFD.Services.OperationResult? result, bool requested)
+    {
+        if (ViewModel.CanCleanupLegacyIfeo && (result is { Success: false } || !requested))
+        {
+            var confirm = new ContentDialog
+            {
+                XamlRoot = XamlRoot, Title = "清理固定旧 IFEO 拦截？",
+                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap,
+                    Text = ViewModel.LegacyIfeoNames + "\n\n这些项使用独立工具同款 taskkill.exe 拦截，但缺少可信原值或归属记录。确认后先保存快照，再删除这些固定 Debugger；不删除其他 Debugger，不重置整个注册表键。\n这属于清理拦截，不代表恢复未知原值。请先退出独立防护工具，避免它再次写入。",
+                } },
+                PrimaryButtonText = "备份并清理", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
+            };
+            if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+                return DeltaNFD.Services.OperationResult.Fail("未授权清理旧拦截；原有恢复结果：" + result?.Message);
+            result = await ViewModel.CleanupLegacyIfeoAsync();
+            if (result is not { Success: true }) return result;
+            result = await ViewModel.SetGuardAsync(requested);
+        }
+        if (result is { Success: false } && ViewModel.CanRepairLegacyUe4Acl)
+        {
+            var confirm = new ContentDialog
+            {
+                XamlRoot = XamlRoot, Title = "修复旧 UE4 权限残留？",
+                Content = ViewModel.GuardUe4Path + "\n\n缺少旧版原始权限记录，无法证明规则来源。是否授权仅移除该文件一条显式 Everyone 拒绝执行规则？\n会先保存当前权限快照，保留其余权限及继承状态，不重置整个目录。取消则不修改。",
+                PrimaryButtonText = "备份并修复", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
+            };
+            if (await confirm.ShowAsync() != ContentDialogResult.Primary) return result;
+            result = await ViewModel.RepairLegacyUe4AclAsync();
+            if (result is { Success: true }) result = await ViewModel.SetGuardAsync(requested);
+        }
+        return result;
+    }
+
+    private async void CleanupGuard_Click(object sender, RoutedEventArgs e)
+    {
+        if (_guardToggleHandling || !ViewModel.GuardCleanupEnabled) return;
+        _guardToggleHandling = true;
+        try
+        {
+            var result = await RecoverLegacyAsync(await ViewModel.SetGuardAsync(false), false);
+            if (result is not null) await new ContentDialog
+            {
+                XamlRoot = XamlRoot, Title = result.Success ? "清理完成" : "清理未完成", Content = result.Message,
+                CloseButtonText = "知道了",
+            }.ShowAsync();
+        }
+        catch (Exception ex)
+        {
+            DeltaNFD.Services.Log.Error("旧防护清理界面失败", ex);
+            await ViewModel.LoadGuardAsync();
+        }
+        finally { _guardToggleHandling = false; }
+    }
+
+    private async void GuardMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox combo || !ViewModel.GuardModeEnabled || combo.SelectedIndex == ViewModel.GuardModeIndex) return;
+        try
+        {
+            var result = await ViewModel.ChangeGuardModeAsync(combo.SelectedIndex);
+            combo.SelectedIndex = ViewModel.GuardModeIndex;
+            if (result is { Success: false }) await new ContentDialog
+            {
+                XamlRoot = XamlRoot, Title = "范围切换失败", Content = result.Message, CloseButtonText = "知道了",
+            }.ShowAsync();
+        }
+        catch (Exception ex)
+        {
+            DeltaNFD.Services.Log.Error("防护范围切换失败", ex);
+            await ViewModel.LoadGuardAsync();
+            combo.SelectedIndex = ViewModel.GuardModeIndex;
+        }
     }
 }

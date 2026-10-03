@@ -6,8 +6,20 @@ namespace DeltaNFD.Services.Plugins;
 public sealed class PluginPackageLease : IDisposable
 {
     private readonly List<FileStream> _streams;
+    private readonly string _root;
     public string FileTableDigest { get; }
-    internal PluginPackageLease(List<FileStream> streams, string digest) { _streams = streams; FileTableDigest = digest; }
+    public byte[] ReadJson(string relativePath)
+    {
+        if (relativePath is not ("manifest.json" or "ui.json")) throw new ArgumentException("仅允许根 JSON 快照。");
+        var stream = _streams.SingleOrDefault(s => s.Name.Equals(Path.Combine(_root, relativePath), StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidDataException("校验快照中缺少 JSON：" + relativePath);
+        if (stream.Length is <= 0 or > PluginContract.MaxJsonBytes) throw new InvalidDataException("插件 JSON 大小无效。");
+        stream.Position = 0;
+        var bytes = new byte[(int)stream.Length];
+        stream.ReadExactly(bytes);
+        return bytes;
+    }
+    internal PluginPackageLease(List<FileStream> streams, string digest, string root) { _streams = streams; FileTableDigest = digest; _root = root; }
     public void Dispose() { foreach (var stream in _streams) stream.Dispose(); _streams.Clear(); }
 }
 
@@ -41,7 +53,7 @@ public static class PluginPackageIntegrity
                 canonical.Append(relative).Append('\0').Append(item.SizeBytes.ToString(System.Globalization.CultureInfo.InvariantCulture))
                     .Append('\0').Append(item.Sha256.ToLowerInvariant()).Append('\n');
             }
-            return new PluginPackageLease(streams, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical.ToString()))).ToLowerInvariant());
+            return new PluginPackageLease(streams, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical.ToString()))).ToLowerInvariant(), root);
         }
         catch { foreach (var stream in streams) stream.Dispose(); throw; }
     }

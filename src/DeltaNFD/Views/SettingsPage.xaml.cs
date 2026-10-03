@@ -331,7 +331,9 @@ public sealed partial class SettingsPage : Page
     }
     private Task<string?> PickGameExeAsync()
     {
+        if (App.MainWindow is null) throw new InvalidOperationException("主窗口尚未就绪，请重新进入设置后选择。");
         var owner = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+        Log.Info("自定义游戏目标：显示原生 EXE 选择窗口。");
         return Task.FromResult(Native.FolderPickerDialog.PickExecutable(owner, AppSettingsStore.Read().CustomGameExecutablePath));
     }
     private async void CustomGameMode_Toggled(object sender, RoutedEventArgs e)
@@ -352,10 +354,27 @@ public sealed partial class SettingsPage : Page
         _targetSelectionBusy = true;
         CustomGameModeToggle.IsEnabled = SelectGameExeButton.IsEnabled = false;
         string? message = null;
+        string? navigateAfter = null;
         try
         {
             var blocker = ServiceLocator.GameTarget.GetSwitchBlocker();
-            if (blocker.Length > 0) { message = blocker; return; }
+            if (blocker.Length > 0)
+            {
+                message = blocker;
+                Log.Info("自定义游戏目标：选择被阻止；" + blocker);
+                var cpuRelated = blocker.Contains("CCD", StringComparison.OrdinalIgnoreCase) || blocker.Contains("CPU", StringComparison.OrdinalIgnoreCase);
+                var dialog = new ContentDialog
+                {
+                    Title = "暂不能更换游戏目标",
+                    Content = new TextBlock { Text = blocker, TextWrapping = TextWrapping.Wrap },
+                    PrimaryButtonText = cpuRelated ? "CPU 实验室" : "帧格",
+                    CloseButtonText = "取消",
+                    DefaultButton = ContentDialogButton.Close,
+                    XamlRoot = XamlRoot,
+                };
+                if (await dialog.ShowAsync() == ContentDialogResult.Primary) navigateAfter = cpuRelated ? "lab" : "frame";
+                return;
+            }
             var existing = AppSettingsStore.Read().CustomGameExecutablePath;
             string? path = null;
             if (choose || (enabled && !System.IO.File.Exists(existing)))
@@ -366,12 +385,23 @@ public sealed partial class SettingsPage : Page
             var result = await ServiceLocator.GameTarget.ChangeAsync(enabled, path);
             message = result.Message;
         }
-        catch (Exception ex) { message = "目标选择失败：" + ex.Message; Log.Error(message, ex); }
+        catch (Exception ex)
+        {
+            message = "目标选择失败：" + ex.Message;
+            Log.Error(message, ex);
+            try
+            {
+                await new ContentDialog { Title = "目标选择失败", Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
+                    CloseButtonText = "知道了", XamlRoot = XamlRoot }.ShowAsync();
+            }
+            catch { /* Another dialog or window shutdown must not crash the settings page. */ }
+        }
         finally
         {
             _targetSelectionBusy = false;
             RefreshTargetControls();
             if (message is not null) TargetModeStatusText.Text = message;
+            if (navigateAfter is not null) App.MainWindow?.NavigateByTag(navigateAfter);
         }
     }
 

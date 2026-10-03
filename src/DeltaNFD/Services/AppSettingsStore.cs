@@ -20,6 +20,7 @@ public sealed class AppSettings
     // ---- 显卡伪装：临时重启生效的登录还原登记 ----
     /// <summary>true = 重启后登录时需要还原原显卡型号。</summary>
     public bool TempSpoofRestorePending { get; set; }
+    public string GpuSpoofWatchJson { get; set; } = "[]";
 
     /// <summary>临时显卡伪装的注册表路径（登录还原用）。</summary>
     public string TempSpoofRestorePath { get; set; } = "";

@@ -27,6 +27,7 @@ internal static class PluginRestoreChecks
             await RunStoreChecks(backups);
             await RunRestoreFlowAsync(pluginsRoot, backups);
             await RunConflictChecks(pluginsRoot);
+            await RunManagedExecutionChecks(Path.Combine(root, "Managed", "Plugins"));
         }
         finally
         {
@@ -116,6 +117,8 @@ internal static class PluginRestoreChecks
         Check("备份已落账", backups.TryGet("bk-test-1", out var recorded, out _) && recorded is
             { Status: PluginBackupStatus.PendingRestore, ResourceId: "cpu.sets" });
         Check("备份含插件身份", recorded!.PluginId == pluginId && recorded.PluginVersion == "1.0.0");
+        var repeat = await runtime.InvokeOnceAsync(entry, "tune", new Dictionary<string, object?>());
+        Check("持有待恢复备份时拒绝重复操作", repeat.Code == "RESTORE_REQUIRED" && repeat.PendingRestore);
 
         // 2. 恢复成功：状态 → Restored；记录保留
         var restoreSummary = await runtime.RestoreAsync(entry);
@@ -210,11 +213,35 @@ internal static class PluginRestoreChecks
         manager.Index.TryUpsert(other with { State = PluginPackageState.ImportedDisabled }, out _);
         var disabledConflict = manager.FindResourceConflict(pluginId, ["cpu.sets"], EmptyOwners);
         Check("未授权插件不算冲突", disabledConflict.Length == 0, disabledConflict);
+        Check("硬亲和性与 CPU Sets 同属 CPU 冲突", manager.FindResourceConflict(pluginId, ["cpu.affinity"], builtin).Contains("cpu.sets"));
         Console.WriteLine("  冲突检查完成。");
     });
 
     private static readonly IReadOnlyDictionary<string, string> EmptyOwners =
         new Dictionary<string, string>(StringComparer.Ordinal);
+
+    private static async Task RunManagedExecutionChecks(string pluginsRoot)
+    {
+        var manager = new PluginManagerService(pluginsRoot);
+        var entry = MakeEntry(pluginsRoot, "normal", "org.example.managed", "1.0.0", authorized: true)
+            with { AuthorizedUtc = DateTimeOffset.UtcNow };
+        manager.Index.TryUpsert(entry, out _);
+        var runtime = new PluginRuntimeService(manager.Backups, manager.Handoffs, manager.DataRoot, manager.Authorizations, manager)
+        { BuiltinResourceOwners = () => new Dictionary<string, string> { ["cpu.affinity"] = "测试锁核" } };
+        var blocked = await runtime.InvokeOnceAsync(entry, "tune", new Dictionary<string, object?>());
+        Check("真实调用在启动后端前拒绝内置资源冲突", blocked.Code == "RESOURCE_CONFLICT" && !runtime.IsRunning(entry.Id));
+        runtime.BuiltinResourceOwners = () => EmptyOwners;
+        var result = await runtime.InvokeOnceAsync(entry, "tune", new Dictionary<string, object?>());
+        Check("服务无需页面即持久化待恢复状态", result.PendingRestore && manager.Index.TryGet(entry.Id, out var current, out _) &&
+            current!.State == PluginPackageState.PendingRestore);
+        var repeated = await runtime.InvokeOnceAsync(entry, "tune", new Dictionary<string, object?>());
+        Check("陈旧授权快照不能绕过待恢复门禁", repeated.Code == "RESTORE_REQUIRED" && !runtime.IsRunning(entry.Id));
+        Check("持久化待恢复后仍可恢复", (await runtime.RestoreAsync(entry)).Contains("恢复完成") && manager.TryConfirmRestored(entry.Id, out _));
+        var other = MakeEntry(pluginsRoot, "normal", "org.example.conflicting", "1.0.0", authorized: true);
+        manager.Index.TryUpsert(other, out _);
+        blocked = await runtime.InvokeOnceAsync(entry, "tune", new Dictionary<string, object?>());
+        Check("真实调用拒绝其他插件的资源冲突", blocked.Code == "RESOURCE_CONFLICT" && !runtime.IsRunning(entry.Id), blocked.Code + ": " + blocked.Message);
+    }
 
     private static PluginBackupEntry ValidEntry(string backupId) => new()
     {

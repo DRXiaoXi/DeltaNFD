@@ -1,5 +1,8 @@
 namespace DeltaNFD.Services;
 
+public enum RuntimeGuardMode { BasicV14, Full }
+public sealed record RuntimeGuardLegacyEntry(string Name, string Fingerprint);
+
 /// <summary>已安装的 VC++ 2015-2022 运行库信息。</summary>
 public sealed class VcRedistInfo
 {
@@ -83,6 +86,11 @@ public sealed class RuntimeGuardStatus
     public required int IfeoTotal { get; init; }
     public int IfeoManagedCount { get; init; }
     public int IfeoExternalCount { get; init; }
+    public RuntimeGuardMode Mode { get; init; }
+    public int ScopeManagedCount { get; init; }
+    public int ScopeBlockedCount { get; init; }
+    public IReadOnlyList<RuntimeGuardLegacyEntry> LegacyIfeo { get; init; } = [];
+    public bool IfeoRestorePending { get; init; }
     public bool Ue4RestorePending { get; init; }
     public bool CanRepairLegacyUe4Acl { get; init; }
 
@@ -97,8 +105,8 @@ public sealed class RuntimeGuardStatus
 }
 
 /// <summary>
-/// 运行库保护服务：拦截**所有**运行库安装器（VC++ 全系列 2005~2022、DirectX、UE4/UE5 前置包等），
-/// 无论来源是游戏、启动器还是手动安装，一律按文件名 IFEO 劫持 + 关键文件 ACL 拒绝执行。
+/// 运行库保护服务：基础 V14 三项 IFEO，完全防护十一项 IFEO 与 UE4 文件执行权限。
+/// 无论来源是游戏、启动器还是手动安装，均按安装器文件名生效。
 /// 手动安装运行库前需先关闭拦截。
 /// </summary>
 public interface IRuntimeGuardService
@@ -106,11 +114,15 @@ public interface IRuntimeGuardService
     /// <summary>读取拦截状态与已安装运行库版本（纯只读；含一次计划任务式的进程调用，约 1 秒）。</summary>
     Task<RuntimeGuardStatus> GetStatusAsync();
 
-    /// <summary>开启拦截（IFEO + ACL，写前备份，全部可还原）。</summary>
+    /// <summary>按已保存的范围开启拦截，写前备份并复核。</summary>
     Task<OperationResult> EnableAsync();
 
     /// <summary>关闭拦截（移除 IFEO 与 ACL）。</summary>
     Task<OperationResult> DisableAsync();
+    /// <summary>仅在拦截与恢复义务已清空后保存范围，不自动启用。</summary>
+    Task<OperationResult> SelectModeAsync(RuntimeGuardMode mode);
+    /// <summary>仅供玩家明确确认后调用，清理指纹匹配的固定旧拦截并保留快照。</summary>
+    Task<OperationResult> CleanupLegacyIfeoAsync(IReadOnlyList<RuntimeGuardLegacyEntry> confirmedEntries);
     Task<OperationResult> RepairLegacyUe4AclAsync(string expectedPath);
 
     /// <summary>

@@ -52,6 +52,28 @@ public sealed record PluginUi(int SchemaVersion, IReadOnlyList<PluginControl> Co
 /// </summary>
 public static class PluginUiParser
 {
+    public static IReadOnlyDictionary<string, object?> ReadConfiguration(PluginUi ui, byte[] bytes)
+    {
+        using var doc = PluginJson.ParseStrict(bytes, "插件配置");
+        if (doc.RootElement.ValueKind != JsonValueKind.Object) throw new PluginContractException("插件配置必须为对象。");
+        var values = new Dictionary<string, object?>(ui.DefaultValues(), StringComparer.Ordinal);
+        foreach (var property in doc.RootElement.EnumerateObject())
+        {
+            // Upgrades may remove controls; their saved values are not forwarded to the backend.
+            var control = ui.FindControl(property.Name);
+            if (control?.IsInput != true) continue;
+            values[property.Name] = property.Value.ValueKind switch
+            {
+                JsonValueKind.String => property.Value.GetString(),
+                JsonValueKind.Number when property.Value.TryGetDouble(out var number) => number,
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                _ => throw new PluginContractException("插件配置含非法输入类型：" + property.Name),
+            };
+        }
+        if (!TryValidateValues(ui, values, out var error)) throw new PluginContractException(error);
+        return values;
+    }
     private static readonly string[] ControlFields =
         ["id", "type", "text", "label", "operationId", "default", "min", "max", "step", "options"];
 

@@ -90,12 +90,10 @@
                         <Button x:Name="StopPersistentButton" Content="停止持续运行" Click="StopPersistentButton_Click" />
                     </StackPanel>
 
-                    <!-- 声明式表单（宿主按 ui.json 渲染标准控件；不加载插件 XAML/HTML/脚本） -->
+                    <!-- 声明式表单：与管理页/侧栏入口共用的渲染控件（不加载插件 XAML/HTML/脚本） -->
                     <StackPanel x:Name="PluginFormHost" Spacing="10" Visibility="Collapsed">
                         <TextBlock Text="插件界面" Style="{StaticResource SectionTitleStyle}" />
-                        <StackPanel x:Name="PluginFormPanel" Spacing="10" />
-                        <TextBlock x:Name="RunStatusText" Style="{StaticResource CardDescStyle}"
-                                   TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                        <local:PluginDeclarativeView x:Name="DeclarativeView" />
                     </StackPanel>
 
                     <TextBlock x:Name="DetailStatusText" Style="{StaticResource CardDescStyle}"

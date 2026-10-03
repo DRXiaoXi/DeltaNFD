@@ -42,9 +42,6 @@ public sealed partial class PluginPage : Page
 
     private ObservableCollection<PluginRowItem> Rows { get; } = [];
 
-    private PluginUi? _formUi;
-    private PluginIndexEntry? _formEntry;
-    private readonly Dictionary<string, Func<object?>> _formValueReaders = new(StringComparer.Ordinal);
     private readonly ObservableCollection<PluginHistoryRow> _historyRows = [];
     private PluginHistorySnapshot _history = new([], "", false);
     private IReadOnlyList<PluginLogEntry> _filteredHistory = [];
@@ -53,6 +50,9 @@ public sealed partial class PluginPage : Page
     private bool _historyActive;
     private bool _suppressHistoryFilter;
     private bool _suppressPluginSelection;
+
+    /// <summary>共享声明式页面当前渲染的条目身份（ID+版本+哈希+状态）；未变则不重渲染，保留操作结果文本。</summary>
+    private string? _renderedFormKey;
 
     private async void Page_Loaded(object sender, RoutedEventArgs e)
     {
@@ -73,6 +73,9 @@ public sealed partial class PluginPage : Page
         _historyRows.Clear();
         HistoryList.ItemsSource = null;
         HistoryDetailText.Text = "";
+        // 释放共享页面：释放文件锁、丢弃控件引用；不停止持续插件、不撤销授权、不恢复系统设置。
+        DeclarativeView.Clear();
+        _renderedFormKey = null;
     }
 
     private async Task RefreshHistoryAsync()
@@ -202,20 +205,27 @@ public sealed partial class PluginPage : Page
         Bindings.Update();
         if (selected is null)
         {
-            PluginFormPanel.Children.Clear(); _formValueReaders.Clear(); _formUi = null; _formEntry = null;
+            DeclarativeView.Clear();
+            _renderedFormKey = null;
             PluginFormHost.Visibility = Visibility.Collapsed;
             return;
         }
         if (!ServiceLocator.Plugins.Index.TryGet(selected.Id, out var entry, out var error) || entry is null)
         {
+            DeclarativeView.Clear();
+            _renderedFormKey = null;
             PluginFormHost.Visibility = Visibility.Collapsed;
-            PluginFormPanel.Children.Clear(); _formValueReaders.Clear(); _formUi = null; _formEntry = null;
             DetailStatusText.Text = "读取插件详情失败：" + error;
             return;
         }
-        if (_formUi is null || _formEntry is null || _formEntry.Id != entry.Id || _formEntry.PackageSha256 != entry.PackageSha256 ||
-            _formEntry.Version != entry.Version || entry.State != PluginPackageState.Authorized)
-            RenderPluginForm(entry);
+        // 共享声明式页面：仅在条目身份/状态变化时重渲染，避免刷新列表时清掉最近一次操作结果。
+        var formKey = $"{entry.Id}|{entry.Version}|{entry.PackageSha256}|{entry.State}";
+        if (_renderedFormKey != formKey)
+        {
+            DeclarativeView.SetEntry(entry);
+            _renderedFormKey = formKey;
+        }
+        PluginFormHost.Visibility = DeclarativeView.PluginId is null ? Visibility.Collapsed : Visibility.Visible;
         DetailNameText.Text = $"{entry.Name} v{entry.Version}";
         DetailMetaText.Text =
             $"作者：{entry.Author}\n" +
@@ -237,148 +247,6 @@ public sealed partial class PluginPage : Page
             DetailStatusText.Text += (DetailStatusText.Text.Length == 0 ? "" : "\n") + runtimeStatus.Detail;
         var logError = PluginDiagnostics.GetWriteError(Path.Combine(ServiceLocator.Plugins.DataRoot, "diagnostics"));
         if (logError.Length > 0) DetailStatusText.Text += "\n" + logError;
-    }
-
-    /// <summary>
-    /// 按包内 ui.json 渲染声明式表单：仅标准 WinUI 控件，文本纯展示，
-    /// 按钮绑定声明操作（规范第 4 节：宿主渲染，不加载插件 XAML/HTML/脚本）。
-    /// </summary>
-    private void RenderPluginForm(PluginIndexEntry entry)
-    {
-        PluginFormPanel.Children.Clear();
-        _formValueReaders.Clear();
-        _formUi = null;
-        _formEntry = null;
-        try
-        {
-            if (entry.State != PluginPackageState.Authorized ||
-                !ServiceLocator.Plugins.TryReadUi(entry.Id, out var uiJson, out _))
-            {
-                PluginFormHost.Visibility = Visibility.Collapsed;
-                return;
-            }
-            var manifestPath = Path.Combine(entry.InstallDirectory, "manifest.json");
-            var manifest = PluginManifestParser.Parse(File.ReadAllBytes(manifestPath));
-            var ui = PluginUiParser.Parse(System.Text.Encoding.UTF8.GetBytes(uiJson), manifest);
-            _formUi = ui;
-            _formEntry = entry;
-            foreach (var control in ui.Controls)
-                PluginFormPanel.Children.Add(BuildControl(control));
-            PluginFormHost.Visibility = PluginFormPanel.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        }
-        catch (Exception)
-        {
-            // 坏 ui.json：不渲染表单，不阻止管理操作。
-            PluginFormHost.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private UIElement BuildControl(PluginControl control)
-    {
-        switch (control.Type)
-        {
-            case PluginControlType.Text:
-                return new TextBlock
-                {
-                    Text = control.Text ?? "",
-                    TextWrapping = TextWrapping.Wrap,
-                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                };
-            case PluginControlType.Input:
-            {
-                var box = new TextBox { Header = control.Label, Text = control.DefaultInput ?? "", MaxLength = PluginContract.MaxFormValueChars };
-                _formValueReaders[control.Id] = () => box.Text;
-                return box;
-            }
-            case PluginControlType.Number:
-            {
-                var box = new NumberBox
-                {
-                    Header = control.Label,
-                    Value = control.DefaultNumber ?? 0,
-                    Minimum = control.Min ?? double.MinValue,
-                    Maximum = control.Max ?? double.MaxValue,
-                    SmallChange = control.Step ?? 1,
-                };
-                _formValueReaders[control.Id] = () => box.Value;
-                return box;
-            }
-            case PluginControlType.Toggle:
-            {
-                var toggle = new ToggleSwitch { Header = control.Label, IsOn = control.DefaultToggle ?? false, OnContent = "开", OffContent = "关" };
-                _formValueReaders[control.Id] = () => toggle.IsOn;
-                return toggle;
-            }
-            case PluginControlType.Select:
-            {
-                var combo = new ComboBox { Header = control.Label, PlaceholderText = "请选择" };
-                if (control.Options is not null)
-                    foreach (var option in control.Options)
-                        combo.Items.Add(option.Item2);
-                if (control.DefaultSelect is { } defaultValue && control.Options is not null)
-                    for (var i = 0; i < control.Options.Count; i++)
-                        if (control.Options[i].Item1 == defaultValue) { combo.SelectedIndex = i; break; }
-                _formValueReaders[control.Id] = () => control.Options is not null && combo.SelectedIndex >= 0
-                    ? control.Options[combo.SelectedIndex].Item1 : null;
-                return combo;
-            }
-            case PluginControlType.Button:
-            {
-                var button = new Button { Content = control.Label ?? control.OperationId };
-                button.Click += async (_, _) => await RunOperationAsync(control.OperationId!);
-                return button;
-            }
-            case PluginControlType.Progress:
-                return new ProgressBar { Minimum = 0, Maximum = 100 };
-            case PluginControlType.Result:
-                return new TextBlock
-                {
-                    Text = "",
-                    TextWrapping = TextWrapping.Wrap,
-                    IsTextSelectionEnabled = true,
-                };
-            default:
-                return new TextBlock();
-        }
-    }
-
-    /// <summary>收集表单值并经宿主校验后发起一次操作（按操作启动、完成即停止）。</summary>
-    private async Task RunOperationAsync(string operationId)
-    {
-        if (_formUi is null || _formEntry is null) return;
-        var values = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var (id, reader) in _formValueReaders)
-            values[id] = reader();
-        if (!PluginUiParser.TryValidateValues(_formUi, values, out var validationError))
-        {
-            RunStatusText.Text = "输入无效：" + validationError;
-            return;
-        }
-        RunStatusText.Text = $"正在执行“{operationId}”…（后端按操作启动，完成后停止）";
-        var runtime = ServiceLocator.PluginRuntime;
-        PluginInvokeResult result;
-        try
-        {
-            result = await runtime.InvokeOnceAsync(_formEntry, operationId, values);
-        }
-        catch (Exception ex)
-        {
-            RunStatusText.Text = "执行失败：" + ex.Message;
-            return;
-        }
-        var items = result.Items.Count == 0 ? "" : Environment.NewLine +
-            string.Join(Environment.NewLine, result.Items.Select(i => $"· {i.Id}：{i.Status} —— {i.Message}"));
-        RunStatusText.Text =
-            $"状态：{result.Status}（{result.Code}）" + Environment.NewLine + $"{result.Message}{items}" +
-            (result.PendingRestore ? Environment.NewLine + "注意：存在待恢复备份。" : "");
-        var logError = PluginDiagnostics.GetWriteError(Path.Combine(ServiceLocator.Plugins.DataRoot, "diagnostics"));
-        if (logError.Length > 0) RunStatusText.Text += Environment.NewLine + logError;
-        if (result.PendingRestore && _formEntry is { } current)
-        {
-            // 保守标记待恢复：宿主不能独立证实插件承诺，标记后替换/卸载被阻止（规范第 7 节）。
-            ServiceLocator.Plugins.Index.TryUpsert(current with { State = PluginPackageState.PendingRestore }, out _);
-            ViewModel.Refresh();
-        }
     }
 
     private async void ImportButton_Click(object sender, RoutedEventArgs e)

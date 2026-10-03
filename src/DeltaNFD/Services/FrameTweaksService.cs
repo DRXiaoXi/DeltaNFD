@@ -3,6 +3,8 @@ using Microsoft.Win32;
 
 namespace DeltaNFD.Services;
 
+public sealed record FrameIncompletePowerBackup(string FileName, string Path, string Fingerprint, string Reason);
+
 /// <summary>帧格临时改写的一项注册表值原值（跨重启持久化，退出帧格时还原）。</summary>
 public sealed class FrameRegBackupEntry
 {
@@ -249,6 +251,78 @@ public sealed class FrameTweaksService
     private const string UsbBackupFile = "frame_usb_power.json";
     private const string PcieBackupFile = "frame_pcie_power.json";
 
+    public async Task<IReadOnlyList<FrameIncompletePowerBackup>> GetIncompletePowerBackupsAsync()
+    {
+        var result = new List<FrameIncompletePowerBackup>();
+        foreach (var name in new[] { UsbBackupFile, PcieBackupFile })
+        {
+            var path = Path.Combine(_powerBackupRoot, name);
+            if (!PowerFileExists(path)) continue;
+            var bytes = await ReadPowerBackupBytesAsync(path);
+            if (!IncompletePowerBackup(bytes, out var reason)) continue;
+            result.Add(new(name, path, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)), reason));
+        }
+        return result;
+    }
+
+    private static bool IncompletePowerBackup(byte[] bytes, out string reason)
+    {
+        try
+        {
+            var backup = System.Text.Json.JsonSerializer.Deserialize<PowerSettingBackup>(bytes);
+            reason = $"计划={backup?.Scheme ?? "(缺失)"}；AC={backup?.Ac?.ToString() ?? "(缺失)"}；DC={backup?.Dc?.ToString() ?? "(缺失)"}";
+            return backup is null || !Guid.TryParse(backup.Scheme, out _) || !ValidPowerValue(backup.Ac) || !ValidPowerValue(backup.Dc);
+        }
+        catch (System.Text.Json.JsonException) { reason = "JSON 损坏，无法取得可靠原值"; return true; }
+    }
+
+    private static async Task<byte[]> ReadPowerBackupBytesAsync(string path)
+    {
+        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) throw new IOException("备份路径是重解析点。");
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (stream.Length > 1024 * 1024) throw new IOException("备份超过 1MiB，未接管。");
+        var bytes = new byte[(int)stream.Length];
+        await stream.ReadExactlyAsync(bytes);
+        return bytes;
+    }
+
+    /// <summary>Requires explicit consent: retain current values, archive lost originals, never claim restoration.</summary>
+    public async Task<OperationResult> PreserveCurrentPowerValuesAsync(IReadOnlyList<FrameIncompletePowerBackup> confirmed)
+    {
+        try
+        {
+            if (confirmed.Count is < 1 or > 2 || confirmed.Select(x => x.FileName).Distinct().Count() != confirmed.Count)
+                return OperationResult.Fail("确认清单无效，未移动备份。");
+            foreach (var item in confirmed)
+            {
+                if (item.FileName is not (UsbBackupFile or PcieBackupFile)) return OperationResult.Fail("拒绝处理其他备份。");
+                var path = Path.Combine(_powerBackupRoot, item.FileName);
+                var bytes = await ReadPowerBackupBytesAsync(path);
+                if (!IncompletePowerBackup(bytes, out _) || Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)) != item.Fingerprint)
+                    return OperationResult.Fail("备份已变化，请重新确认；未移动备份。");
+            }
+            var directory = Path.Combine(_powerBackupRoot, "unresolved-frame-power");
+            Directory.CreateDirectory(directory);
+            foreach (var ancestor in new[] { _powerBackupRoot, directory })
+                if ((File.GetAttributes(ancestor) & FileAttributes.ReparsePoint) != 0) throw new IOException("归档目录含重解析点。");
+            foreach (var item in confirmed)
+            {
+                var path = Path.Combine(_powerBackupRoot, item.FileName);
+                var bytes = await ReadPowerBackupBytesAsync(path);
+                if (Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)) != item.Fingerprint)
+                    throw new IOException("确认后备份已变化，未继续移动。");
+                var archived = Path.Combine(directory, DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N") + "-" + item.FileName);
+                File.Move(path, archived); // No deletion or replacement of evidence, and no powercfg writes.
+                var actual = await ReadPowerBackupBytesAsync(archived);
+                if (Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(actual)) != item.Fingerprint)
+                    throw new IOException("归档复核失败，证据仍保留：" + archived);
+                Log.Warn("帧格旧电源备份已按用户确认归档；当前值保留，未恢复未知原值：" + archived + "；" + item.Reason);
+            }
+            return OperationResult.Ok("已保留当前电源值并归档旧记录（不是还原）；证据目录：" + directory);
+        }
+        catch (Exception ex) { return OperationResult.Fail("旧备份处理未完成，证据保留：" + ex.Message); }
+    }
+
     /// <summary>
     /// 一项电源计划设置的 AC/DC 原值备份。每个设置各自一个文件
     /// （frame_usb_power.json / frame_pcie_power.json），不与注册表备份文件混用，
@@ -364,7 +438,8 @@ public sealed class FrameTweaksService
                 await File.ReadAllTextAsync(backupPath));
             if (backup is null || !Guid.TryParse(backup.Scheme, out _) || !ValidPowerValue(backup.Ac) || !ValidPowerValue(backup.Dc))
             {
-                return OperationResult.Fail($"{label} 原值备份不完整，已保留记录，未使用猜测默认值恢复。");
+                Log.Warn($"帧格电源恢复阻止：文件={backupPath}；计划={backup?.Scheme}；AC={backup?.Ac}；DC={backup?.Dc}；未执行 powercfg 写入。");
+                return OperationResult.Fail($"{label} 原值备份不完整，已保留记录，未使用猜测默认值恢复。备份：{backupPath}");
             }
 
             foreach (var (mode, value) in new[] { ("ac", backup.Ac), ("dc", backup.Dc) })

@@ -4,7 +4,10 @@ using System.Security.Principal;
 
 namespace DeltaNFD.Services;
 
-internal sealed record GuardRegistryValue(string? Debugger, RegistryValueKind Kind, string? Owner, bool ForeignOwner);
+internal sealed record GuardRegistryValue(string? Debugger, RegistryValueKind Kind, string? Owner, bool ForeignOwner)
+{
+    public string? ForeignMarker { get; init; }
+}
 internal sealed record GuardFileValue(string Path, string Identity, string Dacl);
 internal interface IGuardRegistry
 {
@@ -12,6 +15,7 @@ internal interface IGuardRegistry
     void SetDebugger(string name, string? value, RegistryValueKind kind);
     void SetOwner(string name, string? value);
     void RemoveEmptyKey(string name);
+    void ClearKnownForeignOwner(string name) => throw new IOException("无法确认独立工具的属主标记，未清理。");
 }
 internal interface IGuardFiles
 {
@@ -29,6 +33,14 @@ internal sealed class GuardProtectionState
     public List<GuardIfeoRecord> Ifeo { get; set; } = [];
     public List<GuardAclRecord> Acls { get; set; } = [];
     public List<GuardLegacyAclRepair> LegacyAclRepairs { get; set; } = [];
+    public RuntimeGuardMode? Mode { get; set; }
+    public List<GuardLegacyIfeoRepair> LegacyIfeoRepairs { get; set; } = [];
+}
+internal sealed class GuardLegacyIfeoRepair
+{
+    public string Name { get; set; } = "";
+    public GuardRegistryValue Before { get; set; } = new(null, RegistryValueKind.None, null, false);
+    public bool Completed { get; set; }
 }
 internal sealed class GuardLegacyAclRepair
 {
@@ -52,7 +64,14 @@ internal sealed class GuardAclRecord
     public string Original { get; set; } = "";
     public string Applied { get; set; } = "";
 }
-internal sealed record GuardProtectionStatus(int Blocked, int Managed, int External, bool FileDenied, bool PendingAcl);
+internal sealed record GuardProtectionStatus(int Blocked, int Managed, int External, bool FileDenied, bool PendingAcl)
+{
+    public RuntimeGuardMode Mode { get; init; }
+    public int ScopeManaged { get; init; }
+    public int ScopeBlocked { get; init; }
+    public IReadOnlyList<RuntimeGuardLegacyEntry> LegacyIfeo { get; init; } = [];
+    public bool PendingIfeo { get; init; }
+}
 
 /// <summary>Transactional protection and restore; does not claim identical values written by another tool.</summary>
 internal sealed class RuntimeGuardProtection
@@ -98,40 +117,145 @@ internal sealed class RuntimeGuardProtection
         return backup?.ValueKind == RegistryValueKind.None;
     }
     private static bool Owned(GuardRegistryValue value, GuardIfeoRecord entry) => !value.ForeignOwner && value.Owner == entry.Marker;
+    internal static string[] Scope(RuntimeGuardMode mode) => mode switch
+    {
+        RuntimeGuardMode.BasicV14 => Names.Take(3).ToArray(),
+        RuntimeGuardMode.Full => Names,
+        _ => throw new ArgumentOutOfRangeException(nameof(mode)),
+    };
+    private static RuntimeGuardMode EffectiveMode(GuardProtectionState state) => state.Mode ??
+        (state.Ifeo.Count > 0 || state.Acls.Count > 0 ? RuntimeGuardMode.Full : RuntimeGuardMode.BasicV14);
+    private static string Fingerprint(string name, GuardRegistryValue value) => Convert.ToHexString(
+        System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
+            System.Text.Json.JsonSerializer.Serialize(new { Name = name.ToLowerInvariant(), Value = value }))));
+    private static bool Cleanable(GuardRegistryValue value) => Signature(value) &&
+        (!value.ForeignOwner || value.ForeignMarker == "RuntimeGuardHotPatch");
 
     internal GuardProtectionStatus Probe(string? currentFile)
     {
         var state = _store.Load();
-        int blocked = 0, managed = 0, external = 0;
+        var mode = EffectiveMode(state);
+        var scope = Scope(mode);
+        int blocked = 0, managed = 0, external = 0, scopeManaged = 0, scopeBlocked = 0;
+        var legacy = new List<RuntimeGuardLegacyEntry>();
         foreach (var name in Names)
         {
             var value = _registry.Read(name);
             if (string.IsNullOrWhiteSpace(value.Debugger)) continue;
             blocked++;
+            if (scope.Contains(name)) scopeBlocked++;
             var record = state.Ifeo.FirstOrDefault(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             if (Signature(value) && ((record is not null && Owned(value, record)) ||
-                (!value.ForeignOwner && value.Owner?.StartsWith(OwnerPrefix, StringComparison.Ordinal) == true) || CanAdoptLegacy(name, value))) managed++;
+                (!value.ForeignOwner && value.Owner?.StartsWith(OwnerPrefix, StringComparison.Ordinal) == true) || CanAdoptLegacy(name, value)))
+            { managed++; if (scope.Contains(name)) scopeManaged++; }
             else external++;
+            // Known fixed blocks with lost records can be explicitly cleaned, never silently adopted.
+            if (Cleanable(value) && (record is null || !Owned(value, record)))
+                legacy.Add(new(name, Fingerprint(name, value)));
         }
         var paths = state.Acls.Select(a => a.Path).Concat(state.LegacyAclRepairs.Where(r => !r.Completed).Select(r => r.Path)).ToList();
         if (!string.IsNullOrWhiteSpace(currentFile)) paths.Add(currentFile);
         var denied = false;
         foreach (var path in paths.Distinct(StringComparer.OrdinalIgnoreCase)) denied |= HasExecuteDeny(_files.Read(path).Dacl);
-        return new(blocked, managed, external, denied, state.Acls.Count > 0 || state.LegacyAclRepairs.Any(r => !r.Completed));
+        return new(blocked, managed, external, denied, state.Acls.Count > 0 || state.LegacyAclRepairs.Any(r => !r.Completed))
+        { Mode = mode, ScopeManaged = scopeManaged, ScopeBlocked = scopeBlocked, LegacyIfeo = legacy,
+            PendingIfeo = state.LegacyIfeoRepairs.Any(r => !r.Completed) || state.Ifeo.Count > 0 };
+    }
+    internal OperationResult SelectMode(RuntimeGuardMode mode, string? file)
+    {
+        _ = Scope(mode);
+        var status = Probe(file);
+        if (status.Blocked > 0 || status.FileDenied || status.PendingAcl || status.PendingIfeo)
+            return OperationResult.Fail("请先关闭防护并清理旧拦截，再选择防护范围。");
+        var state = _store.Load();
+        state.Mode = mode;
+        _store.Save(state);
+        return OperationResult.Ok("防护范围已保存，尚未开启防护。");
+    }
+
+    internal OperationResult CleanupLegacyIfeo(IReadOnlyList<RuntimeGuardLegacyEntry> confirmed)
+    {
+        var state = _store.Load();
+        if (confirmed.Count == 0 || confirmed.Count > Names.Length ||
+            confirmed.Select(e => e.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() != confirmed.Count)
+            return OperationResult.Fail("旧拦截确认清单无效。");
+        // Validate the entire consent snapshot before any write.
+        foreach (var entry in confirmed)
+        {
+            if (!Names.Contains(entry.Name, StringComparer.OrdinalIgnoreCase)) return OperationResult.Fail("拒绝清理非运行库安装器。");
+            var value = _registry.Read(entry.Name);
+            if (!Cleanable(value) || Fingerprint(entry.Name, value) != entry.Fingerprint ||
+                state.Ifeo.Any(r => r.Name.Equals(entry.Name, StringComparison.OrdinalIgnoreCase) && Owned(value, r)))
+                return OperationResult.Fail("旧拦截已变化或有正常恢复记录，请重新确认：" + entry.Name);
+        }
+        var errors = new List<string>();
+        foreach (var entry in confirmed)
+        {
+            try
+            {
+                var before = _registry.Read(entry.Name);
+                if (!Cleanable(before) || Fingerprint(entry.Name, before) != entry.Fingerprint)
+                    throw new IOException("确认后出现外部修改，未清理。");
+                var repair = new GuardLegacyIfeoRepair { Name = entry.Name, Before = before };
+                state.LegacyIfeoRepairs.Add(repair);
+                _store.Save(state);
+                if (_registry.Read(entry.Name) != before) throw new IOException("备份后出现外部修改，未清理。");
+                CompleteLegacyIfeoRepair(state, repair);
+            }
+            catch (Exception ex) { errors.Add(entry.Name + "：" + ex.Message); }
+        }
+        return errors.Count == 0 ? OperationResult.Ok("已清理确认的固定 IFEO 拦截；快照保留，其他 Debugger 不变。")
+            : OperationResult.Fail("旧拦截清理未完成，快照保留：" + string.Join("；", errors));
+    }
+    private void CompleteLegacyIfeoRepair(GuardProtectionState state, GuardLegacyIfeoRepair repair)
+    {
+        var before = repair.Before;
+        if (!Cleanable(before) || !Names.Contains(repair.Name, StringComparer.OrdinalIgnoreCase))
+            throw new IOException("旧拦截快照无效。");
+        var current = _registry.Read(repair.Name);
+        var noDebugger = before with { Debugger = null, Kind = RegistryValueKind.None };
+        var noOwner = noDebugger with { Owner = before.Owner?.StartsWith(OwnerPrefix, StringComparison.Ordinal) == true ? null : before.Owner };
+        var finished = noOwner with { ForeignOwner = false, ForeignMarker = null };
+        if (current == before)
+        {
+            _registry.SetDebugger(repair.Name, null, RegistryValueKind.None);
+            current = _registry.Read(repair.Name);
+        }
+        if (current != noDebugger && current != noOwner && current != finished)
+            throw new IOException("旧拦截或属主已被外部修改，未覆盖。");
+        if (current.Owner != noOwner.Owner)
+        {
+            _registry.SetOwner(repair.Name, noOwner.Owner);
+            current = _registry.Read(repair.Name);
+        }
+        if (current != noOwner && current != finished) throw new IOException("属主清理复核失败。");
+        if (current.ForeignOwner) _registry.ClearKnownForeignOwner(repair.Name);
+        if (_registry.Read(repair.Name) != finished) throw new IOException("旧拦截清理复核失败。");
+        _registry.RemoveEmptyKey(repair.Name);
+        state.Ifeo.RemoveAll(r => r.Name.Equals(repair.Name, StringComparison.OrdinalIgnoreCase));
+        repair.Completed = true;
+        _store.Save(state);
+        Log.Info("旧 IFEO 已按用户确认清理：" + repair.Name + "；原值快照已保留；不宣称恢复未知原值。");
     }
     internal string? RepairBlocker(string? currentFile)
     {
         try
         {
             var status = Probe(currentFile);
-            return status.Blocked > 0 || status.FileDenied || status.PendingAcl
+            return status.Blocked > 0 || status.FileDenied || status.PendingAcl || status.PendingIfeo
                 ? "仍存在运行库安装器拦截或待恢复权限。请先关闭防护（包括其他工具的防护），再修复运行库；尚未卸载任何运行库。" : null;
         }
         catch (Exception ex) { return "无法确认运行库防护已关闭，拒绝修复，尚未卸载任何运行库：" + ex.Message; }
     }
-    internal OperationResult Enable(string? file)
+    internal OperationResult Enable(string? file, RuntimeGuardMode mode = RuntimeGuardMode.Full)
     {
         var state = _store.Load();
+        var names = Scope(mode);
+        if (state.LegacyIfeoRepairs.Any(r => !r.Completed)) return OperationResult.Fail("旧 IFEO 清理尚未完成，请先关闭防护以重试。");
+        if (mode == RuntimeGuardMode.BasicV14) file = null;
+        if (state.Ifeo.Any(e => !names.Contains(e.Name, StringComparer.OrdinalIgnoreCase)) ||
+            (mode == RuntimeGuardMode.BasicV14 && state.Acls.Count > 0))
+            return OperationResult.Fail("仍有完全防护恢复记录，请先关闭防护再切换范围。");
         if (state.LegacyAclRepairs.Any(r => !r.Completed))
             return OperationResult.Fail("旧 UE4 权限修复尚未完成，请先完成修复或关闭防护。");
         if (!string.IsNullOrWhiteSpace(file))
@@ -148,7 +272,7 @@ internal sealed class RuntimeGuardProtection
             catch (Exception ex) { return OperationResult.Fail("UE4 权限预检失败，未新增拦截：" + ex.Message); }
         }
         // Preflight every name before the first mutation.
-        foreach (var name in Names)
+        foreach (var name in names)
         {
             var value = _registry.Read(name);
             var owned = state.Ifeo.FirstOrDefault(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
@@ -161,7 +285,9 @@ internal sealed class RuntimeGuardProtection
         var added = new List<string>();
         try
         {
-            foreach (var name in Names)
+            state.Mode = mode;
+            _store.Save(state);
+            foreach (var name in names)
             {
                 var current = _registry.Read(name);
                 var record = state.Ifeo.FirstOrDefault(e => e.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
@@ -205,7 +331,9 @@ internal sealed class RuntimeGuardProtection
                     (rollback.Count == 0 ? "本次新增 IFEO 已回滚。" : "IFEO 回滚未完成：" + string.Join("；", rollback)));
             }
         }
-        return OperationResult.Ok("IFEO 防护已开启，已找到的 UE4 权限写入通过复核。");
+        return OperationResult.Ok(mode == RuntimeGuardMode.BasicV14
+            ? "基础 V14 防护已开启：3 项 IFEO，未修改 UE4 文件权限。"
+            : "完全防护已开启：11 项 IFEO；已找到的 UE4 权限写入通过复核。");
     }
     private List<string> RestoreIfeo(GuardProtectionState state, IEnumerable<string> names)
     {
@@ -265,7 +393,14 @@ internal sealed class RuntimeGuardProtection
     internal OperationResult Disable(string? currentFile)
     {
         var state = _store.Load();
+        var pendingErrors = new List<string>();
+        foreach (var repair in state.LegacyIfeoRepairs.Where(r => !r.Completed))
+        {
+            try { CompleteLegacyIfeoRepair(state, repair); }
+            catch (Exception ex) { pendingErrors.Add(repair.Name + "：" + ex.Message); }
+        }
         var errors = RestoreIfeo(state, Names);
+        errors.AddRange(pendingErrors);
         foreach (var repair in state.LegacyAclRepairs.Where(r => !r.Completed))
         {
             try { CompleteLegacyRepair(state, repair); }

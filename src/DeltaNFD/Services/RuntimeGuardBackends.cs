@@ -22,7 +22,10 @@ internal sealed class GuardRegistryBackend : IGuardRegistry
         var kind = present ? key.GetValueKind("Debugger") : RegistryValueKind.None;
         return new(raw as string ?? (present ? "<unsupported debugger type>" : null), kind,
             key.GetValue(RuntimeGuardProtection.OwnerName) as string ?? (names.Contains(RuntimeGuardProtection.OwnerName, StringComparer.OrdinalIgnoreCase) ? "<invalid owner>" : null),
-            names.Contains("RuntimeGuardHotPatch_Owner", StringComparer.OrdinalIgnoreCase));
+            names.Contains("RuntimeGuardHotPatch_Owner", StringComparer.OrdinalIgnoreCase))
+        { ForeignMarker = names.Contains("RuntimeGuardHotPatch_Owner", StringComparer.OrdinalIgnoreCase) &&
+            key.GetValueKind("RuntimeGuardHotPatch_Owner") == RegistryValueKind.String
+                ? key.GetValue("RuntimeGuardHotPatch_Owner") as string : null };
     }
     private static RegistryKey? Open(string name, bool create)
     {
@@ -47,6 +50,15 @@ internal sealed class GuardRegistryBackend : IGuardRegistry
         using var key = Open(name, value is not null);
         if (value is null) key?.DeleteValue(RuntimeGuardProtection.OwnerName, false);
         else key!.SetValue(RuntimeGuardProtection.OwnerName, value, RegistryValueKind.String);
+    }
+    public void ClearKnownForeignOwner(string name)
+    {
+        using var key = Open(name, false);
+        if (key is null) return;
+        if (key.GetValue("RuntimeGuardHotPatch_Owner") as string != "RuntimeGuardHotPatch" ||
+            key.GetValueKind("RuntimeGuardHotPatch_Owner") != RegistryValueKind.String)
+            throw new IOException("独立工具属主已变化，未删除。");
+        key.DeleteValue("RuntimeGuardHotPatch_Owner", false);
     }
     public void RemoveEmptyKey(string name)
     {
@@ -102,10 +114,17 @@ internal sealed class GuardStateStore : IGuardStateStore
         if (!File.Exists(_path)) return new();
         if (new FileInfo(_path).Length > 1024 * 1024) throw new InvalidDataException("防护状态文件过大。");
         var result = JsonSerializer.Deserialize<GuardProtectionState>(File.ReadAllText(_path)) ?? throw new InvalidDataException("防护状态为空。");
-        if (result.Version != 1 || result.Ifeo is null || result.Acls is null || result.LegacyAclRepairs is null ||
+        if (result.Version != 1 || result.Ifeo is null || result.Acls is null || result.LegacyAclRepairs is null || result.LegacyIfeoRepairs is null ||
+            (result.Mode is not null && !Enum.IsDefined(result.Mode.Value)) ||
             result.Ifeo.Any(e => !RuntimeGuardProtection.Names.Contains(e.Name, StringComparer.OrdinalIgnoreCase) || !e.Marker.StartsWith(RuntimeGuardProtection.OwnerPrefix, StringComparison.Ordinal)) ||
             result.Ifeo.Select(e => e.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() != result.Ifeo.Count)
             throw new InvalidDataException("防护状态结构无效。");
+        foreach (var repair in result.LegacyIfeoRepairs)
+            if (!RuntimeGuardProtection.Names.Contains(repair.Name, StringComparer.OrdinalIgnoreCase) || repair.Before is null ||
+                repair.Before.Kind is not (RegistryValueKind.String or RegistryValueKind.ExpandString) ||
+                !string.Equals(repair.Before.Debugger, RuntimeGuardProtection.Debugger, StringComparison.OrdinalIgnoreCase) ||
+                (repair.Before.ForeignOwner && repair.Before.ForeignMarker != "RuntimeGuardHotPatch"))
+                throw new InvalidDataException("旧 IFEO 清理记录无效。");
         foreach (var acl in result.Acls)
         {
             if (!Path.IsPathFullyQualified(acl.Path) || !Path.GetFileName(acl.Path).StartsWith("UE4PrereqSetup_", StringComparison.OrdinalIgnoreCase) || !acl.Path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))

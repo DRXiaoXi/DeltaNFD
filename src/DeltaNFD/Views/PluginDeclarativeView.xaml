@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="DeltaNFD.Views.PluginDeclarativeView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        共享声明式页面：宿主按 ui.json 渲染标准控件，不加载插件 XAML/HTML/脚本。
+        插件管理页与侧栏独立入口共用同一实例逻辑，保证状态一致、不复制授权与运行记录、不新增后端实例。
+    -->
+    <StackPanel Spacing="10">
+        <TextBlock x:Name="NoticeText" Style="{StaticResource CardDescStyle}"
+                   TextWrapping="Wrap" IsTextSelectionEnabled="True" Visibility="Collapsed" />
+        <StackPanel x:Name="FormPanel" Spacing="10" Visibility="Collapsed" />
+        <Button x:Name="SaveConfigButton" Content="保存配置" Click="SaveConfig_Click" Visibility="Collapsed"
+                AutomationProperties.Name="保存插件配置，不执行操作" />
+        <TextBlock x:Name="StatusText" Style="{StaticResource CardDescStyle}"
+                   TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+    </StackPanel>
+</UserControl>

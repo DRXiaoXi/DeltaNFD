@@ -26,6 +26,25 @@ public sealed class PluginManagerService
     public PluginAuthorizationStore Authorizations { get; }
     public PluginRunStore Runs { get; }
 
+    /// <summary>
+    /// 插件集合/状态发生成功变更（导入、授权、停用、卸载、恢复确认、脱机授权）时触发。
+    /// 宿主据此刷新侧栏入口；订阅方必须自行切回 UI 线程。事件不携带运行状态，刷新菜单不等于运行插件。
+    /// </summary>
+    public event Action? Changed;
+
+    /// <summary>通知宿主插件集合已变更（导入器不经过 TraceChange，由调用方显式通知）。</summary>
+    public void NotifyChanged() => Changed?.Invoke();
+    public bool TryMarkPendingRestore(PluginIndexEntry expected, out string error)
+    {
+        if (!Index.TryGet(expected.Id, out var current, out error) || current is null) return false;
+        if (current.Version != expected.Version || current.PackageSha256 != expected.PackageSha256)
+        { error = "插件身份已变化，未覆盖新包状态；恢复证据保留。"; return false; }
+        if (current.State == PluginPackageState.PendingRestore) return true;
+        if (!Index.TryUpsert(current with { State = PluginPackageState.PendingRestore }, out error)) return false;
+        NotifyChanged();
+        return true;
+    }
+
     public PluginManagerService(string pluginsRoot)
     {
         if (!Path.IsPathFullyQualified(pluginsRoot)) throw new ArgumentException("插件根必须是绝对路径。", nameof(pluginsRoot));
@@ -259,24 +278,31 @@ public bool TryRevokeOffline(string pluginId, out string error) =>
     public string FindResourceConflict(string pluginId, IEnumerable<string> resourceIds,
         IReadOnlyDictionary<string, string> builtinOwners)
     {
-        if (!Index.TryRead(out var entries, out _)) return "";
+        if (!Index.TryRead(out var entries, out var readError)) return "无法确认插件资源占用：" + readError;
         var wanted = resourceIds.Where(r => PluginContract.OperationResourceIds.Contains(r)).ToList();
         if (wanted.Count == 0) return "";
         var wantedSet = new HashSet<string>(wanted, StringComparer.Ordinal);
+        if (wantedSet.Contains("cpu.affinity") || wantedSet.Contains("cpu.sets"))
+        { wantedSet.Add("cpu.affinity"); wantedSet.Add("cpu.sets"); }
 
         foreach (var (resource, owner) in builtinOwners)
             if (wantedSet.Contains(resource))
                 return $"资源“{resource}”正被内置功能（{owner}）使用；请先停用并还原该功能，再运行此插件操作。";
+        if (!Backups.TryList(out var backups, out var backupError)) return "无法确认待恢复资源：" + backupError;
+        foreach (var backup in backups.Where(b => b.PluginId != pluginId && b.Status != PluginBackupStatus.Restored))
+            if (backup.ResourceIds.Append(backup.ResourceId).Any(wantedSet.Contains))
+                return "资源存在其他插件的待恢复记录，请先恢复：" + backup.PluginId;
 
         foreach (var other in entries)
         {
-            if (other.Id == pluginId || other.State != PluginPackageState.Authorized) continue;
+            if (other.Id == pluginId || other.State == PluginPackageState.ImportedDisabled) continue;
             // 读取其他已授权插件 manifest 的修改操作资源声明。
             var manifestPath = Path.Combine(other.InstallDirectory, "manifest.json");
             try
             {
-                if (!File.Exists(manifestPath)) continue;
-                var manifest = PluginManifestParser.Parse(File.ReadAllBytes(manifestPath));
+                if (!File.Exists(manifestPath)) return "无法确认其他插件清单：" + other.Id;
+                using var snapshot = PluginPackageIntegrity.VerifyAndLock(other);
+                var manifest = PluginManifestParser.Parse(snapshot.ReadJson("manifest.json"));
                 var overlapping = manifest.Operations
                     .Where(o => o.Mutating)
                     .SelectMany(o => o.ResourceIds)
@@ -286,7 +312,8 @@ public bool TryRevokeOffline(string pluginId, out string error) =>
                 if (overlapping.Count > 0)
                     return $"资源“{string.Join("、", overlapping)}”已由插件“{other.Name}”（{other.Id}）声明；不可同时使用，请先停用并恢复其一。";
             }
-            catch (PluginContractException) { /* 坏 manifest 的插件不在冲突判定范围（它本身跑不起来） */ }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or PluginContractException)
+            { return "无法确认其他插件的资源占用：" + other.Id; }
         }
         return "";
     }
@@ -325,6 +352,7 @@ public bool TryRevokeOffline(string pluginId, out string error) =>
             updated = result.Entry; error = result.Error;
             PluginDiagnostics.Record(phase, result.Success ? "ok" : "blocked", detail: "管理请求结束；原始参数和错误文本不写入日志",
                 pluginId: pluginId, pluginVersion: updated?.Version ?? "", requestId: trace, elapsedMs: watch.ElapsedMilliseconds);
+            if (result.Success) Changed?.Invoke();
             return result.Success;
         }
         catch (Exception ex)
@@ -355,11 +383,12 @@ public bool TryRevokeOffline(string pluginId, out string error) =>
         var own = all.Where(b => b.PluginId == id).ToList();
         if (own.Count == 0 || own.Any(b => b.Status != PluginBackupStatus.Restored || b.IsInvocationIntent))
         { error = "没有完整的已恢复证据，不能清除未知状态。"; return false; }
-        return Index.TryUpsert(entry with { State = entry.AuthorizedUtc.HasValue ? PluginPackageState.Authorized : PluginPackageState.ImportedDisabled }, out error);
+        var ok = Index.TryUpsert(entry with { State = entry.AuthorizedUtc.HasValue ? PluginPackageState.Authorized : PluginPackageState.ImportedDisabled }, out error);
+        if (ok) Changed?.Invoke();
+        return ok;
     }
 
-    private static bool TryValidateId(string pluginId, out string error)
-    {
+    private static bool TryValidateId(string pluginId, out string error)    {
         // 仅阻挡路径注入（ID 已由索引校验，这里防直接调用时被塞路径分隔符）。
         if (string.IsNullOrEmpty(pluginId) || pluginId.Contains('/') || pluginId.Contains('\\') ||
             pluginId.Contains("..") || pluginId.Any(c => c is ':' or '<' or '>' or '"' or '|' or '?' or '*'))

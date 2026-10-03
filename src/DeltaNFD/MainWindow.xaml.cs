@@ -1,7 +1,9 @@
 using DeltaNFD.Native;
 using DeltaNFD.Services;
+using DeltaNFD.Services.Plugins;
 using DeltaNFD.Views;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 
@@ -18,12 +20,22 @@ public sealed partial class MainWindow : Window
     private bool _exitRequested;
 
     /// <summary>当前公告版本标识（发布新公告时更新此值，老用户会再收到一次弹窗）。</summary>
-    private const string CurrentAnnouncementVersion = "PreBeta0.9";
+    private const string CurrentAnnouncementVersion = "welcome-20261003";
 
     /// <summary>本次进程是否已检查过公告（Activated 每次激活都会触发，只处理一次）。</summary>
     private bool _announcementChecked;
 
     private bool _startupInitializationStarted;
+    private bool _gpuWatchReady;
+    private bool _gpuWatchInFlight;
+    private IReadOnlyList<GpuSpoofInvalidation> _gpuWatchItems = [];
+    private readonly HashSet<(string Path, string Stamp, string Name)> _gpuWatchDismissed = [];
+
+    /// <summary>插件侧栏子入口：插件 ID → 导航项。同名插件按 ID 区分，不合并（规范第 4.1 节）。</summary>
+    private readonly Dictionary<string, NavigationViewItem> _pluginNavItems = new(StringComparer.Ordinal);
+    /// <summary>重建菜单期间抑制选中变化引发的重复导航。</summary>
+    private bool _suppressPluginNavSelection;
+    private bool _pluginNavRefreshQueued;
 
     /// <summary>启动时的游戏目录检查完成后，主页导航才开始自动扫描组件。</summary>
     internal bool StartupGameDirectoryCheckCompleted { get; private set; }
@@ -34,6 +46,11 @@ public sealed partial class MainWindow : Window
         ServiceLocator.GameTarget.Changed += OnGameTargetChanged;
         Closed += (_, _) => ServiceLocator.GameTarget.Changed -= OnGameTargetChanged;
         UpdateGameTargetNavigation();
+
+        // 插件侧栏入口：固定“拓展插件”节点下的原生子菜单，仅按已提交索引生成（规范第 4.1 节）。
+        ServiceLocator.Plugins.Changed += OnPluginsChanged;
+        Closed += (_, _) => ServiceLocator.Plugins.Changed -= OnPluginsChanged;
+        RefreshPluginNavigation();
 
         Title = "三角帧不掉洲 · 三角洲行动优化工具";
         // 标题栏版本号：唯一来源是程序集 InformationalVersion（csproj 的 <InformationalVersion>，
@@ -63,6 +80,8 @@ public sealed partial class MainWindow : Window
 
         // 首次启动公告：ContentFrame 挂载完成（XamlRoot 就绪）后弹出，每个公告版本只弹一次
         ContentFrame.Loaded += ContentFrame_Loaded;
+        Activated += GpuWatch_Activated;
+        Closed += (_, _) => { _gpuWatchReady = false; Activated -= GpuWatch_Activated; };
 
         if (!OfflineModeGuard.BlocksNormalAutomation && AppSettingsStore.Read().CloseToTrayEnabled)
         {
@@ -86,6 +105,103 @@ public sealed partial class MainWindow : Window
         foreach (var item in NavView.MenuItems.OfType<NavigationViewItem>())
             if (item.Tag?.ToString() is "shader" or "ace") item.IsEnabled = !ServiceLocator.GameTarget.IsCustom;
     }
+
+    // ---------------------------------------------------------------- 插件侧栏入口
+
+    /// <summary>管理服务报告插件集合已变更（可能来自后台线程）：合并到一次 UI 线程刷新。</summary>
+    private void OnPluginsChanged()
+    {
+        if (_pluginNavRefreshQueued) return;
+        _pluginNavRefreshQueued = true;
+        if (!DispatcherQueue.TryEnqueue(() =>
+            {
+                _pluginNavRefreshQueued = false;
+                RefreshPluginNavigation();
+            }))
+        {
+            _pluginNavRefreshQueued = false;
+        }
+    }
+
+    /// <summary>
+    /// 重建“拓展插件”下的子入口。只读取索引与包内导航声明，不启动/重连/调用后端；
+    /// 索引读取失败时保留现有菜单（不误删），单包损坏由目录层跳过（无幽灵入口）。
+    /// </summary>
+    internal void RefreshPluginNavigation()
+    {
+        var entries = PluginNavigationCatalog.Build(ServiceLocator.Plugins, AppVersion.Current, out var error);
+        if (error.Length > 0)
+        {
+            Services.Log.Warn("插件入口：读取插件索引失败，保留现有菜单：" + error);
+            return;
+        }
+
+        var parent = FindPluginsNavItem();
+        if (parent is null) return;
+
+        var previouslySelected = _pluginNavItems.Keys.FirstOrDefault(id =>
+            ReferenceEquals(NavView.SelectedItem, _pluginNavItems[id]));
+        var staleEntryPage = false;
+
+        _suppressPluginNavSelection = true;
+        try
+        {
+            foreach (var item in _pluginNavItems.Values) parent.MenuItems.Remove(item);
+            _pluginNavItems.Clear();
+
+            foreach (var entry in entries)
+            {
+                var item = new NavigationViewItem
+                {
+                    // 路由身份使用插件 ID；显示名仅作展示，长名称由原生模板截断。
+                    Tag = PluginNavigationCatalog.TagFor(entry.PluginId),
+                    Content = entry.Label,
+                };
+                item.Icon = new FontIcon { Glyph = NavigationIconGlyph(entry.Icon) };
+                ToolTipService.SetToolTip(item, $"{entry.Label}\n{entry.Author} · {entry.PluginId}\n状态：{entry.StatusText}");
+                AutomationProperties.SetName(item, $"{entry.Label}（{entry.PluginId}）");
+                parent.MenuItems.Add(item);
+                _pluginNavItems[entry.PluginId] = item;
+            }
+
+            parent.IsExpanded = true;
+
+            // 当前正显示的独立入口若已被卸载或身份（版本/哈希）变化，退出该页回管理页，
+            // 不复用旧授权或旧表单（规范第 4.1 节、B4）。
+            staleEntryPage = ContentFrame.Content is PluginEntryPage entryPage && entryPage.IsStale();
+        }
+        finally
+        {
+            _suppressPluginNavSelection = false;
+        }
+
+        // 重建期间抑制选中变化；结束后再恢复选中（会真正导航到该入口，刷新表单），
+        // 但若该入口已失效则退回插件管理页，不误选其他插件。
+        if (previouslySelected is not null && !staleEntryPage)
+        {
+            if (_pluginNavItems.TryGetValue(previouslySelected, out var restored))
+                NavView.SelectedItem = restored;
+            else
+                NavigateByTag("plugins");
+        }
+        else if (staleEntryPage)
+        {
+            NavigateByTag("plugins");
+        }
+    }
+
+    private NavigationViewItem? FindPluginsNavItem() =>
+        NavView.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(i => i.Tag?.ToString() == "plugins");
+
+    /// <summary>navigation.icon 固定枚举 → 宿主内置 Segoe MDL2 字形；不接受路径/URL/字体名。</summary>
+    private static string NavigationIconGlyph(string icon) => icon switch
+    {
+        "report" => "\uE8A5",
+        "settings" => "\uE713",
+        "activity" => "\uE9D9",
+        "tools" => "\uE90F",
+        _ => "\uEA86", // puzzle
+    };
 
     private async void ContentFrame_Loaded(object sender, RoutedEventArgs e)
     {
@@ -128,12 +244,36 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
+            var qr = new Image
+            {
+                Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "FeedbackGroupQr.jpg"))),
+                MaxWidth = 360, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center,
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(qr, "反馈群二维码，群号 1126191382");
+            qr.ImageFailed += (_, _) => Log.Warn("公告：反馈群二维码加载失败，可使用群号 1126191382 加群。");
+            var content = new StackPanel { Spacing = 16 };
+            content.Children.Add(new TextBlock
+            {
+                Text = "你好，我是逐梦之子-晓夕，这个软件是永久免费的，而且会尽我所能的进行更新，只是为了让各位低配电脑玩家能更流畅地体验游戏而不是被游戏本身的各种卡顿所烦恼，在开发过程中，有很多粉丝对我的开发提供了极大的支持，对此我感激不尽，我想尽我所能回报我的粉丝，这个工具包含了我对三角洲优化的绝大多数理解，希望各位喜欢，如果对软件有疑惑，可以扫描图示二维码加入本群进行反馈，我会尝试进行修复",
+                TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
+            });
+            content.Children.Add(qr);
+            content.Children.Add(new TextBlock
+            {
+                Text = "反馈群号：1126191382", TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
+                HorizontalAlignment = HorizontalAlignment.Center,
+            });
             var dialog = new ContentDialog
             {
                 XamlRoot = ContentFrame.XamlRoot,
                 Title = "公告",
-                Content = "欢迎使用我的软件，本次为 " + CurrentAnnouncementVersion +
-                          " 测试版，如有 bug 请反馈给晓夕！",
+                Content = new ScrollViewer
+                {
+                    MaxHeight = Math.Max(180, Math.Min(560, ContentFrame.XamlRoot.Size.Height - 180)),
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    Content = content,
+                },
                 CloseButtonText = "开始使用",
                 DefaultButton = ContentDialogButton.Close,
             };
@@ -172,6 +312,52 @@ public sealed partial class MainWindow : Window
         {
             Services.Log.Error("更新：启动检查流程失败", ex);
         }
+        finally
+        {
+            _gpuWatchReady = true;
+            await CheckGpuSpoofWatchAsync();
+        }
+    }
+
+    private async void GpuWatch_Activated(object sender, WindowActivatedEventArgs args)
+    {
+        if (_gpuWatchReady && args.WindowActivationState != WindowActivationState.Deactivated)
+            await CheckGpuSpoofWatchAsync();
+    }
+
+    private async Task CheckGpuSpoofWatchAsync()
+    {
+        if (_gpuWatchInFlight || !_gpuWatchReady) return;
+        _gpuWatchInFlight = true;
+        try
+        {
+            var scanned = await Task.Run(GpuSpoofWatch.Check);
+            var items = scanned.Where(x => !_gpuWatchDismissed.Contains((x.Entry.RegistryPath, x.CurrentDriverStamp, x.Entry.ExpectedName))).ToList();
+            if (!_gpuWatchReady) return;
+            _gpuWatchItems = items;
+            GpuSpoofWarning.IsOpen = items.Count > 0;
+            UpdateGpuWarningVisibility();
+            if (items.Count > 0)
+            {
+                GpuSpoofWarning.Message = string.Join("；", items.Select(x => "原伪装：" + x.Entry.ExpectedName)) +
+                    "。建议重新应用伪装，再清理旧着色器缓存并让游戏重新生成；操作需手动确认。";
+                ShaderCacheButton.IsEnabled = !ServiceLocator.GameTarget.IsCustom;
+            }
+        }
+        catch (Exception ex) { Log.Error("显卡伪装失效检查失败，未判断为正常", ex); }
+        finally { _gpuWatchInFlight = false; }
+    }
+
+    private void OpenGpuSpoof_Click(object sender, RoutedEventArgs e) => NavigateByTag("spoof");
+    private void UpdateGpuWarningVisibility() => GpuSpoofWarning.Visibility =
+        GpuSpoofWarning.IsOpen && ContentFrame.Content is DashboardPage ? Visibility.Visible : Visibility.Collapsed;
+    private void OpenShaderCache_Click(object sender, RoutedEventArgs e) => NavigateByTag("shader");
+    private void GpuSpoofWarning_Closed(InfoBar sender, InfoBarClosedEventArgs args)
+    {
+        sender.Visibility = Visibility.Collapsed;
+        if (args.Reason != InfoBarCloseReason.CloseButton) return;
+        foreach (var item in _gpuWatchItems)
+            _gpuWatchDismissed.Add((item.Entry.RegistryPath, item.CurrentDriverStamp, item.Entry.ExpectedName));
     }
 
     /// <summary>上次退出时登记过待安装版本 → 这次启动就能判断更新是否成功。</summary>
@@ -662,6 +848,18 @@ public sealed partial class MainWindow : Window
             NavView.SelectedItem = NavView.MenuItems[0];
             return;
         }
+
+        // 插件子入口：按插件 ID 导航到共享声明式页面；仅为导航，不启动/重连后端。
+        if (PluginNavigationCatalog.ResolvePluginId(item.Tag?.ToString()) is { } pluginId)
+        {
+            if (_suppressPluginNavSelection) return;
+            Services.Log.Info($"导航 → 插件入口 {pluginId}");
+            ContentFrame.Navigate(typeof(PluginEntryPage), pluginId);
+            ContentFrame.BackStack.Clear();
+            UpdateGpuWarningVisibility();
+            return;
+        }
+
         Type pageType = item.Tag?.ToString() switch
         {
             "system" => typeof(SystemOptimizePage),
@@ -683,5 +881,6 @@ public sealed partial class MainWindow : Window
             ContentFrame.Navigate(pageType);
             ContentFrame.BackStack.Clear();
         }
+        UpdateGpuWarningVisibility();
     }
 }

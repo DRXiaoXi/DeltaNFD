@@ -5,9 +5,9 @@ using Microsoft.Win32;
 namespace DeltaNFD.Services;
 
 /// <summary>
-/// 运行库保护：IFEO 与 UE4 ACL 写前备份、写后复核，外部修改或旧版权限缺少备份时拒绝盲目还原。
-/// 拦截范围 = 所有运行库安装器：VC++ 全系列（2005~2022）、DirectX 运行库、UE4/UE5 前置包等，
-/// 无论来源是游戏、启动器还是手动安装，一律按文件名拦截。
+/// 运行库保护：基础 V14 仅三项 IFEO；完全防护为十一项及已找到的 UE4 ACL。
+/// 正常备份按原值恢复；丢失记录的固定旧拦截需明确确认、快照后清理，不覆盖任意外部 Debugger。
+/// 无论来源是游戏、启动器还是手动安装，IFEO 一律按文件名全系统拦截。
 /// </summary>
 public sealed class RuntimeGuardService : IRuntimeGuardService
 {
@@ -23,9 +23,11 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         var state = _protection.Probe(path);
         return new RuntimeGuardStatus
         {
-            InstalledRedists = redists, IfeoCount = state.Blocked, IfeoTotal = RuntimeGuardProtection.Names.Length,
-            IfeoApplied = state.Managed == RuntimeGuardProtection.Names.Length && state.External == 0,
+            InstalledRedists = redists, IfeoCount = state.Blocked, IfeoTotal = RuntimeGuardProtection.Scope(state.Mode).Length,
+            IfeoApplied = state.ScopeManaged == RuntimeGuardProtection.Scope(state.Mode).Length,
             IfeoManagedCount = state.Managed, IfeoExternalCount = state.External,
+            Mode = state.Mode, ScopeManagedCount = state.ScopeManaged, ScopeBlockedCount = state.ScopeBlocked,
+            LegacyIfeo = state.LegacyIfeo, IfeoRestorePending = state.PendingIfeo,
             Ue4PrereqFound = path.Length > 0 || state.PendingAcl, Ue4PrereqPath = path,
             Ue4PrereqDenied = state.FileDenied, Ue4RestorePending = state.PendingAcl,
             CanRepairLegacyUe4Acl = _protection.CanRepairLegacyAcl(path),
@@ -34,12 +36,33 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
     public Task<OperationResult> EnableAsync() => Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
     {
         if (!ElevationHelper.IsElevated) return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
-        var path = FindUe4PrereqAsync().GetAwaiter().GetResult();
-        var result = _protection.Enable(path);
+        var mode = _protection.Probe(null).Mode;
+        var path = mode == RuntimeGuardMode.Full ? FindUe4PrereqAsync().GetAwaiter().GetResult() : "";
+        var result = _protection.Enable(path, mode);
         PersistGuardState(path);
         Log.Info("运行库防护开启结果：" + result.Message);
         return result;
     }));
+
+    public Task<OperationResult> SelectModeAsync(RuntimeGuardMode mode) => Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
+    {
+        if (!ElevationHelper.IsElevated) return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
+        var path = FindUe4PrereqAsync().GetAwaiter().GetResult();
+        return _protection.SelectMode(mode, path);
+    }));
+
+    public Task<OperationResult> CleanupLegacyIfeoAsync(IReadOnlyList<RuntimeGuardLegacyEntry> confirmedEntries)
+    {
+        var snapshot = confirmedEntries.ToArray();
+        return Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
+        {
+            if (!ElevationHelper.IsElevated) return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
+            var result = _protection.CleanupLegacyIfeo(snapshot);
+            PersistGuardState("");
+            Log.Info("旧 IFEO 清理结果：" + result.Message);
+            return result;
+        }));
+    }
     public Task<OperationResult> DisableAsync() => Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
     {
         if (!ElevationHelper.IsElevated) return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
@@ -55,7 +78,7 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         try
         {
             var state = _protection.Probe(path);
-            AppSettingsStore.Update(s => s.RuntimeGuardEnabled = state.Managed > 0 || state.FileDenied || state.PendingAcl);
+            AppSettingsStore.Update(s => s.RuntimeGuardEnabled = state.Managed > 0 || state.FileDenied || state.PendingAcl || state.PendingIfeo);
         }
         catch (Exception ex) { Log.Error("运行库防护状态无法复核", ex); }
     }

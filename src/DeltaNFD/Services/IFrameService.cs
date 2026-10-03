@@ -92,6 +92,10 @@ public interface IFrameService : INotifyPropertyChanged
 
     /// <summary>降低省电延迟总开关（关 = 全部机制不生效）。</summary>
     bool PowerSaveLatencyEnabled { get; set; }
+    Task<IReadOnlyList<FrameIncompletePowerBackup>> GetIncompletePowerBackupsAsync() =>
+        Task.FromResult<IReadOnlyList<FrameIncompletePowerBackup>>([]);
+    Task<OperationResult> PreserveCurrentPowerValuesAsync(IReadOnlyList<FrameIncompletePowerBackup> confirmed) =>
+        Task.FromResult(OperationResult.Fail("当前后端不支持旧电源备份处理。"));
 
     /// <summary>子开关①：网卡省电全禁（EnablePowerManagement=0 + PnPCapabilities=24）。</summary>
     bool NicPowerSavingOffEnabled { get; set; }

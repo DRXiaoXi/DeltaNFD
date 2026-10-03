@@ -1,4 +1,5 @@
 using DeltaNFD.ViewModels;
+using DeltaNFD.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -13,8 +14,32 @@ public sealed partial class DashboardPage : Page
     public DashboardPage()
     {
         InitializeComponent();
-        Unloaded += (_, _) => ViewModel.DetachScanListener();
+        Loaded += Page_Loaded;
+        Unloaded += Page_Unloaded;
+        ActualThemeChanged += (_, _) => Bindings.Update();
     }
+
+    private bool _attached;
+    private void Page_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (_attached) return;
+        _attached = true;
+        ServiceLocator.GameTarget.Changed += OnTargetChanged;
+        ViewModel.RefreshTargetDisplay();
+        ViewModel.StartOptimizationScan();
+    }
+
+    private void Page_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _attached = false;
+        ServiceLocator.GameTarget.Changed -= OnTargetChanged;
+        ViewModel.DetachScanListener();
+    }
+
+    private void OnTargetChanged(GameTarget target) => DispatcherQueue.TryEnqueue(() =>
+    { if (_attached) ViewModel.RefreshTargetDisplay(); });
+
+    public string StateLabel(DashboardHealthState state) => DashboardHealthPresentation.Label(state);
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
@@ -38,15 +63,21 @@ public sealed partial class DashboardPage : Page
             : new SolidColorBrush(Windows.UI.Color.FromArgb(255, 248, 113, 113));
 
     /// <summary>主页状态颜色：检查中/不适用为灰色，信息为蓝色，提醒为黄色，异常/失败为红色。</summary>
-    public Brush StatusBrush(DashboardHealthState state) => state switch
+    public Brush StatusBrush(DashboardHealthState state)
     {
-        DashboardHealthState.Normal => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 34, 197, 94)),
-        DashboardHealthState.Information => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 94, 176, 255)),
-        DashboardHealthState.Warning => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 250, 204, 21)),
-        DashboardHealthState.Abnormal or DashboardHealthState.Failed =>
-            new SolidColorBrush(Windows.UI.Color.FromArgb(255, 248, 113, 113)),
-        _ => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 148, 163, 184)),
-    };
+        if (new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
+            return new SolidColorBrush(new Windows.UI.ViewManagement.UISettings().GetColorValue(Windows.UI.ViewManagement.UIColorType.Foreground));
+        var light = ActualTheme == ElementTheme.Light;
+        var color = state switch
+        {
+            DashboardHealthState.Normal => light ? (22, 114, 69) : (112, 218, 157),
+            DashboardHealthState.Information => light ? (21, 101, 170) : (126, 192, 255),
+            DashboardHealthState.Warning => light ? (138, 91, 0) : (246, 200, 95),
+            DashboardHealthState.Abnormal or DashboardHealthState.Failed => light ? (169, 35, 35) : (255, 146, 146),
+            _ => light ? (82, 96, 107) : (183, 189, 197),
+        };
+        return new SolidColorBrush(Windows.UI.Color.FromArgb(255, (byte)color.Item1, (byte)color.Item2, (byte)color.Item3));
+    }
 
     public Windows.UI.Text.FontWeight WeightFor(DashboardHealthState state) =>
         state is DashboardHealthState.Warning or DashboardHealthState.Abnormal or DashboardHealthState.Failed

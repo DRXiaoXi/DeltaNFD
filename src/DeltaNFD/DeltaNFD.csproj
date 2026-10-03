@@ -26,9 +26,9 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 
     <DefaultLanguage>zh-CN</DefaultLanguage>
-    <Version>0.90.0</Version>
+    <Version>0.90.1</Version>
     <!-- 日志头/程序集读取的显示版本（与关于卡 VersionText 保持一致） -->
-    <InformationalVersion>PreBeta0.9</InformationalVersion>
+    <InformationalVersion>Beta0.9</InformationalVersion>
     <!-- 应用图标（exe / 任务栏 / 托盘共用；托盘经 ExtractIconExW 从 exe 提取） -->
     <ApplicationIcon>Assets\DeltaNFD.ico</ApplicationIcon>
   </PropertyGroup>
@@ -64,11 +64,13 @@
   <!-- 应用图标（exe/任务栏/托盘）+ 应用内 logo（标题栏 / 关于卡） -->
   <ItemGroup>
   <Content Include="Assets\DeltaNFD.png" CopyToOutputDirectory="PreserveNewest" />
+  <Content Include="Assets\FeedbackGroupQr.jpg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- 设置页致谢头像 -->
   <ItemGroup>
     <Content Include="Assets\Acknowledgements\*.jpg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Acknowledgements\*.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- 自动更新来源与网络参数（发布后可在安装目录直接改，无需重编译） -->

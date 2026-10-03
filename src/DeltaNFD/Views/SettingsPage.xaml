@@ -405,8 +405,12 @@
                     <TextBlock Text="致谢名单" Style="{StaticResource SectionTitleStyle}"
                                AutomationProperties.HeadingLevel="Level2" />
 
+                    <TextBlock Text="重大贡献者" FontSize="14" FontWeight="SemiBold"
+                               AutomationProperties.HeadingLevel="Level3" />
+
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
@@ -421,8 +425,8 @@
                                     </Ellipse.Fill>
                                 </Ellipse>
                                 <StackPanel Spacing="3" VerticalAlignment="Center">
-                                    <TextBlock Text="Token提供者" Style="{StaticResource CardDescStyle}" />
-                                    <TextBlock Text="怜爱" FontSize="16" FontWeight="SemiBold" />
+                                    <TextBlock Text="Token提供者" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                                    <TextBlock Text="怜爱" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -437,12 +441,119 @@
                                     </Ellipse.Fill>
                                 </Ellipse>
                                 <StackPanel Spacing="3" VerticalAlignment="Center">
-                                    <TextBlock Text="头号测试员" Style="{StaticResource CardDescStyle}" />
-                                    <TextBlock Text="14代耐电王" FontSize="16" FontWeight="SemiBold" />
+                                    <TextBlock Text="头号测试员" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                                    <TextBlock Text="14代耐电王" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2" Style="{StaticResource CardBorderStyle}" Padding="12">
+                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                         StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                    <Ellipse.Fill>
+                                        <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/shangguan-cash-support.jpg"
+                                                    Stretch="UniformToFill" />
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <StackPanel Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="提供648元资金支持" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                                    <TextBlock Text="上官赐福" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
                     </Grid>
+
+                    <Expander Header="Bug排雷员" HorizontalAlignment="Stretch" IsExpanded="False"
+                              AutomationProperties.HeadingLevel="Level3">
+                        <Border Style="{StaticResource CardBorderStyle}" Padding="12" Margin="0,4,0,0">
+                            <StackPanel Spacing="8">
+                                <Border Style="{StaticResource CardBorderStyle}" Padding="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                        <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                                 StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                            <Ellipse.Fill>
+                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-muduo.jpg"
+                                                            Stretch="UniformToFill" />
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                        <TextBlock Text="目夺" FontSize="16" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource CardBorderStyle}" Padding="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                        <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                                 StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                            <Ellipse.Fill>
+                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-jiemei-wangming.jpg"
+                                                            Stretch="UniformToFill" />
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                        <TextBlock Text="九妹亡命天涯" FontSize="16" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource CardBorderStyle}" Padding="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                        <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                                 StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                            <Ellipse.Fill>
+                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-zi.jpg"
+                                                            Stretch="UniformToFill" />
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                        <TextBlock Text="梓" FontSize="16" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource CardBorderStyle}" Padding="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                        <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                                 StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                            <Ellipse.Fill>
+                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-wujiyan.jpg"
+                                                            Stretch="UniformToFill" />
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                        <TextBlock Text="无机盐" FontSize="16" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource CardBorderStyle}" Padding="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                        <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                                 StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                            <Ellipse.Fill>
+                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-putaojiu-tusi.jpg"
+                                                            Stretch="UniformToFill" />
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                        <TextBlock Text="葡萄酒吐司" FontSize="16" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource CardBorderStyle}" Padding="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                        <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                                 StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                            <Ellipse.Fill>
+                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-anonymous-yanzhu.png"
+                                                            Stretch="UniformToFill" />
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                        <TextBlock Text="无数不留姓名的彦祖" FontSize="16" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </Expander>
 
                     <Border Background="{StaticResource AppAccentSoftBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"

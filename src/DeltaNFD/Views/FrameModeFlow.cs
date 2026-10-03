@@ -97,6 +97,43 @@ internal static class FrameModeFlow
         var result = await frame.ActivateFrameModeAsync();
         if (!result.Success)
         {
+            try
+            {
+                var incomplete = await frame.GetIncompletePowerBackupsAsync();
+                if (incomplete.Count > 0)
+                {
+                    var details = string.Join("\n", incomplete.Select(x => x.Path + "\n" + x.Reason));
+                    var confirm = new ContentDialog
+                    {
+                        XamlRoot = root, Title = "旧电源备份缺少原值",
+                        Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock
+                        {
+                            TextWrapping = TextWrapping.Wrap,
+                            Text = details + "\n\n无法恢复丢失的原值，继续重试不会补回备份。是否保留当前 USB/PCIe 电源值，并将这些旧记录移至证据目录？\n这不是恢复默认值或还原成功，不会写入电源设置。\n同时关闭“降低省电延迟”，再尝试开启其他已选择的帧格功能。原 JSON 保留用于后续排查；其他有效备份仍按原值恢复。",
+                        } },
+                        PrimaryButtonText = "保留当前值并继续", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
+                    };
+                    if (await confirm.ShowAsync() == ContentDialogResult.Primary)
+                    {
+                        var preserved = await frame.PreserveCurrentPowerValuesAsync(incomplete);
+                        result = preserved.Success ? await frame.ActivateFrameModeAsync() : preserved;
+                        if (preserved.Success) result = new OperationResult
+                        {
+                            Success = result.Success, Message = preserved.Message + "\n降低省电延迟已关闭。\n" + result.Message,
+                            RequiresReboot = result.RequiresReboot, RequiresLogoff = result.RequiresLogoff,
+                            RequiresDisplayConfirm = result.RequiresDisplayConfirm, IsSkipped = result.IsSkipped,
+                        };
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error("帧格旧备份预检失败", ex);
+                result = OperationResult.Fail(result.Message + "\n旧备份预检失败，未隔离记录：" + ex.Message);
+            }
+        }
+        if (!result.Success)
+        {
             await ShowMessageAsync(root, "开启失败", result.Message);
             return;
         }

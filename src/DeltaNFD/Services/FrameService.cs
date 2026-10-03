@@ -757,6 +757,37 @@ public sealed class FrameService : IFrameService
 
     // ---------------- 帧格模式激活 / 退出 ----------------
 
+    public Task<IReadOnlyList<FrameIncompletePowerBackup>> GetIncompletePowerBackupsAsync() =>
+        _frameTweaks.GetIncompletePowerBackupsAsync();
+
+    public async Task<OperationResult> PreserveCurrentPowerValuesAsync(IReadOnlyList<FrameIncompletePowerBackup> confirmed)
+    {
+        if (!ElevationHelper.IsElevated || OfflineModeGuard.BlocksNormalAutomation)
+            return OperationResult.Fail("管理员权限不足或脱机恢复正在运行，未处理旧记录。");
+        await _modeTransition.WaitAsync();
+        try
+        {
+            if (_frameModeActive) return OperationResult.Fail("帧格正在运行，禁止隔离恢复记录。");
+            var current = await _frameTweaks.GetIncompletePowerBackupsAsync();
+            if (confirmed.Count is < 1 or > 2 || confirmed.Select(x => x.FileName).Distinct().Count() != confirmed.Count ||
+                confirmed.Any(x => !current.Any(c => c.FileName == x.FileName && c.Fingerprint == x.Fingerprint)))
+                return OperationResult.Fail("旧备份已变化或确认清单无效，未改变功能开关，请重新确认。");
+            // Persist the disabled feature before removing an incomplete record from the active restore queue.
+            AppSettingsStore.Update(s => s.FramePowerSaveLatencyEnabled = false);
+            _powerSaveLatencyEnabled = false;
+            OnPropertyChanged(nameof(PowerSaveLatencyEnabled));
+            var result = await _powerLifecycle.ExclusiveAsync(() => _frameTweaks.PreserveCurrentPowerValuesAsync(confirmed));
+            UpdateStatus();
+            return result.Success ? result : OperationResult.Fail(result.Message + "；降低省电延迟已关闭，未开启帧格。");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("帧格旧电源备份处理失败", ex);
+            return OperationResult.Fail("旧记录处理失败，未宣称还原成功：" + ex.Message);
+        }
+        finally { _modeTransition.Release(); }
+    }
+
     public async Task<OperationResult> ActivateFrameModeAsync()
     {
         if (OfflineModeGuard.BlocksNormalAutomation)

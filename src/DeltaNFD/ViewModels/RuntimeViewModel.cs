@@ -107,6 +107,8 @@ public partial class RuntimeViewModel : ObservableObject
         OnPropertyChanged(nameof(CanCheck));
         // 修复期间必须同时禁用防护开关（否则 IFEO 会拦截修复包自身的安装器）
         OnPropertyChanged(nameof(GuardToggleEnabled));
+        OnPropertyChanged(nameof(GuardModeEnabled));
+        OnPropertyChanged(nameof(GuardCleanupEnabled));
         OnPropertyChanged(nameof(UninstallV14Enabled));
     }
 
@@ -154,6 +156,8 @@ public partial class RuntimeViewModel : ObservableObject
         OnPropertyChanged(nameof(CanCheck));
         // 卸载期间禁用防护开关：中途开启 IFEO 会拦截尚未执行的卸载器
         OnPropertyChanged(nameof(GuardToggleEnabled));
+        OnPropertyChanged(nameof(GuardModeEnabled));
+        OnPropertyChanged(nameof(GuardCleanupEnabled));
     }
 
     /// <summary>确认弹窗用的 v14 条目清单（空串 = 无条目）。</summary>
@@ -195,6 +199,13 @@ public partial class RuntimeViewModel : ObservableObject
     private bool _guardStateKnown;
     public bool CanRepairLegacyUe4Acl { get; private set; }
     public string GuardUe4Path { get; private set; } = "";
+    public RuntimeGuardMode GuardMode { get; private set; }
+    public int GuardModeIndex => GuardMode == RuntimeGuardMode.Full ? 1 : 0;
+    public bool GuardModeEnabled => GuardToggleEnabled && !GuardIsEnabled && _legacyIfeo.Count == 0;
+    private IReadOnlyList<RuntimeGuardLegacyEntry> _legacyIfeo = [];
+    public bool CanCleanupLegacyIfeo => _legacyIfeo.Count > 0;
+    public bool GuardCleanupEnabled => !GuardIsBusy && !IsRepairing && !UninstallV14Busy;
+    public string LegacyIfeoNames => string.Join("\n", _legacyIfeo.Select(e => e.Name));
 
     public bool GuardToggleEnabled => _guardStateKnown && !GuardIsBusy && !IsRepairing && !UninstallV14Busy;
 
@@ -204,10 +215,16 @@ public partial class RuntimeViewModel : ObservableObject
     partial void OnGuardIsBusyChanged(bool value)
     {
         OnPropertyChanged(nameof(GuardToggleEnabled));
+        OnPropertyChanged(nameof(GuardModeEnabled));
+        OnPropertyChanged(nameof(GuardCleanupEnabled));
         OnPropertyChanged(nameof(GuardToggleText));
     }
 
-    partial void OnGuardIsEnabledChanged(bool value) => OnPropertyChanged(nameof(GuardToggleText));
+    partial void OnGuardIsEnabledChanged(bool value)
+    {
+        OnPropertyChanged(nameof(GuardToggleText));
+        OnPropertyChanged(nameof(GuardModeEnabled));
+    }
     partial void OnGuardIsPartialChanged(bool value) => OnPropertyChanged(nameof(GuardToggleText));
 
     /// <summary>读取防护模式状态（busy 守卫版，供进页/手动刷新调用）。</summary>
@@ -243,23 +260,56 @@ public partial class RuntimeViewModel : ObservableObject
         var status = await _guard.GetStatusAsync();
         _guardStateKnown = true;
         CanRepairLegacyUe4Acl = status.CanRepairLegacyUe4Acl;
+        GuardMode = status.Mode;
+        _legacyIfeo = status.LegacyIfeo;
+        OnPropertyChanged(nameof(GuardModeIndex));
         GuardUe4Path = status.Ue4PrereqPath;
-        GuardIsEnabled = status.IfeoManagedCount > 0 || status.Ue4PrereqDenied || status.Ue4RestorePending;
+        GuardIsEnabled = status.IfeoManagedCount > 0 || status.Ue4PrereqDenied || status.Ue4RestorePending || status.IfeoRestorePending;
         GuardIsPartial = GuardIsEnabled && (status.CanRepairLegacyUe4Acl || !status.IfeoApplied ||
-            (status.Ue4PrereqFound && !status.Ue4PrereqDenied));
+            (status.Mode == RuntimeGuardMode.Full && status.Ue4PrereqFound && !status.Ue4PrereqDenied) || status.IfeoExternalCount > 0);
         OnPropertyChanged(nameof(GuardToggleEnabled));
+        OnPropertyChanged(nameof(GuardModeEnabled));
+        OnPropertyChanged(nameof(GuardCleanupEnabled));
         GuardStatusText = status.IfeoApplied
-            ? $"{(GuardIsPartial ? "防护部分生效" : "防护已开启")}：IFEO 已拦截 {status.IfeoCount}/{status.IfeoTotal} 个运行库安装器"
-              + (status.Ue4PrereqFound
+            ? $"{(status.Mode == RuntimeGuardMode.BasicV14 ? "基础 V14" : "完全防护")}：已管理 {status.ScopeManagedCount}/{status.IfeoTotal} 个安装器"
+              + (status.Mode == RuntimeGuardMode.Full && status.Ue4PrereqFound
                   ? (status.Ue4PrereqDenied ? "，UE4 前置包已拒绝执行" : "，UE4 前置包未拦截")
                   : "")
             : GuardIsEnabled
-                ? $"防护部分生效：IFEO {status.IfeoCount}/{status.IfeoTotal}，部分安装器可能仍被拦截；可关闭以清理残留"
-                : $"本工具防护未开启（IFEO {status.IfeoCount}/{status.IfeoTotal}）";
+                ? $"防护部分生效或待恢复：当前范围 IFEO {status.ScopeBlockedCount}/{status.IfeoTotal}；可关闭以清理残留"
+                : $"本工具防护未开启；检测到 {status.IfeoCount} 项安装器拦截";
         if (status.IfeoExternalCount > 0)
-            GuardStatusText += $"；另有 {status.IfeoExternalCount} 项外部/归属不明拦截，请在创建它的工具中处理。";
+            GuardStatusText += $"；另有 {status.IfeoExternalCount} 项外部/归属不明拦截。";
+        if (CanCleanupLegacyIfeo) GuardStatusText += $"；{_legacyIfeo.Count} 项固定旧拦截可通过“关闭 / 清理旧拦截”确认清理。";
         if (status.Ue4RestorePending) GuardStatusText += "；UE4 原文件权限恢复记录仍保留。";
         if (status.CanRepairLegacyUe4Acl) GuardStatusText += "；关闭时可确认修复旧 UE4 单条执行拒绝，不会重置目录权限。";
+    }
+
+    public async Task<OperationResult?> ChangeGuardModeAsync(int index)
+    {
+        if (!GuardModeEnabled || index is < 0 or > 1) return null;
+        GuardIsBusy = true;
+        try
+        {
+            var result = await _guard.SelectModeAsync(index == 1 ? RuntimeGuardMode.Full : RuntimeGuardMode.BasicV14);
+            await RefreshGuardCoreAsync();
+            return result;
+        }
+        finally { GuardIsBusy = false; }
+    }
+
+    public async Task<OperationResult?> CleanupLegacyIfeoAsync()
+    {
+        if (!GuardToggleEnabled || !CanCleanupLegacyIfeo) return null;
+        var confirmed = _legacyIfeo.ToArray();
+        GuardIsBusy = true;
+        try
+        {
+            var result = await _guard.CleanupLegacyIfeoAsync(confirmed);
+            await RefreshGuardCoreAsync();
+            return result;
+        }
+        finally { GuardIsBusy = false; }
     }
 
     public async Task<OperationResult?> RepairLegacyUe4AclAsync()
@@ -287,7 +337,8 @@ public partial class RuntimeViewModel : ObservableObject
     /// <summary>切换防护模式。返回后端结果供页面弹窗；完成后重读真实状态。</summary>
     public async Task<OperationResult?> SetGuardAsync(bool enable)
     {
-        if (GuardIsBusy)
+        // Closing also serves as an explicit retry when the previous status read failed.
+        if (GuardIsBusy || IsRepairing || UninstallV14Busy || (enable && !_guardStateKnown))
         {
             return null;
         }

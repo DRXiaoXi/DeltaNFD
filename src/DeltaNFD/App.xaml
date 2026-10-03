@@ -12,6 +12,7 @@
             <!-- 将系统强调色统一为天空蓝（随背景图配色），让 ToggleSwitch/Slider/焦点框等控件与主题一致 -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="HomeBrandBrush" Color="#C01A3147" />
                     <Color x:Key="SystemAccentColor">#5EB0FF</Color>
                     <Color x:Key="SystemAccentColorDark1">#4AA0F0</Color>
                     <Color x:Key="SystemAccentColorDark2">#3B8FDE</Color>
@@ -21,6 +22,7 @@
                     <Color x:Key="SystemAccentColorLight3">#C4E3FF</Color>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="HomeBrandBrush" Color="#C81A3147" />
                     <Color x:Key="SystemAccentColor">#4AA0F0</Color>
                     <Color x:Key="SystemAccentColorDark1">#3B8FDE</Color>
                     <Color x:Key="SystemAccentColorDark2">#2E79C4</Color>
@@ -30,6 +32,7 @@
                     <Color x:Key="SystemAccentColorLight3">#C4E3FF</Color>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="HomeBrandBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <Color x:Key="SystemAccentColor">#5EB0FF</Color>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>

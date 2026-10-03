@@ -42,12 +42,15 @@ public sealed class PluginRuntimeService
     private readonly PluginHandoffStore _handoffs;
     private readonly PluginAuthorizationStore _authorizations;
     private readonly PluginRunStore _runs;
+    private readonly PluginManagerService? _manager;
+    public Func<IReadOnlyDictionary<string, string>>? BuiltinResourceOwners { get; set; }
     public PluginRunStore Runs => _runs;
     public PluginAuthorizationStore Authorizations => _authorizations;
 
     /// <summary>backups 缺省为 null：无仓库时不落账（冒烟工程/测试用）；主程序经 PluginManagerService 注入。</summary>
-    public PluginRuntimeService(PluginBackupStore? backups = null, PluginHandoffStore? handoffs = null, string? dataRoot = null, PluginAuthorizationStore? authorizations = null)
+    public PluginRuntimeService(PluginBackupStore? backups = null, PluginHandoffStore? handoffs = null, string? dataRoot = null, PluginAuthorizationStore? authorizations = null, PluginManagerService? manager = null)
     {
+        _manager = manager;
         var defaultDataRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Delta NFD", "PluginData");
         var backupDirectory = backups is null ? (handoffs is null ? null : Path.GetDirectoryName(handoffs.PathName)) : Path.GetDirectoryName(backups.PathName);
@@ -117,6 +120,47 @@ public sealed class PluginRuntimeService
     public async Task<PluginInvokeResult> InvokeOnceAsync(PluginIndexEntry entry, string operationId,
         IReadOnlyDictionary<string, object?> values, string? targetJson = null)
     {
+        ArgumentNullException.ThrowIfNull(entry);
+        lock (_gate)
+            if (_starting.Contains(entry.Id) || _running.ContainsKey(entry.Id) || _recovering.Contains(entry.Id))
+                return new(false, "failed", "BUSY", "插件已有操作或恢复正在执行。", [], false, []);
+        if (!_backups.TryListPending(entry.Id, out var pending, out var error))
+            return new(false, "pending_restore", "RESULT_UNKNOWN", "恢复记录不可读，拒绝新操作：" + error, [], true, []);
+        if (pending.Count > 0)
+        {
+            _manager?.TryMarkPendingRestore(entry, out _);
+            return new(false, "pending_restore", "RESTORE_REQUIRED", "请先恢复上次操作，再执行新操作。", [], true, []);
+        }
+        try
+        {
+            if (_manager is not null)
+            {
+                if (!_manager.Index.TryGet(entry.Id, out var current, out var readError) || current is null ||
+                    current.State != PluginPackageState.Authorized || current.Version != entry.Version || current.PackageSha256 != entry.PackageSha256)
+                    return new(false, "failed", "UNAUTHORIZED", "插件当前状态或身份不允许执行：" + readError, [], false, []);
+                entry = current;
+            }
+            var result = await InvokeOnceCoreAsync(entry, operationId, values, targetJson);
+            if (!_backups.TryListPending(entry.Id, out pending, out error) || pending.Count > 0 || result.PendingRestore)
+            {
+                if (_manager is not null && !_manager.TryMarkPendingRestore(entry, out var saveError))
+                    return result with { Succeeded = false, Status = "pending_restore", PendingRestore = true,
+                        Code = "RESULT_UNKNOWN", Message = result.Message + "；恢复状态保存失败：" + saveError };
+                return result with { PendingRestore = true };
+            }
+            return result;
+        }
+        catch
+        {
+            if (!_backups.TryListPending(entry.Id, out pending, out _) || pending.Count > 0)
+                _manager?.TryMarkPendingRestore(entry, out _);
+            throw;
+        }
+    }
+
+    private async Task<PluginInvokeResult> InvokeOnceCoreAsync(PluginIndexEntry entry, string operationId,
+        IReadOnlyDictionary<string, object?> values, string? targetJson)
+    {
         using var diagnostics = PluginDiagnostics.UseDirectory(Path.Combine(_dataRoot, "diagnostics"));
         ArgumentNullException.ThrowIfNull(entry);
         if (entry.State != PluginPackageState.Authorized)
@@ -133,6 +177,8 @@ public sealed class PluginRuntimeService
         var requested = declared?.FindOperation(operationId);
         if (declared is null || declared.Id != entry.Id || declared.Version != entry.Version || requested is null)
             return PluginInvokeResult.ProtocolError("清单身份或操作声明与索引不符，未启动后端。");
+        if (requested.Mutating && ExecutionConflict(entry, requested) is { Length: > 0 } conflict)
+            return new(false, "failed", "RESOURCE_CONFLICT", conflict, [], false, []);
         using var targetLease = requested.TargetScoped ? GameTargetService.Default.BeginOperation() : null;
         if (requested.TargetScoped && targetJson is null)
         {
@@ -325,6 +371,8 @@ public sealed class PluginRuntimeService
         var operation = manifest.FindOperation(operationId);
         if (operation is null)
             return PluginInvokeResult.ProtocolError($"操作“{operationId}”未在 manifest 声明，拒绝执行。");
+        if (operation.Mutating && ExecutionConflict(entry, operation) is { Length: > 0 } conflict)
+            return new(false, "failed", "RESOURCE_CONFLICT", conflict, [], false, []);
 
         var valuesJson = SerializeValues(values);
         var payloadJson = "{\"operationId\":\"" + operationId + "\",\"values\":" + valuesJson +
@@ -474,6 +522,10 @@ public sealed class PluginRuntimeService
         return PluginInvokeResult.ResultUnknown(
             $"操作“{operationId}”超时且未在 {CancelGrace.TotalSeconds:0} 秒内确认取消，结果未知（可能已执行修改）。");
     }
+
+    private string ExecutionConflict(PluginIndexEntry entry, PluginOperation operation) => _manager is null ? "" :
+        _manager.FindResourceConflict(entry.Id, operation.ResourceIds,
+            BuiltinResourceOwners?.Invoke() ?? new Dictionary<string, string>());
 
     private static string mutatingSuffix(PluginOperation operation) =>
         operation.Mutating ? "（修改操作）" : "（只读操作）";

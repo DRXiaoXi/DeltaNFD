@@ -4,18 +4,6 @@ using DeltaNFD.Services;
 
 namespace DeltaNFD.ViewModels;
 
-/// <summary>主页组件检测的真实结果级别，用于区分信息、异常、不可用和扫描失败。</summary>
-public enum DashboardHealthState
-{
-    Checking,
-    Normal,
-    Information,
-    Warning,
-    Abnormal,
-    NotApplicable,
-    Failed,
-}
-
 public partial class DashboardViewModel : ObservableObject
 {
     private readonly ISystemOptimizer _optimizer = ServiceLocator.SystemOptimizer;
@@ -48,7 +36,37 @@ public partial class DashboardViewModel : ObservableObject
 
     public bool CanRefreshHealth => !IsHealthScanning;
 
-    partial void OnIsHealthScanningChanged(bool value) => OnPropertyChanged(nameof(CanRefreshHealth));
+    public string HealthSummary => DashboardHealthPresentation.Summary(IsHealthScanning, ShaderHealthState, AceHealthState, RuntimeHealthState);
+    [ObservableProperty] private string targetName = "三角洲";
+    [ObservableProperty] private string targetModeText = "三角洲模式";
+    [ObservableProperty] private string targetPathText = "三角洲默认主进程";
+    [ObservableProperty] private string lastHealthCheckText = "尚未检测";
+    private bool _displayedCustomTarget;
+
+    public void RefreshTargetDisplay()
+    {
+        var target = ServiceLocator.GameTarget.Current;
+        TargetName = target.DisplayName;
+        TargetModeText = target.IsCustom ? "自定义目标" : "三角洲模式";
+        TargetPathText = target.IsCustom ? target.ExecutablePath : "三角洲默认主进程";
+        if (target.IsCustom)
+        {
+            ShaderHealthState = AceHealthState = DashboardHealthState.NotApplicable;
+            ShaderStatusText = AceStatusText = GameTargetService.DeltaOnlyMessage;
+        }
+        else if (_displayedCustomTarget)
+        {
+            ShaderHealthState = AceHealthState = DashboardHealthState.Information;
+            ShaderStatusText = AceStatusText = "目标已变化，等待重新检测。";
+        }
+        _displayedCustomTarget = target.IsCustom;
+    }
+
+    partial void OnShaderHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
+    partial void OnAceHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
+    partial void OnRuntimeHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
+    partial void OnIsHealthScanningChanged(bool value)
+    { OnPropertyChanged(nameof(CanRefreshHealth)); OnPropertyChanged(nameof(HealthSummary)); }
 
     partial void OnOptimizeScoreChanged(double value)
     {
@@ -64,8 +82,8 @@ public partial class DashboardViewModel : ObservableObject
 
     public DashboardViewModel()
     {
+        RefreshTargetDisplay();
         _ = InitializeAsync();
-        StartOptimizationScan();
     }
 
     /// <summary>
@@ -150,6 +168,8 @@ public partial class DashboardViewModel : ObservableObject
         }
         finally
         {
+            LastHealthCheckText = "最近检测 " + DateTimeOffset.Now.ToString("HH:mm:ss");
+            RefreshTargetDisplay();
             IsHealthScanning = false;
         }
     }

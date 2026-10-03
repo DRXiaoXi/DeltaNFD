@@ -132,9 +132,13 @@ public sealed class PluginViewModel : INotifyPropertyChanged
         var result = _manager.Importer.Import(packagePath, _manager.PluginsRoot);
         Refresh();
         if (result.Succeeded)
+        {
+            // 导入原子提交成功后才允许刷新侧栏入口；失败不留下幽灵菜单（规范第 4.1 节）。
+            _manager.NotifyChanged();
             SetStatus(result.ReplacedExisting
                 ? $"已替换导入插件“{result.Entry!.Name}” v{result.Entry.Version}。旧授权已失效，请重新确认授权。"
                 : $"已导入插件“{result.Entry!.Name}” v{result.Entry.Version}（默认禁用）。");
+        }
         else
             SetStatus("导入失败：" + result.Error);
         return result;

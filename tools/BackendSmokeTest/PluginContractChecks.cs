@@ -153,7 +153,14 @@ internal static class PluginContractChecks
         Check("修改操作合法解析", mutating.FindOperation("tune") is { Mutating: true, Reversible: true } &&
             mutating.FindOperation("tune")!.ResourceIds.SequenceEqual(["cpu.sets"]));
 
-        CheckReject("拒绝：schemaVersion 错误", Replace(ExampleManifest, "\"schemaVersion\": 1", "\"schemaVersion\": 2"), PluginManifestParser.Parse);
+        CheckReject("拒绝：schemaVersion 3", Replace(ExampleManifest, "\"schemaVersion\": 1", "\"schemaVersion\": 3"), PluginManifestParser.Parse);
+        // schema 2：保留 schema 1 合同，navigation 可选；旧宿主（仅 schema 1）必须拒绝而不是静默忽略入口。
+        var schema2Text = Replace(ExampleManifest, "\"schemaVersion\": 1", "\"schemaVersion\": 2");
+        var schema2NoNav = PluginManifestParser.Parse(Encoding.UTF8.GetBytes(schema2Text));
+        Check("schema 2 无 navigation 合法", schema2NoNav.SchemaVersion == 2 && schema2NoNav.Navigation is null);
+        CheckRejectRaw("旧宿主拒绝 schema 2", _ => PluginManifestParser.Parse(Encoding.UTF8.GetBytes(schema2Text), "manifest.json", 1));
+        CheckReject("拒绝：schema 1 塞 navigation",
+            Replace(ExampleManifest, "\"operations\": [", "\"navigation\": { \"label\": \"x\", \"pageId\": \"main\" },\"operations\": ["), PluginManifestParser.Parse);
         CheckReject("拒绝：重复属性", ExampleManifest.Replace("\"author\"", "\"author\":\"A\",\"author\"", StringComparison.Ordinal), PluginManifestParser.Parse);
         CheckReject("拒绝：非法 id（大写）", Replace(ExampleManifest, "org.example.hardware-report", "Org.Example.Report"), PluginManifestParser.Parse);
         CheckReject("拒绝：id 伪装官方域", Replace(ExampleManifest, "org.example.hardware-report", "deltanfd.example.report"), PluginManifestParser.Parse);
@@ -249,6 +256,13 @@ internal static class PluginContractChecks
             "\"id\": \"count\", \"type\": \"number\", \"label\": \"数量\", \"min\": 0, \"max\": 10, \"step\": 1, \"default\": 5"));
         Check("输入校验：number 越界", !PluginUiParser.TryValidateValues(intUi, new Dictionary<string, object?> { ["count"] = 11d }, out _));
         Check("输入校验：number 合法", PluginUiParser.TryValidateValues(intUi, new Dictionary<string, object?> { ["count"] = 7d }, out _));
+        Check("配置读取保留布尔值", PluginUiParser.ReadConfiguration(ui, Encoding.UTF8.GetBytes("{\"detail\":true}"))["detail"] is true);
+        Check("空配置使用默认值", PluginUiParser.ReadConfiguration(ui, Encoding.UTF8.GetBytes("{}"))["detail"] is false);
+        Check("升级删除的控件不传给后端", !PluginUiParser.ReadConfiguration(ui, Encoding.UTF8.GetBytes("{\"removed\":true}")).ContainsKey("removed"));
+        Check("数字配置往返", PluginUiParser.ReadConfiguration(intUi, Encoding.UTF8.GetBytes("{\"count\":7}"))["count"] is double saved && saved == 7);
+        CheckRejectText("配置拒绝重复属性", "{\"detail\":true,\"detail\":false}", s => PluginUiParser.ReadConfiguration(ui, Encoding.UTF8.GetBytes(s)));
+        CheckRejectText("配置拒绝类型错误", "{\"detail\":\"yes\"}", s => PluginUiParser.ReadConfiguration(ui, Encoding.UTF8.GetBytes(s)));
+        CheckRejectText("配置拒绝数字越界", "{\"count\":99}", s => PluginUiParser.ReadConfiguration(intUi, Encoding.UTF8.GetBytes(s)));
 
         Console.WriteLine("  ui 检查完成。");
     }
@@ -461,6 +475,9 @@ internal static class PluginContractChecks
         var manifest = PluginManifestParser.Parse(File.ReadAllBytes(Path.Combine(packageDir, "manifest.json")));
         var ui = PluginUiParser.Parse(File.ReadAllBytes(Path.Combine(packageDir, "ui.json")), manifest);
         Check("仓库内 manifest.json 与规范示例一致", manifest.Id == "org.example.hardware-report" && manifest.Operations.Count == 1);
+        Check("示例包为 schema 2 并声明侧栏入口",
+            manifest.SchemaVersion == 2 && manifest.Navigation is { Label: "硬件报告", Icon: "report", PageId: "main" });
+        Check("示例包兼容当前宿主", manifest.IsCompatible(new Version(0, 90, 0)));
         Check("仓库内 ui.json 可解析", ui.Controls.Count == 5);
         foreach (var name in new[] { "README.md", "LICENSE.txt" })
             Check($"包含 {name}", File.Exists(Path.Combine(packageDir, name)));

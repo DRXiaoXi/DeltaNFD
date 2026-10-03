@@ -1,5 +1,26 @@
 using DeltaNFD.Services;
 
+if (args.Contains("--gpu-spoof-watch-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { GpuSpoofWatchChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--dashboard-design-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { DashboardDesignChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--plugin-navigation-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { BackendSmokeTest.PluginNavigationChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args.Contains("--plugin-ui-wiring-checks", StringComparer.OrdinalIgnoreCase))
 {
     try { PluginUiWiringChecks.Run(); }

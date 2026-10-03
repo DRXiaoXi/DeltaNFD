@@ -28,8 +28,14 @@ jobs:
       - name: Frame feature state checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-feature-checks
 
+      - name: GPU spoof driver-change warning checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --gpu-spoof-watch-checks
+
       - name: Shader SM5 fallback and SM6 priority checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --shader-path-checks
+
+      - name: Dashboard state and layout wiring checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --dashboard-design-checks
 
       - name: Frame power backup and lifecycle safety checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-power-safety-checks
@@ -61,6 +67,11 @@ jobs:
 
       - name: Plugin diagnostics privacy and storage checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-diagnostics-checks
+
+      # 拓展插件侧栏入口 B1-B4：schema 2 navigation 合同 / 动态菜单目录 / 路由与状态文案
+      # （全部在临时目录，不启动、不调用任何插件后端）
+      - name: Plugin sidebar navigation checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-navigation-checks
 
       - name: Plugin UI source and XAML wiring checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-ui-wiring-checks

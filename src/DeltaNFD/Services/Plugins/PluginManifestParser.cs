@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 
 namespace DeltaNFD.Services.Plugins;
@@ -21,6 +22,12 @@ public sealed record PluginCapabilities(bool Continuous, bool OfflineAutonomous)
 public sealed record PluginOperation(string Id, string Title, bool Mutating, bool Reversible, bool TargetScoped,
     IReadOnlyList<string> ResourceIds, int TimeoutSeconds);
 
+/// <summary>
+/// 侧栏入口声明（规范第 4.1 节，仅 schema 2）。每个插件最多一个入口；
+/// 入口只是导航声明，不新增权限、不作为反作弊保证。Icon 已归一化为受支持枚举值。
+/// </summary>
+public sealed record PluginNavigation(string Label, string Icon, string PageId);
+
 /// <summary>manifest.json 解析结果（不可变）。</summary>
 public sealed record PluginManifest(
     int SchemaVersion,
@@ -35,7 +42,8 @@ public sealed record PluginManifest(
     PluginBackend Backend,
     IReadOnlyList<PluginPermission> Permissions,
     PluginCapabilities Capabilities,
-    IReadOnlyList<PluginOperation> Operations)
+    IReadOnlyList<PluginOperation> Operations,
+    PluginNavigation? Navigation = null)
 {
     public PluginOperation? FindOperation(string id) =>
         Operations.FirstOrDefault(o => string.Equals(o.Id, id, StringComparison.Ordinal));
@@ -59,21 +67,40 @@ public static class PluginManifestParser
 
     public static PluginManifest Parse(byte[] utf8) => Parse(utf8, origin: "manifest.json");
 
-    public static PluginManifest Parse(byte[] utf8, string origin)
+    public static PluginManifest Parse(byte[] utf8, string origin) =>
+        Parse(utf8, origin, PluginContract.SupportedSchemaVersion);
+
+    /// <summary>
+    /// 按宿主支持的 schema 上限解析。旧宿主（仅支持 schema 1）传 maxSchemaVersion:1 时会拒绝
+    /// schema 2 包，而不是静默忽略 navigation——这是"旧宿主拒绝"的合同行为。
+    /// </summary>
+    public static PluginManifest Parse(byte[] utf8, string origin, int maxSchemaVersion)
     {
         using var document = PluginJson.ParseStrict(utf8, origin);
-        return ParseElement(document.RootElement, origin);
+        return ParseElement(document.RootElement, origin, maxSchemaVersion);
     }
 
-    public static PluginManifest ParseElement(JsonElement root, string origin)
+    public static PluginManifest ParseElement(JsonElement root, string origin) =>
+        ParseElement(root, origin, PluginContract.SupportedSchemaVersion);
+
+    public static PluginManifest ParseElement(JsonElement root, string origin, int maxSchemaVersion)
     {
         if (root.ValueKind is not JsonValueKind.Object)
             throw new PluginContractException($"{origin}：根节点必须是对象。");
-        EnsureNoExtraProperties(root, ["schemaVersion", "id", "name", "author", "version", "protocolVersion", "hostCompatibility", "backend", "permissions", "capabilities", "operations"], origin);
 
+        // 先读 schemaVersion：navigation 只在 schema 2 合法，因此允许字段集合随 schema 变化。
         var schema = RequireInt(root, "schemaVersion", origin);
-        if (schema != PluginContract.SchemaVersion)
-            throw new PluginContractException($"{origin}：schemaVersion 必须为 {PluginContract.SchemaVersion}，实际 {schema}。");
+        if (schema is not (PluginContract.SchemaVersion or PluginContract.SchemaVersionV2))
+            throw new PluginContractException(
+                $"{origin}：schemaVersion 必须为 {PluginContract.SchemaVersion} 或 {PluginContract.SchemaVersionV2}，实际 {schema}。");
+        if (schema > maxSchemaVersion)
+            throw new PluginContractException(
+                $"{origin}：本宿主仅支持 manifest schema ≤ {maxSchemaVersion}，拒绝 schema {schema}。");
+        var allowed = schema >= PluginContract.SchemaVersionV2
+            ? new[] { "schemaVersion", "id", "name", "author", "version", "protocolVersion", "hostCompatibility", "backend", "permissions", "capabilities", "operations", "navigation" }
+            : new[] { "schemaVersion", "id", "name", "author", "version", "protocolVersion", "hostCompatibility", "backend", "permissions", "capabilities", "operations" };
+        // schema 1 若出现 navigation 会按未知字段拒绝（禁止把新字段塞进 schema 1）。
+        EnsureNoExtraProperties(root, allowed, origin);
 
         var id = RequireIdString(root, "id", origin);
         if (id.Length is < 3 or > 80)
@@ -200,9 +227,66 @@ public static class PluginManifestParser
             parsedOperations.Add(new PluginOperation(operationId, title, mutating, reversible, targetScoped, resources, timeout));
         }
 
+        var navigation = schema >= PluginContract.SchemaVersionV2
+            ? ParseNavigation(root, origin)
+            : null;
+
         return new PluginManifest(schema, id, name, author, FormatVersion(version), protocolText, protocolMajor, protocolMinor,
             new PluginHostRange(min, max), new PluginBackend(entry, "x64"), parsedPermissions,
-            new PluginCapabilities(continuous, offlineAutonomous), parsedOperations);
+            new PluginCapabilities(continuous, offlineAutonomous), parsedOperations, navigation);
+    }
+
+    /// <summary>
+    /// 侧栏入口解析（规范第 4.1 节）。可选对象，仅允许 label/icon/pageId 三个字段；
+    /// label 为去除首尾空白后 1-48 个 Unicode 标量的纯文本，拒绝换行/控制字符/双向控制符；
+    /// icon 为固定枚举（默认 puzzle）；pageId 当前仅允许 "main"。未知字段/图标/非法文本/非 main 均拒绝。
+    /// </summary>
+    private static PluginNavigation? ParseNavigation(JsonElement root, string origin)
+    {
+        if (!root.TryGetProperty("navigation", out var navigation))
+            return null;
+        if (navigation.ValueKind is not JsonValueKind.Object)
+            throw new PluginContractException($"{origin}：navigation 必须是对象。");
+        EnsureNoExtraProperties(navigation, ["label", "icon", "pageId"], origin);
+
+        if (!TryGetString(navigation, "label", out var rawLabel))
+            throw new PluginContractException($"{origin}：navigation.label 必须是字符串。");
+        var label = rawLabel.Trim();
+        var scalars = label.EnumerateRunes().Count();
+        if (scalars is < 1 or > PluginContract.MaxNavigationLabelScalars)
+            throw new PluginContractException(
+                $"{origin}：navigation.label 去除首尾空白后须为 1-{PluginContract.MaxNavigationLabelScalars} 个字符。");
+        foreach (var rune in label.EnumerateRunes())
+        {
+            var value = rune.Value;
+            // 拒绝换行、控制字符、格式字符（含双向文本控制符）与不可见空白两端。
+            var category = Rune.GetUnicodeCategory(rune);
+            if (value is '\n' or '\r' or '\t' ||
+                category is System.Globalization.UnicodeCategory.Control
+                    or System.Globalization.UnicodeCategory.Format
+                    or System.Globalization.UnicodeCategory.LineSeparator
+                    or System.Globalization.UnicodeCategory.ParagraphSeparator
+                    or System.Globalization.UnicodeCategory.Surrogate
+                    or System.Globalization.UnicodeCategory.PrivateUse)
+                throw new PluginContractException($"{origin}：navigation.label 含换行、控制字符或不可见字符。");
+        }
+
+        var icon = PluginContract.DefaultNavigationIcon;
+        if (navigation.TryGetProperty("icon", out _))
+        {
+            if (!TryGetString(navigation, "icon", out var iconValue) || !PluginContract.NavigationIcons.Contains(iconValue))
+                throw new PluginContractException(
+                    $"{origin}：navigation.icon 必须是 {string.Join("、", PluginContract.NavigationIcons.OrderBy(i => i, StringComparer.Ordinal))} 之一。");
+            icon = iconValue;
+        }
+
+        if (!TryGetString(navigation, "pageId", out var pageId))
+            throw new PluginContractException($"{origin}：navigation.pageId 必须是字符串。");
+        if (!string.Equals(pageId, PluginContract.NavigationPageMain, StringComparison.Ordinal))
+            throw new PluginContractException(
+                $"{origin}：navigation.pageId 当前仅允许“{PluginContract.NavigationPageMain}”（整个 ui.json 表单）。");
+
+        return new PluginNavigation(label, icon, pageId);
     }
 
     /// <summary>协议版本：主版本必须为 1，次版本不得高于宿主（规范第 3 节，不静默降级）。</summary>

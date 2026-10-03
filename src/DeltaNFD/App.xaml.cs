@@ -169,6 +169,13 @@ public partial class App : Application
             {
                 if (Current.Resources.ThemeDictionaries[themeKey] is ResourceDictionary dict)
                 {
+                    // Keep the existing translucency; darken the accent so white body text stays readable.
+                    if (dict["HomeBrandBrush"] is SolidColorBrush brand)
+                    {
+                        var shade = Scale(accent, 0.28);
+                        brand.Color = Windows.UI.Color.FromArgb(themeKey == "Light" ? (byte)0xC8 : (byte)0xC0,
+                            shade.R, shade.G, shade.B);
+                    }
                     foreach (var (key, color) in derived)
                     {
                         dict[key] = color;

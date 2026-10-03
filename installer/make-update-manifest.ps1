@@ -7,12 +7,12 @@
     powershell -ExecutionPolicy Bypass -File installer\make-update-manifest.ps1 `
       -InstallerPath installer\Output\三角帧不掉洲_DeltaNFD_安装包_0.90.0_x64.exe `
       -Version 0.90.0 `
-      -DisplayVersion "PreBeta0.9" `
+      -DisplayVersion "Beta0.9" `
       -InstallerUrl "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.90.0/<asset>.exe" `
       -NotesFile notes\0.90.0.txt
 
   Optional:
-    -DisplayVersion       display text; pass "PreBeta0.9" for version 0.90.0
+    -DisplayVersion       display text; pass "Beta0.9" for version 0.90.0
     -ReleaseTag           default "v<Version>"
     -ReleasePageUrl       default the GitHub release tag page
     -MinimumSupportedVersion  clients below this version are forced to update

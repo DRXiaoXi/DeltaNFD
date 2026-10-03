@@ -3,219 +3,121 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:DeltaNFD.ViewModels">
-
-    <ScrollViewer>
+    <Page.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="HomeBrandTextBrush" Color="White"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="HomeBrandTextBrush" Color="White"/>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="HomeBrandTextBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Page.Resources>
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled">
         <StackPanel MaxWidth="1080" Padding="28,20,28,32" Spacing="16">
-
-            <StackPanel Spacing="4">
-                <TextBlock Text="主页" Style="{StaticResource PageTitleStyle}" />
-                <TextBlock Text="系统状态一目了然，随时进入战备模式" Style="{StaticResource PageSubtitleStyle}" />
-            </StackPanel>
-
-            <!-- Hero：一键优化 -->
-            <Border Background="{StaticResource HeroGradientBrush}"
-                    CornerRadius="12"
-                    Padding="28"
-                    BorderThickness="0">
-                <Grid ColumnSpacing="24">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Spacing="10" VerticalAlignment="Center">
-                        <TextBlock Text="三角帧不掉洲" FontSize="30" FontWeight="Bold" Foreground="White" />
-                        <TextBlock Text="一键完成进程、内存、电源与显卡的全面优化，让三角洲的每一帧都稳如磐石。"
-                                   FontSize="13" Foreground="#FDE8D8" TextWrapping="Wrap" MaxWidth="520"
-                                   HorizontalAlignment="Left" />
-                    </StackPanel>
-
-                    <!-- 半透明提速徽记 -->
-                    <Grid Grid.Column="1" Width="184" Height="184" VerticalAlignment="Center"
-                          HorizontalAlignment="Right" Opacity="0.30" IsHitTestVisible="False"
-                          AutomationProperties.AccessibilityView="Raw">
-                        <Ellipse Width="168" Height="168" Stroke="White" StrokeThickness="2"
-                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        <Ellipse Width="146" Height="146" Stroke="White" StrokeThickness="1"
-                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        <StackPanel Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Viewbox Width="46" Height="46" Margin="0,0,0,3">
-                                <Path Fill="White" Data="M 64,0 L 39,49 L 59,49 L 48,96 L 88,35 L 68,35 Z" />
-                            </Viewbox>
-                            <TextBlock Text="给三角洲" FontSize="13" FontWeight="SemiBold"
-                                       Foreground="White" HorizontalAlignment="Center" />
-                            <TextBlock Text="提速" FontSize="24" FontWeight="Bold"
-                                       Foreground="White" HorizontalAlignment="Center" />
-                        </StackPanel>
-                    </Grid>
-                </Grid>
-            </Border>
-
-            <!-- 一键帧格模式 -->
-            <Border Style="{StaticResource CardBorderStyle}">
+            <TextBlock Text="主页" Style="{StaticResource PageTitleStyle}"/>
+            <Border x:Name="BrandPanel" Background="{ThemeResource HomeBrandBrush}" CornerRadius="8" Padding="28" MinHeight="220">
                 <Grid ColumnSpacing="16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <Border Width="46" Height="46" CornerRadius="10" Background="{StaticResource AppAccentSoftBrush}">
-                        <FontIcon Glyph="&#xE9D9;" FontSize="22" Foreground="{StaticResource AppAccentBrush}" />
-                    </Border>
-
-                    <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center" Spacing="3">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="一键帧格模式" FontWeight="SemiBold" FontSize="14" />
-                            <Border Style="{StaticResource ChipBorderStyle}" Background="{StaticResource AppAccentChipBrush}">
-                                <TextBlock Text="自动生效" FontSize="10" FontWeight="SemiBold"
-                                           Foreground="{StaticResource AppAccentBrush}" />
-                            </Border>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel Spacing="18" VerticalAlignment="Center">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Image Source="ms-appx:///Assets/DeltaNFD.png" Width="48" Height="48" Stretch="Uniform" VerticalAlignment="Center"
+                                   AutomationProperties.AccessibilityView="Raw"/>
+                            <TextBlock Grid.Column="1" Text="三角帧不掉洲" FontSize="28" FontWeight="Bold" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource HomeBrandTextBrush}" VerticalAlignment="Center"/>
+                        </Grid>
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="当前游戏目标" FontSize="12" Foreground="{ThemeResource HomeBrandTextBrush}"/>
+                            <TextBlock Text="{x:Bind ViewModel.TargetName, Mode=OneWay}" FontSize="16" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource HomeBrandTextBrush}" TextWrapping="Wrap"
+                                       ToolTipService.ToolTip="{x:Bind ViewModel.TargetPathText, Mode=OneWay}"/>
+                            <TextBlock Text="{x:Bind ViewModel.TargetModeText, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource HomeBrandTextBrush}"/>
                         </StackPanel>
-                        <TextBlock FontSize="12" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                   Text="开启后启用已配置的帧格功能（电源锁定 / 加速响应 / 显卡伪装 / 双CCD 等，各自独立开关），游戏运行期间持续保障帧数表现。" />
-                        <TextBlock Text="{x:Bind ViewModel.Frame.StatusText, Mode=OneWay}"
-                                   FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
                     </StackPanel>
-
-                    <ToggleSwitch Grid.Column="2" VerticalAlignment="Center"
-                                  IsOn="{x:Bind ViewModel.Frame.FrameModeEnabled, Mode=OneWay}"
-                                  Toggled="FrameModeToggle_Toggled"
-                                  OnContent="" OffContent=""
-                                  MinWidth="0" Margin="0" HorizontalAlignment="Right" />
+                    <Button Grid.Column="1" Tag="settings" Click="JumpButton_Click" VerticalAlignment="Top" Padding="8"
+                            Background="Transparent" Foreground="{ThemeResource HomeBrandTextBrush}"
+                            ToolTipService.ToolTip="游戏目标设置" AutomationProperties.Name="游戏目标设置">
+                        <SymbolIcon Symbol="Setting"/>
+                    </Button>
                 </Grid>
             </Border>
 
-            <!-- 优化检测（全量扫描系统优化项目，计算优化分数；结果顺延到系统优化页）
-                 按需求隐藏分数卡片（仅隐藏 UI，后台全量扫描不停止——系统优化页依赖 OptimizationScan 的缓存结果）。
-                 要恢复显示：删掉下面 Border 的 Visibility 属性（以及本行的 Visibility 说明）即可。 -->
-            <Border Style="{StaticResource CardBorderStyle}" Visibility="Collapsed">
+            <Border x:Name="FramePanel" Style="{StaticResource CardBorderStyle}">
                 <Grid ColumnSpacing="16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <Border Width="64" Height="64" CornerRadius="12" Background="{StaticResource AppAccentSoftBrush}"
-                            VerticalAlignment="Center">
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="{x:Bind ViewModel.OptimizeScore, Mode=OneWay}"
-                                       FontSize="22" FontWeight="Bold"
-                                       Foreground="{x:Bind ScoreBrush(ViewModel.ScoreGood, ViewModel.ScoreWarn), Mode=OneWay}"
-                                       HorizontalAlignment="Center" />
-                            <TextBlock Text="优化分" FontSize="10" Opacity="0.7" HorizontalAlignment="Center" />
-                        </StackPanel>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <Border Width="46" Height="46" CornerRadius="8" Background="{StaticResource AppAccentSoftBrush}">
+                        <FontIcon Glyph="&#xE9D9;" FontSize="22" Foreground="{StaticResource AppAccentBrush}"/>
                     </Border>
-
-                    <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center" Spacing="3">
-                        <TextBlock Text="优化检测" FontWeight="SemiBold" />
-                        <TextBlock FontSize="12" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                   Text="检测系统优化的全部优化项目（扩展优化库 / 服务组 / 深度优化）并计算优化分数。检测结果会顺延到系统优化页，进入该页面无需等待重新加载。" />
-                        <TextBlock FontSize="12" Text="{x:Bind ViewModel.ScanProgressText, Mode=OneWay}"
-                                   Opacity="0.75" TextWrapping="Wrap" />
-                        <ProgressBar Value="{x:Bind ViewModel.OptimizeScore, Mode=OneWay}"
-                                     Maximum="100"
-                                     IsIndeterminate="{x:Bind ViewModel.IsScanning, Mode=OneWay}"
-                                     Foreground="{StaticResource AppAccentBrush}" />
-                        <TextBlock FontSize="11" Opacity="0.65" TextWrapping="Wrap"
-                                   Text="{x:Bind ViewModel.ScanCompletedText, Mode=OneWay}" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                        <TextBlock Text="一键帧格模式" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                        <TextBlock Text="{x:Bind ViewModel.Frame.StatusText, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"/>
                     </StackPanel>
-
-                    <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2" HorizontalAlignment="Right">
-                        <TextBlock HorizontalAlignment="Right">
-                            <Run Text="{x:Bind ViewModel.OptimizeApplied, Mode=OneWay}" FontWeight="Bold" />
-                            <Run Text="/" />
-                            <Run Text="{x:Bind ViewModel.OptimizeTotal, Mode=OneWay}" />
-                        </TextBlock>
-                        <TextBlock Text="已应用 / 总项数" FontSize="11" Opacity="0.65" HorizontalAlignment="Right" />
-                        <Button Content="去优化" Tag="system" Click="JumpButton_Click"
-                                Style="{StaticResource AccentButtonStyle}"
-                                Margin="0,6,0,0" VerticalAlignment="Center" />
-                    </StackPanel>
+                    <ToggleSwitch Grid.Column="2" VerticalAlignment="Center" MinWidth="0" OnContent="" OffContent=""
+                                  AutomationProperties.Name="一键帧格模式"
+                                  IsOn="{x:Bind ViewModel.Frame.FrameModeEnabled, Mode=OneWay}" Toggled="FrameModeToggle_Toggled"/>
                 </Grid>
             </Border>
 
-            <!-- 组件检测状态（着色器 / ACE / 运行库），异常红色标注 + 快速跳转处理 -->
-            <Border Style="{StaticResource CardBorderStyle}">
+            <Border x:Name="ComponentPanel" Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="4">
-                    <Grid ColumnSpacing="12" Margin="0,0,0,4">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="组件检测状态" Style="{StaticResource SectionTitleStyle}" VerticalAlignment="Center" />
-                        <ProgressRing Grid.Column="1" Width="18" Height="18"
-                                      IsActive="{x:Bind ViewModel.IsHealthScanning, Mode=OneWay}"
-                                      Foreground="{StaticResource AppAccentBrush}" VerticalAlignment="Center" />
-                        <Button Grid.Column="2" Content="重新检测"
+                    <Grid ColumnSpacing="12" Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="组件检测状态" Style="{StaticResource SectionTitleStyle}"/>
+                            <TextBlock Text="{x:Bind ViewModel.HealthSummary, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite"/>
+                        </StackPanel>
+                        <ProgressRing Grid.Column="1" Width="18" Height="18" IsActive="{x:Bind ViewModel.IsHealthScanning, Mode=OneWay}"/>
+                        <Button Grid.Column="2" Click="RefreshHealthButton_Click" VerticalAlignment="Center" Padding="8"
                                 IsEnabled="{x:Bind ViewModel.CanRefreshHealth, Mode=OneWay}"
-                                Click="RefreshHealthButton_Click" />
+                                ToolTipService.ToolTip="重新检测组件" AutomationProperties.Name="重新检测组件">
+                            <SymbolIcon Symbol="Refresh"/>
+                        </Button>
                     </Grid>
 
-                    <Grid ColumnSpacing="10" Padding="0,5">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <Ellipse Width="8" Height="8" VerticalAlignment="Center"
-                                 Fill="{x:Bind StatusBrush(ViewModel.ShaderHealthState), Mode=OneWay}" />
-                        <TextBlock Grid.Column="1" Text="着色器" FontWeight="SemiBold" Width="64" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.ShaderStatusText, Mode=OneWay}"
+                    <Grid ColumnSpacing="10" Padding="0,6">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{x:Bind StatusBrush(ViewModel.ShaderHealthState), Mode=OneWay}"/>
+                        <TextBlock Grid.Column="1" Text="着色器" Width="64" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.ShaderStatusText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                    Foreground="{x:Bind StatusBrush(ViewModel.ShaderHealthState), Mode=OneWay}"
-                                   TextWrapping="Wrap" VerticalAlignment="Center"
-                                   FontWeight="{x:Bind WeightFor(ViewModel.ShaderHealthState), Mode=OneWay}" />
-                        <Button Grid.Column="3" Content="去处理" Tag="shader" Click="JumpButton_Click"
-                                Visibility="{x:Bind ActionVisibility(ViewModel.ShaderHealthState), Mode=OneWay}"
-                                FontSize="12" Padding="14,5" VerticalAlignment="Center" />
+                                   FontWeight="{x:Bind WeightFor(ViewModel.ShaderHealthState), Mode=OneWay}" VerticalAlignment="Center"/>
+                        <Button Grid.Column="3" Tag="shader" Click="JumpButton_Click" Content="去处理" Padding="12,5"
+                                Visibility="{x:Bind ActionVisibility(ViewModel.ShaderHealthState), Mode=OneWay}" VerticalAlignment="Center"/>
                     </Grid>
 
-                    <Grid ColumnSpacing="10" Padding="0,5">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <Ellipse Width="8" Height="8" VerticalAlignment="Center"
-                                 Fill="{x:Bind StatusBrush(ViewModel.AceHealthState), Mode=OneWay}" />
-                        <TextBlock Grid.Column="1" Text="ACE" FontWeight="SemiBold" Width="64" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.AceStatusText, Mode=OneWay}"
+                    <Grid ColumnSpacing="10" Padding="0,6">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{x:Bind StatusBrush(ViewModel.AceHealthState), Mode=OneWay}"/>
+                        <TextBlock Grid.Column="1" Text="ACE" Width="64" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.AceStatusText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                    Foreground="{x:Bind StatusBrush(ViewModel.AceHealthState), Mode=OneWay}"
-                                   TextWrapping="Wrap" VerticalAlignment="Center"
-                                   FontWeight="{x:Bind WeightFor(ViewModel.AceHealthState), Mode=OneWay}" />
-                        <Button Grid.Column="3" Content="去处理" Tag="ace" Click="JumpButton_Click"
-                                Visibility="{x:Bind ActionVisibility(ViewModel.AceHealthState), Mode=OneWay}"
-                                FontSize="12" Padding="14,5" VerticalAlignment="Center" />
+                                   FontWeight="{x:Bind WeightFor(ViewModel.AceHealthState), Mode=OneWay}" VerticalAlignment="Center"/>
+                        <Button Grid.Column="3" Tag="ace" Click="JumpButton_Click" Content="去处理" Padding="12,5"
+                                Visibility="{x:Bind ActionVisibility(ViewModel.AceHealthState), Mode=OneWay}" VerticalAlignment="Center"/>
                     </Grid>
 
-                    <Grid ColumnSpacing="10" Padding="0,5">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <Ellipse Width="8" Height="8" VerticalAlignment="Center"
-                                 Fill="{x:Bind StatusBrush(ViewModel.RuntimeHealthState), Mode=OneWay}" />
-                        <TextBlock Grid.Column="1" Text="运行库" FontWeight="SemiBold" Width="64" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.RuntimeStatusText, Mode=OneWay}"
+                    <Grid ColumnSpacing="10" Padding="0,6">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{x:Bind StatusBrush(ViewModel.RuntimeHealthState), Mode=OneWay}"/>
+                        <TextBlock Grid.Column="1" Text="运行库" Width="64" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.RuntimeStatusText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                    Foreground="{x:Bind StatusBrush(ViewModel.RuntimeHealthState), Mode=OneWay}"
-                                   TextWrapping="Wrap" VerticalAlignment="Center"
-                                   FontWeight="{x:Bind WeightFor(ViewModel.RuntimeHealthState), Mode=OneWay}" />
-                        <Button Grid.Column="3" Content="去处理" Tag="runtime" Click="JumpButton_Click"
-                                Visibility="{x:Bind ActionVisibility(ViewModel.RuntimeHealthState), Mode=OneWay}"
-                                FontSize="12" Padding="14,5" VerticalAlignment="Center" />
+                                   FontWeight="{x:Bind WeightFor(ViewModel.RuntimeHealthState), Mode=OneWay}" VerticalAlignment="Center"/>
+                        <Button Grid.Column="3" Tag="runtime" Click="JumpButton_Click" Content="去处理" Padding="12,5"
+                                Visibility="{x:Bind ActionVisibility(ViewModel.RuntimeHealthState), Mode=OneWay}" VerticalAlignment="Center"/>
                     </Grid>
-
-                    <TextBlock Text="异常或检测失败为红色、非最适版本为黄色、信息提示为蓝色、未适用或检测中为灰色；点「去处理」可直达对应功能页。"
-                               FontSize="11" Opacity="0.55" Margin="0,4,0,0" TextWrapping="Wrap" />
+                    <TextBlock Text="{x:Bind ViewModel.LastHealthCheckText, Mode=OneWay}" FontSize="11" Margin="0,6,0,0"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 </StackPanel>
             </Border>
-
         </StackPanel>
     </ScrollViewer>
 </Page>

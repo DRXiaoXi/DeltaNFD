@@ -22,6 +22,13 @@ internal static class RuntimeGuardRecoveryChecks
                 return new(new RuntimeGuardProtection(registry, files, state, backup), registry, files, state, backup);
             }
             var f = New();
+            Check(f.Guard.Disable(null).Success && f.Registry.Writes == 0, "未开启防护也能直接关闭检查，且不写入拦截");
+            var repo = new DirectoryInfo(AppContext.BaseDirectory);
+            while (repo is not null && !File.Exists(Path.Combine(repo.FullName, "src/DeltaNFD/ViewModels/RuntimeViewModel.cs"))) repo = repo.Parent;
+            var vmSource = File.ReadAllText(Path.Combine(repo!.FullName, "src/DeltaNFD/ViewModels/RuntimeViewModel.cs"));
+            Check(vmSource.Contains("GuardCleanupEnabled => !GuardIsBusy && !IsRepairing && !UninstallV14Busy"),
+                "清理入口不依赖已开启、残留判断或读取状态成功");
+            Check(vmSource.Contains("(enable && !_guardStateKnown)"), "状态未知仍允许关闭重试，但禁止未知状态启用");
             Check(f.Guard.Enable(null).Success && f.Registry.Values.Count == 11, "新防护写入十一项并标记归属");
             Check(f.Guard.RepairBlocker(null) is not null, "防护开启时拒绝修复");
             var progress = 0;
@@ -38,6 +45,64 @@ internal static class RuntimeGuardRecoveryChecks
                 "独立热补丁同签名不认领、不删除");
             f = New(); f.Registry.Values[RuntimeGuardProtection.Names[0]] = new(RuntimeGuardProtection.Debugger, RegistryValueKind.String, null, false);
             Check(!f.Guard.Disable(null).Success && f.Registry.Writes == 0, "无归属、无备份的旧签名不盲删");
+            var consent = f.Guard.Probe(null).LegacyIfeo;
+            Check(consent.Count == 1 && f.Guard.CleanupLegacyIfeo(consent).Success, "确认后清理无归属固定签名");
+            Check(f.State.Value.LegacyIfeoRepairs.Single().Completed && f.State.Value.LegacyIfeoRepairs.Single().Before.Debugger == RuntimeGuardProtection.Debugger,
+                "旧拦截清理保留原始快照，不伪造原值");
+            Check(f.Guard.RepairBlocker(null) is null && f.Guard.Enable(null, RuntimeGuardMode.BasicV14).Success && f.Guard.Disable(null).Success,
+                "旧残留清理后修复不再自锁，基础开关可往返");
+            f = New();
+            Check(f.Guard.Probe(null).Mode == RuntimeGuardMode.BasicV14, "新机器默认基础 V14");
+            Check(f.Guard.Enable("missing-UE4.exe", RuntimeGuardMode.BasicV14).Success && f.Registry.Values.Count == 3 && f.State.Value.Acls.Count == 0,
+                "基础仅三项，无需读取或修改 UE4 文件");
+            Check(f.Guard.Probe(null).ScopeManaged == 3 && !f.Guard.SelectMode(RuntimeGuardMode.Full, null).Success,
+                "基础状态按三项汇总，开启时禁止切换范围");
+            Check(f.Guard.Disable(null).Success && f.Guard.SelectMode(RuntimeGuardMode.Full, null).Success && f.Guard.Enable(null).Success,
+                "关闭后允许选完全防护");
+            f.State.Value.Mode = null;
+            Check(f.Guard.Probe(null).Mode == RuntimeGuardMode.Full, "旧启用记录保持完全防护范围");
+            Check(!f.Guard.Enable(null, RuntimeGuardMode.BasicV14).Success, "不将既有完全防护直接缩水为基础");
+            f = New(); f.Registry.Values[RuntimeGuardProtection.Names[0]] = new(RuntimeGuardProtection.Debugger, RegistryValueKind.String, null, false);
+            consent = f.Guard.Probe(null).LegacyIfeo;
+            f.Registry.Values[RuntimeGuardProtection.Names[0]] = new("third-party.exe", RegistryValueKind.String, null, false);
+            Check(!f.Guard.CleanupLegacyIfeo(consent).Success && f.Registry.Writes == 0, "确认后外部修改拒绝清理");
+            f = New(); f.Registry.Values[RuntimeGuardProtection.Names[0]] = new(RuntimeGuardProtection.Debugger, RegistryValueKind.String, null, false);
+            consent = f.Guard.Probe(null).LegacyIfeo; f.State.FailSave = true;
+            Check(!RuntimeGuardProtection.Exclusive(() => f.Guard.CleanupLegacyIfeo(consent)).Success && f.Registry.Writes == 0,
+                "旧拦截快照保存失败不写注册表");
+            f = New(); f.Registry.Values[RuntimeGuardProtection.Names[0]] = new(RuntimeGuardProtection.Debugger, RegistryValueKind.String, null, false);
+            consent = f.Guard.Probe(null).LegacyIfeo; f.Registry.FailAfterWrite = true;
+            Check(!f.Guard.CleanupLegacyIfeo(consent).Success && f.Guard.RepairBlocker(null) is not null, "清理写后异常仍阻止破坏性修复");
+            Check(f.Guard.Disable(null).Success && f.State.Value.LegacyIfeoRepairs.Single().Completed,
+                "关闭可继续上次已授权清理，不再要求缺失原值");
+            f = New(); f.Registry.Values[RuntimeGuardProtection.Names[0]] = new(RuntimeGuardProtection.Debugger, RegistryValueKind.String, null, true)
+                { ForeignMarker = "RuntimeGuardHotPatch" };
+            consent = f.Guard.Probe(null).LegacyIfeo;
+            Check(f.Guard.CleanupLegacyIfeo(consent).Success && f.Guard.Enable(null, RuntimeGuardMode.BasicV14).Success,
+                "明确确认后迁移独立工具固定拦截及标记");
+            f = New();
+            foreach (var name in RuntimeGuardProtection.Names)
+                f.Registry.Values[name] = new(RuntimeGuardProtection.Debugger, RegistryValueKind.ExpandString,
+                    RuntimeGuardProtection.OwnerPrefix + "lost/backed", false);
+            consent = f.Guard.Probe(null).LegacyIfeo;
+            Check(consent.Count == 11 && f.Guard.CleanupLegacyIfeo(consent).Success && f.State.Value.LegacyIfeoRepairs.Count == 11,
+                "截图场景：十一项丢失原值的旧标记全部可确认清理");
+            var ifeoJournal = f.State.Value;
+            Check(f.Guard.Enable(null, RuntimeGuardMode.BasicV14).Success && f.Guard.Disable(null).Success,
+                "截图场景清理后不再出现无法再次开启循环");
+            f = New(); f.Registry.Values[RuntimeGuardProtection.Names[0]] = new(RuntimeGuardProtection.Debugger, RegistryValueKind.String,
+                RuntimeGuardProtection.OwnerPrefix + "lost/backed", false);
+            consent = f.Guard.Probe(null).LegacyIfeo; f.Registry.FailOwnerAfterWrite = true;
+            Check(!f.Guard.CleanupLegacyIfeo(consent).Success && f.Guard.Disable(null).Success && f.State.Value.LegacyIfeoRepairs.Single().Completed,
+                "属主删除后异常也可续作，未完成证据保留");
+            f = New(); f.Registry.Values[RuntimeGuardProtection.Names[0]] = new(RuntimeGuardProtection.Debugger, RegistryValueKind.String, null, false);
+            consent = f.Guard.Probe(null).LegacyIfeo; f.Registry.FailAfterWrite = true; f.Guard.CleanupLegacyIfeo(consent);
+            f.Registry.Values[RuntimeGuardProtection.Names[0]] = new("new-third-party.exe", RegistryValueKind.String, null, false);
+            Check(!f.Guard.Disable(null).Success && f.Registry.Values[RuntimeGuardProtection.Names[0]].Debugger == "new-third-party.exe",
+                "清理失败后的重试不覆盖第三方新 Debugger");
+            f = New(); f.Guard.Enable(null);
+            Check(f.Guard.Probe(null).LegacyIfeo.Count == 0 && !f.Guard.CleanupLegacyIfeo([new(RuntimeGuardProtection.Names[0], "fake")]).Success,
+                "正常备份必须还原，不走无原值清理");
             f = New();
             foreach (var name in RuntimeGuardProtection.Names)
             {
@@ -115,6 +180,9 @@ internal static class RuntimeGuardRecoveryChecks
             File.Delete(storePath);
             disk.Save(legacyJournal);
             Check(disk.Load().LegacyAclRepairs.Count == 1, "旧权限修复日志 JSON 往返");
+            disk.Save(ifeoJournal);
+            Check(disk.Load().LegacyIfeoRepairs.Count == 11 && disk.Load().LegacyIfeoRepairs.All(r => r.Completed && r.Before.Kind == RegistryValueKind.ExpandString),
+                "十一项清理快照及值类型可持久化往返");
 
             // Only a disposable fixture file is touched; no installed prerequisite or IFEO key is changed.
             File.WriteAllText(path, "fixture");
@@ -150,14 +218,23 @@ internal static class RuntimeGuardRecoveryChecks
     private sealed class RegistryFake : IGuardRegistry
     {
         internal readonly Dictionary<string, GuardRegistryValue> Values = new(StringComparer.OrdinalIgnoreCase);
-        internal int Writes; internal bool FailAfterWrite, FailRead;
+        internal int Writes; internal bool FailAfterWrite, FailRead, FailOwnerAfterWrite;
         public GuardRegistryValue Read(string name) => FailRead ? throw new IOException("read failed") : Values.GetValueOrDefault(name, new(null, RegistryValueKind.None, null, false));
         public void SetDebugger(string name, string? value, RegistryValueKind kind)
         {
             Values[name] = Read(name) with { Debugger = value, Kind = kind }; Writes++;
             if (FailAfterWrite) { FailAfterWrite = false; throw new IOException("write changed value then failed"); }
         }
-        public void SetOwner(string name, string? value) { Values[name] = Read(name) with { Owner = value }; Writes++; }
+        public void SetOwner(string name, string? value)
+        {
+            Values[name] = Read(name) with { Owner = value }; Writes++;
+            if (FailOwnerAfterWrite) { FailOwnerAfterWrite = false; throw new IOException("owner changed then failed"); }
+        }
+        public void ClearKnownForeignOwner(string name)
+        {
+            if (Read(name).ForeignMarker != "RuntimeGuardHotPatch") throw new IOException("foreign owner changed");
+            Values[name] = Read(name) with { ForeignOwner = false, ForeignMarker = null }; Writes++;
+        }
         public void RemoveEmptyKey(string name) { }
     }
     private sealed class FilesFake : IGuardFiles

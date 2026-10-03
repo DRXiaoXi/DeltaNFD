@@ -45,7 +45,24 @@ public static class ServiceLocator
         return manager;
     });
     private static readonly Lazy<Plugins.PluginRuntimeService> PluginRuntimeLazy = new(() =>
-        new Plugins.PluginRuntimeService(PluginsLazy.Value.Backups, PluginsLazy.Value.Handoffs, PluginsLazy.Value.DataRoot, PluginsLazy.Value.Authorizations));
+        new Plugins.PluginRuntimeService(PluginsLazy.Value.Backups, PluginsLazy.Value.Handoffs, PluginsLazy.Value.DataRoot,
+            PluginsLazy.Value.Authorizations, PluginsLazy.Value) { BuiltinResourceOwners = PluginBuiltinResourceOwners });
+
+    private static IReadOnlyDictionary<string, string> PluginBuiltinResourceOwners()
+    {
+        var s = AppSettingsStore.Read();
+        var owners = new Dictionary<string, string>();
+        if (s.GameAffinityRuleEnabled || s.SingleCcdExcludeCpu0Enabled || s.DualCcdImmediateEnabled ||
+            (s.FrameModeActive && s.DualCcdArmed && s.DualCcdFrameEnabled))
+        { owners["cpu.affinity"] = "CPU 锁核 / CCD 调度"; owners["cpu.sets"] = "CPU 锁核 / CCD 调度"; }
+        if (s.GamePriorityEnabled) owners["process.priority"] = "自动优先级";
+        if (s.FramePowerRestorePending || (s.FrameModeActive && s.FramePowerLockEnabled)) owners["power.scheme"] = "帧格电源锁定 / 待恢复";
+        if (s.FrameModeActive && s.FramePowerSaveLatencyEnabled) owners["power.setting"] = "帧格降低省电延迟";
+        if (s.FrameModeActive && s.FrameResponseBoostEnabled && s.FrameResponseBoostTimerEnabled) owners["timer.resolution"] = "帧格计时器";
+        if (s.FrameModeActive && s.DwmRestartOnGameStart) owners["dwm.restart"] = "帧格 DWM";
+        if (s.RuntimeGuardEnabled) owners["runtime.redist"] = "运行库防护";
+        return owners;
+    }
 
     internal static GameProcessMonitor GameMonitor => GameMonitorLazy.Value;
 

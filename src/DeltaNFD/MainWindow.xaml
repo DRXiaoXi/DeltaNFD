@@ -108,7 +108,22 @@
                 </NavigationViewItem>
             </NavigationView.FooterMenuItems>
 
-            <Frame x:Name="ContentFrame" />
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <InfoBar x:Name="GpuSpoofWarning" IsOpen="False" Visibility="Collapsed" Severity="Warning"
+                         Title="驱动已变化，显卡伪装已失效" Closed="GpuSpoofWarning_Closed" Margin="16,8,16,0">
+                    <InfoBar.Content>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="重新应用伪装" Click="OpenGpuSpoof_Click" />
+                            <Button x:Name="ShaderCacheButton" Content="检查着色器缓存" Click="OpenShaderCache_Click" />
+                        </StackPanel>
+                    </InfoBar.Content>
+                </InfoBar>
+                <Frame x:Name="ContentFrame" Grid.Row="1" />
+            </Grid>
         </NavigationView>
     </Grid>
 </Window>

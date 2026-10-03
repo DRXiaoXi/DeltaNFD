@@ -10,6 +10,22 @@ namespace DeltaNFD.Services.Plugins;
 public static class PluginContract
 {
     public const int SchemaVersion = 1;
+
+    /// <summary>侧栏入口引入的 manifest schema 2（规范第 4.1 节）：保留 schema 1 合同并新增可选 navigation。</summary>
+    public const int SchemaVersionV2 = 2;
+
+    /// <summary>当前宿主实现并接受的最高 manifest schema。含 navigation 的包必须为 schema 2。</summary>
+    public const int SupportedSchemaVersion = SchemaVersionV2;
+
+    /// <summary>侧栏入口标签去除首尾空白后的最大 Unicode 标量数（规范第 4.1 节）。</summary>
+    public const int MaxNavigationLabelScalars = 48;
+
+    /// <summary>navigation.icon 缺省值；只允许映射到宿主内置原生图标。</summary>
+    public const string DefaultNavigationIcon = "puzzle";
+
+    /// <summary>navigation.pageId 当前唯一允许值（整个 ui.json 表单）。</summary>
+    public const string NavigationPageMain = "main";
+
     public const string ProtocolVersion = "1.0";
     public const int ProtocolMajorVersion = 1;
     public const int ProtocolMinorVersion = 0;
@@ -37,6 +53,12 @@ public static class PluginContract
         "cpu.affinity", "cpu.sets", "process.priority", "dwm.restart",
         "power.scheme", "power.setting", "timer.resolution", "gpu.driver-profile",
         "runtime.redist", "registry.security", "filesystem.tweak",
+    };
+
+    /// <summary>侧栏入口允许的图标枚举；映射到宿主内置原生图标，不接受路径/URL/字体名（规范第 4.1 节）。</summary>
+    public static readonly IReadOnlySet<string> NavigationIcons = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "puzzle", "report", "settings", "activity", "tools",
     };
 
     /// <summary>IPC result.status 固定取值（规范第 6 节）。</summary>

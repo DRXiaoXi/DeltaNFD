@@ -43,6 +43,7 @@
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginContract.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginPath.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginManifestParser.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginNavigationCatalog.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginUiParser.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginIpc.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginTrust.cs" />
@@ -60,6 +61,7 @@
     <Compile Include="..\..\src\DeltaNFD\Services\PluginLifecycleGuard.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginDiagnostics.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginHistoryQuery.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\DashboardHealthPresentation.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\PluginManagerService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\FrameFeatureState.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\FramePowerLifecycle.cs" />
@@ -76,6 +78,7 @@
     <Compile Include="..\..\src\DeltaNFD\Services\ElevationHelper.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\Log.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\GpuSpoofService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\GpuSpoofWatch.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\IAceService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\IAdvancedTweakService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\ICleanupService.cs" />

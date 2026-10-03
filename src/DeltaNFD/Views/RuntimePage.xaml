@@ -112,9 +112,17 @@
                     <StackPanel Spacing="4">
                         <TextBlock Text="运行库防护模式" FontWeight="SemiBold" />
                         <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                   Text="开启后通过 IFEO 拦截全部运行库安装器（VC++ 2005~2022 全系列、DirectX、UE4 前置包等），并对 UE4 前置包设置拒绝执行 ACL——三角洲将无法强制安装 v14 运行库（不完善版本）或覆盖现有运行库。" />
+                                   Text="基础 V14：仅拦截 vc_redist.x64/x86/arm64.exe，不修改 UE4 文件权限。完全防护：拦截全部 11 项安装器，并保护已找到的 UE4 前置包。拦截按文件名全系统生效，不只针对三角洲。" />
                         <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                    Text="注意：需要手动安装运行库时请先临时关闭本开关，装完再开。" />
+                        <ComboBox SelectedIndex="{x:Bind ViewModel.GuardModeIndex, Mode=OneWay}"
+                                  IsEnabled="{x:Bind ViewModel.GuardModeEnabled, Mode=OneWay}"
+                                  SelectionChanged="GuardMode_SelectionChanged" AutomationProperties.Name="防护范围">
+                            <ComboBoxItem Content="基础 V14" />
+                            <ComboBoxItem Content="完全防护" />
+                        </ComboBox>
+                        <Button Content="关闭 / 清理旧拦截" Click="CleanupGuard_Click"
+                                IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" />
                         <TextBlock Text="{x:Bind ViewModel.GuardStatusText, Mode=OneWay}"
                                    FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
                     </StackPanel>

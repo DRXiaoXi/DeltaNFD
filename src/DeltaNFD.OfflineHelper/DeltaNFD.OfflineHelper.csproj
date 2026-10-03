@@ -11,8 +11,8 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseAppHost>true</UseAppHost>
-    <Version>0.90.0</Version>
-    <InformationalVersion>PreBeta0.9</InformationalVersion>
+    <Version>0.90.1</Version>
+    <InformationalVersion>Beta0.9</InformationalVersion>
     <WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
 
