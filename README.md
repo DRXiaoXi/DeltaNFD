@@ -149,6 +149,12 @@ src/DeltaNFD/
 - 「重载显卡立即生效」「重启 DWM」等操作会短暂黑屏/闪屏，可能导致正在运行的游戏崩溃。
 - 本项目与腾讯游戏、《三角洲行动》官方无关。
 
+## 致谢
+
+感谢 [abbodi1406 / VisualCppRedist AIO](https://github.com/abbodi1406/vcredist) 及其上游贡献者。本项目的运行库修复功能使用了该项目提供的 AIO 运行库整合资源和 `Installer.cmd` 安装脚本，并在此基础上集成资源校验、调用和诊断记录。
+
+Microsoft Visual C++ 运行库由微软提供；感谢上游项目对运行库整合、安装脚本和兼容性的持续维护。
+
 ## 协议
 
 本项目基于 [GPL-3.0](LICENSE) 协议开源。
