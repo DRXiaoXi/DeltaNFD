@@ -59,6 +59,7 @@ internal static class PluginContinuousChecks
             var from = Path.Combine(Path.GetDirectoryName(source)!, sibling);
             if (File.Exists(from)) File.Copy(from, Path.Combine(dir, sibling));
         }
+        PluginTestPackage.CopyHostDependencies(dir);
         var start = new ProcessStartInfo
         {
             FileName = target,
@@ -179,7 +180,11 @@ internal static class PluginContinuousChecks
         var silent = MakeEntry(pluginsRoot, "noheartbeat", pluginId, "2.0.2", authorized: true, continuous: true);
         var silentStarted = await runtime.StartPersistentAsync(silent);
         Check("失联场景驻留启动成功", silentStarted.Length == 0, silentStarted);
-        await Task.Delay(17000); // >15 秒无 pong
+        // Detection runs every five seconds; the >15s threshold can be observed at the 20s tick.
+        // Wait for the state with a bound rather than asserting between timer ticks.
+        var heartbeatWait = Stopwatch.StartNew();
+        while (!runtime.QueryStatus(pluginId).LostContact && heartbeatWait.Elapsed < TimeSpan.FromSeconds(25))
+            await Task.Delay(200);
         var lostStatus = runtime.QueryStatus(pluginId);
         Check("15 秒无响应标记失联", lostStatus.LostContact, lostStatus.Detail);
         Check("失联不自动强杀（进程仍在）", lostStatus.ProcessAlive);
