@@ -251,23 +251,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- 内存限制检测 -->
-            <Border Style="{StaticResource CardBorderStyle}"
-                    Visibility="{x:Bind ViewModel.MemoryLimitDetected, Mode=OneWay}">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="内存限制警告" Style="{StaticResource SectionTitleStyle}" />
-                    <TextBlock Text="{x:Bind ViewModel.MemoryLimitText, Mode=OneWay}"
-                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
-                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                               Text="其他「优化工具」常用 bcdedit removememory 把可用内存砍到约 12GB，损失巨大。本工具的显卡伪装方案不需要限制内存——建议立即移除。" />
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button Style="{StaticResource AccentButtonStyle}"
-                                Content="移除 12GB 内存限制"
-                                Click="RemoveMemoryLimitButton_Click" />
-                    </StackPanel>
-                </StackPanel>
-            </Border>
-
             <!-- 单CCD 优化调度 -->
             <Border Style="{StaticResource CardBorderStyle}"
                     Visibility="{x:Bind ViewModel.ShowSingleCcd, Mode=OneWay}">

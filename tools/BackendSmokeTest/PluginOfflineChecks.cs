@@ -107,9 +107,10 @@ internal static class PluginOfflineChecks
         // 5. 移交全链路：prepare → 端点 → commit → Autonomous；子进程自主存活
         var handoffResult = await runtime.HandoffToOfflineAsync(offlineEntry!);
         Check("移交成功", handoffResult.Length == 0, handoffResult);
+        if (handoffResult.Length != 0) return;
         Check("记录状态 Autonomous", handoffs.TryGet(pluginId, out var record, out _) &&
             record!.State == PluginHandoffState.Autonomous);
-        Check("记录含端点与身份", record!.ReconnectPipeName.StartsWith("DeltaNFD_PluginReconnect_") &&
+        Check("记录含端点与身份", record is not null && record.ReconnectPipeName.StartsWith("DeltaNFD_PluginReconnect_") &&
             record.ProcessId > 0 && long.TryParse(record.StartTimeUtcTicks, out _));
         Check("移交后宿主侧不再跟踪", !runtime.IsRunning(pluginId));
 

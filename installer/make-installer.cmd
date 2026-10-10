@@ -5,54 +5,43 @@ rem  Delta NFD / Delta No FPS Drops one-click installer build script
 rem  Usage: run from repo root:  installer\make-installer.cmd
 rem  Output: _buildcheck\installer-package-<build-id>\三角帧不掉洲_DeltaNFD_安装包_<version>_x64.exe
 rem
+rem  自前后端分离 T5 起，前端 + 五个官方后端 + 脱机助手的自包含布局统一由
+rem  installer\publish-selfcontained.ps1 生成（各项目使用隔离 ArtifactsPath，避免
+rem  共享中间目录互相覆盖 assets）；本脚本只负责发布布局 + 编译 Inno Setup 安装包。
+rem
 rem  NOTE (important): WinUI3 unpackaged publish drops the app's
 rem  .xbf XAML files and DeltaNFD.pri from the publish dir
-rem  (known dotnet-publish gap). Without them the app crashes at
-rem  startup with "Cannot locate resource 'ms-appx:///...'".
-rem  This script copies them from the build output after publish.
+rem  (known dotnet-publish gap). The publish script copies them back in.
 rem ============================================================
 setlocal
 cd /d "%~dp0\.." || goto :fail
 
-if not exist "src\DeltaNFD\Assets\VCRedistRepair_unpacked\Installer.cmd" goto :missing_runtime
-if not exist "src\DeltaNFD\Assets\VCRedistRepair_unpacked\payload_manifest_sha256.csv" goto :missing_runtime
+powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\installer\prepare-directx-resources.ps1"
+if errorlevel 1 goto :fail
+
+if not exist "src\DeltaNFD\Assets\VCRedistRepair\Installer.cmd" goto :missing_runtime
+if not exist "src\DeltaNFD\Assets\VCRedistRepair\payload_manifest_sha256.csv" goto :missing_runtime
 if not exist "src\DeltaNFD\Assets\VCRedist2015-2022-x64.exe" goto :missing_runtime
 if not exist "src\DeltaNFD\Assets\VCRedist2015-2022-x86.exe" goto :missing_runtime
 
 set "BUILD_ID=%RANDOM%%RANDOM%"
-set "OBJ=%CD%\_buildcheck\installer-obj-%BUILD_ID%"
-set "BINBASE=%CD%\_buildcheck\installer-bin-%BUILD_ID%"
-set "BIN=%BINBASE%\x64\Release\net8.0-windows10.0.19041.0\win-x64"
 set "PUB=%CD%\_buildcheck\installer-publish-%BUILD_ID%"
+set "ART=%CD%\_buildcheck\installer-artifacts-%BUILD_ID%"
 set "PKG=%CD%\_buildcheck\installer-package-%BUILD_ID%"
 
-echo [1/5] Build Release x64 ...
-rem  Note: the bundled background image (Assets\background.png) IS shipped in the installer
-rem  since OpenAlphaV0.83. Do not pass -p:IncludeBundledBackground=false here.
-dotnet build src\DeltaNFD\DeltaNFD.csproj -c Release -p:Platform=x64 "-p:BaseIntermediateOutputPath=%OBJ%/" "-p:BaseOutputPath=%BINBASE%/"
+echo [1/2] Publish self-contained layout (frontend + 5 backends + offline helper) ...
+rem  注意：OpenAlphaV0.83 起安装包必须内置背景图；不要传 IncludeBundledBackground=false。
+powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\installer\publish-selfcontained.ps1" ^
+  -OutDir "%PUB%" -ArtifactsRoot "%ART%" -Configuration Release
 if errorlevel 1 goto :fail
 
-echo [2/5] Publish self-contained ...
-dotnet publish src\DeltaNFD\DeltaNFD.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 "-p:BaseIntermediateOutputPath=%OBJ%/" "-p:BaseOutputPath=%BINBASE%/" -o "%PUB%"
-if errorlevel 1 goto :fail
-
-echo [3/5] Publish standalone offline helper ...
-dotnet publish src\DeltaNFD.OfflineHelper\DeltaNFD.OfflineHelper.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o "%PUB%\OfflineHelper"
-if errorlevel 1 goto :fail
-if not exist "%PUB%\OfflineHelper\DeltaNFD.OfflineHelper.exe" goto :missing_offline_helper
-
-rem The bundled background image is part of the product since OpenAlphaV0.83.
-rem Fail loudly if it went missing: an installer without it silently falls back to
-rem Mica, which is exactly the regression this check exists to catch.
+rem 背景图与脱机助手缺失要显式失败（发布脚本已检查，这里再兜底一次）。
 set "BGFOUND="
 for %%F in ("%PUB%\Assets\background.*") do set "BGFOUND=%%F"
 if not defined BGFOUND goto :missing_background
 echo       background bundled: %BGFOUND%
-
-echo [4/5] Copy missing WinUI resources (xbf + app pri) ...
-rem  /S: page xbf files live in subfolders (Views\...) matching source layout
-robocopy "%BIN%" "%PUB%" *.xbf DeltaNFD.pri /S /NFL /NDL /NJH /NP
-if errorlevel 8 goto :fail
+if not exist "%PUB%\Backends\DeltaNFD.OfflineHelper.exe" goto :missing_offline_helper
+if not exist "%PUB%\Backends\DeltaNFD.Backend.Ace.exe" goto :missing_backends
 
 set ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe
 if not exist "%ISCC%" set ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe
@@ -61,7 +50,7 @@ if not exist "%ISCC%" (
   goto :fail
 )
 
-echo [5/5] Compile installer ...
+echo [2/2] Compile installer ...
 pushd installer
 "%ISCC%" "/O%PKG%" "/DPublishDir=%PUB%" DeltaNFD.iss
 if errorlevel 1 ( popd & goto :fail )
@@ -81,7 +70,7 @@ exit /b 1
 
 :missing_runtime
 echo [ERROR] VC++ runtime repair assets are missing from src\DeltaNFD\Assets.
-echo Restore VCRedistRepair_unpacked\Installer.cmd, its payload manifest, and the x86/x64 2015-2022 installers.
+echo Restore VCRedistRepair\Installer.cmd, its payload manifest, and the x86/x64 2015-2022 installers.
 exit /b 1
 
 :missing_background
@@ -94,5 +83,12 @@ exit /b 1
 :missing_offline_helper
 echo.
 echo [ERROR] The standalone offline helper is missing from the publish output.
-echo Check src\DeltaNFD.OfflineHelper and the .NET 8 x64 publish step.
+echo Check src\DeltaNFD.OfflineHelper and the publish step.
+exit /b 1
+
+:missing_backends
+echo.
+echo [ERROR] The official backend layout is missing from the publish output.
+echo Expected Backends\DeltaNFD.Backend.Ace.exe and four more modules.
+echo Check installer\publish-selfcontained.ps1 and src\DeltaNFD.Backend.*.
 exit /b 1

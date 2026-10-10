@@ -1,4 +1,4 @@
-using DeltaNFD.Native;
+﻿using DeltaNFD.Native;
 using DeltaNFD.Services;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
@@ -9,6 +9,7 @@ namespace DeltaNFD;
 public partial class App : Application
 {
     public static MainWindow? MainWindow { get; private set; }
+    internal static bool ExitAlreadyPrepared { get; set; }
 
     /// <summary>默认主题色（天空蓝，与 App.xaml 内置资源一致）。</summary>
     public static readonly Windows.UI.Color DefaultAccent = Windows.UI.Color.FromArgb(255, 0x5E, 0xB0, 0xFF);
@@ -31,22 +32,60 @@ public partial class App : Application
             Log.Error("Task 未观察异常", e.Exception);
             e.SetObserved();
         };
+
+        // 前后端分离 C5：进程退出前排空官方后端（异步启动，短时间宽限后允许退出）。
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            if (ExitAlreadyPrepared) return;
+            // 优化：启动排空任务但不同步等待，给予 5 秒宽限期后允许进程退出
+            var drainTask = Task.Run(async () =>
+            {
+                try
+                {
+                    var remaining = await Services.Backends.BackendLifecycle.PrepareHandoverAsync("进程退出", TimeSpan.FromSeconds(30));
+                    if (remaining.Count == 0) Log.Info("进程退出：后端排空完成");
+                    else Log.Warn("进程退出：仍有未确认状态，证据保留：" + string.Join("、", remaining));
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn("进程退出：后端排空失败 - " + ex.Message);
+                }
+            });
+
+            // 给予 5 秒宽限期，避免阻塞进程退出过久
+            if (!drainTask.Wait(TimeSpan.FromSeconds(5)))
+            {
+                Log.Info("进程退出：后端排空未在 5 秒内完成，允许进程退出");
+            }
+        };
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        if (Environment.GetCommandLineArgs().Contains("--restore-runtime-guard-for-uninstall", StringComparer.Ordinal))
+        var commandLine = Environment.GetCommandLineArgs();
+        if (commandLine.Contains("--prepare-deployment", StringComparer.Ordinal)
+            || commandLine.Contains("--restore-runtime-guard-for-uninstall", StringComparer.Ordinal))
         {
+            ExitAlreadyPrepared = true;
             _ = RestoreRuntimeGuardForUninstallAsync();
+            return;
+        }
+        if (SingleInstanceGuard.DeploymentInProgress())
+        {
+            ExitAlreadyPrepared = true;
+            Log.Info("安装或卸载正在进行，本次启动已拒绝；请等待完成后重新打开工具。");
+            Application.Current.Exit();
             return;
         }
         if (!SingleInstanceGuard.TryBecomePrimary())
         {
+            ExitAlreadyPrepared = true;
             Application.Current.Exit();
             return;
         }
 
         Log.Startup();
+        UpdateChannelInstallation.ApplyCurrentInstallation();
         Log.Info("主窗口启动");
         var mainWindow = new MainWindow();
         MainWindow = mainWindow;
@@ -63,6 +102,7 @@ public partial class App : Application
                 Log.Warn("单实例：主窗口 Dispatcher 已停止，无法恢复窗口");
             }
         });
+        DeploymentPipe.Start(dispatcherQueue, mainWindow.PrepareDeploymentAsync, mainWindow.ExitForDeployment);
         mainWindow.Activate();
         if (AppDataPaths.MigrationWarning is { } migrationWarning)
         {
@@ -85,23 +125,41 @@ public partial class App : Application
         SetAccentColor(TryParseColor(s.AccentColor, out var c) ? c : DefaultAccent, persist: false);
     }
 
+    /// <summary>卸载前恢复的分项报告文件（与卸载日志同目录，供安装器读取并分项列出阻塞子系统）。</summary>
+    private static string UninstallReportPath =>
+        Path.Combine(AppDataPaths.Root, "logs", "uninstall-restore-report.txt");
+
+    /// <summary>无 UI 的安装/卸载恢复入口；请求身份写入报告，避免安装器读取旧结果。</summary>
     private static async Task RestoreRuntimeGuardForUninstallAsync()
     {
+        var args = Environment.GetCommandLineArgs();
+        string? Argument(string name) => Array.IndexOf(args, name) is var i && i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+        var request = Argument("--deployment-request");
+        var uninstall = Argument("--deployment-mode") != "install";
         var code = 2;
+        var detail = "交接未完成。";
+        DeploymentHandover? permit = null;
         try
         {
-            var offline = await new OfflineModeCoordinator().PrepareForRemovalAsync(restoreCpuSets: true);
-            Log.Info("卸载前脱机恢复：" + offline.Message);
-            if (!offline.Success) { Environment.Exit(2); return; }
-            using var pluginGate = ServiceLocator.PluginRuntime.BlockNewOperations();
-            var pluginBlocker = await PluginLifecycleGuard.PrepareHandoverAsync(ServiceLocator.Plugins, ServiceLocator.PluginRuntime, "卸载");
-            if (pluginBlocker.Length > 0) { Log.Warn(pluginBlocker); Environment.Exit(2); return; }
-            var result = await new RuntimeGuardService().DisableAsync();
-            Log.Info("卸载前运行库防护恢复：" + result.Message);
-            code = result.Success ? 0 : 2;
+            // A standalone recovery process cannot restore the original main process's in-memory state.
+            // The installer must complete cooperative exit before reaching this entry point.
+            permit = await DeploymentHandover.PrepareAsync(uninstall);
+            code = permit.ExitCode;
+            detail = permit.Detail;
         }
-        catch (Exception ex) { Log.Error("卸载前运行库防护恢复异常", ex); }
+        catch (Exception ex) { Log.Error("安装/卸载前恢复异常", ex); detail = ex.Message; }
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(UninstallReportPath)!);
+            File.WriteAllText(UninstallReportPath, "交接结果=" + code + Environment.NewLine + detail);
+            if (Guid.TryParse(request, out var requestId))
+                File.WriteAllText(Path.Combine(Path.GetDirectoryName(UninstallReportPath)!, "deployment-" + requestId.ToString("N") + ".txt"),
+                    requestId.ToString("N") + "|" + code + Environment.NewLine + detail);
+        }
+        catch (Exception ex) { Log.Error("交接报告写入失败", ex); code = 2; }
+        // Keep the successful permit alive through ProcessExit; do not admit fresh automatic calls.
         Environment.Exit(code);
+        GC.KeepAlive(permit);
     }
 
     /// <summary>切换应用主题（设置页调用）。</summary>

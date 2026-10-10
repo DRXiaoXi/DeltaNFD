@@ -20,7 +20,22 @@ internal static class FolderPickerDialog
     public static string? PickExecutable(nint ownerHwnd, string? initialFile) =>
         PickCore(ownerHwnd, File.Exists(initialFile) ? Path.GetDirectoryName(initialFile) : null, false);
 
-    private static string? PickCore(nint ownerHwnd, string? initialFolder, bool folderOnly)
+    public static string? PickPluginPackage(nint ownerHwnd)
+    {
+        if (ownerHwnd == nint.Zero) throw new InvalidOperationException("主窗口尚未就绪，无法显示插件选择窗口。");
+        return ValidatePluginPackageSelection(PickCore(ownerHwnd, null, false, pluginPackage: true));
+    }
+
+    internal static string? ValidatePluginPackageSelection(string? path)
+    {
+        if (path is null) return null;
+        if (!Path.IsPathFullyQualified(path) || !File.Exists(path)
+            || !Path.GetExtension(path).Equals(".dnfdplugin", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("请选择存在的 .dnfdplugin 插件包。");
+        return path;
+    }
+
+    private static string? PickCore(nint ownerHwnd, string? initialFolder, bool folderOnly, bool pluginPackage = false)
     {
         var ownerWasEnabled = ownerHwnd != nint.Zero && IsWindowEnabled(ownerHwnd);
         var dialog = (IFileOpenDialog)new FileOpenDialogCom();
@@ -31,9 +46,9 @@ internal static class FolderPickerDialog
                 : (options & ~FosPickfolders & ~0x200u) | FosForceFilesystem | 0x1000u | 0x800u | 0x4u);
             if (!folderOnly)
             {
-                dialog.SetFileTypes(1, [new FilterSpec { Name = "应用程序 (*.exe)", Pattern = "*.exe" }]);
-                dialog.SetDefaultExtension("exe");
-                dialog.SetTitle("选择主进程 EXE");
+                dialog.SetFileTypes(1, [new FilterSpec { Name = pluginPackage ? "插件包 (*.dnfdplugin)" : "应用程序 (*.exe)", Pattern = pluginPackage ? "*.dnfdplugin" : "*.exe" }]);
+                dialog.SetDefaultExtension(pluginPackage ? "dnfdplugin" : "exe");
+                dialog.SetTitle(pluginPackage ? "选择拓展插件包" : "选择主进程 EXE");
             }
 
             if (!string.IsNullOrEmpty(initialFolder) && Directory.Exists(initialFolder))

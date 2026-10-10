@@ -23,6 +23,9 @@ out/
 [Ll]ogs/
 *.binlog
 *.log
+# 拓展插件打包产物（自包含 publish 约 70 MiB，不随源码入库）
+dist/
+src/Plugin.*/artifacts/
 
 # ---------- NuGet ----------
 *.nupkg
@@ -51,6 +54,8 @@ PublishProfiles/
 # ---------- 安装包产物（installer\DeltaNFD.iss 脚本本身保留入库） ----------
 installer/Output/
 _buildcheck/
+/artifacts/
+/research/
 
 # ---------- 内部交接文档（仅本地保留，不随仓库分发） ----------
 HANDOFF.md
@@ -64,7 +69,8 @@ ace-burn-report/
 src/DeltaNFD/Assets/VCRedistRepair.exe
 src/DeltaNFD/Assets/VCRedist2015-2022-x64.exe
 src/DeltaNFD/Assets/VCRedist2015-2022-x86.exe
-src/DeltaNFD/Assets/VCRedistRepair_unpacked/
+src/DeltaNFD/Assets/VCRedistRepair/
+src/DeltaNFD/Assets/DirectXRepair/
 src/DeltaNFD/Assets/background.png
 
 # ---------- 本机运行时生成的文件 ----------

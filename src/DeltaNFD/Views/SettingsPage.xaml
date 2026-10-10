@@ -148,6 +148,14 @@
 
             <!-- 常规 -->
             <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="未确认的后端操作" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="超时或断线不代表操作已恢复。请先确认相关程序已结束，并核对系统状态；证据会保留。"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <Button Content="核对未确认操作" Click="ReviewBackendOperations_Click" />
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="4">
                     <TextBlock Text="常规" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
 
@@ -245,13 +253,15 @@
                 </StackPanel>
             </Border>
 
-            <!-- 三角洲目录识别 -->
+            <!-- 三角洲目录识别（支持多安装） -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="三角洲目录识别" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="三角洲安装目录" Style="{StaticResource SectionTitleStyle}" />
 
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                               Text="默认通过 WeGame 注册表与常见安装路径自动识别三角洲目录；如果工具无法识别（未安装 WeGame、游戏装在自定义位置），在此手动指定游戏目录，保存后着色器清理、ACE 清理、运行库拦截等功能立即使用新目录。" />
+                               Text="登记本机所有三角洲安装目录；着色器清理、ACE 清理、运行库防护、全屏优化等功能会对每个登记目录同时生效。未登记的目录仍会被 WeGame 注册表和常见路径自动识别。" />
+
+                    <ListView x:Name="GameRootsList" MaxHeight="220" SelectionMode="None" />
 
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
@@ -261,14 +271,47 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBox x:Name="GamePathBox" VerticalAlignment="Center"
-                                 PlaceholderText="例如 D:\WeGameApps\rail_apps\DeltaForce(2001918)" />
+                                 PlaceholderText="手动粘贴安装目录后点添加，或用下方搜索" />
                         <Button x:Name="PickGameFolderButton" Grid.Column="1" Content="浏览" Click="PickGameFolderButton_Click" />
-                        <Button x:Name="ClearGamePathButton" Grid.Column="2" Content="清除" Click="ClearGamePathButton_Click" />
-                        <Button x:Name="SaveGamePathButton" Grid.Column="3" Content="保存" Style="{StaticResource AccentButtonStyle}"
-                                Click="SaveGamePathButton_Click" />
+                        <Button x:Name="AddGamePathButton" Grid.Column="2" Content="添加" Style="{StaticResource AccentButtonStyle}"
+                                Click="AddGamePathButton_Click" />
+                        <Button x:Name="SearchGameFoldersButton" Grid.Column="3" Content="搜索添加" Click="SearchGameFoldersButton_Click" />
                     </Grid>
 
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="FullScanGameFoldersButton" Content="全盘搜索" Click="FullScanGameFoldersButton_Click" />
+                        <Button x:Name="ScopedScanGameFoldersButton" Content="指定目录搜索" Click="ScopedScanGameFoldersButton_Click" />
+                        <Button x:Name="ClearGamePathButton" Content="清除旧手动指定" Click="ClearGamePathButton_Click" />
+                    </StackPanel>
+
                     <TextBlock x:Name="GamePathStatusText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- 三角帧本体设置 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="三角帧本体设置" Style="{StaticResource SectionTitleStyle}" />
+
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="针对游戏主程序（DeltaForceClient-Win64-Shipping.exe）的兼容性调整，直接写入用户级注册表，无需重启电脑，下次启动游戏生效。" />
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="禁用全屏优化" FontWeight="SemiBold" />
+                            <TextBlock Text="禁用游戏的全屏优化（Fullscreen Optimizations），可降低全屏模式下的输入延迟与帧生成波动。开启后写入注册表兼容性标记，关闭时恢复原值。"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ToggleSwitch x:Name="FsoDisableToggle" Grid.Column="1" Toggled="FsoDisableToggle_Toggled"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <TextBlock x:Name="FsoStatusText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Opacity="0.8" />
                 </StackPanel>
             </Border>
 
@@ -291,6 +334,39 @@
                                        Style="{StaticResource CardDescStyle}" />
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1" IsOn="{x:Bind Update.AutoCheck, Mode=TwoWay}"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="更新通道" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind Update.UpdateChannelDescription, Mode=OneWay}"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" SelectedIndex="{x:Bind Update.UpdateChannelIndex, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind Update.ChannelEnabled, Mode=OneWay}"
+                                  AutomationProperties.Name="更新通道" VerticalAlignment="Center" MinWidth="140">
+                            <ComboBoxItem Content="内测通道" />
+                            <ComboBoxItem Content="公测通道" />
+                        </ComboBox>
+                    </Grid>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="GitHub 加速" FontWeight="SemiBold" />
+                            <TextBlock Text="开启后先探测 GitHub 连通性，不通时自动切换加速镜像；关闭则始终直连官方源。"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" IsOn="{x:Bind Update.GitHubAccelerate, Mode=TwoWay}"
                                       OnContent="" OffContent="" MinWidth="0" Margin="0"
                                       HorizontalAlignment="Right" VerticalAlignment="Center" />
                     </Grid>
@@ -394,6 +470,8 @@
 
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="本工具的大部分优化功能已真实生效（详见 README），关闭 Defender/更新禁用等高危项会降低系统安全性，使用时请自行权衡并遵守游戏用户协议。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="本版本采用源码可用非商业许可证：禁止收费转售、闭源二次开发、用于收费产品、商业使用及删除作者署名。完整条款见安装目录 DELTA-NFD-LICENSE.txt；第三方及历史版本保留各自授权。" />
                     <TextBlock FontSize="11" Opacity="0.5" TextWrapping="Wrap"
                                Text="显卡驱动级设置（低延迟 / 数字振动等）尚未实现，当前为演示数据。" />
                 </StackPanel>

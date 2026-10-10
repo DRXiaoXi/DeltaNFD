@@ -1,5 +1,221 @@
 using DeltaNFD.Services;
 
+if (args.Length is 4 or 5 && args[0] == "--deployment-install-fixture")
+{
+    try { Environment.ExitCode = await DeploymentInstallFixture.RunAsync(args[1], args[2], args[3], args.Length == 5 ? int.Parse(args[4]) : 0); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--update-channel-checks"))
+{
+    try { await UpdateChannelChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Length > 0 && args[0] == "--runtime-system-probe")
+{
+    Environment.ExitCode = RuntimeSystemProbeProcess.Run(args);
+    return;
+}
+
+if (args.Contains("--runtime-strong-repair-checks"))
+{
+    try { await RuntimeStrongRepairChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--compatibility-repair-checks"))
+{
+    try { await RuntimeCompatibilityChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--application-prelaunch-checks"))
+{
+    try { await ApplicationPreLaunchChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--runtime-guard-recovery-scope-checks"))
+{
+    try { RuntimeGuardRecoveryScopeChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--runtime-unified-uninstall-checks") || args.Contains("--runtime-unified-uninstall-readonly"))
+{
+    try { await RuntimeUnifiedUninstallChecks.RunAsync(args.Contains("--runtime-unified-uninstall-readonly")); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--runtime-preflight-readonly", StringComparer.Ordinal))
+{
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(RuntimeRepairPreflight.Read()));
+    return;
+}
+
+if (args.Contains("--runtime-flow-child", StringComparer.Ordinal))
+{
+    await Task.Delay(1500);
+    return;
+}
+if (args.Contains("--runtime-flow-checks", StringComparer.Ordinal))
+{
+    try { await RuntimeRepairFlowChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--plugin-import-picker-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { PluginImportPickerChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--runtime-silent-uninstall-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { RuntimeSilentUninstallChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+// Owned child for the late-restore regression; it only waits and exits naturally.
+if (args.Length == 2 && args[0] == "--deployment-test-child" && int.TryParse(args[1], out var childDelay)
+    && childDelay is > 0 and <= 15000)
+{
+    await Task.Delay(childDelay);
+    return;
+}
+
+// T5 生命周期检查用的临时测试后端：本进程被复制并重命名为官方后端 EXE 后，
+// 必须最先识别，绝不能落入下面的真实只读冒烟路径。
+if (Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "")
+    .StartsWith("DeltaNFD.Backend.", StringComparison.OrdinalIgnoreCase))
+{
+    Environment.ExitCode = await BackendSmokeTest.TestBackendFixture.RunAsync(args);
+    return;
+}
+
+if (args.Contains("--backend-handover-checks", StringComparer.OrdinalIgnoreCase)
+    || args.Contains("--deployment-handover-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await BackendHandoverChecks.RunAsync(args.Contains("--deployment-handover-checks", StringComparer.OrdinalIgnoreCase)); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+// T6 模块边界检查的子进程：在临时目录（脱离源码兜底）断言后端缺失时 Resolve 明确失败。
+if (args.Contains("--module-boundary-missing-child", StringComparer.OrdinalIgnoreCase))
+{
+    Environment.ExitCode = ModuleBoundaryChecks.RunMissingChild(args);
+    return;
+}
+
+// T6：前端/执行库/合同/后端/共享库的依赖与源码边界，以及后端缺失/不兼容的失败模式。
+if (args.Contains("--module-boundary-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { ModuleBoundaryChecks.Run(args); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+// T6：无头运行时测量（空闲后端工作集/CPU/进程数），不启动 GUI、不做写入。
+if (args.Contains("--t6-runtime-measure", StringComparer.OrdinalIgnoreCase))
+{
+    try { await BackendSmokeTest.T6RuntimeMeasure.RunAsync(args); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--deployment-layout-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { DeploymentLayoutChecks.Run(args); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--cpuframe-status-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await CpuFrameStatusChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--system-bx-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await BackendSmokeTest.SystemBxChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--process-maintenance-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await ProcessMaintenanceChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--offline-recovery-boundary-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await OfflineRecoveryBoundaryChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--ace-cleanup-scope-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await AceCleanupScopeChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--backend-recovery-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await BackendRecoveryChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--backend-reconciliation-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await BackendReconciliationChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Length == 3 && args[0] == "--settings-write-child")
+{
+    BackendBackupConcurrencyChecks.SettingsChild(args[1], args[2]);
+    return;
+}
+
+if (args.Length == 3 && args[0] == "--backup-write-child")
+{
+    BackendBackupConcurrencyChecks.Child(args[1], args[2]);
+    return;
+}
+if (args.Contains("--backend-backup-concurrency-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await BackendBackupConcurrencyChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--ace-cleanup-stage-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { AceCleanupStageChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args.Contains("--gpu-spoof-watch-checks", StringComparer.OrdinalIgnoreCase))
 {
     try { GpuSpoofWatchChecks.Run(); }
@@ -108,6 +324,13 @@ if (args.Contains("--plugin-restore-checks", StringComparer.OrdinalIgnoreCase))
 if (args.Contains("--plugin-runtime-checks", StringComparer.OrdinalIgnoreCase))
 {
     try { await BackendSmokeTest.PluginRuntimeChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--plugin-weaknet-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { BackendSmokeTest.PluginWeakNetBoostChecks.Run(); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
@@ -243,6 +466,14 @@ if (args.Contains("--frame-feature-checks", StringComparer.OrdinalIgnoreCase))
     return;
 }
 
+
+if (args.Contains("--delta-force-search-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await DeltaForceSearchChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args.Contains("--runtime-guard-recovery-checks", StringComparer.OrdinalIgnoreCase))
 {
     try { await RuntimeGuardRecoveryChecks.RunAsync(); }
@@ -326,6 +557,13 @@ if (args.Contains("--runtime-guard-safety-checks", StringComparer.OrdinalIgnoreC
 if (args.Contains("--ace-guard-checks", StringComparer.OrdinalIgnoreCase))
 {
     try { await AceGuardChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--backend-contract-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { await BackendSmokeTest.BackendContractChecks.RunAsync(); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
@@ -550,9 +788,9 @@ Console.WriteLine("=== 内存清理（待备列表）原语（只读验证，不
 Console.WriteLine();
 Console.WriteLine("=== DefenderGuard 预检状态（只读） ===");
 {
-    var guardReport = await DefenderGuard.PreflightAsync(new List<(string, string)>
+    var guardReport = await DefenderGuard.PreflightAsync(new List<DefenderBatchItem>
     {
-        ("模拟条目", "REG HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender DisableAntiSpyware"),
+        new() { Name = "模拟条目", Ops = "REG HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows Defender DisableAntiSpyware" },
     });
     if (guardReport is null)
     {

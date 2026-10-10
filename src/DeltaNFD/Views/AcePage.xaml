@@ -51,6 +51,14 @@
             </Border>
 
             <!-- 一键清除 -->
+            <InfoBar IsOpen="{x:Bind ViewModel.CleanupNeedsReview, Mode=OneWay}"
+                     Severity="Warning" Title="上次 ACE 清理需要核对"
+                     Message="{x:Bind ViewModel.CleanupReviewMessage, Mode=OneWay}" IsClosable="False">
+                <InfoBar.ActionButton>
+                    <Button Content="核对上次清理" Click="ReviewCleanupButton_Click"
+                            IsEnabled="{x:Bind ViewModel.CleanRefreshEnabled, Mode=OneWay}" />
+                </InfoBar.ActionButton>
+            </InfoBar>
             <Border Style="{StaticResource CardBorderStyle}">
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
@@ -74,6 +82,69 @@
                                 Click="CleanButton_Click" />
                     </StackPanel>
                 </Grid>
+            </Border>
+
+            <!-- 虚拟化环境检测 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="虚拟化环境检测" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                       Text="对应腾讯游戏安全「未开启或有其他软件占用CPU虚拟化功能」弹框：需在 BIOS 开启 VT-x/SVM 与 VT-d/IOMMU（内核 DMA 保护），同时关闭 VBS / 内核隔离 / Hyper-V 等占用虚拟化的系统组件。" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <ProgressRing Width="24" Height="24"
+                                          IsActive="{x:Bind ViewModel.VirtCheckBusy, Mode=OneWay}"
+                                          Foreground="{StaticResource AppAccentBrush}" />
+                            <Button Content="{x:Bind ViewModel.VirtCheckButtonText, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanCheckVirt, Mode=OneWay}"
+                                    Click="CheckVirtButton_Click" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Text="{x:Bind ViewModel.VirtSummaryText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="硬件环境（BIOS / 固件层）" FontWeight="SemiBold" />
+                        <TextBlock Text="{x:Bind ViewModel.HardwareCheckText, Mode=OneWay}"
+                                   Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                   FontFamily="Consolas" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="系统环境（Windows 层）" FontWeight="SemiBold" />
+                        <TextBlock Text="{x:Bind ViewModel.SystemCheckText, Mode=OneWay}"
+                                   Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                   FontFamily="Consolas" />
+                    </StackPanel>
+
+                    <!-- 一键修复系统层冲突（复用「系统优化」的关闭 Hyper-V / VBS 流程） -->
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{x:Bind ViewModel.VirtFixText, Mode=OneWay}"
+                                   Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                   VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <ProgressRing Width="20" Height="20"
+                                          IsActive="{x:Bind ViewModel.VirtFixBusy, Mode=OneWay}"
+                                          Foreground="{StaticResource AppAccentBrush}" />
+                            <Button Content="{x:Bind ViewModel.VirtFixButtonText, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanFixVirt, Mode=OneWay}"
+                                    Click="FixVirtButton_Click" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
             </Border>
 
             <!-- ACE-CORE 冗余检测 -->

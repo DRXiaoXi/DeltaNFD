@@ -25,6 +25,9 @@ jobs:
       - name: Build smoke test
         run: dotnet build tools/BackendSmokeTest/BackendSmokeTest.csproj -c Release
 
+      - name: Update channels and installation policy checks (isolated, offline)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --update-channel-checks
+
       - name: Frame feature state checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-feature-checks
 
@@ -96,6 +99,13 @@ jobs:
         run: |
           dotnet build src/Example.Plugin.HardwareReport/Example.Plugin.HardwareReport.csproj -c Release -p:Platform=x64
           dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-contract-e2e-checks
+
+      # 弱网加速插件：包合同 + 生成的加速配置交给真实 UpdateService 校验 + 临时目录驱动真实 Apply/Restore
+      # + 真实导入器接受真实包 + 只读 probe 端到端（不写真实 %APPDATA%，不联网断言、不启动游戏）
+      - name: Weak-network plugin checks
+        run: |
+          dotnet build src/Plugin.WeakNetBoost/Plugin.WeakNetBoost.csproj -c Release -p:Platform=x64
+          dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-weaknet-checks
 
       # 真实脱机助手端到端：真实进程握手/取消/单实例/180 秒超时；只对临时测试子进程写 CPU Sets
       - name: Real offline helper end-to-end checks

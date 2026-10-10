@@ -1,15 +1,11 @@
-; 三角帧不掉洲（Delta No FPS Drops / Delta NFD）安装脚本 · Inno Setup 6
+﻿; 三角帧不掉洲（Delta No FPS Drops / Delta NFD）安装脚本 · Inno Setup 6
 ; 编译：ISCC.exe DeltaNFD.iss
-; 产物：三角帧不掉洲_DeltaNFD_安装包_0.90.0_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
+; 产物：三角帧不掉洲_DeltaNFD_安装包_0.91_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
 ;
-; 当前源码版本：0.90.0 / Beta0.9。发布清单须在安装包生成后重新生成。
+; 当前源码版本：0.91 / Beta0.91。发布清单须在安装包生成后重新生成。
 ;
-; 卸载设计（OpenAlphaV0.83 重写，见 HANDOFF §34）：
-;   1. 卸载前结束残留的 DeltaNFD 进程（托盘驻留时进程仍在跑，会导致文件删不掉）；
-;   2. 删除 4 个登录任务（DeltaNFD_AutoStart / DeltaNFD_FrameMode + 两个 DeltaOptimizer 旧名）；
-;   3. AppData 数据由本脚本显式递归删除（不依赖 [UninstallDelete] 的通配语义）；
-;   4. 卸载向导提供「完全清除 / 保留备份」二选一，默认完全清除；
-;   5. 旧版遗留目录 %APPDATA%\DeltaOptimizer 与旧安装目录 {app}\DeltaOptimizer 一并清理。
+; 安装/卸载统一安全交接：先封锁新启动，通知主程序完成恢复并退出，再核对所有官方执行者。
+; 卸载保留备份时，在删除程序前复制并校验完整数据；历史记录仍待核对时保留原目录。
 ;   历史坑：0.82 的 unins000.exe 没有 [UninstallDelete] 段，卸载后 %APPDATA%\Delta NFD、
 ;   %APPDATA%\DeltaOptimizer、%LOCALAPPDATA%\Delta NFD 及登录任务全部残留。
 
@@ -18,8 +14,8 @@
 #define MyAppShortName "Delta NFD"
 #define MyAppEnglishName "Delta No FPS Drops"
 #define MyAppDisplayName "三角帧不掉洲（Delta NFD）"
-#define MyAppVersion "0.90.1"
-#define MyAppDisplayVersion "Beta0.9"
+#define MyAppVersion "0.91"
+#define MyAppDisplayVersion "Beta0.91"
 #define MyAppExeName "DeltaNFD.exe"
 ; 登录任务名（与 AppControlService / FrameService 创建的一致）
 #define AutoStartTaskName "DeltaNFD_AutoStart"
@@ -47,21 +43,26 @@ UninstallDisplayName={#MyAppDisplayName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ; 安装程序自身也用应用图标
 SetupIconFile=..\src\DeltaNFD\Assets\DeltaNFD.ico
+#ifdef ValidateOnly
+Output=no
+#else
 OutputDir=Output
+#endif
 OutputBaseFilename=三角帧不掉洲_DeltaNFD_安装包_{#MyAppVersion}_x64
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 PrivilegesRequired=admin
 ; 卸载时也要能删掉受保护/只读的残留文件
 Uninstallable=yes
-; 应用支持「关闭窗口时最小化到托盘」，普通关闭请求不会结束进程；替换文件前强制结束占用安装文件的进程。
-CloseApplications=force
+; 显式安全交接负责退出；Restart Manager 不得强杀恢复后端或插件。
+CloseApplications=no
 CloseApplicationsFilter=*.exe,*.dll,*.chm,*.pri
 ; 是否启动新版本由安装完成页的复选框决定，不自动恢复旧进程。
 RestartApplications=no
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+LicenseFile=..\LICENSE
 
 [Languages]
 Name: "chinese"; MessagesFile: "ChineseSimplified.isl"
@@ -79,6 +80,8 @@ chinese.RunAfterInstall=安装完成后启动 {#MyAppDisplayName}
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
+Source: "DeploymentControl.ps1"; DestDir: "{app}\Tools"; Flags: ignoreversion
+Source: "DeploymentControl.ps1"; Flags: dontcopy
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
@@ -89,8 +92,7 @@ Name: "{autodesktop}\{#MyAppShortcutName}"; Filename: "{app}\{#MyAppExeName}"; T
 [Run]
 ; 应用清单要求管理员权限；沿用已提权安装器的令牌启动，避免以普通用户凭据启动失败。
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:RunAfterInstall}"; Flags: postinstall nowait skipifsilent unchecked runascurrentuser
-; 自动更新走 /SILENT：静默模式下 postinstall 条目不会执行，靠这条把新版本重新拉起来。
-Filename: "{app}\{#MyAppExeName}"; Flags: nowait runascurrentuser; Check: WizardSilent
+; 静默安装不启动应用；交互安装仅在完成页由用户主动勾选后启动。
 
 [Code]
 
@@ -103,16 +105,49 @@ const
   { 与 AppDataPaths 保持一致的数据目录名 }
   DataDirName = '{#DataDirName}';
   LegacyDataDirName = '{#LegacyDataDirName}';
-  { 卸载时需要保留的「系统还原依据」文件 —— 只保留这几个，其余随目录一起删 }
-  PreserveFiles = 'backups.json,optimize_backup.json,frame_reg_backup.json,frame_usb_power.json';
   ReparsePointAttribute = $400;
 
 var
   { 卸载器自身路径：InitializeUninstall 时捕获，自删流程用（声明必须早于所有使用点） }
   UninstallerExePath: String;
+  PreserveDeploymentHistory: Boolean;
+  DeploymentDetail: String;
+  VerifiedBackupDir: String;
+  DeploymentMutex: THandle;
+
+function CreateMutexW(Attributes: LongWord; InitialOwner: Boolean; Name: String): THandle;
+  external 'CreateMutexW@kernel32.dll stdcall';
+function CloseHandle(Handle: THandle): Boolean;
+  external 'CloseHandle@kernel32.dll stdcall';
+function WaitForSingleObject(Handle: THandle; Timeout: LongWord): LongWord;
+  external 'WaitForSingleObject@kernel32.dll stdcall';
+function ReleaseMutex(Handle: THandle): Boolean;
+  external 'ReleaseMutex@kernel32.dll stdcall';
+
+procedure ReleaseDeploymentMutex();
+begin
+  if DeploymentMutex <> 0 then
+  begin
+    ReleaseMutex(DeploymentMutex);
+    CloseHandle(DeploymentMutex);
+  end;
+  DeploymentMutex := 0;
+end;
+
+procedure DeinitializeSetup();
+begin
+  ReleaseDeploymentMutex();
+end;
+
+procedure DeinitializeUninstall();
+begin
+  ReleaseDeploymentMutex();
+end;
 
 function GetFileAttributesW(const FileName: String): LongWord;
   external 'GetFileAttributesW@kernel32.dll stdcall';
+function EnumerationError(): LongWord;
+  external 'GetLastError@kernel32.dll stdcall';
 
 { Refuse links anywhere along the path, including the cleanup root itself. }
 function HasReparseAncestor(const Path: String): Boolean;
@@ -170,32 +205,75 @@ begin
     ((ResultCode = 0) or not TaskExists(TaskName));
 end;
 
-{ 结束仍在运行的 DeltaNFD 进程（托盘驻留时进程不退出，会锁住 exe/dll 导致卸载不完整）。 }
-function KillAppProcesses(): Boolean;
+{ 安装和卸载使用同一交接脚本：安全请求、原生路径身份核对、有界等待、逐项报告。 }
+function PrepareDeployment(const Mode: String; ForUninstall: Boolean): Boolean;
 var
-  ResultCode: Integer;
-  Root, Command: String;
+  ScriptPath, ReportPath, Args: String;
+  ResultCode, I: Integer;
+  MutexWait: LongWord;
+  Lines: TArrayOfString;
 begin
+  Result := False;
+  DeploymentDetail := '';
+  PreserveDeploymentHistory := False;
+  if DeploymentMutex = 0 then
+  begin
+    DeploymentMutex := CreateMutexW(0, False, 'Local\DeltaNFD_7A3E9C4D_Deployment');
+    if DeploymentMutex <> 0 then
+    begin
+      MutexWait := WaitForSingleObject(DeploymentMutex, 0);
+      if (MutexWait <> 0) and (MutexWait <> $80) then
+      begin
+        CloseHandle(DeploymentMutex);
+        DeploymentMutex := 0;
+      end;
+    end;
+  end;
+  if DeploymentMutex = 0 then
+  begin
+    DeploymentDetail := '无法建立安装/卸载交接门禁。';
+    Exit;
+  end;
+  ScriptPath := ExpandConstant('{tmp}\DeploymentControl.ps1');
+  ReportPath := ExpandConstant('{tmp}\DeltaNFD-deployment-report.txt');
+  DeleteFile(ReportPath);
+  if ForUninstall then
+  begin
+    if not CopyFile(ExpandConstant('{app}\Tools\DeploymentControl.ps1'), ScriptPath, False) then
+    begin
+      DeploymentDetail := '安全交接脚本缺失或无法复制。请在原安装目录修复安装后重试。';
+      ReleaseDeploymentMutex();
+      Exit;
+    end;
+  end
+  else
+    ExtractTemporaryFile('DeploymentControl.ps1');
+  Args := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + ScriptPath +
+    '" -InstallRoot "' + ExpandConstant('{app}') + '" -Mode ' + Mode + ' -ReportPath "' + ReportPath + '"';
   ResultCode := -1;
-  Root := RemoveBackslashUnlessRoot(ExpandConstant('{app}'));
-  StringChangeEx(Root, '''', '''''', True);
-  { Scope termination by executable path, not by a global image name. Query errors fail closed. }
-  Command := '$ErrorActionPreference=''Stop''; try { $root=''' + Root + '''; '
-    + '$items=@(Get-CimInstance Win32_Process -Filter ' + '''Name = "DeltaNFD.exe" OR Name = "DeltaOptimizer.exe"''' + '); '
-    + 'foreach($p in $items) { if (-not $p.ExecutablePath) { throw ''Cannot determine executable path'' }; '
-    + 'if ([IO.Path]::GetDirectoryName($p.ExecutablePath) -ieq $root) { '
-    + 'Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; '
-    + '$live=Get-Process -Id $p.ProcessId -ErrorAction SilentlyContinue; '
-    + 'if ($live -and -not $live.WaitForExit(10000)) { throw ''Process exit timed out'' } } }; '
-    + '$left=@(Get-CimInstance Win32_Process -Filter ' + '''Name = "DeltaNFD.exe" OR Name = "DeltaOptimizer.exe"''' + ' | '
-    + 'Where-Object { -not $_.ExecutablePath -or [IO.Path]::GetDirectoryName($_.ExecutablePath) -ieq $root }); '
-    + 'if ($left.Count) { exit 1 }; exit 0 } catch { exit 1 }';
-  { Escape the embedded WMI double quotes for the Windows command line. }
-  StringChangeEx(Command, '"', '\"', True);
-  Result := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-    '-NoProfile -NonInteractive -Command "' + Command + '"',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
-  Log('卸载：安装目录进程退出检查=' + IntToStr(ResultCode));
+  if Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Args,
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    PreserveDeploymentHistory := ResultCode = 10;
+    Result := (ResultCode = 0) or PreserveDeploymentHistory;
+  end;
+  if LoadStringsFromFile(ReportPath, Lines) then
+  begin
+    for I := 0 to GetArrayLength(Lines) - 1 do
+      DeploymentDetail := DeploymentDetail + Lines[I] + #13#10;
+  end
+  else
+  begin
+    Result := False;
+    DeploymentDetail := '未能获得本次安全交接报告，退出码=' + IntToStr(ResultCode);
+  end;
+  if Trim(DeploymentDetail) = '' then
+  begin
+    Result := False;
+    DeploymentDetail := '安全交接报告为空，尚未替换或删除程序。';
+  end;
+  if not Result then ReleaseDeploymentMutex();
+  Log('安装/卸载交接：' + IntToStr(ResultCode) + '；' + DeploymentDetail);
 end;
 
 { 递归删除目录（Win32 封装，对已不存在/部分损坏的目录不会抛异常）。 }
@@ -252,59 +330,74 @@ begin
   if not RemoveDir(Path) then Result := False;
 end;
 
-{ 把「系统还原依据」备份复制到目标目录。
-  文件名清单用逗号分隔手工解析，避免依赖 StringSplit 的可用性/签名。 }
+{ 复制完整数据树，逐文件校验；不覆盖、不跟随链接。 }
 function PreserveBackupFiles(const SourceDir, DestDir: String): Boolean;
 var
-  Remaining, OneName, Src, Dst: String;
-  SeparatorPos: Integer;
+  FindRec: TFindRec;
+  Src, Dst: String;
+  Attributes, ReadError: LongWord;
 begin
   Result := False;
   if HasReparseAncestor(SourceDir) or HasReparseAncestor(DestDir) then Exit;
-  if not DirExists(SourceDir) then
+  Attributes := GetFileAttributesW(SourceDir);
+  if Attributes = $FFFFFFFF then
   begin
-    Result := True;
+    ReadError := EnumerationError();
+    Result := (ReadError = 2) or (ReadError = 3);
     Exit;
   end;
-
-  if not DirExists(DestDir) then
-    if not ForceDirectories(DestDir) then Exit;
-
-  Remaining := PreserveFiles;
-  while Remaining <> '' do
+  if (Attributes and FILE_ATTRIBUTE_DIRECTORY) = 0 then Exit;
+  if not ForceDirectories(DestDir) then Exit;
+  if FindFirst(AddBackslash(SourceDir) + '*', FindRec) then
   begin
-    SeparatorPos := Pos(',', Remaining);
-    if SeparatorPos = 0 then
-    begin
-      OneName := Remaining;
-      Remaining := '';
-    end
-    else
-    begin
-      OneName := Copy(Remaining, 1, SeparatorPos - 1);
-      Remaining := Copy(Remaining, SeparatorPos + 1, Length(Remaining));
-    end;
-
-    if OneName <> '' then
-    begin
-      Src := AddBackslash(SourceDir) + OneName;
-      if FileExists(Src) then
-      begin
-        Dst := AddBackslash(DestDir) + OneName;
-        if HasReparseAncestor(Src) or HasReparseAncestor(Dst) then Exit;
-        { Never overwrite another uninstall's backup; verify bytes before deleting the source. }
-        if not CopyFile(Src, Dst, True) then Exit;
-        try
-          if GetSHA256OfFile(Src) <> GetSHA256OfFile(Dst) then Exit;
-        except
-          Log('卸载：备份校验失败 ' + Src);
-          Exit;
+    try
+      repeat
+        if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+        begin
+          if (FindRec.Attributes and ReparsePointAttribute) <> 0 then Exit;
+          Src := AddBackslash(SourceDir) + FindRec.Name;
+          Dst := AddBackslash(DestDir) + FindRec.Name;
+          if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
+          begin
+            if not PreserveBackupFiles(Src, Dst) then Exit;
+          end
+          else
+          begin
+            if HasReparseAncestor(Src) or HasReparseAncestor(Dst) then Exit;
+            if not CopyFile(Src, Dst, True) then Exit;
+            try
+              if GetSHA256OfFile(Src) <> GetSHA256OfFile(Dst) then Exit;
+            except
+              Log('卸载：备份校验失败 ' + Src);
+              Exit;
+            end;
+          end;
         end;
-        Log('卸载：已校验保留备份 ' + Src + ' -> ' + Dst);
-      end;
+      until not FindNext(FindRec);
+      if EnumerationError() <> 18 then Exit;
+    finally
+      FindClose(FindRec);
     end;
+  end
+  else
+  begin
+    ReadError := EnumerationError();
+    if (ReadError <> 2) and (ReadError <> 18) then Exit;
   end;
   Result := True;
+end;
+
+function PreserveAllData(): Boolean;
+begin
+  VerifiedBackupDir := AddBackslash(ExpandConstant('{userdesktop}')) + DataDirName + ' 备份\'
+    + GetDateTimeString('yyyymmdd-hhnnss', '-', ':');
+  while DirExists(VerifiedBackupDir) or FileExists(VerifiedBackupDir) do
+    VerifiedBackupDir := VerifiedBackupDir + '-new';
+  Result := PreserveBackupFiles(ExpandConstant('{userappdata}\') + DataDirName, VerifiedBackupDir + '\current') and
+    PreserveBackupFiles(ExpandConstant('{userappdata}\') + LegacyDataDirName, VerifiedBackupDir + '\legacy') and
+    PreserveBackupFiles(ExpandConstant('{localappdata}\') + DataDirName, VerifiedBackupDir + '\local-current') and
+    PreserveBackupFiles(ExpandConstant('{localappdata}\') + LegacyDataDirName, VerifiedBackupDir + '\local-legacy');
+  if Result then Log('卸载：全部数据备份已校验：' + VerifiedBackupDir);
 end;
 
 { 删除一个目录下的全部空子目录（自底向上递归），目录本身为空时也一并删除。
@@ -396,6 +489,9 @@ begin
   begin
     Result := '检测到旧版安装在 ' + PreviousInstallDir + '。为了避免跨目录升级留下两套程序和失效的卸载记录，请先在 Windows“已安装的应用”中卸载旧版，再重新运行安装包。旧版设置和备份保存在 AppData，不会随卸载删除。';
   end;
+  if Result <> '' then Exit;
+  if not PrepareDeployment('install', False) then
+    Result := '安装前安全交接未完成，尚未替换文件。' + #13#10 + DeploymentDetail;
 end;
 
 function MigrateLogonTask(const LegacyName, NewName, LabelText, ExePath: String): String;
@@ -417,10 +513,28 @@ var
   NewExePath: String;
   TaskWarning: String;
   FrameWarning: String;
+  OldRuntimeDir: String;
+  ChannelInstallId: String;
 begin
   if CurStep = ssPostInstall then
   begin
     NewExePath := ExpandConstant('{app}\{#MyAppExeName}');
+    { Record only; never start the frontend to edit settings. The app consumes each install once. }
+    ChannelInstallId := ExpandConstant('{tmp}') + '|' + GetDateTimeString('yyyymmdd-hhnnss', '-', ':');
+    if not RegWriteStringValue(HKLM64,
+      'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7A3E9C4D-52B8-4E1F-9A6C-D0F1B2E3A4C5}_is1',
+      'UpdateChannelInstallationVersion', '{#MyAppDisplayVersion}') then
+      Log('更新通道：无法登记安装版本。');
+    if Pos('alpha', Lowercase('{#MyAppDisplayVersion}')) = 1 then
+      if not RegWriteStringValue(HKLM64,
+        'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7A3E9C4D-52B8-4E1F-9A6C-D0F1B2E3A4C5}_is1',
+        'UpdateChannelAlphaInstallationId', ChannelInstallId) then
+        Log('更新通道：无法登记 Alpha 安装批次。');
+    { Keep the Alpha batch across Beta installs, including Alpha -> Beta without an intervening app launch. }
+    if not RegWriteStringValue(HKLM64,
+      'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7A3E9C4D-52B8-4E1F-9A6C-D0F1B2E3A4C5}_is1',
+      'UpdateChannelInstallationId', ChannelInstallId) then
+      Log('更新通道：无法登记安装批次。');
     TaskWarning := MigrateLogonTask(LegacyAutoStartTaskName, AutoStartTaskName,
       '开机自启动任务', NewExePath);
     FrameWarning := MigrateLogonTask(LegacyFrameTaskName, FrameTaskName,
@@ -436,6 +550,17 @@ begin
       if not WizardSilent then
         MsgBox('新程序已安装，但' + TaskWarning + '。请在任务计划程序中检查登录任务。', mbError, MB_OK);
     end;
+    { Files and task migration are complete. Release before [Run] starts the new GUI. }
+    OldRuntimeDir := ExpandConstant('{app}\Assets\VCRedistRepair_unpacked');
+    if DirExists(OldRuntimeDir) then
+    begin
+      if FileExists(ExpandConstant('{userappdata}\Delta NFD\runtime-repair-active.json')) or
+        FileExists(ExpandConstant('{userappdata}\Delta NFD\official-backend-unconfirmed\runtime.json')) then
+        Log('旧运行库资源有未完成操作记录，暂时保留恢复来源：' + OldRuntimeDir)
+      else if not DelTree(OldRuntimeDir, OldRuntimeDir) then
+        Log('旧运行库资源目录未能完全清理：' + OldRuntimeDir);
+    end;
+    ReleaseDeploymentMutex();
   end;
 end;
 
@@ -489,7 +614,7 @@ begin
   end;
 
   Answer := MsgBox('是否保留系统优化还原备份？' + #13#10 + #13#10 +
-    '「是」= 保留备份（推荐）：先把 backups.json / optimize_backup.json 等还原依据复制到桌面'
+    '「是」= 保留备份（推荐）：先把全部设置、日志和恢复证据复制并校验到桌面'
     + '「Delta NFD 备份」文件夹，再删除数据目录。' + #13#10 + #13#10 +
     '「否」= 完全清除：连同设置、日志与全部备份一并删除，之后重装将无法一键还原系统优化。',
     mbConfirmation, MB_YESNO);
@@ -506,48 +631,41 @@ begin
   Result := UninstallKeepBackups;
 end;
 
-function RestoreRuntimeGuardBeforeUninstall(): Boolean;
-var
-  ResultCode: Integer;
-  ExePath: String;
-begin
-  Result := False;
-  ResultCode := -1;
-  ExePath := ExpandConstant('{app}\{#MyAppExeName}');
-  if not FileExists(ExePath) then
-  begin
-    Log('卸载：防护恢复程序缺失，停止卸载以保留状态。');
-    Exit;
-  end;
-  Result := Exec(ExePath, '--restore-runtime-guard-for-uninstall',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
-  Log('卸载：运行库防护恢复退出码=' + IntToStr(ResultCode));
-end;
-
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   RootDir, DataDir, LegacyDataDir, LocalDataDir, LocalLegacyDir: String;
-  DesktopBackupDir: String;
   CleanFailures: String;
 begin
   { 卸载刚开始：先问用户怎么处理数据（交互式卸载才问）。 }
   if CurUninstallStep = usUninstall then
   begin
-    if not KillAppProcesses() then
+    if not PrepareDeployment('uninstall', True) then
     begin
-      Log('卸载：无法确认应用已退出，终止卸载，未删除程序或数据。');
       if not UninstallSilent then
-        MsgBox('无法结束安装目录中的程序。请先从托盘退出工具，再重新卸载。尚未删除程序和数据。', mbError, MB_OK);
+        MsgBox('卸载前安全交接未完成，程序和数据尚未删除。' + #13#10#13#10 + DeploymentDetail, mbError, MB_OK);
       Abort;
     end;
-    AskWhatToKeep();
-    if not RestoreRuntimeGuardBeforeUninstall() then
+    if PreserveDeploymentHistory then
     begin
-      Log('卸载：防护恢复未完成，未删除程序和备份。');
+      UninstallKeepBackups := True;
       if not UninstallSilent then
-        MsgBox('脱机调度或运行库防护恢复未完成，已停止卸载以保留程序和恢复记录。请在设置页处理脱机恢复，或在运行库页关闭防护并处理权限/归属冲突后重试。详情见应用日志。', mbError, MB_OK);
-      Abort;
-    end;
+        if MsgBox(DeploymentDetail + #13#10#13#10 +
+          '继续卸载将保留原数据目录，并另存一份完整备份。历史记录仍待核对，是否继续？', mbConfirmation, MB_YESNO) <> idYes then
+        begin
+          ReleaseDeploymentMutex();
+          Abort;
+        end;
+    end
+    else AskWhatToKeep();
+    { Backup failure aborts BEFORE Inno deletes the first program file. }
+    if ShouldKeepBackups() then
+      if not PreserveAllData() then
+      begin
+        if not UninstallSilent then
+          MsgBox('完整备份复制或校验失败。已停止卸载，程序和原始数据均保留。', mbError, MB_OK);
+        ReleaseDeploymentMutex();
+        Abort;
+      end;
     Exit;
   end;
 
@@ -571,30 +689,17 @@ begin
   LocalDataDir := AddBackslash(ExpandConstant('{localappdata}')) + DataDirName;
   LocalLegacyDir := AddBackslash(ExpandConstant('{localappdata}')) + LegacyDataDirName;
 
-  if ShouldKeepBackups() then
+  if not PreserveDeploymentHistory then
   begin
-    DesktopBackupDir := AddBackslash(ExpandConstant('{userdesktop}')) + DataDirName + ' 备份\'
-      + GetDateTimeString('yyyymmdd-hhnnss', '-', ':');
-    { Create a fresh directory without overwriting backups from earlier uninstalls. }
-    while DirExists(DesktopBackupDir) or FileExists(DesktopBackupDir) do
-      DesktopBackupDir := DesktopBackupDir + '-new';
-    Log('卸载：保留备份到 ' + DesktopBackupDir);
-    if not PreserveBackupFiles(DataDir, DesktopBackupDir + '\current') or
-      not PreserveBackupFiles(LegacyDataDir, DesktopBackupDir + '\legacy') then
-    begin
-      Log('卸载：备份复制或校验失败，保留全部数据目录。');
-      if not UninstallSilent then
-        MsgBox('程序已卸载，但备份复制或校验失败。原始数据目录已保留，请勿手动删除其中的还原备份。', mbError, MB_OK);
-      Exit;
-    end;
-  end;
-
   if not DelTree(DataDir, DataDir) then
     CleanFailures := CleanFailures + ExpandConstant('{userappdata}\') + DataDirName + '；';
   { 旧版数据目录：应用首次启动已把它迁移进新目录，卸载时不应残留。 }
   if not DelTree(LegacyDataDir, LegacyDataDir) then CleanFailures := CleanFailures + LegacyDataDir + '；';
   if not DelTree(LocalDataDir, LocalDataDir) then CleanFailures := CleanFailures + LocalDataDir + '；';
   if not DelTree(LocalLegacyDir, LocalLegacyDir) then CleanFailures := CleanFailures + LocalLegacyDir + '；';
+
+  end
+  else Log('卸载：历史证据与全部原数据目录保留；完整副本=' + VerifiedBackupDir);
 
   { 4. 旧安装目录里遗留的 DeltaOptimizer 子目录（安装目录本体交给 Inno 自己删） }
   RootDir := AddBackslash(ExpandConstant('{app}')) + LegacyDataDirName;

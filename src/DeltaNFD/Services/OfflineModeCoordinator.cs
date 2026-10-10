@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using RestoreLocks = DeltaNFD.Services.OfflineRestoreHandover.Leases;
 using System.IO.Pipes;
 using System.Text;
 using System.Runtime.InteropServices;
@@ -26,6 +27,8 @@ public sealed class OfflineModeCoordinator
 
     public async Task<OperationResult> EnableAsync(CancellationToken cancellationToken = default)
     {
+        using var backendGate = Backends.BackendOperationGate.BlockNewOperations();
+        using var backendControl = Backends.BackendOperationGate.AllowControlOperations();
         using var control = await OfflineModeExecutionLock.WaitControlAsync(_store, TimeSpan.FromSeconds(10), cancellationToken);
         if (control is null) return OperationResult.Fail("另一个脱机切换操作尚未完成。");
         using var lease = await OfflineModeExecutionLock.WaitAcquireAsync(_store, TimeSpan.FromSeconds(10), cancellationToken);
@@ -84,10 +87,12 @@ public sealed class OfflineModeCoordinator
 
     public async Task<OperationResult> DisableAsync(CancellationToken cancellationToken = default)
     {
+        using var backendGate = Backends.BackendOperationGate.BlockNewOperations();
+        using var backendControl = Backends.BackendOperationGate.AllowControlOperations();
         using var control = await OfflineModeExecutionLock.WaitControlAsync(_store, TimeSpan.FromSeconds(10), cancellationToken);
         if (control is null) return OperationResult.Fail("另一个脱机切换操作尚未完成。");
         if (!_store.TryRead(out var state, out var error)) return OperationResult.Fail(error);
-        if (state.SavedPreferences is null && !state.OfflineModeEnabled && state.CpuSetChanges.Count == 0)
+        if (!state.BlocksNormalAutomation)
             return OperationResult.Ok("脱机模式本就未启用。");
         if (state.SavedPreferences is null)
             return OperationResult.Fail("缺少普通模式原配置快照；为避免猜测状态，未退出脱机模式。");
@@ -95,7 +100,7 @@ public sealed class OfflineModeCoordinator
         var preferences = state.SavedPreferences.Copy();
         var helperPid = state.HelperProcessId;
         var helperStartTicks = state.HelperStartTimeUtcTicks;
-        var helperPath = Path.Combine(AppContext.BaseDirectory, "OfflineHelper", "DeltaNFD.OfflineHelper.exe");
+        var helperPath = OfficialHelperPaths.ExecutablePath;
 
         // 先请求取消等待/应用中的短时助手。助手仅在一次性动作阶段持有操作锁，
         // 通过状态文件取消并等待退出，不让普通帧格与助手并发写同一个进程。
@@ -145,40 +150,43 @@ public sealed class OfflineModeCoordinator
             }
         }
 
-        if (CpuTopologyService.DualCcdSchedulingActive)
+        var cpuFrame = Backends.BackendCpuFrameService.Instance;
+        if (CpuFrameStatusState.DualCcdSchedulingActive)
         {
             var result = await ServiceLocator.Cpu.RevertDualCcdSchedulingAsync();
-            if (!result.Success || CpuTopologyService.DualCcdSchedulingActive)
+            if (!result.Success || CpuFrameStatusState.DualCcdSchedulingActive)
             {
                 SetState(OfflineModeStatus.RestorePending, "普通双 CCD 调度仍未恢复：" + result.Message, enabled: false);
                 return OperationResult.Fail("普通双 CCD 调度仍未恢复：" + result.Message);
             }
         }
-        if (CpuTopologyService.SingleCcdExcludeActive)
+        if (CpuFrameStatusState.SingleCcdExcludeActive)
         {
             var result = await ServiceLocator.Cpu.RestoreGameFullCoresAsync();
-            if (!result.Success || CpuTopologyService.SingleCcdExcludeActive)
+            if (!result.Success || CpuFrameStatusState.SingleCcdExcludeActive)
             {
                 SetState(OfflineModeStatus.RestorePending, "普通单 CCD 锁核仍未恢复：" + result.Message, enabled: false);
                 return OperationResult.Fail("普通单 CCD 锁核仍未恢复：" + result.Message);
             }
         }
-        if (CpuTopologyService.HasAffinityRuleRestorePending || preferences.GameAffinityRuleEnabled)
+        if (await cpuFrame.HasAffinityRestorePendingAsync() || preferences.GameAffinityRuleEnabled)
         {
-            if (!CpuTopologyService.CanSafelyRestoreAffinityRuleForOffline(preferences.GameAffinityRuleMask, out var affinityError))
+            var (affinityOk, affinityError) = await cpuFrame.CanRestoreAffinityAsync(preferences.GameAffinityRuleMask);
+            if (!affinityOk)
             {
                 SetState(OfflineModeStatus.RestorePending, "CPU 亲和性归属无法确认：" + affinityError, enabled: false);
                 return OperationResult.Fail("CPU 亲和性归属无法确认：" + affinityError);
             }
-            CpuTopologyService.RestoreAffinityRule();
-            if (CpuTopologyService.HasAffinityRuleRestorePending)
+            await cpuFrame.ApplyAffinityAsync(0);
+            if (await cpuFrame.HasAffinityRestorePendingAsync())
             {
                 SetState(OfflineModeStatus.RestorePending, "CPU 亲和性原值还原失败；恢复记录保留。", enabled: false);
                 return OperationResult.Fail("CPU 亲和性原值还原失败；恢复记录保留。");
             }
         }
 
-        var cpuRestore = new OfflineCpuSetScheduler().RestoreRecordedAssignments();
+        var (cpuRestore, reacquired) = await RestoreThroughBackendAsync(lease, helperStopped, cancellationToken);
+        using var restoredLocks = reacquired;
         if (!cpuRestore.Success)
         {
             SetState(OfflineModeStatus.RestorePending, cpuRestore.Message, enabled: false);
@@ -257,7 +265,7 @@ public sealed class OfflineModeCoordinator
             return OperationResult.Fail("请先启用脱机模式并完成恢复检查。");
         if (state.CpuSetChanges.Any(x => x.Status != OfflineCpuSetRecordStatus.Applied))
             return OperationResult.Fail("存在待人工处理的 CPU Sets 恢复冲突；完成恢复前不能重复应用。");
-        var helperPath = Path.Combine(AppContext.BaseDirectory, "OfflineHelper", "DeltaNFD.OfflineHelper.exe");
+        var helperPath = OfficialHelperPaths.ExecutablePath;
         if (state.HelperProcessId is int helperPid && state.HelperStartTimeUtcTicks is long helperTicks &&
             IsSameLiveProcess(helperPid, helperTicks, helperPath))
             return OperationResult.Fail("脱机助手仍在运行；请等待本轮完成。");
@@ -382,6 +390,8 @@ public sealed class OfflineModeCoordinator
     /// <summary>更新前只排空助手；卸载前恢复已保留的 CPU 集，不重启任何普通自动功能。</summary>
     public async Task<OperationResult> PrepareForRemovalAsync(bool restoreCpuSets, CancellationToken token = default)
     {
+        using var backendGate = Backends.BackendOperationGate.BlockNewOperations();
+        using var backendControl = Backends.BackendOperationGate.AllowControlOperations();
         using var control = await OfflineModeExecutionLock.WaitControlAsync(_store, TimeSpan.FromSeconds(10), token);
         if (control is null) return OperationResult.Fail("脱机控制操作尚未结束，暂不能更新或卸载。");
         if (!_store.TryRead(out var state, out var error)) return OperationResult.Fail(error);
@@ -394,11 +404,13 @@ public sealed class OfflineModeCoordinator
         if (helperGone is null) return OperationResult.Fail("助手尚未退出，未继续更新或卸载。");
         using var operation = await OfflineModeExecutionLock.WaitAcquireAsync(_store, TimeSpan.FromSeconds(5), token);
         if (operation is null) return OperationResult.Fail("脱机操作尚未排空，恢复记录保留。");
+        (OperationResult Result, RestoreLocks? Locks) restored = (OperationResult.Ok("无需恢复 CPU Sets。"), null);
         if (restoreCpuSets)
         {
-            var restored = new OfflineCpuSetScheduler().RestoreRecordedAssignments();
-            if (!restored.Success) return restored;
+            restored = await RestoreThroughBackendAsync(operation, helperGone, token);
+            if (!restored.Result.Success) return restored.Result;
         }
+        using var restoredLocks = restored.Locks;
         if (!_store.TryUpdate(s =>
         {
             s.HelperProcessId = null;
@@ -422,6 +434,15 @@ public sealed class OfflineModeCoordinator
             }
         }, out error)) return OperationResult.Fail(error);
         return OperationResult.Ok(restoreCpuSets ? "脱机恢复完成，可以继续卸载。" : "助手已退出，可以继续更新。");
+    }
+
+    private Task<(OperationResult Result, RestoreLocks? Locks)> RestoreThroughBackendAsync(
+        OfflineModeExecutionLock operation, OfflineModeHelperInstanceLease helper, CancellationToken token)
+    {
+        if (!_store.PathName.Equals(OfflineModeStateStore.Default.PathName, StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult<(OperationResult, RestoreLocks?)>((OperationResult.Fail("官方恢复只接受默认状态仓库。"), null));
+        return OfflineRestoreHandover.RunAsync(_store, operation, helper,
+            ct => Backends.BackendCpuFrameService.Instance.RestoreOfflineCpuSetsAsync(ct), TimeSpan.FromSeconds(5), token);
     }
 
     private async Task<(bool Success, OfflineModePreferences? Preferences, string Message)> CapturePreferencesAsync()
@@ -477,36 +498,41 @@ public sealed class OfflineModeCoordinator
                 return OperationResult.Fail("停用并还原普通帧格失败：" + result.Message);
         }
 
-        if (preferences.DualCcdImmediateEnabled && !CpuTopologyService.DualCcdSchedulingActive)
-            return OperationResult.Fail("双 CCD 偏好仍开启，但当前进程无法确认其运行时调度归属；请先在 CPU 实验室手动恢复。");
-        if (preferences.SingleCcdExcludeCpu0Enabled && !CpuTopologyService.SingleCcdExcludeActive)
-            return OperationResult.Fail("单 CCD 偏好仍开启，但当前进程无法确认其运行时锁核归属；请先在 CPU 实验室手动恢复。");
-        if (preferences.GameAffinityRuleEnabled &&
-            !CpuTopologyService.CanSafelyRestoreAffinityRuleForOffline(preferences.GameAffinityRuleMask, out var affinityReason))
-            return OperationResult.Fail("无法确认 CPU 亲和性规则原值：" + affinityReason);
+        var cpuFrame = Backends.BackendCpuFrameService.Instance;
+        if (preferences.DualCcdImmediateEnabled
+            && !(CpuFrameStatusState.DualCcdSchedulingActive))
+            return OperationResult.Fail("双 CCD 偏好仍开启，但当前无法确认其运行时调度归属；请先在 CPU 实验室手动恢复。");
+        if (preferences.SingleCcdExcludeCpu0Enabled
+            && !(CpuFrameStatusState.SingleCcdExcludeActive))
+            return OperationResult.Fail("单 CCD 偏好仍开启，但当前无法确认其运行时锁核归属；请先在 CPU 实验室手动恢复。");
+        if (preferences.GameAffinityRuleEnabled)
+        {
+            var (affinityOk, affinityReason) = await cpuFrame.CanRestoreAffinityAsync(preferences.GameAffinityRuleMask);
+            if (!affinityOk) return OperationResult.Fail("无法确认 CPU 亲和性规则原值：" + affinityReason);
+        }
 
-        if (CpuTopologyService.DualCcdSchedulingActive)
+        if (CpuFrameStatusState.DualCcdSchedulingActive)
         {
             var restoreDual = await ServiceLocator.Cpu.RevertDualCcdSchedulingAsync();
-            if (!restoreDual.Success || CpuTopologyService.DualCcdSchedulingActive)
+            if (!restoreDual.Success || CpuFrameStatusState.DualCcdSchedulingActive)
                 return OperationResult.Fail("双 CCD 调度未能确认还原：" + restoreDual.Message);
         }
-        if (CpuTopologyService.SingleCcdExcludeActive)
+        if (CpuFrameStatusState.SingleCcdExcludeActive)
         {
             var restoreSingle = await ServiceLocator.Cpu.RestoreGameFullCoresAsync();
-            if (!restoreSingle.Success || CpuTopologyService.SingleCcdExcludeActive)
+            if (!restoreSingle.Success || CpuFrameStatusState.SingleCcdExcludeActive)
                 return OperationResult.Fail("单 CCD CPU0 排除未能确认还原：" + restoreSingle.Message);
         }
-        if (preferences.GameAffinityRuleEnabled || CpuTopologyService.HasAffinityRuleRestorePending)
+        if (preferences.GameAffinityRuleEnabled || await cpuFrame.HasAffinityRestorePendingAsync())
         {
-            CpuTopologyService.RestoreAffinityRule();
-            if (CpuTopologyService.HasAffinityRuleRestorePending)
+            await cpuFrame.ApplyAffinityAsync(0);
+            if (await cpuFrame.HasAffinityRestorePendingAsync())
                 return OperationResult.Fail("CPU 亲和性原值还原失败；恢复记录已保留。");
         }
 
         if (preferences.GamePriorityEnabled)
         {
-            var priorityRestore = ServiceLocator.GameProcess.DisableGamePriorityForOffline();
+            var priorityRestore = await ServiceLocator.GameProcess.DisableGamePriorityForOfflineAsync();
             if (!priorityRestore.Success) return OperationResult.Fail("自动游戏优先级未能安全停用：" + priorityRestore.Message);
         }
         var frameService = ServiceLocator.Frame;
@@ -534,8 +560,9 @@ public sealed class OfflineModeCoordinator
         if (frameService.FrameModeActive || finalSettings.FrameModeActive || finalSettings.DwmRestartOnGameStart ||
             finalSettings.GamePriorityEnabled || finalSettings.GameAffinityRuleEnabled ||
             finalSettings.SingleCcdExcludeCpu0Enabled || finalSettings.DualCcdImmediateEnabled ||
-            CpuTopologyService.DualCcdSchedulingActive || CpuTopologyService.SingleCcdExcludeActive ||
-            CpuTopologyService.HasAffinityRuleRestorePending || ServiceLocator.AppControl.CloseToTrayEnabled)
+            CpuFrameStatusState.DualCcdSchedulingActive || CpuFrameStatusState.SingleCcdExcludeActive ||
+            CpuFrameStatusState.DualCcdSchedulingActive || CpuFrameStatusState.SingleCcdExcludeActive ||
+            await cpuFrame.HasAffinityRestorePendingAsync() || ServiceLocator.AppControl.CloseToTrayEnabled)
             return OperationResult.Fail("停用后的状态复核未通过，脱机模式未就绪。");
 
         var blockers = target.GetSwitchBlocker();

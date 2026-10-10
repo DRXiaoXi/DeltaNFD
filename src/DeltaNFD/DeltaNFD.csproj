@@ -26,9 +26,9 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 
     <DefaultLanguage>zh-CN</DefaultLanguage>
-    <Version>0.90.1</Version>
+    <Version>0.91</Version>
     <!-- 日志头/程序集读取的显示版本（与关于卡 VersionText 保持一致） -->
-    <InformationalVersion>Beta0.9</InformationalVersion>
+    <InformationalVersion>Beta0.91</InformationalVersion>
     <!-- 应用图标（exe / 任务栏 / 托盘共用；托盘经 ExtractIconExW 从 exe 提取） -->
     <ApplicationIcon>Assets\DeltaNFD.ico</ApplicationIcon>
   </PropertyGroup>
@@ -40,6 +40,19 @@
     <!-- 磁盘介质检测（MSFT_PhysicalDisk，虚拟内存盘符的机械盘/固态判定） -->
     <PackageReference Include="System.Management" Version="8.0.0" />
     <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\LICENSE" Link="DELTA-NFD-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\licenses\GPL-3.0.txt" Link="licenses\GPL-3.0.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 前后端分离 C1：前端只引用无执行实现的合同程序集，绝不引用执行库。 -->
+  <!-- T6：共享基础设施（Native/Services）物理移入 DeltaNFD.Shared，前端改为项目引用。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\DeltaNFD.Contracts\DeltaNFD.Contracts.csproj" />
+    <ProjectReference Include="..\DeltaNFD.Shared\DeltaNFD.Shared.csproj" />
   </ItemGroup>
 
   <!-- The WinUI-free helper is built separately below, with isolated restore/intermediate paths. -->
@@ -80,10 +93,10 @@
 
   <!-- VC++ AIO 解包修复安装程序及其 payload：作为自定义数据复制，不进入 WinUI PRI 资源索引。 -->
   <ItemGroup>
-    <Content Remove="Assets\VCRedistRepair_unpacked\**\*" />
-    <None Remove="Assets\VCRedistRepair_unpacked\**\*" />
-    <RepairRuntimePayload Include="Assets\VCRedistRepair_unpacked\**\*"
-                          Exclude="Assets\VCRedistRepair_unpacked\解包报告.md;Assets\VCRedistRepair_unpacked\SFX配置块.txt" />
+    <Content Remove="Assets\VCRedistRepair\**\*" />
+    <None Remove="Assets\VCRedistRepair\**\*" />
+    <RepairRuntimePayload Include="Assets\VCRedistRepair\**\*"
+                          Exclude="Assets\VCRedistRepair\解包报告.md;Assets\VCRedistRepair\SFX配置块.txt" />
   </ItemGroup>
 
   <!-- VC++ 2015-2022 官方运行库安装包（修复后钉装基线 14.42.34433） -->
@@ -98,21 +111,107 @@
   </ItemGroup>
 
   <Target Name="CopyRepairRuntimePayloadToBuildOutput" AfterTargets="Build" Condition="'$(IsDesignTimeBuild)' != 'true'">
-    <MakeDir Directories="@(RepairRuntimePayload->'$(OutDir)Assets\VCRedistRepair_unpacked\%(RecursiveDir)')" />
+    <MakeDir Directories="@(RepairRuntimePayload->'$(OutDir)Assets\VCRedistRepair\%(RecursiveDir)')" />
     <Copy SourceFiles="@(RepairRuntimePayload)"
-          DestinationFiles="@(RepairRuntimePayload->'$(OutDir)Assets\VCRedistRepair_unpacked\%(RecursiveDir)%(Filename)%(Extension)')"
+          DestinationFiles="@(RepairRuntimePayload->'$(OutDir)Assets\VCRedistRepair\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="CopyRepairRuntimePayloadToPublish" AfterTargets="Publish">
-    <MakeDir Directories="@(RepairRuntimePayload->'$(PublishDir)Assets\VCRedistRepair_unpacked\%(RecursiveDir)')" />
+    <MakeDir Directories="@(RepairRuntimePayload->'$(PublishDir)Assets\VCRedistRepair\%(RecursiveDir)')" />
     <Copy SourceFiles="@(RepairRuntimePayload)"
-          DestinationFiles="@(RepairRuntimePayload->'$(PublishDir)Assets\VCRedistRepair_unpacked\%(RecursiveDir)%(Filename)%(Extension)')"
+          DestinationFiles="@(RepairRuntimePayload->'$(PublishDir)Assets\VCRedistRepair\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
 
-  <Target Name="CopyOfflineHelperToBuildOutput" AfterTargets="Build" Condition="'$(IsDesignTimeBuild)' != 'true'">
+  <!-- Microsoft legacy DirectX redistributable: data files, excluded from WinUI PRI indexing. -->
+  <ItemGroup>
+    <Content Remove="Assets\DirectXRepair\**\*" />
+    <None Remove="Assets\DirectXRepair\**\*" />
+    <CompatibilityDirectXPayload Include="Assets\DirectXRepair\**\*" />
+  </ItemGroup>
+  <Target Name="CopyCompatibilityDirectXToBuild" AfterTargets="Build" Condition="'$(IsDesignTimeBuild)' != 'true'">
+    <MakeDir Directories="$(OutDir)Assets\DirectXRepair" />
+    <Copy SourceFiles="@(CompatibilityDirectXPayload)" DestinationFiles="@(CompatibilityDirectXPayload->'$(OutDir)Assets\DirectXRepair\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyCompatibilityDirectXToPublish" AfterTargets="Publish">
+    <MakeDir Directories="$(PublishDir)Assets\DirectXRepair" />
+    <Copy SourceFiles="@(CompatibilityDirectXPayload)" DestinationFiles="@(CompatibilityDirectXPayload->'$(PublishDir)Assets\DirectXRepair\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- 前后端分离 C2/C3：把各官方后端 EXE 随构建复制到输出目录 Backends\<模块>\ 下（BackendPaths 的部署约定）。 -->
+  <ItemGroup>
+    <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.Backend.Ace\DeltaNFD.Backend.Ace.csproj">
+      <ModuleFolder>ace</ModuleFolder>
+    </OfficialBackend>
+    <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.Backend.Gpu\DeltaNFD.Backend.Gpu.csproj">
+      <ModuleFolder>gpu</ModuleFolder>
+    </OfficialBackend>
+    <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.Backend.Runtime\DeltaNFD.Backend.Runtime.csproj">
+      <ModuleFolder>runtime</ModuleFolder>
+    </OfficialBackend>
+    <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.Backend.SystemMaintenance\DeltaNFD.Backend.SystemMaintenance.csproj">
+      <ModuleFolder>system</ModuleFolder>
+    </OfficialBackend>
+    <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.Backend.CpuFrame\DeltaNFD.Backend.CpuFrame.csproj">
+      <ModuleFolder>cpuframe</ModuleFolder>
+    </OfficialBackend>
+  </ItemGroup>
+
+  <Target Name="CopyOfficialBackendsToBuildOutput" AfterTargets="Build"
+          Condition="'$(IsDesignTimeBuild)' != 'true'"
+          Outputs="$(OutDir)Backends\%(OfficialBackend.ModuleFolder)\.build-stamp">
+    <MSBuild Projects="%(OfficialBackend.Identity)"
+             Targets="Restore;Build"
+             Properties="Configuration=$(Configuration);Platform=x64;NuGetAudit=$(NuGetAudit)"
+             RemoveProperties="TargetFramework;RuntimeIdentifier;TargetPlatformVersion;TargetPlatformMinVersion;BaseIntermediateOutputPath;BaseOutputPath;MSBuildProjectExtensionsPath;IntermediateOutputPath;OutputPath;OutDir" />
+    <MSBuild Projects="%(OfficialBackend.Identity)"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration);Platform=x64"
+             RemoveProperties="TargetFramework;RuntimeIdentifier;TargetPlatformVersion;TargetPlatformMinVersion;BaseIntermediateOutputPath;BaseOutputPath;MSBuildProjectExtensionsPath;IntermediateOutputPath;OutputPath;OutDir">
+      <Output TaskParameter="TargetOutputs" ItemName="_OfficialBackendTargetPath" />
+    </MSBuild>
+    <PropertyGroup>
+      <_OfficialBackendRoot>@(_OfficialBackendTargetPath->'%(RootDir)%(Directory)')</_OfficialBackendRoot>
+      <_OfficialBackendDest>$(OutDir)Backends\%(OfficialBackend.ModuleFolder)</_OfficialBackendDest>
+    </PropertyGroup>
+    <ItemGroup>
+      <_OfficialBackendFile Include="$(_OfficialBackendRoot)*" />
+    </ItemGroup>
+    <MakeDir Directories="$(_OfficialBackendDest)" Condition="'@(_OfficialBackendFile)' != ''" />
+    <Copy SourceFiles="@(_OfficialBackendFile)"
+          DestinationFolder="$(_OfficialBackendDest)"
+          SkipUnchangedFiles="true" Condition="'@(_OfficialBackendFile)' != ''" />
+  </Target>
+
+  <!--
+    T5 自包含发布布局：只有显式传 -p:PublishSelfContainedComponents=true 时才把五个官方后端与
+    脱机助手一起发布到发布目录。每个子项目使用各自隔离的 ArtifactsPath（不用共享中间目录），
+    因此不会互相覆盖 assets/deps。默认关闭，不影响普通 build / 调试发布。
+  -->
+  <PropertyGroup>
+    <PublishSelfContainedComponents Condition="'$(PublishSelfContainedComponents)' == ''">false</PublishSelfContainedComponents>
+    <PublishComponentsArtifactsPath Condition="'$(PublishComponentsArtifactsPath)' == ''">$(BaseIntermediateOutputPath)official-components</PublishComponentsArtifactsPath>
+  </PropertyGroup>
+
+  <Target Name="PublishOfficialBackendsToPublish" AfterTargets="Publish"
+          Condition="'$(IsDesignTimeBuild)' != 'true' and '$(PublishSelfContainedComponents)' == 'true'">
+    <MSBuild Projects="%(OfficialBackend.Identity)"
+             Targets="Restore;Publish"
+             BuildInParallel="false"
+             Properties="Configuration=$(Configuration);Platform=x64;SelfContained=true;UseArtifactsOutput=true;ArtifactsPath=$(PublishComponentsArtifactsPath);PublishDir=$(PublishDir)Backends\%(OfficialBackend.ModuleFolder)\;NuGetAudit=$(NuGetAudit)"
+             RemoveProperties="TargetFramework;TargetPlatformVersion;TargetPlatformMinVersion;BaseIntermediateOutputPath;BaseOutputPath;MSBuildProjectExtensionsPath;IntermediateOutputPath;OutputPath;OutDir" />
+  </Target>
+
+  <Target Name="PublishOfflineHelperToPublish" AfterTargets="Publish"
+          Condition="'$(IsDesignTimeBuild)' != 'true' and '$(PublishSelfContainedComponents)' == 'true'">
     <MSBuild Projects="$(MSBuildProjectDirectory)\..\DeltaNFD.OfflineHelper\DeltaNFD.OfflineHelper.csproj"
+             Targets="Restore;Publish"
+             Properties="Configuration=$(Configuration);Platform=x64;SelfContained=true;UseArtifactsOutput=true;ArtifactsPath=$(PublishComponentsArtifactsPath);PublishDir=$(PublishDir)OfflineHelper\;NuGetAudit=$(NuGetAudit)"
+             RemoveProperties="TargetFramework;TargetPlatformVersion;TargetPlatformMinVersion;BaseIntermediateOutputPath;BaseOutputPath;MSBuildProjectExtensionsPath;IntermediateOutputPath;OutputPath;OutDir" />
+  </Target>
+
+  <Target Name="CopyOfflineHelperToBuildOutput" AfterTargets="Build" Condition="'$(IsDesignTimeBuild)' != 'true'">    <MSBuild Projects="$(MSBuildProjectDirectory)\..\DeltaNFD.OfflineHelper\DeltaNFD.OfflineHelper.csproj"
              Targets="Restore;Build"
              Properties="Configuration=$(Configuration);Platform=x64;NuGetAudit=$(NuGetAudit)"
              RemoveProperties="TargetFramework;RuntimeIdentifier;TargetPlatformVersion;TargetPlatformMinVersion;BaseIntermediateOutputPath;BaseOutputPath;MSBuildProjectExtensionsPath;IntermediateOutputPath;OutputPath;OutDir" />

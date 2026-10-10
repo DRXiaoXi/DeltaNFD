@@ -8,7 +8,9 @@ internal static class GpuSpoofWatchChecks
         void Check(bool value, string name) { if (!value) throw new Exception(name); }
         Check(!GpuSpoofWatch.IsInvalidated(entry, entry.DriverStamp, entry.ExpectedName), "伪装正常不提醒");
         Check(!GpuSpoofWatch.IsInvalidated(entry, entry.DriverStamp, "原型号"), "名称变化不能冒充驱动变化");
-        Check(!GpuSpoofWatch.IsInvalidated(entry, "2 | oem2.inf | date", entry.ExpectedName), "驱动变化但伪装仍在不提醒失效");
+        // 驱动印记变化即判失效（2026-10 修正：驱动更新可能保留 DeviceDesc 伪装字符串，
+        // 但伪装实际已随驱动重载失效；名称是否被还原只用于 UI 文案，不参与判定）。
+        Check(GpuSpoofWatch.IsInvalidated(entry, "2 | oem2.inf | date", entry.ExpectedName), "驱动变化即使伪装名残留也提醒失效");
         Check(GpuSpoofWatch.IsInvalidated(entry, "2 | oem2.inf | date", "@oem2.inf;原型号"), "驱动变更且名称被还原需要提醒");
         Check(!GpuSpoofWatch.IsInvalidated(entry, null, "原型号"), "读取失败不猜驱动变化");
         Check(!GpuSpoofWatch.IsInvalidated(entry, "2", null), "名称读取失败不猜失效");

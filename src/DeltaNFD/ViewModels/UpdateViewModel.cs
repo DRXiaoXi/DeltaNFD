@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DeltaNFD.Services;
@@ -61,6 +61,7 @@ public partial class UpdateViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ActionEnabled))]
     [NotifyPropertyChangedFor(nameof(SkipEnabled))]
     [NotifyPropertyChangedFor(nameof(CheckEnabled))]
+    [NotifyPropertyChangedFor(nameof(ChannelEnabled))]
     private bool isBusy;
 
     [ObservableProperty]
@@ -72,6 +73,17 @@ public partial class UpdateViewModel : ObservableObject
 
     [ObservableProperty]
     private bool autoCheck = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UpdateChannelDescription))]
+    private int updateChannelIndex;
+
+    public bool ChannelEnabled => !IsBusy;
+    public string UpdateChannelDescription => UpdateChannelIndex == 0
+        ? "接收 Alpha、Beta 和 Release 更新。" : "只接收 Beta 和 Release 更新。";
+
+    [ObservableProperty]
+    private bool gitHubAccelerate;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SkipEnabled))]
@@ -106,8 +118,10 @@ public partial class UpdateViewModel : ObservableObject
 
     public UpdateViewModel()
     {
-        // 直接写字段：构造期赋值不应触发 OnAutoCheckChanged 的持久化
+        // 直接写字段：构造期赋值不应触发 OnAutoCheckChanged / OnGitHubAccelerateChanged 的持久化
         autoCheck = AppSettingsStore.Read().AutoUpdateCheckEnabled;
+        gitHubAccelerate = AppSettingsStore.Read().GitHubAccelerateEnabled;
+        updateChannelIndex = UpdateChannelPolicy.Normalize(AppSettingsStore.Read().UpdateChannel) == UpdateChannel.Internal ? 0 : 1;
         CurrentVersionText = AppVersion.Text;
         RenderLastResult();
     }
@@ -231,7 +245,7 @@ public partial class UpdateViewModel : ObservableObject
                         await ConfirmHook(
                             "下载并安装更新",
                             $"将下载 {AvailableVersionText}{sizeHint} 并静默安装。\n\n" +
-                            "安装前本工具会退出，安装完成后自动重新打开；设置、备份与日志保存在 %APPDATA%，不会被删除。\n" +
+                            "安装前本工具会退出，安装完成后请从快捷方式重新打开；设置、备份与日志保存在 %APPDATA%，不会被删除。\n" +
                             "更新期间帧格 / CPU 调度等后台监控会中断约 1 分钟。",
                             "下载并安装");
 
@@ -269,18 +283,6 @@ public partial class UpdateViewModel : ObservableObject
             ActionButtonText = "重新尝试安装";
             StatusText = "下载完成并通过校验，正在启动安装程序…";
 
-            using var pluginGate = ServiceLocator.PluginRuntime.BlockNewOperations();
-            var pluginBlocker = await PluginLifecycleGuard.PrepareHandoverAsync(ServiceLocator.Plugins, ServiceLocator.PluginRuntime, "软件更新");
-            if (pluginBlocker.Length > 0) { StatusText = pluginBlocker; Severity = InfoBarSeverity.Error; return; }
-
-            var offline = await new OfflineModeCoordinator().PrepareForRemovalAsync(restoreCpuSets: false);
-            if (!offline.Success)
-            {
-                StatusText = "更新暂缓：" + offline.Message;
-                Severity = InfoBarSeverity.Error;
-                return;
-            }
-
             var launch = await _update.LaunchInstallerAsync(manifest, download.InstallerPath);
             if (!launch.Success)
             {
@@ -292,9 +294,7 @@ public partial class UpdateViewModel : ObservableObject
             StatusText = launch.Message;
             Severity = InfoBarSeverity.Success;
 
-            // 留一拍让用户看到提示，然后退出交给安装器（安装器装完会重新拉起新版本）
-            await Task.Delay(900);
-            App.MainWindow?.RequestExitForUpdate();
+            // The installer requests cooperative exit. A timed UI exit must not interrupt its recovery.
         }
         catch (OperationCanceledException)
         {
@@ -415,6 +415,34 @@ public partial class UpdateViewModel : ObservableObject
         {
             StatusText = "已关闭启动时自动检查更新（仍可手动检查）。";
         }
+    }
+
+    partial void OnUpdateChannelIndexChanged(int value)
+    {
+        if (value is not (0 or 1)) return;
+        var channel = value == 0 ? UpdateChannel.Internal : UpdateChannel.Public;
+        AppSettingsStore.Update(s => s.UpdateChannel = channel);
+        _update.ResetCheckResult();
+        RenderLastResult();
+        StatusText = "已切换到" + UpdateChannelPolicy.Name(channel) + "，请重新检查更新。";
+        Severity = InfoBarSeverity.Informational;
+        Log.Info("更新：更新通道 = " + channel);
+    }
+
+    partial void OnGitHubAccelerateChanged(bool value)
+    {
+        AppSettingsStore.Update(s => s.GitHubAccelerateEnabled = value);
+        Log.Info("更新：GitHub 加速 = " + value);
+
+        // 开关变化后立即重新评估加速模式（探测或读缓存）
+        if (_update is UpdateService service)
+        {
+            service.RefreshSources();
+        }
+
+        StatusText = value
+            ? "GitHub 加速已开启：会先探测官方源，不通时自动切换加速镜像。"
+            : "GitHub 加速已关闭：始终直连官方源。";
     }
 
     private void OnProgress(UpdateProgressInfo info)

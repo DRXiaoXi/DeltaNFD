@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    共享执行库（C1/C2）：
+    - 仅由五个官方后端 EXE 引用，前端绝不引用；
+    - 不含 WinUI/WindowsAppSDK 依赖，可在无 UI 的隔离构建与冒烟测试中编译；
+    - T6：已消除对主工程业务源码的 <Compile Include> 链接；共享基础设施物理移入
+      DeltaNFD.Shared 并以项目引用引入（Execution 内不含任何指向 ..\DeltaNFD\ 的链接）。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>DeltaNFD.Execution</AssemblyName>
+    <RootNamespace>DeltaNFD.Execution</RootNamespace>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Version>0.91</Version>
+    <InformationalVersion>Beta0.91</InformationalVersion>
+    <WindowsPackageType>None</WindowsPackageType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DeltaNFD.Contracts\DeltaNFD.Contracts.csproj" />
+    <ProjectReference Include="..\DeltaNFD.Shared\DeltaNFD.Shared.csproj" />
+  </ItemGroup>
+
+  <!-- 前后端分离 C5：脱机助手引用后端库（不再自编译共享基础设施副本）。 -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="DeltaNFD.OfflineHelper" />
+  </ItemGroup>
+
+  <!-- 运行库修复诊断读取事件日志；着色器服务读取 WMI 显卡信息 -->
+  <ItemGroup>
+    <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.1" />
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="obj\**\*.cs" />
+  </ItemGroup>
+
+</Project>

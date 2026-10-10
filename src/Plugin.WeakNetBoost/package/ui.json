@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "controls": [
+    { "id": "title", "type": "text", "text": "弱网加速" },
+    { "id": "intro", "type": "text", "text": "弱网环境下，把本工具的「检查更新 + 下载安装包」改走 gh-proxy 加速节点。开启后会改写用户级更新源 %APPDATA%\\Delta NFD\\update-source.json（原文件先整份备份到插件数据目录），关闭时按备份还原。安装包仍由宿主校验 SHA256。加速节点是第三方公共服务，可用性不由本工具保证。" },
+    { "id": "enabled", "type": "toggle", "label": "启用弱网加速（勾选后点下方按钮生效）", "default": false },
+    { "id": "apply", "type": "button", "label": "应用开关设置", "operationId": "apply" },
+    { "id": "probe", "type": "button", "label": "检查加速状态", "operationId": "probe" },
+    { "id": "progress", "type": "progress" },
+    { "id": "result", "type": "result" }
+  ]
+}

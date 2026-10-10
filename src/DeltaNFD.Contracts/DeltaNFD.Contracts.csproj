@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    官方后端合同程序集（C1）：
+    - 只含协议码、DTO 与领域合同类型，不含任何执行实现；
+    - 前端只引用本程序集，不引用执行库；
+    - 五个官方后端 EXE 与前端共用同一份协议定义。
+    目标框架刻意保持 net8.0（非 windows），以便在评审时一眼看出「无执行实现」。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>DeltaNFD.Contracts</AssemblyName>
+    <RootNamespace>DeltaNFD.Backends</RootNamespace>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Platforms>AnyCPU;x64</Platforms>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Version>0.91</Version>
+    <InformationalVersion>Beta0.91</InformationalVersion>
+  </PropertyGroup>
+
+</Project>

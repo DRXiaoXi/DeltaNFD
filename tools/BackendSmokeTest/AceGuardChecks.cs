@@ -58,9 +58,28 @@ internal static class AceGuardChecks
             if (freeCore.Level == AceCoreCheckLevel.Blocked)
                 throw new Exception("三角洲未运行时 ACE-CORE 检测被误判为 Blocked");
 
+            // 3) 虚拟化环境检测：不触碰 ACE 组件，即使三角洲"运行中"也必须照常返回硬件+系统两层结果。
+            var virtCheck = await new AceService(store, null, static () => true).CheckVirtualizationAsync();
+            if (virtCheck.Hardware.Count == 0)
+                throw new Exception("虚拟化检测未返回硬件层结果");
+            if (virtCheck.System.Count == 0)
+                throw new Exception("虚拟化检测未返回系统层结果");
+            // 每项都必须有明确的名称/状态/详情，不能出现空白条目。
+            foreach (var item in virtCheck.Hardware.Concat(virtCheck.System))
+            {
+                if (string.IsNullOrWhiteSpace(item.Name) || string.IsNullOrWhiteSpace(item.Detail))
+                    throw new Exception($"虚拟化检测条目不完整：{item.Id}");
+                if (item.Category is not ("hardware" or "system"))
+                    throw new Exception($"虚拟化检测条目分类非法：{item.Id} -> {item.Category}");
+            }
+
             Console.WriteLine(
                 $"ACE 检测闸门检查通过：运行中完全跳过组件扫描与 ACE-CORE 检测（服务 {blockedScan.Services.Count} 项、"
                 + $"目录 {blockedScan.Paths.Count} 项均为空）且禁止清理；未运行时正常枚举 {freeScan.Services.Count} 项服务");
+            Console.WriteLine(
+                $"虚拟化环境检测通过：硬件 {virtCheck.Hardware.Count} 项、系统 {virtCheck.System.Count} 项；"
+                + $"硬件[{string.Join(";", virtCheck.Hardware.Select(i => $"{i.Id}={i.Status}"))}] "
+                + $"系统[{string.Join(";", virtCheck.System.Select(i => $"{i.Id}={i.Status}"))}]");
         }
         finally
         {

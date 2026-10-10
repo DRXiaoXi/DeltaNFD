@@ -88,8 +88,6 @@ public partial class LabViewModel : ObservableObject
     [ObservableProperty] private int dualCcdGameCcdIndex;
     [ObservableProperty] private int dualCcdApplyModeIndex;
     [ObservableProperty] private string dualCcdStatusText = "";
-    [ObservableProperty] private bool memoryLimitDetected;
-    [ObservableProperty] private string memoryLimitText = "正在检测…";
     [ObservableProperty] private bool singleCcdVisible;
     [ObservableProperty] private bool singleCcdBusy;
     [ObservableProperty] private string singleCcdStatusText = "";
@@ -348,13 +346,6 @@ public partial class LabViewModel : ObservableObject
             _affinitySuppress = false;
             UpdateAffinityStatusTextFromMask(savedAffinityMask);
 
-            // 内存限制检测
-            var (detected, removedMb, rawOutput) = await _cpu.DetectMemoryLimitAsync();
-            MemoryLimitDetected = detected;
-            MemoryLimitText = detected
-                ? $"检测到 bcdedit removememory = {removedMb} MB（可用内存被限制为约 12 GB）"
-                : "未检测到内存限制";
-
             CcdSectionText = topology.IsAmd ? "AMD CCD 判定" : "AMD CCD 判定（非 AMD 处理器不适用）";
             CcdAdvice = topology.CcdAdvice;
             CcdVisible = topology.IsAmd;
@@ -450,8 +441,10 @@ public partial class LabViewModel : ObservableObject
             return;
         }
 
-        await Task.Run(() => CpuTopologyService.ApplyAffinityRuleTick(mask));
-        GameAffinityStatusText = $"已应用掩码 0x{mask:X}（目标游戏运行中持续保持）。";
+        var applied = await DeltaNFD.Services.Backends.BackendCpuFrameService.Instance.ApplyAffinityAsync(mask);
+        GameAffinityStatusText = applied.Success
+            ? $"已应用掩码 0x{mask:X}（目标游戏运行中持续保持）。"
+            : "亲和性规则应用失败：" + applied.Message;
     }
 
     /// <summary>亲和性快捷按钮（仅 CCD0 / 仅 CCD1）是否显示（双CCD 机型才有第二个 CCD）。</summary>
@@ -571,7 +564,7 @@ public partial class LabViewModel : ObservableObject
         }
         else
         {
-            CpuTopologyService.RestoreAffinityRule();
+            _ = DeltaNFD.Services.Backends.BackendCpuFrameService.Instance.ApplyAffinityAsync(0);
         }
     }
 
@@ -586,7 +579,7 @@ public partial class LabViewModel : ObservableObject
         var mask = AffinityRuleMask;
         AppSettingsStore.Update(s => s.GameAffinityRuleMask = mask);
         UpdateAffinityStatusTextFromMask(mask);
-        if (mask == 0) CpuTopologyService.RestoreAffinityRule();
+        if (mask == 0) _ = DeltaNFD.Services.Backends.BackendCpuFrameService.Instance.ApplyAffinityAsync(0);
     }
 
     private void UpdateAffinityStatusTextFromMask(ulong mask)
@@ -719,25 +712,6 @@ public partial class LabViewModel : ObservableObject
     private string CcdLabel(int index) =>
         index >= 0 && index < DualCcdChoices.Count ? DualCcdChoices[index] : $"CCD{index}";
 
-    /// <summary>移除 bcdedit removememory 内存限制。</summary>
-    public async Task<OperationResult?> RemoveMemoryLimitAsync()
-    {
-        if (IsApplying)
-        {
-            return null;
-        }
-
-        IsApplying = true;
-        try
-        {
-            return await _cpu.RemoveMemoryLimitAsync();
-        }
-        finally
-        {
-            IsApplying = false;
-        }
-    }
-
     // ---------------- 单CCD 优化调度 ----------------
 
     /// <summary>按钮不再要求游戏在运行：未运行时点击=登记规则，游戏启动后由轮询自动应用并持续保持。</summary>
@@ -757,7 +731,7 @@ public partial class LabViewModel : ObservableObject
         SingleCcdBusy = true;
         try
         {
-            if (CpuTopologyService.DualCcdSchedulingActive)
+            if (CpuFrameStatusState.DualCcdSchedulingActive)
             {
                 var dualCcd = await _cpu.RevertDualCcdSchedulingAsync();
                 if (!dualCcd.Success)
@@ -839,11 +813,11 @@ public partial class LabViewModel : ObservableObject
             var settings = AppSettingsStore.Read();
             var guid = settings.AtlasPowerSchemeGuid;
             var scheme = schemes.FirstOrDefault(s => !string.IsNullOrWhiteSpace(guid) && s.Guid.Equals(guid, StringComparison.OrdinalIgnoreCase))
-                ?? schemes.FirstOrDefault(s => s.Name == PowerService.NoPowerSaveSchemeName ||
-                    PowerService.LegacyNoPowerSaveNames.Contains(s.Name));
+                ?? schemes.FirstOrDefault(s => s.Name == PowerSchemes.NoPowerSaveSchemeName ||
+                    PowerSchemes.LegacyNoPowerSaveNames.Contains(s.Name));
             SchemeGuid = scheme?.Guid ?? "";
             SchemeImported = scheme is not null;
-            SchemeNeedsNameMigration = schemes.Any(s => PowerService.LegacyNoPowerSaveNames.Contains(s.Name));
+            SchemeNeedsNameMigration = schemes.Any(s => PowerSchemes.LegacyNoPowerSaveNames.Contains(s.Name));
 
             Log.Info($"CPU实验室·电源计划检测：缓存 GUID={(string.IsNullOrWhiteSpace(guid) ? "(空)" : guid)}，识别 GUID={(scheme?.Guid ?? "(无)")}，活动 GUID={(schemes.FirstOrDefault(s => s.IsActive)?.Guid ?? "(未知)")}，已导入={SchemeImported}，帧格激活={settings.FrameModeActive}，帧格电源锁定={settings.FramePowerLockEnabled}，锁定目标={(string.IsNullOrWhiteSpace(settings.FramePowerLockTargetGuid) ? "当前计划" : settings.FramePowerLockTargetGuid)}，锁定原计划={(string.IsNullOrWhiteSpace(settings.FramePowerPreviousSchemeGuid) ? "(空)" : settings.FramePowerPreviousSchemeGuid)}");
 
@@ -911,7 +885,7 @@ public partial class LabViewModel : ObservableObject
             if (string.IsNullOrWhiteSpace(guid))
             {
                 guid = (await ServiceLocator.Power.GetSchemesAsync())
-                    .FirstOrDefault(s => s.Name == PowerService.NoPowerSaveSchemeName)?.Guid;
+                    .FirstOrDefault(s => s.Name == PowerSchemes.NoPowerSaveSchemeName)?.Guid;
             }
 
             if (string.IsNullOrWhiteSpace(guid))

@@ -1,4 +1,5 @@
 using DeltaNFD.Services;
+using DeltaNFD.Services.Backends;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -77,6 +78,12 @@ internal static class FrameModeFlow
 
     public static async Task RunActivateAsync(XamlRoot root, IFrameService frame)
     {
+        try { await RunActivateCoreAsync(root, frame); }
+        catch (Exception ex) { await ReportFailureAsync(root, "开启", ex); }
+    }
+
+    private static async Task RunActivateCoreAsync(XamlRoot root, IFrameService frame)
+    {
         // 硬拦截预检：目标显卡正在驱动显示器（或无法确认）时禁止重载——
         // 禁用正在输出画面的显卡会造成无法恢复的黑屏（内屏直连 dGPU 的机型尤其如此）。
         if (frame.GpuSpoofEnabled && frame.IsGpuSpoofInFrame &&
@@ -93,6 +100,8 @@ internal static class FrameModeFlow
         {
             return;
         }
+
+        if (!await EnsureReviewedAsync(root, frame.GpuSpoofEnabled && frame.IsGpuSpoofInFrame)) return;
 
         var result = await frame.ActivateFrameModeAsync();
         if (!result.Success)
@@ -157,10 +166,18 @@ internal static class FrameModeFlow
 
     public static async Task RunDeactivateAsync(XamlRoot root, IFrameService frame)
     {
+        try { await RunDeactivateCoreAsync(root, frame); }
+        catch (Exception ex) { await ReportFailureAsync(root, "退出", ex); }
+    }
+
+    private static async Task RunDeactivateCoreAsync(XamlRoot root, IFrameService frame)
+    {
         if (!await ConfirmAsync(root, "退出一键帧格模式？", await BuildDeactivateConfirmTextAsync(frame)))
         {
             return;
         }
+
+        if (!await EnsureReviewedAsync(root, frame.IsGpuSpoofInFrame)) return;
 
         var result = await frame.DeactivateFrameModeAsync();
         if (!result.Success)
@@ -183,6 +200,32 @@ internal static class FrameModeFlow
         {
             await ShowMessageAsync(root, "已退出帧格模式", result.Message);
         }
+    }
+
+    private static async Task<bool> EnsureReviewedAsync(XamlRoot root, bool includesGpu)
+    {
+        var blocker = FrameBackendReadiness.DescribeBlocker(includesGpu);
+        if (blocker.Length == 0) return true;
+        var choice = await new ContentDialog
+        {
+            XamlRoot = root, Title = "帧格需要先处理旧操作",
+            Content = new TextBlock { Text = blocker, TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = "核对并处理旧记录", CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+        }.ShowAsync();
+        if (choice != ContentDialogResult.Primary) return false;
+        await BackendReviewFlow.RunAsync(root, FrameBackendReadiness.RequiredModules(includesGpu));
+        blocker = FrameBackendReadiness.DescribeBlocker(includesGpu);
+        if (blocker.Length == 0) return true;
+        await ShowMessageAsync(root, "旧操作尚未处理完成", blocker);
+        return false;
+    }
+
+    private static async Task ReportFailureAsync(XamlRoot root, string action, Exception ex)
+    {
+        Log.Error("帧格" + action + "界面流程失败", ex);
+        try { await ShowMessageAsync(root, "帧格" + action + "未完成", ex.Message + "\n若有旧操作记录，请在「设置 → 核对未确认操作」中处理后重试。"); }
+        catch (Exception dialogError) { Log.Error("帧格失败提示无法显示", dialogError); }
     }
 
     /// <summary>

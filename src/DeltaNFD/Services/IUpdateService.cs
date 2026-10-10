@@ -160,6 +160,8 @@ public interface IUpdateService
 
     /// <summary>最近一次检查结果（尚未检查时为 null）；页面重新打开时据此回显，不重复联网。</summary>
     UpdateCheckResult? LastResult { get; }
+    /// <summary>通道切换后清空旧结果，并使正在返回的旧通道检查失效。</summary>
+    void ResetCheckResult();
 
     /// <summary>每次请求均检查更新；manual=true 忽略自动检查开关。安装位置与校验要求仍生效。</summary>
     Task<UpdateCheckResult> CheckAsync(bool manual, CancellationToken cancellationToken = default);

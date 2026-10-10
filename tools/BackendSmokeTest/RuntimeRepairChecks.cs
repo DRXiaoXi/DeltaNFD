@@ -33,6 +33,9 @@ internal static class RuntimeRepairChecks
         result = RuntimeRepairDiagnostics.BuildResult(0, new[] { bad, reboot }, Array.Empty<string>(), missing, false, "fixture", "");
         Assert(!result.Success && result.RequiresReboot, "失败和需重启必须同时保留");
         Assert(!new RuntimePackageResult("test.msi", 1638, "", "").Success, "MSI 版本冲突不能直接当作安装成功");
+        var failedPostcheck = good with { PostcheckPassed = false };
+        Assert(!failedPostcheck.Success && !RuntimeRepairDiagnostics.BuildResult(0, new[] { failedPostcheck },
+            Array.Empty<string>(), clean, false, "fixture", "").Success, "退出 0 的产品复核失败不能被正常分支扫描掩盖");
 
         var root = Path.Combine(Path.GetTempPath(), "DeltaNFD_RepairChecks_" + Guid.NewGuid().ToString("N"));
         var diagnostics = new RuntimeRepairDiagnostics(root);
@@ -61,7 +64,7 @@ internal static class RuntimeRepairChecks
             await diagnostics.CaptureOutputAsync(reader, "output-fixture.log", CancellationToken.None);
             var output = File.ReadAllText(Path.Combine(dir, "output-fixture.log"));
             Assert(output.StartsWith(new string('a', 6000)) && output.Contains("END"), "输出不再仅保留最后 4000 字符");
-            var sourceScript = Path.Combine(Directory.GetCurrentDirectory(), "src", "DeltaNFD", "Assets", "VCRedistRepair_unpacked", "Installer.cmd");
+            var sourceScript = Path.Combine(Directory.GetCurrentDirectory(), "src", "DeltaNFD", "Assets", "VCRedistRepair", "Installer.cmd");
             if (File.Exists(sourceScript)) await CheckBatchHelperAsync(diagnostics, sourceScript, root);
         }
         finally
@@ -73,12 +76,12 @@ internal static class RuntimeRepairChecks
         }
 
         var assets = Path.Combine(Directory.GetCurrentDirectory(), "src", "DeltaNFD", "Assets");
-        if (Directory.Exists(Path.Combine(assets, "VCRedistRepair_unpacked")))
+        if (Directory.Exists(Path.Combine(assets, "VCRedistRepair")))
         {
             var verify = typeof(RuntimeGuardService).GetMethod("VerifyRepairPackage", BindingFlags.NonPublic | BindingFlags.Static)!;
-            var check = (OperationResult)verify.Invoke(null, new object?[] { assets, Path.Combine(assets, "VCRedistRepair_unpacked"), null })!;
+            var check = (OperationResult)verify.Invoke(null, new object?[] { assets, Path.Combine(assets, "VCRedistRepair"), null })!;
             Assert(check.Success, "更新后的脚本及 791 项安装数据哈希必须通过：" + check.Message);
-            var script = File.ReadAllText(Path.Combine(assets, "VCRedistRepair_unpacked", "Installer.cmd"));
+            var script = File.ReadAllText(Path.Combine(assets, "VCRedistRepair", "Installer.cmd"));
             Assert(script.Contains("/L*V") && script.Contains("completed.txt") && script.Contains("exit /b 1"), "安装脚本必须保留诊断和失败汇总");
         }
         else Console.WriteLine("SKIP: payload integrity (private runtime payload is not present in this checkout).");

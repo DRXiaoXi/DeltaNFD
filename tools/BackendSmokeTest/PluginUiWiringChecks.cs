@@ -20,6 +20,13 @@ internal static class PluginUiWiringChecks
         var catalog = Source("src", "DeltaNFD", "Services", "Plugins", "PluginNavigationCatalog.cs");
 
         // 管理页：保留选中项、恢复失败有提示、表单由共享控件渲染。
+        var import = page[page.IndexOf("private async void ImportButton_Click", StringComparison.Ordinal)..page.IndexOf("private async void AuthorizeButton_Click", StringComparison.Ordinal)];
+        Require(import.Contains("FolderPickerDialog.PickPluginPackage(owner)") && !import.Contains("FileOpenPicker"), "import uses elevated-compatible owned native picker");
+        Require(import.Contains("catch (Exception ex)") && import.Contains("HRESULT=") && import.Contains("ImportStatusText.Text"), "picker/import exceptions are logged and visible");
+        Require(import.Contains("if (_importInProgress) return") && import.Contains("finally") && import.Contains("ImportButton.IsEnabled = true"), "import blocks duplicate clicks and reenables after failures");
+        Require(import.IndexOf("if (path is null)", StringComparison.Ordinal) < import.IndexOf("PrepareHandoverAsync", StringComparison.Ordinal), "cancel does not drain plugins or import");
+        Require(import.Contains("_pageGeneration") && import.Contains("if (!IsCurrent())"), "stale import callbacks do not import after navigation");
+        Require(import.Contains("保持禁用") && !import.Contains("TryAuthorize("), "successful import does not authorize or run code");
         Require(page.Contains("PluginList.SelectedItem = Rows.FirstOrDefault") && page.Contains("if (_suppressPluginSelection) return;"), "refresh preserves selection");
         var restore = page[page.IndexOf("private async void RestoreButton_Click", StringComparison.Ordinal)..page.IndexOf("private async void UninstallButton_Click", StringComparison.Ordinal)];
         Require(restore.Contains("catch (Exception ex)"), "restore UI catches failures");

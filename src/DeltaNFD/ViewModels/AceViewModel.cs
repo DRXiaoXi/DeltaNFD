@@ -1,6 +1,7 @@
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DeltaNFD.Services;
+using DeltaNFD.Services.Backends;
 
 namespace DeltaNFD.ViewModels;
 
@@ -8,6 +9,7 @@ namespace DeltaNFD.ViewModels;
 public partial class AceViewModel : ObservableObject
 {
     private readonly IAceService _ace = ServiceLocator.Ace;
+    private readonly ISystemTweakService _tweaks = ServiceLocator.SystemTweaks;
 
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private bool isCleaning;
@@ -20,6 +22,19 @@ public partial class AceViewModel : ObservableObject
     [ObservableProperty] private string coreCheckText = "正在检测 ACE-CORE 冗余文件…";
     [ObservableProperty] private bool coreCheckBusy;
     [ObservableProperty] private bool hasBlockers;
+    [ObservableProperty] private bool cleanupNeedsReview;
+    [ObservableProperty] private string cleanupReviewMessage = "";
+
+    // ---- 虚拟化环境检测 ----
+    [ObservableProperty] private string virtSummaryText = "尚未检测。点「检测虚拟化环境」检查本机是否符合 ACE 反作弊的虚拟化要求。";
+    [ObservableProperty] private string hardwareCheckText = "";
+    [ObservableProperty] private string systemCheckText = "";
+    [ObservableProperty] private bool virtCheckBusy;
+
+    /// <summary>是否存在可一键修复的系统层冲突项（Hyper-V / VBS / HVCI 等）。</summary>
+    [ObservableProperty] private bool hasFixableConflict;
+    [ObservableProperty] private bool virtFixBusy;
+    [ObservableProperty] private string virtFixText = "";
 
     /// <summary>三角洲进程运行中 → 已暂停 ACE 检测（不读取任何 ACE 信息）。</summary>
     [ObservableProperty] private bool detectionPaused;
@@ -31,7 +46,7 @@ public partial class AceViewModel : ObservableObject
         "三角洲进程正在运行——已按需求暂停 ACE 组件检测，未读取任何 ACE 服务 / 目录 / 注册表项。" +
         "请完全退出游戏后点「重新扫描」。";
 
-    public bool CleanRefreshEnabled => !IsBusy;
+    public bool CleanRefreshEnabled => !IsBusy && !IsCleaning;
 
     partial void OnIsBusyChanged(bool value)
     {
@@ -40,15 +55,39 @@ public partial class AceViewModel : ObservableObject
         RefreshFlags();
     }
 
-    public bool CleanEnabled => !IsBusy && !IsCleaning && CanClean;
+    public bool CleanEnabled => !IsBusy && !IsCleaning && CanClean && !CleanupNeedsReview;
 
-    public bool CanRefresh => !IsBusy;
+    public bool CanRefresh => !IsBusy && !IsCleaning;
 
     public string CleanButtonText => IsCleaning ? "清理中…" : "一键清除 ACE";
 
     public string CoreCheckButtonText => CoreCheckBusy ? "检测中…" : "开始检测";
 
-    public bool CanCheckCore => !CoreCheckBusy && !DetectionPaused;
+    public bool CanCheckCore => !CoreCheckBusy && !DetectionPaused && !IsCleaning;
+
+    public string VirtCheckButtonText => VirtCheckBusy ? "检测中…" : "检测虚拟化环境";
+
+    /// <summary>虚拟化检测不触碰 ACE 组件，游戏运行中也可进行——只与自身忙态互斥。</summary>
+    public bool CanCheckVirt => !VirtCheckBusy;
+
+    /// <summary>一键修复按钮：存在系统层 Fail 项且不在修复中。</summary>
+    public bool CanFixVirt => HasFixableConflict && !VirtFixBusy;
+
+    public string VirtFixButtonText => VirtFixBusy ? "修复中…" : "一键修复系统层冲突";
+
+    partial void OnVirtCheckBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(VirtCheckButtonText));
+        OnPropertyChanged(nameof(CanCheckVirt));
+    }
+
+    partial void OnHasFixableConflictChanged(bool value) => OnPropertyChanged(nameof(CanFixVirt));
+
+    partial void OnVirtFixBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(VirtFixButtonText));
+        OnPropertyChanged(nameof(CanFixVirt));
+    }
 
     partial void OnCoreCheckBusyChanged(bool value)
     {
@@ -93,16 +132,26 @@ public partial class AceViewModel : ObservableObject
     partial void OnIsCleaningChanged(bool value) => RefreshFlags();
 
     partial void OnCanCleanChanged(bool value) => RefreshFlags();
+    partial void OnCleanupNeedsReviewChanged(bool value) => RefreshFlags();
+
+    public void RefreshCleanupReview()
+    {
+        CleanupNeedsReview = AceCleanupReadiness.RequiresReview;
+        CleanupReviewMessage = AceCleanupReadiness.DescribeBlocker();
+    }
 
     private void RefreshFlags()
     {
         OnPropertyChanged(nameof(CleanEnabled));
         OnPropertyChanged(nameof(CleanButtonText));
+        OnPropertyChanged(nameof(CleanRefreshEnabled));
+        OnPropertyChanged(nameof(CanRefresh));
+        OnPropertyChanged(nameof(CanCheckCore));
     }
 
     public async Task LoadAsync()
     {
-        if (IsBusy)
+        if (IsBusy || IsCleaning)
         {
             return;
         }
@@ -110,6 +159,7 @@ public partial class AceViewModel : ObservableObject
         IsBusy = true;
         try
         {
+            RefreshCleanupReview();
             var scan = await _ace.ScanAsync();
 
             if (scan.BlockedByGame)
@@ -176,6 +226,7 @@ public partial class AceViewModel : ObservableObject
         }
         finally
         {
+            RefreshCleanupReview();
             IsBusy = false;
         }
     }
@@ -189,17 +240,23 @@ public partial class AceViewModel : ObservableObject
         }
 
         IsCleaning = true;
+        OperationResult result;
         try
         {
             var progress = new Progress<string>(s => ScanSummary = s);
-            var result = await _ace.CleanAsync(progress);
-            await LoadAsync();
-            return result;
+            result = await _ace.CleanAsync(progress);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("ACE 清理页面操作未完成", ex);
+            result = OperationResult.Fail("ACE 清理未完成：" + ex.Message);
         }
         finally
         {
             IsCleaning = false;
         }
+        await LoadAsync();
+        return result;
     }
 
     /// <summary>ACE-CORE 冗余文件检测（清除 ACE 后会重装，此检测帮助发现多版本残留）。</summary>
@@ -234,6 +291,11 @@ public partial class AceViewModel : ObservableObject
             text.Append("👉 " + result.Advice);
             CoreCheckText = text.ToString();
         }
+        catch (Exception ex)
+        {
+            Log.Error("ACE-CORE 检测未完成", ex);
+            CoreCheckText = "检测未完成：" + ex.Message;
+        }
         finally
         {
             CoreCheckBusy = false;
@@ -247,5 +309,110 @@ public partial class AceViewModel : ObservableObject
         AceCoreCheckLevel.Failed => "⛔ ",
         AceCoreCheckLevel.Blocked => "⏸ ",
         _ => "ℹ ",
+    };
+
+    /// <summary>
+    /// 虚拟化环境检测：硬件层（BIOS 中 VT-x/SVM、VT-d/IOMMU）+ 系统层（VBS / HVCI / Hyper-V / 沙盒等）。
+    /// 不触碰 ACE 组件，游戏运行中也可使用。
+    /// </summary>
+    public async Task CheckVirtualizationAsync()
+    {
+        if (VirtCheckBusy)
+        {
+            return;
+        }
+
+        VirtCheckBusy = true;
+        try
+        {
+            var result = await _ace.CheckVirtualizationAsync();
+
+            VirtSummaryText = result.HasFailure
+                ? "⛔ " + result.OverallSummary
+                : result.HasUnknown
+                    ? "⚠ " + result.OverallSummary
+                    : "✓ " + result.OverallSummary;
+
+            HardwareCheckText = FormatItems(result.Hardware, result.BoardInfo);
+            SystemCheckText = FormatItems(result.System, "");
+            // 系统层存在 Fail 项才允许一键修复（Hyper-V/VBS/HVCI/沙盒等冲突）。
+            HasFixableConflict = result.System.Any(i => i.Status == AceVirtStatus.Fail);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("虚拟化环境检测未完成", ex);
+            VirtSummaryText = "⛔ 检测未完成：" + ex.Message;
+            HardwareCheckText = "";
+            SystemCheckText = "";
+            HasFixableConflict = false;
+        }
+        finally
+        {
+            VirtCheckBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// 一键修复系统层虚拟化冲突：等效 UP 推荐的「关闭 Hyper-V / VBS（含内核隔离）」，
+    /// 走 <see cref="SystemTweak.HyperVAndVbs"/> 完整流程（bcdedit off + DISM 禁功能 + 服务改手动 + DeviceGuard 注册表）。
+    /// 修复完成后自动重新检测。
+    /// </summary>
+    public async Task<OperationResult?> FixVirtualizationConflictsAsync()
+    {
+        if (VirtFixBusy)
+        {
+            return null;
+        }
+
+        VirtFixBusy = true;
+        VirtFixText = "";
+        try
+        {
+            var result = await _tweaks.DisableAsync(SystemTweak.HyperVAndVbs);
+            VirtFixText = (result.Success ? "✓ " : "⛔ ") + result.Message
+                          + (result.RequiresReboot ? "\n请先重启电脑，重启后再点「检测虚拟化环境」复核。" : "");
+            // 修复完自动复核（状态刷新依赖重启，未重启时部分项仍会显示原状）。
+            await CheckVirtualizationAsync();
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("虚拟化冲突一键修复未完成", ex);
+            VirtFixText = "⛔ 修复未完成：" + ex.Message;
+            return OperationResult.Fail("虚拟化冲突修复未完成：" + ex.Message);
+        }
+        finally
+        {
+            VirtFixBusy = false;
+        }
+    }
+
+    private static string FormatItems(List<AceVirtCheckItem> items, string headerLine)
+    {
+        var text = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(headerLine))
+        {
+            text.AppendLine(headerLine);
+        }
+
+        foreach (var item in items)
+        {
+            text.AppendLine(DescribeVirtStatus(item.Status) + item.Name + "：" + item.Detail);
+            if (item.Status is AceVirtStatus.Fail or AceVirtStatus.Warn or AceVirtStatus.Unknown
+                && !string.IsNullOrWhiteSpace(item.Advice))
+            {
+                text.AppendLine("    👉 " + item.Advice);
+            }
+        }
+
+        return text.ToString().TrimEnd();
+    }
+
+    private static string DescribeVirtStatus(AceVirtStatus status) => status switch
+    {
+        AceVirtStatus.Pass => "✓ ",
+        AceVirtStatus.Fail => "⛔ ",
+        AceVirtStatus.Warn => "⚠ ",
+        _ => "? ",
     };
 }

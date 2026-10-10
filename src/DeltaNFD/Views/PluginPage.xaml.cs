@@ -5,7 +5,6 @@ using Microsoft.UI.Xaml.Media;
 using DeltaNFD.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Windows.Storage.Pickers;
 
 namespace DeltaNFD.Views;
 
@@ -50,12 +49,16 @@ public sealed partial class PluginPage : Page
     private bool _historyActive;
     private bool _suppressHistoryFilter;
     private bool _suppressPluginSelection;
+    private bool _importInProgress;
+    private int _pageGeneration;
 
     /// <summary>共享声明式页面当前渲染的条目身份（ID+版本+哈希+状态）；未变则不重渲染，保留操作结果文本。</summary>
     private string? _renderedFormKey;
 
     private async void Page_Loaded(object sender, RoutedEventArgs e)
     {
+        _pageGeneration++;
+        ImportButton.IsEnabled = !_importInProgress;
         _historyActive = true;
         RefreshAll();
         HistoryList.ItemsSource = _historyRows;
@@ -64,6 +67,7 @@ public sealed partial class PluginPage : Page
 
     private void Page_Unloaded(object sender, RoutedEventArgs e)
     {
+        _pageGeneration++;
         _historyActive = false;
         _historyGeneration++;
         _historyCancellation?.Cancel();
@@ -251,29 +255,73 @@ public sealed partial class PluginPage : Page
 
     private async void ImportButton_Click(object sender, RoutedEventArgs e)
     {
-        if (App.MainWindow is null) return;
-        var picker = new FileOpenPicker();
-        WinRT.Interop.InitializeWithWindow.Initialize(
-            picker, WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow));
-        picker.FileTypeFilter.Add(".dnfdplugin");
-        var file = await picker.PickSingleFileAsync();
-        if (file is null) return;
-        // 替换/升级导入前统一拦截（待做清单第 9 项）。
-        var importBlocker = await PluginLifecycleGuard.PrepareHandoverAsync(
-            ServiceLocator.Plugins, ServiceLocator.PluginRuntime, "插件替换导入");
-        if (importBlocker.Length > 0)
+        if (_importInProgress) return;
+        _importInProgress = true;
+        ImportButton.IsEnabled = false;
+        var generation = _pageGeneration;
+        var phase = "选择文件";
+        bool IsCurrent() => _historyActive && generation == _pageGeneration && XamlRoot is not null;
+        try
         {
-            ImportStatusText.Text = importBlocker;
-            await ShowDialogAsync("导入被阻止", importBlocker);
-            return;
+            ImportStatusText.Text = "正在打开插件包选择窗口…";
+            await Task.Yield();
+            if (!IsCurrent()) return;
+            if (App.MainWindow is null) throw new InvalidOperationException("主窗口尚未就绪，请重新进入插件页面。");
+            var owner = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+            Log.Info("插件导入：显示原生插件包选择窗口。");
+            var path = Native.FolderPickerDialog.PickPluginPackage(owner);
+            if (path is null)
+            {
+                ImportStatusText.Text = "已取消选择，未导入插件。";
+                Log.Info("插件导入：用户取消选择，未执行交接或导入。");
+                return;
+            }
+            if (!IsCurrent()) return;
+            phase = "导入前交接";
+            ImportStatusText.Text = "正在检查插件恢复与停止状态…";
+            var importBlocker = await PluginLifecycleGuard.PrepareHandoverAsync(
+                ServiceLocator.Plugins, ServiceLocator.PluginRuntime, "插件替换导入");
+            if (!IsCurrent())
+            {
+                Log.Info("插件导入：页面已离开，未继续导入所选文件。");
+                return;
+            }
+            if (importBlocker.Length > 0)
+            {
+                ImportStatusText.Text = importBlocker;
+                await ShowDialogAsync("导入被阻止", importBlocker);
+                return;
+            }
+            phase = "验证与解包";
+            ImportStatusText.Text = "正在验证并导入插件包…";
+            await Task.Yield();
+            if (!IsCurrent()) return;
+            var result = ViewModel.Import(path);
+            if (!IsCurrent()) return;
+            var message = ViewModel.StatusText;
+            RefreshAll();
+            ImportStatusText.Text = message;
+            Log.Info($"插件导入结果：success={result.Succeeded}；message={message}");
+            if (result.Succeeded && result.Entry is { } entry)
+                await ShowDialogAsync("导入完成", $"插件“{entry.Name}”已导入并保持禁用。\n启用前需完成授权确认。");
+            else if (!result.Succeeded)
+                await ShowDialogAsync("导入失败", result.Error);
         }
-        var result = ViewModel.Import(file.Path);
-        ImportStatusText.Text = ViewModel.StatusText;
-        RefreshAll();
-        if (result.Succeeded && result.Entry is { } entry)
-            await ShowDialogAsync("导入完成", $"插件“{entry.Name}”已导入并保持禁用。\n启用前需完成授权确认。");
-        else if (!result.Succeeded)
-            await ShowDialogAsync("导入失败", result.Error);
+        catch (Exception ex)
+        {
+            Log.Error($"插件导入失败：阶段={phase}；HRESULT=0x{ex.HResult:X8}", ex);
+            if (IsCurrent())
+            {
+                ImportStatusText.Text = $"导入未完成（{phase}）：{ex.Message}";
+                try { await ShowDialogAsync("插件导入失败", ImportStatusText.Text); }
+                catch (Exception dialogError) { Log.Error("插件导入错误提示显示失败", dialogError); }
+            }
+        }
+        finally
+        {
+            _importInProgress = false;
+            if (_historyActive) ImportButton.IsEnabled = true;
+        }
     }
 
     private async void AuthorizeButton_Click(object sender, RoutedEventArgs e)

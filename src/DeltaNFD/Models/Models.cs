@@ -19,6 +19,8 @@ public class ProcessInfo
 {
     public string Name { get; set; } = "";
     public int Pid { get; set; }
+    public long StartTimeUtcTicks { get; set; }
+    public string ExecutablePath { get; set; } = "";
     public double MemoryMb { get; set; }
     public string Category { get; set; } = "";
 }

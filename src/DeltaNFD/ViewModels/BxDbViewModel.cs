@@ -197,6 +197,7 @@ public partial class BxDbViewModel : ObservableObject
     private readonly IBxService _bx = ServiceLocator.Bx;
     private readonly ISystemTweakService _tweaks = ServiceLocator.SystemTweaks;
     private readonly IPagefileService _pagefile = ServiceLocator.Pagefile;
+    private readonly IDefenderGuardService _defender = ServiceLocator.DefenderGuard;
 
     public ObservableCollection<BxSectionChipVm> Sections { get; } = new();
     public ObservableCollection<BxItemVm> Items { get; } = new();
@@ -251,14 +252,22 @@ public partial class BxDbViewModel : ObservableObject
         // 「pending」= UP推荐栏目（BxCatalog.Sections 末位）：5 个推荐条目 + 深度优化 20 项并入同一列表，
         // 共用「应用更改」统一应用（HANDOFF §25）
 
-        UpdateBackupSummary();
+        _ = UpdateBackupSummaryAsync();
         SelectedSection = Sections[0];
     }
 
-    public void UpdateBackupSummary()
+    /// <summary>异步读取备份仓库状态（来源：系统维护后端）；读取失败按「未知」如实显示，不冒充零。</summary>
+    public async Task UpdateBackupSummaryAsync()
     {
-        var bxCount = BxBackupStore.ReadAll().Count;
+        var bxStatus = await _bx.GetBackupStatusAsync();
         var otherCount = TweakBackupStore.Default.GetAll().Count;
+        if (!bxStatus.Readable)
+        {
+            BackupSummary = "扩展库备份读取失败（来源：系统维护后端）：" + bxStatus.Error;
+            return;
+        }
+
+        var bxCount = bxStatus.Count;
         BackupSummary = bxCount + otherCount == 0
             ? "尚未改动任何项——首次改动前会自动备份原始状态；APPX 和 OneDrive 移除不在一键恢复范围"
             : $"已记录 {bxCount + otherCount} 项原始状态（扩展库 {bxCount}，深度优化/虚拟内存 {otherCount}）；APPX 和 OneDrive 移除需手动重装";
@@ -285,7 +294,7 @@ public partial class BxDbViewModel : ObservableObject
             // 精简栏目：先作废 APPX 缓存，保证每次进页都按系统当前安装状态显示
             if (section.Id == "debloat")
             {
-                _bx.InvalidateAppxCache();
+                await _bx.InvalidateAppxCacheAsync();
             }
 
             // 服务组栏目
@@ -301,7 +310,7 @@ public partial class BxDbViewModel : ObservableObject
 
                 foreach (var row in rows)
                 {
-                    foreach (var name in _bx.ResolveServiceGroup(row.Group!))
+                    foreach (var name in await _bx.ResolveServiceGroupAsync(row.Group!))
                     {
                         row.Details.Add("· " + name);
                     }
@@ -382,7 +391,7 @@ public partial class BxDbViewModel : ObservableObject
                 });
 
                 // 明细：枚举全部底层操作，让用户看清每一项到底动了什么
-                if (i.Name == BxService.FullHyperVItemName)
+                if (i.Name == BxCatalog.FullHyperVItemName)
                 {
                     row.Details.Add("· 引导与安全设置：备份原值，关闭 hypervisor 启动、VBS、HVCI 和 Credential Guard");
                     row.Details.Add("· 可选功能：记录可读取的原状态，禁用已启用的 Hyper-V / 虚拟机平台功能");
@@ -567,7 +576,7 @@ public partial class BxDbViewModel : ObservableObject
 
             // 栏目加载完成后刷新跨栏目待应用计数（其他栏目带回的勾选意图会让按钮立即亮起）
             RefreshPendingFlags();
-            UpdateBackupSummary();
+            await UpdateBackupSummaryAsync();
         }
     }
 
@@ -804,7 +813,7 @@ public partial class BxDbViewModel : ObservableObject
             foreach (var row in serviceGroupPending)
             {
                 var lines = new List<string>();
-                foreach (var name in _bx.ResolveServiceGroup(row.Group!))
+                foreach (var name in await _bx.ResolveServiceGroupAsync(row.Group!))
                 {
                     var willBrake = BxCatalog.GetServiceWillBrake(name);
                     if (willBrake.Count > 0)
@@ -852,8 +861,8 @@ public partial class BxDbViewModel : ObservableObject
         DefenderPreflightReport? preflight = null;
         try
         {
-            preflight = await DefenderGuard.PreflightAsync(
-                pending.Select(p => (p.DisplayName, DescribeOpsForGuard(p))).ToList());
+            preflight = await _defender.PreflightAsync(
+                pending.Select(p => new DefenderBatchItem { Name = p.DisplayName, Ops = DescribeOpsForGuard(p) }).ToList());
         }
         catch (Exception ex)
         {
@@ -947,13 +956,13 @@ public partial class BxDbViewModel : ObservableObject
 
             Log.Info($"扩展库：应用完成，成功 {appliedOk} 项，安全跳过 {appliedSkipped} 项，失败 {appliedFail} 项");
             StatusText = $"已应用 {appliedOk} 项，安全跳过 {appliedSkipped} 项" + (appliedFail > 0 ? $"，失败 {appliedFail} 项（详情见上）。" : "。");
-            UpdateBackupSummary();
+            await UpdateBackupSummaryAsync();
 
             // 优化后收尾：移除会话排除项 + 需要时恢复实时保护（结果在状态刷新后提醒）
             DefenderPostApplyResult? guardResult = null;
             try
             {
-                guardResult = await DefenderGuard.PostApplyAsync(preflight);
+                guardResult = await _defender.PostApplyAsync();
             }
             catch (Exception ex)
             {
@@ -1058,13 +1067,15 @@ public partial class BxDbViewModel : ObservableObject
             var bx = await _bx.RestoreAllAsync();
             var restored = bx.Restored;
             var errors = bx.Errors.ToList();
-            foreach (var tweak in _tweaks.GetBackedUpTweaks())
+            foreach (var tweak in await _tweaks.GetBackedUpTweaksAsync())
             {
                 var result = await _tweaks.RestoreAsync(tweak);
                 if (result.Success) restored++;
                 else errors.Add($"{tweak}：{result.Message}");
             }
 
+            // HasOriginalBackup 为同步属性，前端经 IPC 实现：恢复前先拉取一次状态刷新缓存。
+            await _pagefile.GetInfoAsync();
             if (_pagefile.HasOriginalBackup)
             {
                 var result = await _pagefile.RestoreOriginalAsync();
@@ -1083,7 +1094,7 @@ public partial class BxDbViewModel : ObservableObject
                 : $"已恢复 {restored} 项，失败 {errors.Count} 项。" +
                   (errors.Count > 0 ? " " + string.Join("；", errors.Take(3)) : " 部分设置需重启生效。") +
                   " 已移除的 APPX 和 OneDrive 需手动重新安装。";
-            UpdateBackupSummary();
+            await UpdateBackupSummaryAsync();
             await LoadItemsAsync();
             StatusText = restoreMessage;
         }

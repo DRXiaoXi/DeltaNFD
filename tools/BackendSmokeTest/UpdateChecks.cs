@@ -9,7 +9,7 @@ internal static class UpdateChecks
 {
     private static readonly List<string> Failures = [];
 
-    public static void Run()
+    public static void Run(bool includeGameCompatibility = true)
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "DeltaNFD-updatechecks-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
@@ -29,6 +29,8 @@ internal static class UpdateChecks
             RunSemanticsChecks();
             RunConfigChecks(tempRoot);
             RunEffectiveConfigChecks(tempRoot);
+            RunAccelerationChecks();
+            if (includeGameCompatibility) RunGameCompatibilityChecks();
             RunEnvironmentReport();
         }
         finally
@@ -547,6 +549,72 @@ internal static class UpdateChecks
         Check(UpdateService.TryReadConfigText(UpdateService.UserConfigTemplate, out var fromText, out var templateReason) &&
               fromText.ManifestUrls is { Count: > 0 },
             "模板文本可直接解析：" + templateReason);
+    }
+
+    private static void RunAccelerationChecks()
+    {
+        Section("GitHub 加速（gh-proxy）");
+
+        // gh-proxy 前缀改写
+        Check(UpdateUrlRewriter.TryPrefixGhProxy("https://api.github.com/repos/a/b") ==
+              "https://gh-proxy.com/https://api.github.com/repos/a/b",
+            "api.github.com 被正确前缀");
+        Check(UpdateUrlRewriter.TryPrefixGhProxy("https://github.com/a/b/releases/download/v1/x.exe") ==
+              "https://gh-proxy.com/https://github.com/a/b/releases/download/v1/x.exe",
+            "github.com Release 资产被正确前缀");
+        Check(UpdateUrlRewriter.TryPrefixGhProxy("https://raw.githubusercontent.com/a/b/main/c.json") ==
+              "https://gh-proxy.com/https://raw.githubusercontent.com/a/b/main/c.json",
+            "raw.githubusercontent.com 被正确前缀");
+        Check(UpdateUrlRewriter.TryPrefixGhProxy("https://example.com/x") is null,
+            "非白名单主机不改写");
+        Check(UpdateUrlRewriter.TryPrefixGhProxy("https://gh-proxy.com/https://github.com/a/b") is null,
+            "已是 gh-proxy 地址不再二次前缀");
+        Check(UpdateUrlRewriter.TryPrefixGhProxy("") is null, "空地址不改写");
+        Check(UpdateUrlRewriter.TryPrefixGhProxy(null) is null, "null 不改写");
+
+        // gh-proxy 地址识别
+        Check(UpdateUrlRewriter.IsGhProxyUrl("https://gh-proxy.com/https://github.com/a/b"),
+            "识别 gh-proxy 前缀");
+        Check(!UpdateUrlRewriter.IsGhProxyUrl("https://github.com/a/b"), "普通 GitHub 地址不识别为 gh-proxy");
+        Check(!UpdateUrlRewriter.IsGhProxyUrl(""), "空地址不识别为 gh-proxy");
+
+        // Releases API 识别（含代理前缀和 query 后缀）
+        Check(GitHubReleaseSource.IsRepositoryReleasesApi(
+                "https://api.github.com/repos/DRXiaoXi/DeltaNFD/releases?per_page=100"),
+            "官方 Releases API 带 query 被识别");
+        Check(GitHubReleaseSource.IsRepositoryReleasesApi(
+                "https://gh-proxy.com/https://api.github.com/repos/DRXiaoXi/DeltaNFD/releases?per_page=100"),
+            "gh-proxy 前缀的 Releases API 被识别");
+        Check(GitHubReleaseSource.IsRepositoryReleasesApi(
+                "https://api.github.com/repos/DRXiaoXi/DeltaNFD/releases"),
+            "官方 Releases API 无 query 被识别");
+        Check(!GitHubReleaseSource.IsRepositoryReleasesApi("https://api.github.com/repos/other/repo/releases"),
+            "其他仓库的 API 不识别");
+        Check(!GitHubReleaseSource.IsRepositoryReleasesApi("https://github.com/DRXiaoXi/DeltaNFD/releases"),
+            "非 API 的 github.com 地址不识别");
+        Check(!GitHubReleaseSource.IsRepositoryReleasesApi(""), "空地址不识别为 Releases API");
+    }
+
+    private static void RunGameCompatibilityChecks()
+    {
+        Section("游戏兼容性（全屏优化禁用）");
+
+        // 路径解析：当前环境无游戏安装时应返回 null（不抛异常）
+        var exe = GameCompatibilityService.ResolveGameExePath();
+        Check(exe is null || exe.EndsWith("DeltaForceClient-Win64-Shipping.exe", StringComparison.OrdinalIgnoreCase),
+            "游戏 EXE 路径解析不抛异常");
+
+        // 状态查询：不存在的路径应返回 false（不抛异常）
+        Check(!GameCompatibilityService.IsFullscreenOptimizationsDisabled(""),
+            "空路径状态查询返回 false");
+        Check(!GameCompatibilityService.IsFullscreenOptimizationsDisabled("not a path"),
+            "非法路径状态查询返回 false");
+
+        // 幂等性：对不存在的 EXE 操作应失败（不抛异常）
+        var disableResult = GameCompatibilityService.DisableFullscreenOptimizations("C:\\nonexistent\\game.exe");
+        Check(!disableResult.Success, "不存在的 EXE 禁用操作失败但不抛异常");
+        var restoreResult = GameCompatibilityService.RestoreFullscreenOptimizations("C:\\nonexistent\\game.exe");
+        Check(restoreResult.Success, "不存在的 EXE 恢复操作幂等成功（无备份时跳过）");
     }
 
     private static void RunEnvironmentReport()

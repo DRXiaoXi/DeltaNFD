@@ -15,27 +15,29 @@ public static class ServiceLocator
                 File.Exists(Path.Combine(AppDataPaths.Root, "frame_power_scheme_snapshot.json")))
                 reasons.Add("帧格电源设置待恢复");
             if (FrameLazy.IsValueCreated && FrameLazy.Value.FrameModeActive) reasons.Add("帧格模式");
-            if (CpuTopologyService.DualCcdSchedulingActive || CpuTopologyService.SingleCcdExcludeActive) reasons.Add("CPU 调度");
+            if (CpuFrameStatusState.DualCcdSchedulingActive || CpuFrameStatusState.SingleCcdExcludeActive
+                || CpuFrameStatusState.DualCcdSchedulingActive || CpuFrameStatusState.SingleCcdExcludeActive) reasons.Add("CPU 调度");
             return reasons;
         };
     }
     private static readonly Lazy<ISystemOptimizer> SystemOptimizerLazy = new(() => new RealSystemOptimizer());
     private static readonly Lazy<IGpuOptimizer> GpuOptimizerLazy = new(() => new MockGpuOptimizer());
-    private static readonly Lazy<IGpuSpoofService> GpuSpoofLazy = new(() => new GpuSpoofService());
-    private static readonly Lazy<ISystemTweakService> SystemTweaksLazy = new(() => new SystemTweakService());
+    private static readonly Lazy<IGpuSpoofService> GpuSpoofLazy = new(() => new Backends.BackendGpuSpoofService());
+    private static readonly Lazy<ISystemTweakService> SystemTweaksLazy = new(() => new Backends.BackendSystemTweakService());
     private static readonly Lazy<IFrameService> FrameLazy = new(() => new FrameService());
     private static readonly Lazy<IGameProcessService> GameProcessLazy = new(() => new GameProcessService());
-    private static readonly Lazy<IPowerService> PowerLazy = new(() => new PowerService());
-    private static readonly Lazy<ICleanupService> CleanupLazy = new(() => new CleanupService());
-    private static readonly Lazy<IAdvancedTweakService> AdvancedTweaksLazy = new(() => new AdvancedTweakService());
-    private static readonly Lazy<IRuntimeGuardService> GuardLazy = new(() => new RuntimeGuardService());
-    private static readonly Lazy<IAceService> AceLazy = new(() => new AceService());
-    private static readonly Lazy<IShaderService> ShaderLazy = new(() => new ShaderService());
+    private static readonly Lazy<IPowerService> PowerLazy = new(() => new Backends.BackendPowerService());
+    private static readonly Lazy<ICleanupService> CleanupLazy = new(() => new Backends.BackendCleanupService());
+    private static readonly Lazy<IAdvancedTweakService> AdvancedTweaksLazy = new(() => new Backends.BackendAdvancedTweakService());
+    private static readonly Lazy<IRuntimeGuardService> GuardLazy = new(() => new Backends.BackendRuntimeGuardService());
+    private static readonly Lazy<IAceService> AceLazy = new(() => new Backends.BackendAceService());
+    private static readonly Lazy<IShaderService> ShaderLazy = new(() => new Backends.BackendShaderService());
     private static readonly Lazy<IAppControlService> AppControlLazy = new(() => new AppControlService());
-    private static readonly Lazy<ICpuTopologyService> CpuLazy = new(() => new CpuTopologyService());
-    private static readonly Lazy<TweakDb.IBxService> BxLazy = new(() => new TweakDb.BxService(() => SystemTweaks));
-    private static readonly Lazy<INvProfileService> NvProfileLazy = new(() => new NvProfileService());
-    private static readonly Lazy<IPagefileService> PagefileLazy = new(() => new PagefileService());
+    private static readonly Lazy<ICpuTopologyService> CpuLazy = new(() => new Backends.BackendCpuTopologyService());
+    private static readonly Lazy<TweakDb.IBxService> BxLazy = new(() => new Backends.BackendBxService());
+    private static readonly Lazy<IDefenderGuardService> DefenderGuardLazy = new(() => new Backends.BackendDefenderGuardService());
+    private static readonly Lazy<INvProfileService> NvProfileLazy = new(() => new Backends.BackendNvProfileService());
+    private static readonly Lazy<IPagefileService> PagefileLazy = new(() => new Backends.BackendPagefileService());
     private static readonly Lazy<GameProcessMonitor> GameMonitorLazy = new(() => new GameProcessMonitor());
     private static readonly Lazy<IUpdateService> UpdateLazy = new(() => new UpdateService());
     private static readonly Lazy<PluginManagerService> PluginsLazy = new(() =>
@@ -109,6 +111,9 @@ public static class ServiceLocator
 
     /// <summary>扩展优化库引擎（系统优化子栏目：注册表/服务/任务 + 全局备份恢复）。</summary>
     public static TweakDb.IBxService Bx => BxLazy.Value;
+
+    /// <summary>Defender 预检/收尾（只读状态查询与恢复方向执行由系统维护后端完成）。</summary>
+    public static IDefenderGuardService DefenderGuard => DefenderGuardLazy.Value;
 
     /// <summary>NVIDIA 显卡设置（NVAPI DRS 针对三角洲的驱动级设置 + nvdrsdb 只读锁定）。</summary>
     public static INvProfileService NvProfile => NvProfileLazy.Value;

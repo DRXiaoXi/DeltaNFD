@@ -43,6 +43,19 @@ internal static class HardwareDetectionChecks
             parsedVersion != "596.36")
             throw new Exception("GPU identity/version checks failed");
 
+        // 版本解析边界：注册表原始格式 → 显示版本
+        if (!ShaderService.TryFormatDriverVersion("32.0.15.9649", out var v59649) || v59649 != "596.49")
+            throw new Exception("32.0.15.9649 must parse to 596.49");
+        if (!ShaderService.TryFormatDriverVersion("27.21.14.2509", out var v42509) || v42509 != "425.09")
+            throw new Exception("27.21.14.2509 (legacy NVIDIA package) must parse to 425.09");
+
+        // 换卡残留回归：多 NVIDIA 条目共存时，旧卡旧版本不得盖过新卡新版本。
+        // 通过「取最高版本」策略保证，此约束体现在 ReadNvidiaDriver 实现与 GpuSpoofWatchChecks 协同覆盖。
+        if (string.CompareOrdinal("596.49", "425.09") <= 0)
+            throw new Exception("test invariant broken: string compare must order versions");
+
+        VerifyProblemDriverMajors();
+
         VerifyHybridCoreClassification();
         VerifyParcDetection();
 
@@ -120,6 +133,41 @@ internal static class HardwareDetectionChecks
         {
             try { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); } catch { }
         }
+    }
+
+    /// <summary>
+    /// 问题驱动系列回归：591/592/610/616 均判为 ProblemSeries，其余版本不判。
+    /// 抽成独立方法是为了用反射/私有方法访问锁死 BuildDriverAdvice 的行为，
+    /// 不依赖本机实际安装的驱动。
+    /// </summary>
+    private static void VerifyProblemDriverMajors()
+    {
+        // 使用反射调用 private static BuildDriverAdvice(ShaderGpuDetectionState, string)
+        var method = typeof(ShaderService).GetMethod("BuildDriverAdvice",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        if (method is null) throw new Exception("BuildDriverAdvice 方法未找到，测试夹具损坏。");
+
+        (string Version, ShaderDriverState Expected)[] cases =
+        [
+            ("591.32", ShaderDriverState.ProblemSeries),
+            ("592.71", ShaderDriverState.ProblemSeries),
+            ("610.03", ShaderDriverState.ProblemSeries),
+            ("616.24", ShaderDriverState.ProblemSeries),
+            ("617.14", ShaderDriverState.Ok),               // 617.14 按特殊基线处理，不走 majors
+            ("572.83", ShaderDriverState.TooOld),           // 低于 576.88，过老
+            ("576.88", ShaderDriverState.Ok),               // 恰好是下限，正常
+            ("596.36", ShaderDriverState.Ok),               // 正常系列
+        ];
+
+        foreach (var (ver, expected) in cases)
+        {
+            var result = method.Invoke(null, [ShaderGpuDetectionState.Nvidia, ver])
+                ?? throw new Exception($"BuildDriverAdvice 对 {ver} 返回 null");
+            var tuple = ((ShaderDriverState State, string Advice))result;
+            if (tuple.State != expected)
+                throw new Exception($"{ver} 预期 {expected}，实际 {tuple.State}（{tuple.Advice}）");
+        }
+        Console.WriteLine("  Problem-driver majors: 591/592/610/616 ProblemSeries, 617.14 OK, 572.83 TooOld, 576.88/596.36 OK");
     }
 
     /// <summary>

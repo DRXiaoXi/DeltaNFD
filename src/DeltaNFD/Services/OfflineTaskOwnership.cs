@@ -17,6 +17,7 @@ public sealed record OfflineScheduledTaskInspection(OfflineScheduledTaskState St
 /// <summary>脱机模式只查询/删除经 XML 动作确认属于本产品的登录任务。</summary>
 public static class OfflineTaskOwnership
 {
+    internal static Func<string[], TimeSpan, Task<(int Code, string StdOut, string StdErr)>>? ProcessRunnerForTests { get; set; }
     private static readonly string[] KnownLegacyExecutables = BuildKnownLegacyExecutables();
 
     public static async Task<OfflineScheduledTaskInspection> InspectAsync(string taskName, string? currentExePath = null)
@@ -198,6 +199,7 @@ public static class OfflineTaskOwnership
 
     private static async Task<(int Code, string StdOut, string StdErr)> RunSchtasksAsync(string[] arguments, TimeSpan timeout)
     {
+        if (ProcessRunnerForTests is { } runner) return await runner(arguments, timeout);
         var start = new ProcessStartInfo
         {
             FileName = "schtasks.exe",

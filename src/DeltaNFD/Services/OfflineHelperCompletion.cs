@@ -17,7 +17,7 @@ public static class OfflineHelperCompletion
         if (!store.TryRead(out var state, out _)) return false;
         if (state.HelperProcessId is not int pid || state.HelperStartTimeUtcTicks is not long startTicks)
             return false;
-        var helperPath = Path.Combine(AppContext.BaseDirectory, "OfflineHelper", "DeltaNFD.OfflineHelper.exe");
+        var helperPath = OfficialHelperPaths.ExecutablePath;
         if (IsSameLiveProcess(pid, startTicks, helperPath)) return false;
         using var exitedLease = OfflineModeHelperInstanceLease.TryAcquire(store, out _);
         if (exitedLease is null) return false; // 身份读取失败不能把仍持租约的助手当成已退出。

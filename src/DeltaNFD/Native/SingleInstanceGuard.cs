@@ -19,6 +19,17 @@ internal static class SingleInstanceGuard
     private static EventWaitHandle? _activationEvent;
     private static EventWaitHandle? _legacyActivationEvent;
 
+    internal static bool DeploymentInProgress()
+    {
+        try
+        {
+            if (!Mutex.TryOpenExisting(@"Local\DeltaNFD_7A3E9C4D_Deployment", out var deployment)) return false;
+            deployment.Dispose();
+            return true;
+        }
+        catch (UnauthorizedAccessException) { return true; }
+    }
+
     /// <summary>首个进程返回 true；后续进程通知主进程恢复窗口后退出。</summary>
     public static bool TryBecomePrimary()
     {

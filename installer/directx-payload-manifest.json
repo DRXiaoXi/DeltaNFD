@@ -1,0 +1,2068 @@
+{
+  "SchemaVersion": 1,
+  "Origin": "https://www.microsoft.com/en-us/download/details.aspx?id=8109",
+  "RedistSha256": "053f76dcbb28802e23341b6a787e3b0791c0fa5c8d4d011b1044172dbf89c73b",
+  "Files": [
+    {
+      "Path": "Apr2005_d3dx9_25_x64.cab",
+      "Length": 1347354,
+      "Sha256": "b4188ce988af9c4771ae0abcc7edc42a091133f9f20196564f51755dc55ea85d"
+    },
+    {
+      "Path": "Apr2005_d3dx9_25_x86.cab",
+      "Length": 1078962,
+      "Sha256": "6ebfb6ed6ac0b69502a5b74e2edca188872fe767269c4ebf62f174157d198de4"
+    },
+    {
+      "Path": "Apr2006_d3dx9_30_x64.cab",
+      "Length": 1397830,
+      "Sha256": "079f61e155695a61a0ce009ee00cf76fbf6b2b9b412c1a5b4a2035d4b5c90a5b"
+    },
+    {
+      "Path": "Apr2006_d3dx9_30_x86.cab",
+      "Length": 1115221,
+      "Sha256": "4b5da79e14ef58f2608fc5ccedfc7c6c6f782291aa5573f36af76f2903173db5"
+    },
+    {
+      "Path": "Apr2006_MDX1_x86_Archive.cab",
+      "Length": 4162630,
+      "Sha256": "0a051a9b50f58dc631254102ac885942ced67c2911950de0cdd93cd1cd9453ec"
+    },
+    {
+      "Path": "Apr2006_MDX1_x86.cab",
+      "Length": 916430,
+      "Sha256": "0e3b4b9d5a45884620820d0e9cfed852b03dfb44e443179a35e93f3183384db3"
+    },
+    {
+      "Path": "Apr2006_XACT_x64.cab",
+      "Length": 179133,
+      "Sha256": "002f45af20e43a24abee7a79c5add11987c88140b84e2ecd33c0c67259c7f71b"
+    },
+    {
+      "Path": "Apr2006_XACT_x86.cab",
+      "Length": 133103,
+      "Sha256": "875662d0fc1fe865bf43e7279fd391e88f96b3141c1a829ab3080d547501ff8f"
+    },
+    {
+      "Path": "Apr2006_xinput_x64.cab",
+      "Length": 87101,
+      "Sha256": "48da57aa045a877053a481802fdb3ec5782615d9ad85a8c06612bd80272e75d7"
+    },
+    {
+      "Path": "Apr2006_xinput_x86.cab",
+      "Length": 46010,
+      "Sha256": "a9b3dd45926364d79b42b75d8064c814ff428437143c59b1c703ec8323305fbb"
+    },
+    {
+      "Path": "APR2007_d3dx10_33_x64.cab",
+      "Length": 698612,
+      "Sha256": "1bed02f304d495c2769debff315ae3f017c7e9907d85138996554e8e61a61e91"
+    },
+    {
+      "Path": "APR2007_d3dx10_33_x86.cab",
+      "Length": 695865,
+      "Sha256": "6aca96d6aa400d8ad07d2fb1c4aa94c62d261b9370cbf01d2acce24e489038ba"
+    },
+    {
+      "Path": "APR2007_d3dx9_33_x64.cab",
+      "Length": 1607358,
+      "Sha256": "387c63928479e0ad138fa154f9f291821275f6fdf122aac8ace87f0d2033e77c"
+    },
+    {
+      "Path": "APR2007_d3dx9_33_x86.cab",
+      "Length": 1606039,
+      "Sha256": "9a7e65d97910b2038bb01a640a86c2ebf62ab7b36a50f349e71ec901b206f0ee"
+    },
+    {
+      "Path": "APR2007_XACT_x64.cab",
+      "Length": 195766,
+      "Sha256": "0e1042d91b755a36e7dfca480bb3f868cb23f5438dd1415fd3fcfb13b27d761e"
+    },
+    {
+      "Path": "APR2007_XACT_x86.cab",
+      "Length": 151225,
+      "Sha256": "9dee9f2b720b0fc90b8ebdac22d20f2008e58f16f354b9a967526c439bf0b9a3"
+    },
+    {
+      "Path": "APR2007_xinput_x64.cab",
+      "Length": 96817,
+      "Sha256": "e7a09f8235cc587cc63f583e39fbc75008d9677c8bb4dcc11cb8d0178a5153ac"
+    },
+    {
+      "Path": "APR2007_xinput_x86.cab",
+      "Length": 53302,
+      "Sha256": "2acea6c8b9f6f7f89ec51365a1e49fbd0d8c42c53418bd0783dbf3f74a744e6d"
+    },
+    {
+      "Path": "Aug2005_d3dx9_27_x64.cab",
+      "Length": 1350542,
+      "Sha256": "281d20c56caa3a2851199c028d4d20ef0a862cc3f84b165eb200da573d9e4401"
+    },
+    {
+      "Path": "Aug2005_d3dx9_27_x86.cab",
+      "Length": 1077644,
+      "Sha256": "7a10900872ecd9bdbc8f7beb7869a260fa4b25e34084f237f1b096df5371c273"
+    },
+    {
+      "Path": "AUG2006_XACT_x64.cab",
+      "Length": 182903,
+      "Sha256": "beaac99fd17bc9fa85a2a220a13d8c13bd90f66eee595cbd27ab9aaadc234b03"
+    },
+    {
+      "Path": "AUG2006_XACT_x86.cab",
+      "Length": 137235,
+      "Sha256": "cd2e1256efa1723eb77c77440f7b72f0eed8c0df17677cd4cc5a95a65a0f4849"
+    },
+    {
+      "Path": "AUG2006_xinput_x64.cab",
+      "Length": 87142,
+      "Sha256": "a54c7820f37b5e70068b801263c7efcc26b6404555a968094227e8bbaf5c22c5"
+    },
+    {
+      "Path": "AUG2006_xinput_x86.cab",
+      "Length": 46058,
+      "Sha256": "ad2b521d1a7abca6314eaeacb23690b63b2a17adbb2a47d3d69cc4660c7d2152"
+    },
+    {
+      "Path": "AUG2007_d3dx10_35_x64.cab",
+      "Length": 852286,
+      "Sha256": "edbdcb1fa651ec3c8a505a0bb8570b6147ed89ca372e3e6ea86dc6876d6a72f5"
+    },
+    {
+      "Path": "AUG2007_d3dx10_35_x86.cab",
+      "Length": 796867,
+      "Sha256": "a574ecb764861fc40301ebb65fb0bde10fc904ac6eea0580c325dd0c561ff35b"
+    },
+    {
+      "Path": "AUG2007_d3dx9_35_x64.cab",
+      "Length": 1800160,
+      "Sha256": "6a637ef67615722156fe3fd57ef7581d4ac85ee237d445975b6a20c7a76bd7e3"
+    },
+    {
+      "Path": "AUG2007_d3dx9_35_x86.cab",
+      "Length": 1708152,
+      "Sha256": "6891a70890d5b0bed82a41c47211690a73b24b6df331b83135ed647ff13b1aca"
+    },
+    {
+      "Path": "AUG2007_XACT_x64.cab",
+      "Length": 198096,
+      "Sha256": "35f09b0727ee1ab9116166c512c08886623a67939b2e0d841efdee689b6e0f84"
+    },
+    {
+      "Path": "AUG2007_XACT_x86.cab",
+      "Length": 153012,
+      "Sha256": "b39c1b8483111be11cd4c10ef2d18ec8f0b23ff13b628482507076ede9fa9bd1"
+    },
+    {
+      "Path": "Aug2008_d3dx10_39_x64.cab",
+      "Length": 867612,
+      "Sha256": "ae64328b9a02a47c5ad429b9fba47b9228ab1a1e7d4e00e5d24087f2772d0b80"
+    },
+    {
+      "Path": "Aug2008_d3dx10_39_x86.cab",
+      "Length": 849167,
+      "Sha256": "8c0643efa8d113fc5ef0a0e98d9a2cc0e32cb8d4219ca0bc7e57cf710fd4fdad"
+    },
+    {
+      "Path": "Aug2008_d3dx9_39_x64.cab",
+      "Length": 1794084,
+      "Sha256": "e0c5dc6a375a70ac6c8cea9193b76db241dad8e754702d57fd20765b55b30798"
+    },
+    {
+      "Path": "Aug2008_d3dx9_39_x86.cab",
+      "Length": 1464672,
+      "Sha256": "87d672f2ea01ef2123fe5c92da82a988cd964ca55ad660cc073d78d8151a7d84"
+    },
+    {
+      "Path": "Aug2008_XACT_x64.cab",
+      "Length": 121772,
+      "Sha256": "c49e261887fefc13cc914590e33faec10316641bf683a121901c302a7a9efab4"
+    },
+    {
+      "Path": "Aug2008_XACT_x86.cab",
+      "Length": 92996,
+      "Sha256": "913f67e5daeb61d872392f2951e13ecfacef572ad4bb1731f7bbefa1ab314a24"
+    },
+    {
+      "Path": "Aug2008_XAudio_x64.cab",
+      "Length": 271412,
+      "Sha256": "5320967b14b8f7ad95973a26d3cb9de645acc663d3c3d1fce7d6464abe7e0d78"
+    },
+    {
+      "Path": "Aug2008_XAudio_x86.cab",
+      "Length": 271038,
+      "Sha256": "d26eff418f73c878a174c69a12dff08323df617526e8c5d8439e975f083db63b"
+    },
+    {
+      "Path": "Aug2009_D3DCompiler_42_x64.cab",
+      "Length": 919044,
+      "Sha256": "d2e14fc8cb9410caad5bd17c4acff2b6e060c552c432d11946a6905aee216931"
+    },
+    {
+      "Path": "Aug2009_D3DCompiler_42_x86.cab",
+      "Length": 900598,
+      "Sha256": "36c9be8c55f721c38110d56a6ccada672e7566d89f77c738c94fcdf1a584ecf4"
+    },
+    {
+      "Path": "Aug2009_d3dcsx_42_x64.cab",
+      "Length": 3112111,
+      "Sha256": "b53bb3ed6f56702672f9f0201f6399b28f8c012ac7f1a604fb13b32a10a40dab"
+    },
+    {
+      "Path": "Aug2009_d3dcsx_42_x86.cab",
+      "Length": 3319740,
+      "Sha256": "a66fd98a1f746698848a4a7eb5ae69dac8ff2654b56c7decebb03cdca8dc7c85"
+    },
+    {
+      "Path": "Aug2009_d3dx10_42_x64.cab",
+      "Length": 232635,
+      "Sha256": "2cfd51f0115c048ed432522d387167e46b2a2929524dcbd08b91c07705d5da27"
+    },
+    {
+      "Path": "Aug2009_d3dx10_42_x86.cab",
+      "Length": 192131,
+      "Sha256": "eef0244674e44a4131f12243a11badf3e9c7a24efdca73dd26cf75f24d902597"
+    },
+    {
+      "Path": "Aug2009_d3dx11_42_x64.cab",
+      "Length": 136301,
+      "Sha256": "0b91a568769bf0f89658ffb4eff9eacdc5debbe4ddc2d94da6f7068237c94c86"
+    },
+    {
+      "Path": "Aug2009_d3dx11_42_x86.cab",
+      "Length": 105044,
+      "Sha256": "e8c845fc2cf746ba07f8921a09dc533973621d6f8a015342e2b078d11815b121"
+    },
+    {
+      "Path": "Aug2009_d3dx9_42_x64.cab",
+      "Length": 930116,
+      "Sha256": "832f6a4415c873ed8acca0d5c9e65fe163d9567f0ce29fb3fda11d7afd1e11c7"
+    },
+    {
+      "Path": "Aug2009_d3dx9_42_x86.cab",
+      "Length": 728456,
+      "Sha256": "0adc71e37869f12b4806321f40c25dad3d5f8ad372eb35e0bcbaacf60408eb45"
+    },
+    {
+      "Path": "Aug2009_XACT_x64.cab",
+      "Length": 122408,
+      "Sha256": "69dab3f80a58912fbee51934d1e6da8d0432efa7577810600dfd168d4a52d637"
+    },
+    {
+      "Path": "Aug2009_XACT_x86.cab",
+      "Length": 93106,
+      "Sha256": "7c4bab445d4666965019b6084c23e4b9ae9e34b14898d01debc0101ddb9e12e4"
+    },
+    {
+      "Path": "Aug2009_XAudio_x64.cab",
+      "Length": 273264,
+      "Sha256": "1269f085046694d1466a4b75386ec30dd0564949db4fa90df366983f860acb97"
+    },
+    {
+      "Path": "Aug2009_XAudio_x86.cab",
+      "Length": 272642,
+      "Sha256": "b8e0c1022a42156c4239aea081f3abb0bf45ef61f30413df182e422e26435714"
+    },
+    {
+      "Path": "Dec2005_d3dx9_28_x64.cab",
+      "Length": 1357976,
+      "Sha256": "8231b38a0ab70018f15d7239ed96e5f2bc89ddae6cf9650c9d7bd052b96877e3"
+    },
+    {
+      "Path": "Dec2005_d3dx9_28_x86.cab",
+      "Length": 1079456,
+      "Sha256": "bdee0708db956a4ce59220626106a2df70ede2e1e32f29e432254b04876fa7b9"
+    },
+    {
+      "Path": "DEC2006_d3dx10_00_x64.cab",
+      "Length": 212807,
+      "Sha256": "d926d1381f1949754f5e6d597c4ab49e3f350312b2e426effafeed22ba9ced91"
+    },
+    {
+      "Path": "DEC2006_d3dx10_00_x86.cab",
+      "Length": 191720,
+      "Sha256": "07fe66373868c32de3f4a4097bd3834ac98018f490f5bf08f02f559c48dbf985"
+    },
+    {
+      "Path": "DEC2006_d3dx9_32_x64.cab",
+      "Length": 1571154,
+      "Sha256": "473c0111f5a1efb6791575c5f769431fa2affd76813aaf9d476a571e26cd3fed"
+    },
+    {
+      "Path": "DEC2006_d3dx9_32_x86.cab",
+      "Length": 1574376,
+      "Sha256": "81251ebd8ee94f108807e32e04dea544c3937a5f870bc6ccb917d059e70b1838"
+    },
+    {
+      "Path": "DEC2006_XACT_x64.cab",
+      "Length": 192475,
+      "Sha256": "b3f65d918e4dc0e84ce5d0add6d0d46425c58de19fddfbc7b996ff357caac3b2"
+    },
+    {
+      "Path": "DEC2006_XACT_x86.cab",
+      "Length": 145599,
+      "Sha256": "3d9b905fce31b42c47be263165d71c346b5d47abdabbfe6e9a87fd5a89b0b9f5"
+    },
+    {
+      "Path": "DSETUP.dll",
+      "Length": 95576,
+      "Sha256": "2a61679eeedabf7d0d0ac14e5447486575622d6b7cfa56f136c1576ff96da21f"
+    },
+    {
+      "Path": "dsetup32.dll",
+      "Length": 1566040,
+      "Sha256": "fb0e534f9b0926e518f1c2980640dfd29f14217cdfa37cf3a0c13349127ed9a8"
+    },
+    {
+      "Path": "dxdllreg_x86.cab",
+      "Length": 44624,
+      "Sha256": "4afe0249a13868b7c4a92b4d53c998adf6053eb5e2c47fd81020fd8d4bb11150"
+    },
+    {
+      "Path": "DXSETUP.exe",
+      "Length": 517976,
+      "Sha256": "8f47d7121ef6532ad9ad9901e44e237f5c30448b752028c58a9d19521414e40d"
+    },
+    {
+      "Path": "dxupdate.cab",
+      "Length": 97152,
+      "Sha256": "e18a5404b612e88fa8b403c9b33f064c0a89528db7ef9a79aa116908d0e6afed"
+    },
+    {
+      "Path": "Feb2005_d3dx9_24_x64.cab",
+      "Length": 1247499,
+      "Sha256": "48eeeecd6411039b23f32b7b22c8d40bce45280af5f8b066edd6cf30284b90ca"
+    },
+    {
+      "Path": "Feb2005_d3dx9_24_x86.cab",
+      "Length": 1013225,
+      "Sha256": "12e2aab3dbaee503724a5505a6f6951f07306578801a4b5b6b9b54514275ce79"
+    },
+    {
+      "Path": "Feb2006_d3dx9_29_x64.cab",
+      "Length": 1362796,
+      "Sha256": "405bd17fe25128a91693807a6008031d87c005ba93d016cbab6276891d3bc6bb"
+    },
+    {
+      "Path": "Feb2006_d3dx9_29_x86.cab",
+      "Length": 1084720,
+      "Sha256": "20231448d5d74b7df1e43d796d76381d563699f81944c7ad9ccbcc1a77a5591e"
+    },
+    {
+      "Path": "Feb2006_XACT_x64.cab",
+      "Length": 178359,
+      "Sha256": "ea39caab8e071df53c2f44c19fb2ff6e2f6af4ef47f0c66d8e7b1b0918d6745f"
+    },
+    {
+      "Path": "Feb2006_XACT_x86.cab",
+      "Length": 132409,
+      "Sha256": "633a1fe357e57bbb8e058e1e029f61f379ab936a85c5d30ee442d804a1806868"
+    },
+    {
+      "Path": "FEB2007_XACT_x64.cab",
+      "Length": 194675,
+      "Sha256": "85d3279df02904f161f62f7a529911e135439ae26f4aa4984be439a4ac1768ab"
+    },
+    {
+      "Path": "FEB2007_XACT_x86.cab",
+      "Length": 147983,
+      "Sha256": "d2446c0478d0087250c2f4f4cbdec7bdc9aec7ac92ca37b874c96aa3a3275dcd"
+    },
+    {
+      "Path": "Feb2010_X3DAudio_x64.cab",
+      "Length": 54678,
+      "Sha256": "832b6d48e169b4725ae482ea4d1c3360a09631a89b2fac3aba81a50805a50adc"
+    },
+    {
+      "Path": "Feb2010_X3DAudio_x86.cab",
+      "Length": 20713,
+      "Sha256": "acba5c4d4ac90e1df1c8404be5ff780e24238153cb410af909cd4364d213f2a9"
+    },
+    {
+      "Path": "Feb2010_XACT_x64.cab",
+      "Length": 122446,
+      "Sha256": "42d7936ca7520a8092ccb82612d0217c755ecf619251fd2aa0c37ccfd8c49807"
+    },
+    {
+      "Path": "Feb2010_XACT_x86.cab",
+      "Length": 93180,
+      "Sha256": "d168fcdd6b63c24f6f6d2851ad1d0d977146edd9f6377b46d8f87bf5a92a0693"
+    },
+    {
+      "Path": "Feb2010_XAudio_x64.cab",
+      "Length": 276960,
+      "Sha256": "038a01a9b3ba4ceb4df4726a5704a5b325871c07e3714913c3a9ff4184a50df6"
+    },
+    {
+      "Path": "Feb2010_XAudio_x86.cab",
+      "Length": 277191,
+      "Sha256": "86a653d6a77bad77df48a19669eb41dc402297b42d6f9ee239b39735be409d31"
+    },
+    {
+      "Path": "Jun2005_d3dx9_26_x64.cab",
+      "Length": 1336002,
+      "Sha256": "7237630b897ce760948d9144151ef27c0699fb76150b5f157676fa2d220a236f"
+    },
+    {
+      "Path": "Jun2005_d3dx9_26_x86.cab",
+      "Length": 1064925,
+      "Sha256": "b448d7ba5b6fe1dc27639d42eb6ba0a997a793135678c729ba6756cfe4efc38b"
+    },
+    {
+      "Path": "JUN2006_XACT_x64.cab",
+      "Length": 180785,
+      "Sha256": "e7bddd9db994cbb19671d45216edf40ffb3a77068cc97fbeb4c4e41e0d073501"
+    },
+    {
+      "Path": "JUN2006_XACT_x86.cab",
+      "Length": 133671,
+      "Sha256": "c1a1348611259756b5921d43f9fd9f2a5b40a48af88ea679a40263a2aca029ec"
+    },
+    {
+      "Path": "JUN2007_d3dx10_34_x64.cab",
+      "Length": 699044,
+      "Sha256": "3ef426fdd89840ead821ee8fe7a6f470ad8bf06dbcf2ac7cc8e8a0dd0a55622d"
+    },
+    {
+      "Path": "JUN2007_d3dx10_34_x86.cab",
+      "Length": 698472,
+      "Sha256": "47b355fb5324776370e2bd27ca2df982a516611fc1e702d75a829b207b3b80f6"
+    },
+    {
+      "Path": "JUN2007_d3dx9_34_x64.cab",
+      "Length": 1607774,
+      "Sha256": "c28c2018fcc72a9548a752e2917284320fc1a8848ae9d92bf3513aa312cafc29"
+    },
+    {
+      "Path": "JUN2007_d3dx9_34_x86.cab",
+      "Length": 1607286,
+      "Sha256": "9c3507b1dd4a81651a5013cb7ecb552932ce5989cbaadd4024f02918f55276ac"
+    },
+    {
+      "Path": "JUN2007_XACT_x64.cab",
+      "Length": 197122,
+      "Sha256": "0e08de538c217d80b19bd56066a269ca9b388e63ff6f3807b369d7b6a7fe794f"
+    },
+    {
+      "Path": "JUN2007_XACT_x86.cab",
+      "Length": 152909,
+      "Sha256": "e28d18ef520ca81ff7d33dad80b6144771cb82516f01739cef8d3b813c74643d"
+    },
+    {
+      "Path": "JUN2008_d3dx10_38_x64.cab",
+      "Length": 867828,
+      "Sha256": "781eb9276ea0d737d82dc60753c6d6ff89e92d016b48a60e9b21d1a66b8eb545"
+    },
+    {
+      "Path": "JUN2008_d3dx10_38_x86.cab",
+      "Length": 849919,
+      "Sha256": "b9b4110bd8004f83c0bfcef378071fd49c895294f4583e0b164317a692d9783c"
+    },
+    {
+      "Path": "JUN2008_d3dx9_38_x64.cab",
+      "Length": 1792608,
+      "Sha256": "72e7f92c20462c4746ce000bc909ed6b3f71467f9e5593ba7c074be47553596d"
+    },
+    {
+      "Path": "JUN2008_d3dx9_38_x86.cab",
+      "Length": 1463878,
+      "Sha256": "5906932933e363acb1651a6b1f252662fb3512ed54dd6b0b87baa141ed6fb21a"
+    },
+    {
+      "Path": "JUN2008_X3DAudio_x64.cab",
+      "Length": 55154,
+      "Sha256": "627c66ed6f3b82c8a90f549584c324e33f039f397f196ce9eccb86de76efb574"
+    },
+    {
+      "Path": "JUN2008_X3DAudio_x86.cab",
+      "Length": 21905,
+      "Sha256": "151d0be9d3fa6ce37f7aa8e047b8cc449e86398ed0623c3cc0e203ec221ebc2a"
+    },
+    {
+      "Path": "JUN2008_XACT_x64.cab",
+      "Length": 121054,
+      "Sha256": "f0736b0ab6eb8c91682f6934c9d4306fc134c65066f70f7f5f80031a927baa8d"
+    },
+    {
+      "Path": "JUN2008_XACT_x86.cab",
+      "Length": 93128,
+      "Sha256": "f06de1eef8043f7919a50972df7d0653f9439b725769dae93536dea749b8e2d6"
+    },
+    {
+      "Path": "JUN2008_XAudio_x64.cab",
+      "Length": 269628,
+      "Sha256": "9b15a27080204b3c36b787f919cefbf9d441f0b0b616f8b944feb42dc4eb2ff1"
+    },
+    {
+      "Path": "JUN2008_XAudio_x86.cab",
+      "Length": 269024,
+      "Sha256": "564696443875b094baafb5f4a151c25876ca537c1834356eddb979be0ca247ac"
+    },
+    {
+      "Path": "Jun2010_D3DCompiler_43_x64.cab",
+      "Length": 944460,
+      "Sha256": "213ad66ab9e469db1e6a49a646d082bfc3700db94172984e7e36801612af50c6"
+    },
+    {
+      "Path": "Jun2010_D3DCompiler_43_x86.cab",
+      "Length": 931471,
+      "Sha256": "417eebd5b19f45c67c94c2d2ba8b774c0fc6d958b896d7b1ac12cf5a0ea06e0e"
+    },
+    {
+      "Path": "Jun2010_d3dcsx_43_x64.cab",
+      "Length": 752783,
+      "Sha256": "cdbec7e3a5a0fef016eb294b036f93c75e45c6ead8d99397f859a32d23fe20cc"
+    },
+    {
+      "Path": "Jun2010_d3dcsx_43_x86.cab",
+      "Length": 762188,
+      "Sha256": "e2c5a2cbba7f211b6ca72ff8e5f69cba1f83be06357311b19e64f582fd3d14e4"
+    },
+    {
+      "Path": "Jun2010_d3dx10_43_x64.cab",
+      "Length": 235955,
+      "Sha256": "efce48d425c07f1faad4a55d7061a01ed6245aac17f43163cf2a23cbc9a3054b"
+    },
+    {
+      "Path": "Jun2010_d3dx10_43_x86.cab",
+      "Length": 197283,
+      "Sha256": "a8cf71ffb80b683616d0621be96d3795b0ffda3877ed2d80cd958bfa393ddcfc"
+    },
+    {
+      "Path": "Jun2010_d3dx11_43_x64.cab",
+      "Length": 138205,
+      "Sha256": "c1d0d56b83bfb09a5e1a89e1898bb74446a847b30a968f3664ec2d87368eb63e"
+    },
+    {
+      "Path": "Jun2010_d3dx11_43_x86.cab",
+      "Length": 109445,
+      "Sha256": "a58cefe822e371d078eaf89319f832693352ba7d62079320074397f0f3425961"
+    },
+    {
+      "Path": "Jun2010_d3dx9_43_x64.cab",
+      "Length": 937246,
+      "Sha256": "9b98a1269af7f3a0007bfdc73206a47a6ee158d34ba8a87009396c18186bb06a"
+    },
+    {
+      "Path": "Jun2010_d3dx9_43_x86.cab",
+      "Length": 768036,
+      "Sha256": "fcc6cf0966b4853d6fa3d32ab299cde5a9824feaecb0d4f34ea452fb9fd1c867"
+    },
+    {
+      "Path": "Jun2010_XACT_x64.cab",
+      "Length": 124596,
+      "Sha256": "06251ab76450feb7dc2ffb9be7615f5eb56960cefa4c990ef560f2c6f2a7551b"
+    },
+    {
+      "Path": "Jun2010_XACT_x86.cab",
+      "Length": 93686,
+      "Sha256": "354c2e579ed00b391dd5d8be91b0f45115e7c232ed1b842747830be0fd26e915"
+    },
+    {
+      "Path": "Jun2010_XAudio_x64.cab",
+      "Length": 277338,
+      "Sha256": "51500283f69e97f5beddb073ba2a9017de3d30379c0dcc4d11dd2236ce07b317"
+    },
+    {
+      "Path": "Jun2010_XAudio_x86.cab",
+      "Length": 278060,
+      "Sha256": "7b4332207563beba1103744b6db5399ad150e9e6838f9d5a71497e7eb3645ebf"
+    },
+    {
+      "Path": "Mar2008_d3dx10_37_x64.cab",
+      "Length": 844884,
+      "Sha256": "9eaba54ab5392802bee889982c585707797ae7810c1e7a66f98903fc963a9eab"
+    },
+    {
+      "Path": "Mar2008_d3dx10_37_x86.cab",
+      "Length": 818260,
+      "Sha256": "de438d52b5f1141be26f7d06f283699d96827129da524a412e1605bd9c8e6b6a"
+    },
+    {
+      "Path": "Mar2008_d3dx9_37_x64.cab",
+      "Length": 1769862,
+      "Sha256": "33ed3e21fe9118bad3e11ee13a3f0b31c52ae7e22378ebf96de590b114c2ca02"
+    },
+    {
+      "Path": "Mar2008_d3dx9_37_x86.cab",
+      "Length": 1443282,
+      "Sha256": "0be4fe173c7becbab42a25421f28d54629479e240a3378b37ac4b657bf60e128"
+    },
+    {
+      "Path": "Mar2008_X3DAudio_x64.cab",
+      "Length": 55058,
+      "Sha256": "b0209ae7c140b3b3a7635a00d7364591d6b3d017d6bb007f9e347767b00b1671"
+    },
+    {
+      "Path": "Mar2008_X3DAudio_x86.cab",
+      "Length": 21867,
+      "Sha256": "15e0dcefc22fb6a09e3d8724fa5c17c23db01f10879f343e7da22938f568abd7"
+    },
+    {
+      "Path": "Mar2008_XACT_x64.cab",
+      "Length": 122336,
+      "Sha256": "221a6a70898c8d513fac732dfa0ada137b268cffc90875c05d1049ba8f2e3e5b"
+    },
+    {
+      "Path": "Mar2008_XACT_x86.cab",
+      "Length": 93734,
+      "Sha256": "d1a429a0725765a5b302b83af062d2780859f0a52369b200d1b031e14f030ea0"
+    },
+    {
+      "Path": "Mar2008_XAudio_x64.cab",
+      "Length": 251194,
+      "Sha256": "35d20903b1b246afda8c5205bfa3b253fbad5d3255ce14b5a8d5aaa6b6909dbc"
+    },
+    {
+      "Path": "Mar2008_XAudio_x86.cab",
+      "Length": 226250,
+      "Sha256": "786e6417d105b1dedcb502a799d7cd30a65cbe59a2b41a411781bdafa7fb1917"
+    },
+    {
+      "Path": "Mar2009_d3dx10_41_x64.cab",
+      "Length": 1067160,
+      "Sha256": "4e78a01a3a5d236f27cda4a66a9d8a59c06e8a9779fd2f2a3e1f9b416d2c4213"
+    },
+    {
+      "Path": "Mar2009_d3dx10_41_x86.cab",
+      "Length": 1040745,
+      "Sha256": "80736b3fe97947507a32bf7cd744e01a86424c4cc9977f7b4a7404268e83f8c1"
+    },
+    {
+      "Path": "Mar2009_d3dx9_41_x64.cab",
+      "Length": 1973702,
+      "Sha256": "218929568334f78c93d3a111ad268ff56ed4a6fee83ce26dce0a2619a092f46b"
+    },
+    {
+      "Path": "Mar2009_d3dx9_41_x86.cab",
+      "Length": 1612446,
+      "Sha256": "74ff3ac77380b3a7271f22b21e019c50f6caa8585f0b59cca094e76ce170a28b"
+    },
+    {
+      "Path": "Mar2009_X3DAudio_x64.cab",
+      "Length": 54600,
+      "Sha256": "5fcb6f2d1dbf278c14813812448026a8d2bf2179bb4c2e807b9167fdb7966290"
+    },
+    {
+      "Path": "Mar2009_X3DAudio_x86.cab",
+      "Length": 21298,
+      "Sha256": "fd713dc9d50cb72508f0c416f6861588f1227bb9f2e1a40a6f0e774be248bb8d"
+    },
+    {
+      "Path": "Mar2009_XACT_x64.cab",
+      "Length": 121506,
+      "Sha256": "63721ba32053e4f2b0905aab8e68fe63eadaae53543be89b2d5f082b10edf6a2"
+    },
+    {
+      "Path": "Mar2009_XACT_x86.cab",
+      "Length": 92740,
+      "Sha256": "ba7f2b4e34c355dae4ca2aeae585985f2626c69e4cf857b9db009d50a23b620c"
+    },
+    {
+      "Path": "Mar2009_XAudio_x64.cab",
+      "Length": 275044,
+      "Sha256": "e470186155459daf0674a30450a4887f941ca7dbdf9aa311fc4d4c87352529ba"
+    },
+    {
+      "Path": "Mar2009_XAudio_x86.cab",
+      "Length": 273018,
+      "Sha256": "7c360b93d3e799d3502f0b6acf4139c058d7d47e63d41f4af0f2bff59b4742b2"
+    },
+    {
+      "Path": "Nov2007_d3dx10_36_x64.cab",
+      "Length": 864600,
+      "Sha256": "0847e4034d70ccbea527e04d14d8d60c9854ecc89cb29b3e07139e65962fbce9"
+    },
+    {
+      "Path": "Nov2007_d3dx10_36_x86.cab",
+      "Length": 803884,
+      "Sha256": "0da883c82456a5340411f222af5891fd370bf7efd919e90a48aec0f67f01ec80"
+    },
+    {
+      "Path": "Nov2007_d3dx9_36_x64.cab",
+      "Length": 1802058,
+      "Sha256": "39afab1a89bcf46806b422837da35ddc1b8eedf0393d875a89b47cde5fed79d4"
+    },
+    {
+      "Path": "Nov2007_d3dx9_36_x86.cab",
+      "Length": 1709360,
+      "Sha256": "89026e7e14fff8164de3c13a774d539e789637104d7bc84b8bb4e059b76a9679"
+    },
+    {
+      "Path": "NOV2007_X3DAudio_x64.cab",
+      "Length": 46144,
+      "Sha256": "f954abaf7966b409d3db339f5dc491e103365f47b23faffca25d85ea3728f12f"
+    },
+    {
+      "Path": "NOV2007_X3DAudio_x86.cab",
+      "Length": 18496,
+      "Sha256": "74a6d31a4c54d8c0fb2dcde922409c05db3219b7dcffa44c16f603ba054fb922"
+    },
+    {
+      "Path": "NOV2007_XACT_x64.cab",
+      "Length": 196762,
+      "Sha256": "d01b468ec66b36bea0e20503c01b93ac64d9e001c20d28cf7c71293e9f874af0"
+    },
+    {
+      "Path": "NOV2007_XACT_x86.cab",
+      "Length": 148264,
+      "Sha256": "c888a8a79249ab284a918c371f2fe6da81fdf432e65d3da3cd24fecede267aed"
+    },
+    {
+      "Path": "Nov2008_d3dx10_40_x64.cab",
+      "Length": 994154,
+      "Sha256": "a318a71b953f87ef0f5fad91a153f7ee251c8f895581950022f38f63d5f66cba"
+    },
+    {
+      "Path": "Nov2008_d3dx10_40_x86.cab",
+      "Length": 965421,
+      "Sha256": "4d7805c3db9fe72978fdd4c0c8ff973eed07ca6619d1c988cd01e08b70e1d137"
+    },
+    {
+      "Path": "Nov2008_d3dx9_40_x64.cab",
+      "Length": 1906878,
+      "Sha256": "723e8fcfe969493e6c4f79d2634c052eed9cd1e7051cfbf4466643b964fea29c"
+    },
+    {
+      "Path": "Nov2008_d3dx9_40_x86.cab",
+      "Length": 1550796,
+      "Sha256": "a259dd75611610bc0fd9c874e68ec89bbae4ac5f8db0857705a35de616604641"
+    },
+    {
+      "Path": "Nov2008_X3DAudio_x64.cab",
+      "Length": 54522,
+      "Sha256": "8de7aedf7f823e455c663cec42b158f6d5308efd356a9cf9295ae49f7c8a3fdb"
+    },
+    {
+      "Path": "Nov2008_X3DAudio_x86.cab",
+      "Length": 21851,
+      "Sha256": "f2264f092313682f4e274ad71030248fa2e23d202abc2d46ab09c7d6b580b81b"
+    },
+    {
+      "Path": "Nov2008_XACT_x64.cab",
+      "Length": 121794,
+      "Sha256": "9dda7b01517451b9ca53abc3a4e61277481c4e8a6404d15450b5a416416b8016"
+    },
+    {
+      "Path": "Nov2008_XACT_x86.cab",
+      "Length": 92684,
+      "Sha256": "7b5594c1146a7753e8aeb0d235a060360b3072ba7b0fa122536d85b42df73a2e"
+    },
+    {
+      "Path": "Nov2008_XAudio_x64.cab",
+      "Length": 273960,
+      "Sha256": "980e6bb91d20d90225405887ebec47a7b1deee21faab4c561faae323007f6c98"
+    },
+    {
+      "Path": "Nov2008_XAudio_x86.cab",
+      "Length": 272611,
+      "Sha256": "00c28cd39034f7e1d434adc0bd39e4be29eabe8b73a2f3eaca6de11d2d22be95"
+    },
+    {
+      "Path": "Oct2005_xinput_x64.cab",
+      "Length": 86037,
+      "Sha256": "10f2bcfcc38d3150bc80eb0030a1cd40084f1ec028dc927543c485d54ec35022"
+    },
+    {
+      "Path": "Oct2005_xinput_x86.cab",
+      "Length": 45359,
+      "Sha256": "f2d475864e34409fb586093f92390e1f47403867c39ac30918941f19f3fccb0f"
+    },
+    {
+      "Path": "OCT2006_d3dx9_31_x64.cab",
+      "Length": 1412902,
+      "Sha256": "3cf78eeedcddddaf131af35cc68c218685c133326ff2876cb821096ed7ebf0c8"
+    },
+    {
+      "Path": "OCT2006_d3dx9_31_x86.cab",
+      "Length": 1127217,
+      "Sha256": "fd8c9c23aea007aa92eca130446913ef04d9fc78e0e6fc3c49c25d210889de61"
+    },
+    {
+      "Path": "OCT2006_XACT_x64.cab",
+      "Length": 182361,
+      "Sha256": "db037f2b07f00a7aa481b12ed35d52e3b7c18bb786590eb444b27cf69a675f0f"
+    },
+    {
+      "Path": "OCT2006_XACT_x86.cab",
+      "Length": 138017,
+      "Sha256": "65916ca9db2d3eeb6a44f19a19c4254ca4fc1795bad81fda35e028d9b62e1d3d"
+    }
+  ],
+  "Probes": [
+    {
+      "Name": "d3dcompiler_33.dll",
+      "Architecture": "x64",
+      "Version": "9.18.904.15",
+      "Sha256": "90dc7e301a3dfb1c015cb73811b77a5ea21f8ee46944011bca3a270584473013",
+      "Cab": "APR2007_d3dx10_33_x64.cab"
+    },
+    {
+      "Name": "d3dcompiler_34.dll",
+      "Architecture": "x64",
+      "Version": "9.19.949.46",
+      "Sha256": "95538ba7d65336b617f64d66789f3bf53f9bf52ffd4f717483d1a7e6a02c64b3",
+      "Cab": "JUN2007_d3dx10_34_x64.cab"
+    },
+    {
+      "Name": "d3dcompiler_35.dll",
+      "Architecture": "x64",
+      "Version": "9.19.949.1104",
+      "Sha256": "b82f096607a52b76f69a2db03392e008dd60a7dce74665b0e09f5593ba7ca7ca",
+      "Cab": "AUG2007_d3dx10_35_x64.cab"
+    },
+    {
+      "Name": "d3dcompiler_36.dll",
+      "Architecture": "x64",
+      "Version": "9.19.949.2111",
+      "Sha256": "d002a8731182968d4036d54e401f9792a57c1c84caef576059ca18190b4698a4",
+      "Cab": "Nov2007_d3dx10_36_x64.cab"
+    },
+    {
+      "Name": "d3dcompiler_37.dll",
+      "Architecture": "x64",
+      "Version": "9.22.949.2248",
+      "Sha256": "425f0d7ee0f2845424266aa56f2cdce3a61541d5e2c7d7813f4373e45df0cb8b",
+      "Cab": "Mar2008_d3dx10_37_x64.cab"
+    },
+    {
+      "Name": "d3dcompiler_38.dll",
+      "Architecture": "x64",
+      "Version": "9.23.949.2378",
+      "Sha256": "1ff6374215e326b72dbdc2fe8af4f9002c5d755358ed8795d781f4a1078af174",
+      "Cab": "JUN2008_d3dx10_38_x64.cab"
+    },
+    {
+      "Name": "d3dcompiler_39.dll",
+      "Architecture": "x64",
+      "Version": "9.24.949.2307",
+      "Sha256": "54f4f734dd149ef9ee8c999cc3d7858082b85c551f17fa08553cde1abdee3c3e",
+      "Cab": "Aug2008_d3dx10_39_x64.cab"
+    },
+    {
+      "Name": "d3dcompiler_40.dll",
+      "Architecture": "x64",
+      "Version": "9.24.950.2656",
+      "Sha256": "bd81cf5c9b127519dbeb284e699e9d7545ee1130e655fd6a4e66b959e9d9aaac",
+      "Cab": "Nov2008_d3dx10_40_x64.cab"
+    },
+    {
+      "Name": "d3dcompiler_41.dll",
+      "Architecture": "x64",
+      "Version": "9.26.952.2844",
+      "Sha256": "f96d915c2d51346fe1a35a7d0b7acef7a3734af2c75579085fce9d1a29e0f2e6",
+      "Cab": "Mar2009_d3dx10_41_x64.cab"
+    },
+    {
+      "Name": "d3dcompiler_42.dll",
+      "Architecture": "x64",
+      "Version": "9.27.952.3022",
+      "Sha256": "4d61e843aa86d8801a60d01b8e872379c5b2503795a2bcbe6141978396ade00b",
+      "Cab": "Aug2009_D3DCompiler_42_x64.cab"
+    },
+    {
+      "Name": "d3dcompiler_43.dll",
+      "Architecture": "x64",
+      "Version": "9.29.952.3111",
+      "Sha256": "44c3a7e330b54a35a9efa015831392593aa02e7da1460be429d17c3644850e8a",
+      "Cab": "Jun2010_D3DCompiler_43_x64.cab"
+    },
+    {
+      "Name": "d3dcsx_42.dll",
+      "Architecture": "x64",
+      "Version": "9.27.952.3022",
+      "Sha256": "8852c218583dc11113705bd89dabd51b0f77db6b393eaf9a9a751652b7cdef24",
+      "Cab": "Aug2009_d3dcsx_42_x64.cab"
+    },
+    {
+      "Name": "d3dcsx_43.dll",
+      "Architecture": "x64",
+      "Version": "9.29.952.3111",
+      "Sha256": "3c9e1b87f2763f58402b5104d21e0d9d5db352fcccf7801eaa4cd1f5dbc20945",
+      "Cab": "Jun2010_d3dcsx_43_x64.cab"
+    },
+    {
+      "Name": "d3dx10_33.dll",
+      "Architecture": "x64",
+      "Version": "9.18.904.21",
+      "Sha256": "3f0248c3bb9bda2a901b343b3b58172e175a86450d421f0fc4aebbd5a7d11477",
+      "Cab": "APR2007_d3dx10_33_x64.cab"
+    },
+    {
+      "Name": "d3dx10_34.dll",
+      "Architecture": "x64",
+      "Version": "9.19.949.46",
+      "Sha256": "f7f367df5d0fb5e32113515339d928a51d4253b1c0e21854277f67d0b271fce3",
+      "Cab": "JUN2007_d3dx10_34_x64.cab"
+    },
+    {
+      "Name": "d3dx10_35.dll",
+      "Architecture": "x64",
+      "Version": "9.19.949.1104",
+      "Sha256": "2030b7d57c88b653a0eb55ea85ad90c6c8630a00f5a56ea5f9b6985acdda5289",
+      "Cab": "AUG2007_d3dx10_35_x64.cab"
+    },
+    {
+      "Name": "d3dx10_36.dll",
+      "Architecture": "x64",
+      "Version": "9.19.949.2009",
+      "Sha256": "6b632dcf9ef779d72855eeb1bb4676ab922ffb9204f7d587475477fa2f51be4a",
+      "Cab": "Nov2007_d3dx10_36_x64.cab"
+    },
+    {
+      "Name": "d3dx10_37.dll",
+      "Architecture": "x64",
+      "Version": "9.19.949.2185",
+      "Sha256": "3bb17715d9de0878f65a3a006b8614532a6133f56e12ef5fa392a63337c0c275",
+      "Cab": "Mar2008_d3dx10_37_x64.cab"
+    },
+    {
+      "Name": "d3dx10_38.dll",
+      "Architecture": "x64",
+      "Version": "9.23.949.2378",
+      "Sha256": "1274a3902a0a8ce9309d2b636eec3d42048ac90a68a0add0e372027b3f000104",
+      "Cab": "JUN2008_d3dx10_38_x64.cab"
+    },
+    {
+      "Name": "d3dx10_39.dll",
+      "Architecture": "x64",
+      "Version": "9.24.949.2307",
+      "Sha256": "1ec45bdb37e9f8bf7b6684deff6799b06d4bc2e2ef72b5f278d6c4b3a7597b13",
+      "Cab": "Aug2008_d3dx10_39_x64.cab"
+    },
+    {
+      "Name": "d3dx10_40.dll",
+      "Architecture": "x64",
+      "Version": "9.24.950.2656",
+      "Sha256": "48af3a1834640969660a37899a4cb17677fd499c26185ac940d284a0b4212fb3",
+      "Cab": "Nov2008_d3dx10_40_x64.cab"
+    },
+    {
+      "Name": "d3dx10_41.dll",
+      "Architecture": "x64",
+      "Version": "9.26.952.2844",
+      "Sha256": "464653c6c52e16d53b87c1f199c693f748fa48228f7690f086350b0f7bec581d",
+      "Cab": "Mar2009_d3dx10_41_x64.cab"
+    },
+    {
+      "Name": "d3dx10_42.dll",
+      "Architecture": "x64",
+      "Version": "9.27.952.3001",
+      "Sha256": "dfb4baaa5f06467183839f14f5d28466e7c6e7eaa90f292c4516ed6926f5da8a",
+      "Cab": "Aug2009_d3dx10_42_x64.cab"
+    },
+    {
+      "Name": "d3dx10_43.dll",
+      "Architecture": "x64",
+      "Version": "9.29.952.3111",
+      "Sha256": "9bffa1ea073d79e9954cb398fc91b93ed9dc79ed2205995d4b949f1cc2ad3bd1",
+      "Cab": "Jun2010_d3dx10_43_x64.cab"
+    },
+    {
+      "Name": "d3dx10.dll",
+      "Architecture": "x64",
+      "Version": "9.16.843.0",
+      "Sha256": "03115a37f75fffb7abf07a59ec6ecb5217d3479bc95f92846c7e9b91822a0567",
+      "Cab": "DEC2006_d3dx10_00_x64.cab"
+    },
+    {
+      "Name": "d3dx11_42.dll",
+      "Architecture": "x64",
+      "Version": "9.27.952.3022",
+      "Sha256": "fedb54eef0fb7a61514fd4273f5f13535de1082f55bfb5f7b05a1016f495dcdb",
+      "Cab": "Aug2009_d3dx11_42_x64.cab"
+    },
+    {
+      "Name": "d3dx11_43.dll",
+      "Architecture": "x64",
+      "Version": "9.29.952.3111",
+      "Sha256": "981e42629df751217406e7150477cddc853b79abd6a8568a1566298ed8f7bd59",
+      "Cab": "Jun2010_d3dx11_43_x64.cab"
+    },
+    {
+      "Name": "d3dx9_24.dll",
+      "Architecture": "x64",
+      "Version": "9.5.132.0",
+      "Sha256": "1ec422bd6421c741eef57847260967f215913649901e21dd9c46eb1b3bb10906",
+      "Cab": "Feb2005_d3dx9_24_x64.cab"
+    },
+    {
+      "Name": "d3dx9_25.dll",
+      "Architecture": "x64",
+      "Version": "9.6.168.0",
+      "Sha256": "10b09474bfe4e2bb395472628646bc5f353fbfbec976575c45eeff49984ebaa6",
+      "Cab": "Apr2005_d3dx9_25_x64.cab"
+    },
+    {
+      "Name": "d3dx9_26.dll",
+      "Architecture": "x64",
+      "Version": "9.7.239.0",
+      "Sha256": "30b06dbbd202494bae3b87487e7273adcffd17a9d2c29977030fde0570aa841b",
+      "Cab": "Jun2005_d3dx9_26_x64.cab"
+    },
+    {
+      "Name": "d3dx9_27.dll",
+      "Architecture": "x64",
+      "Version": "9.8.299.0",
+      "Sha256": "f9dd288c9895973f8db1856d172779041c6dee173ad1ef53b1727fc85cb6b75f",
+      "Cab": "Aug2005_d3dx9_27_x64.cab"
+    },
+    {
+      "Name": "d3dx9_28.dll",
+      "Architecture": "x64",
+      "Version": "9.10.455.0",
+      "Sha256": "a2870f86e2f1b11646ff3f404bdbde10520c481c1400b20d25fdf56e66fb0a17",
+      "Cab": "Dec2005_d3dx9_28_x64.cab"
+    },
+    {
+      "Name": "d3dx9_29.dll",
+      "Architecture": "x64",
+      "Version": "9.11.519.0",
+      "Sha256": "d496c31a6b0f41398ecad7698987c55c2cb88eb6568976ba9b01a197879dd9dc",
+      "Cab": "Feb2006_d3dx9_29_x64.cab"
+    },
+    {
+      "Name": "d3dx9_30.dll",
+      "Architecture": "x64",
+      "Version": "9.12.589.0",
+      "Sha256": "7d1374e3b921a70b5028472ab164d9e582e3c3525334235d642664189da9b157",
+      "Cab": "Apr2006_d3dx9_30_x64.cab"
+    },
+    {
+      "Name": "d3dx9_31.dll",
+      "Architecture": "x64",
+      "Version": "9.15.779.0",
+      "Sha256": "84167b7df7e97c63f0cc15c1d272cdc7bba942f6f36a8801aec9840825891d0d",
+      "Cab": "OCT2006_d3dx9_31_x64.cab"
+    },
+    {
+      "Name": "d3dx9_32.dll",
+      "Architecture": "x64",
+      "Version": "9.16.843.0",
+      "Sha256": "7c723479e3720a52f286d2e9e044f19ed893a34e6819d53e4de6991048febad1",
+      "Cab": "DEC2006_d3dx9_32_x64.cab"
+    },
+    {
+      "Name": "d3dx9_33.dll",
+      "Architecture": "x64",
+      "Version": "9.18.904.15",
+      "Sha256": "7338b1d039d0c08e45f24874e4918ffa642ebfe5967c96035f66f509265fa33e",
+      "Cab": "APR2007_d3dx9_33_x64.cab"
+    },
+    {
+      "Name": "d3dx9_34.dll",
+      "Architecture": "x64",
+      "Version": "9.19.949.46",
+      "Sha256": "715fa6d4931324cca594c4fdfc60274ed29d296bb4592d102b36bc976c8b8ada",
+      "Cab": "JUN2007_d3dx9_34_x64.cab"
+    },
+    {
+      "Name": "d3dx9_35.dll",
+      "Architecture": "x64",
+      "Version": "9.19.949.1104",
+      "Sha256": "ca195b7ee7aee29e6417acf0e6c1736d9aac76890a622eb62ed137394fc6f2b9",
+      "Cab": "AUG2007_d3dx9_35_x64.cab"
+    },
+    {
+      "Name": "d3dx9_36.dll",
+      "Architecture": "x64",
+      "Version": "9.19.949.2111",
+      "Sha256": "c683e8e543bdd678dfdea0b325a3de04a419eeb053e2f32702d8b472aaf54c6d",
+      "Cab": "Nov2007_d3dx9_36_x64.cab"
+    },
+    {
+      "Name": "d3dx9_37.dll",
+      "Architecture": "x64",
+      "Version": "9.22.949.2248",
+      "Sha256": "8c1d75b01208b59fcabfb389df296e00a58713322f00112fbe80aa7b6221708a",
+      "Cab": "Mar2008_d3dx9_37_x64.cab"
+    },
+    {
+      "Name": "d3dx9_38.dll",
+      "Architecture": "x64",
+      "Version": "9.23.949.2378",
+      "Sha256": "b54e832bd8d7e94772c680f49c31b86f9c5db456f8e5cac66720d533896f1cfe",
+      "Cab": "JUN2008_d3dx9_38_x64.cab"
+    },
+    {
+      "Name": "d3dx9_39.dll",
+      "Architecture": "x64",
+      "Version": "9.24.949.2307",
+      "Sha256": "aecbe2965f7c9aa60257670114c06b21a3de914b03e20ff569c5cb44ec4807fd",
+      "Cab": "Aug2008_d3dx9_39_x64.cab"
+    },
+    {
+      "Name": "d3dx9_40.dll",
+      "Architecture": "x64",
+      "Version": "9.24.950.2656",
+      "Sha256": "8a9ea8bc06786d342af4e7d171abbe6640cf31d9d01afb86dbf63f26302077db",
+      "Cab": "Nov2008_d3dx9_40_x64.cab"
+    },
+    {
+      "Name": "d3dx9_41.dll",
+      "Architecture": "x64",
+      "Version": "9.26.952.2844",
+      "Sha256": "33fd649d5b6e90bd7b7f51d1431ef3501772ae985e320442e5fd750e4368669a",
+      "Cab": "Mar2009_d3dx9_41_x64.cab"
+    },
+    {
+      "Name": "d3dx9_42.dll",
+      "Architecture": "x64",
+      "Version": "9.27.952.3001",
+      "Sha256": "1d6f5aa25ac2f1e55d3fd89cd5b33edd4de3709bf0353c75ab8645cebc087fa5",
+      "Cab": "Aug2009_d3dx9_42_x64.cab"
+    },
+    {
+      "Name": "d3dx9_43.dll",
+      "Architecture": "x64",
+      "Version": "9.29.952.3111",
+      "Sha256": "84b900dbd7fa978d6e0caee26fc54f2f61d92c9c75d10b35f00e3e82cd1d67b4",
+      "Cab": "Jun2010_d3dx9_43_x64.cab"
+    },
+    {
+      "Name": "x3daudio1_0.dll",
+      "Architecture": "x64",
+      "Version": "9.11.519.0",
+      "Sha256": "77cc09cea6de69f12106e6dd9df1c0446a525a54c3953d69d64711b9394cc38f",
+      "Cab": "Apr2006_XACT_x64.cab"
+    },
+    {
+      "Name": "x3daudio1_1.dll",
+      "Architecture": "x64",
+      "Version": "9.15.779.0",
+      "Sha256": "fac23787e7c199c1969806850b5a9652f66f6dcac86f48f6f834abc253848a55",
+      "Cab": "APR2007_XACT_x64.cab"
+    },
+    {
+      "Name": "x3daudio1_2.dll",
+      "Architecture": "x64",
+      "Version": "9.21.1148.0",
+      "Sha256": "7a34a7a8af47c6b2cf890ecb56bad2454ba5eb1ef2df6fad9ee53c4770e941cc",
+      "Cab": "NOV2007_X3DAudio_x64.cab"
+    },
+    {
+      "Name": "x3daudio1_3.dll",
+      "Architecture": "x64",
+      "Version": "9.22.1284.0",
+      "Sha256": "96c2a80a7fa7670d323e584b956cc98f69f2a22e5329ce4a93269468b142de44",
+      "Cab": "Mar2008_X3DAudio_x64.cab"
+    },
+    {
+      "Name": "x3daudio1_4.dll",
+      "Architecture": "x64",
+      "Version": "9.23.1350.0",
+      "Sha256": "e38b62c0946b9e4e1446e0f8c6335fc7328eb20cc587e310983f3f6d6571ac5d",
+      "Cab": "JUN2008_X3DAudio_x64.cab"
+    },
+    {
+      "Name": "x3daudio1_5.dll",
+      "Architecture": "x64",
+      "Version": "9.25.1476.0",
+      "Sha256": "8dd91637f40136f8f941d0b9e8a096964336759a91beb3265a78627e800da85f",
+      "Cab": "Nov2008_X3DAudio_x64.cab"
+    },
+    {
+      "Name": "x3daudio1_6.dll",
+      "Architecture": "x64",
+      "Version": "9.26.1590.0",
+      "Sha256": "0afcf64138aacab2b4a5e110392a7d978694dc545845f89782c07c650f212f3b",
+      "Cab": "Mar2009_X3DAudio_x64.cab"
+    },
+    {
+      "Name": "x3daudio1_7.dll",
+      "Architecture": "x64",
+      "Version": "9.28.1886.0",
+      "Sha256": "9460709339701ad471a5cabe6365355f4d586dc4fcb86507c1331839dc555446",
+      "Cab": "Feb2010_X3DAudio_x64.cab"
+    },
+    {
+      "Name": "xactengine2_0.dll",
+      "Architecture": "x64",
+      "Version": "9.11.519.0",
+      "Sha256": "a00ad310f3d7b2d4de2f5a4c081359fa443ce0baecc72ebf39d6b30ccf7babce",
+      "Cab": "Feb2006_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine2_1.dll",
+      "Architecture": "x64",
+      "Version": "9.12.589.0",
+      "Sha256": "3ca31f274ea55cb966ec0b49addf72e1e21269406ae5fc44de3d5bbc884a6ce4",
+      "Cab": "Apr2006_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine2_10.dll",
+      "Architecture": "x64",
+      "Version": "9.21.1148.0",
+      "Sha256": "3fcc50623a5da6b23788dbde6eb10418b414865b12c84247ddb3024fda59a8ab",
+      "Cab": "NOV2007_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine2_2.dll",
+      "Architecture": "x64",
+      "Version": "9.13.644.0",
+      "Sha256": "7b4e5938f1f69e5b8aaa8ecb479245b5773786192a47f9fdf6bd8eccfb109b83",
+      "Cab": "JUN2006_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine2_3.dll",
+      "Architecture": "x64",
+      "Version": "9.14.701.0",
+      "Sha256": "1cf72300e03b4b6fc48e1d9e79d93c42d657ee1f87153035d1578d1af8616ad5",
+      "Cab": "AUG2006_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine2_4.dll",
+      "Architecture": "x64",
+      "Version": "9.15.779.0",
+      "Sha256": "2bfa6e7b793299a306a554b60a39d001e493937e88dca403d9f0dd1ea0de1aa0",
+      "Cab": "OCT2006_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine2_5.dll",
+      "Architecture": "x64",
+      "Version": "9.16.857.0",
+      "Sha256": "a737ea87fd5b44343c26da6d47508901b916b83c5f4a508c0b18c56faf8c0329",
+      "Cab": "DEC2006_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine2_6.dll",
+      "Architecture": "x64",
+      "Version": "9.17.892.0",
+      "Sha256": "9f4c316be32e4de8c6594c26ff50410d2763b5f3320741b912a81a9ea9b7728e",
+      "Cab": "FEB2007_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine2_7.dll",
+      "Architecture": "x64",
+      "Version": "9.18.944.0",
+      "Sha256": "bcf3012a44b448402166bbab661a9fbca7f9e3c11ad17b3f96a54bbbb82bb235",
+      "Cab": "APR2007_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine2_8.dll",
+      "Architecture": "x64",
+      "Version": "9.19.1007.0",
+      "Sha256": "43a29c6dae6468ca4163795a7555003a71384b8dbe052be0b3bf1d7d4d19cf24",
+      "Cab": "JUN2007_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine2_9.dll",
+      "Architecture": "x64",
+      "Version": "9.20.1057.0",
+      "Sha256": "28ee04a1bd08faebf937367e3c3fae4d20980ba08070382497964ec77951b749",
+      "Cab": "AUG2007_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine3_0.dll",
+      "Architecture": "x64",
+      "Version": "9.22.1284.0",
+      "Sha256": "1c953325e2f9e2033065c9898420453ed8b812eb739a7adda5021114a6fc9074",
+      "Cab": "Mar2008_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine3_1.dll",
+      "Architecture": "x64",
+      "Version": "9.23.1350.0",
+      "Sha256": "444a0b9836b0116edc50e4226c5b6baedd4f92fc099dab21cfc246aba0c24975",
+      "Cab": "JUN2008_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine3_2.dll",
+      "Architecture": "x64",
+      "Version": "9.24.1400.0",
+      "Sha256": "7d0d28dfd60a28283846c9b00f26ba8f98af16d95e81ad577ee0e89d56c2ef50",
+      "Cab": "Aug2008_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine3_3.dll",
+      "Architecture": "x64",
+      "Version": "9.25.1476.0",
+      "Sha256": "2382bdad39eb8a94194ec4d169203067710d044b31e8f9b1c0571fd6ce32f23d",
+      "Cab": "Nov2008_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine3_4.dll",
+      "Architecture": "x64",
+      "Version": "9.26.1590.0",
+      "Sha256": "e4296c55d860e9f14f91c58841a7100036152d55bcb4bdcdf659ddc1d8a4c52f",
+      "Cab": "Mar2009_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine3_5.dll",
+      "Architecture": "x64",
+      "Version": "9.27.1734.0",
+      "Sha256": "65e8efebdf388f3075817f451ed96c4765bf83c0408b84f4f4f71a3f4214da8c",
+      "Cab": "Aug2009_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine3_6.dll",
+      "Architecture": "x64",
+      "Version": "9.28.1886.0",
+      "Sha256": "6e656d37eadec5acf8ca99f2df37768eaec1c919e616caf3805c0884b2af7c26",
+      "Cab": "Feb2010_XACT_x64.cab"
+    },
+    {
+      "Name": "xactengine3_7.dll",
+      "Architecture": "x64",
+      "Version": "9.29.1962.0",
+      "Sha256": "31b7d87c0b7a5e44ec6fc935f11ec9ba949d8161c667f8396896ac92e9bc6745",
+      "Cab": "Jun2010_XACT_x64.cab"
+    },
+    {
+      "Name": "xapofx1_0.dll",
+      "Architecture": "x64",
+      "Version": "9.23.1350.0",
+      "Sha256": "671c24f825629381870567d726b7dbc3890d665648043c041eb1100163c49e12",
+      "Cab": "JUN2008_XAudio_x64.cab"
+    },
+    {
+      "Name": "xapofx1_1.dll",
+      "Architecture": "x64",
+      "Version": "9.24.1400.0",
+      "Sha256": "cd03a9ef13123c1b9ce3d92b9e9fd9b9682c9f66c167dd8a326e4bd0acff73f2",
+      "Cab": "Aug2008_XAudio_x64.cab"
+    },
+    {
+      "Name": "xapofx1_2.dll",
+      "Architecture": "x64",
+      "Version": "9.25.1476.0",
+      "Sha256": "f16e5795fac7a97fc1ffb5d049c011ee5f0dcdc4c6393664b6a9d94f949fdf0f",
+      "Cab": "Nov2008_XAudio_x64.cab"
+    },
+    {
+      "Name": "xapofx1_3.dll",
+      "Architecture": "x64",
+      "Version": "9.26.1590.0",
+      "Sha256": "787e10d48d90db50dc155fca53fe8c5c1a383ca24d468733d4b8fe3acf2d0a34",
+      "Cab": "Aug2009_XAudio_x64.cab"
+    },
+    {
+      "Name": "xapofx1_4.dll",
+      "Architecture": "x64",
+      "Version": "9.28.1886.0",
+      "Sha256": "d42e7e91eafce25550f08a63240e23fbe3ddd278b852e36e4eab05bc42f5ec7d",
+      "Cab": "Feb2010_XAudio_x64.cab"
+    },
+    {
+      "Name": "xapofx1_5.dll",
+      "Architecture": "x64",
+      "Version": "9.29.1962.0",
+      "Sha256": "e47dcf74d50403b376c562e4121e359e5886e42fcc60b3fa8ba53e6826854c49",
+      "Cab": "Jun2010_XAudio_x64.cab"
+    },
+    {
+      "Name": "xaudio2_0.dll",
+      "Architecture": "x64",
+      "Version": "9.22.1284.0",
+      "Sha256": "eed9479428df33f7a9be5eca9806c2e3412509274638d13032c6c0ed1a3a9ef1",
+      "Cab": "Mar2008_XAudio_x64.cab"
+    },
+    {
+      "Name": "xaudio2_1.dll",
+      "Architecture": "x64",
+      "Version": "9.23.1350.0",
+      "Sha256": "7c7c67e2255217d12c5c2afe53556c0f131049be7db4043aed9c1379b9ca9aa1",
+      "Cab": "JUN2008_XAudio_x64.cab"
+    },
+    {
+      "Name": "xaudio2_2.dll",
+      "Architecture": "x64",
+      "Version": "9.24.1400.0",
+      "Sha256": "9ac81279b1625cbd9a8b59716aac63ef68d722dae586291457d24366a5f4e78b",
+      "Cab": "Aug2008_XAudio_x64.cab"
+    },
+    {
+      "Name": "xaudio2_3.dll",
+      "Architecture": "x64",
+      "Version": "9.25.1476.0",
+      "Sha256": "d8e9c006edcf959f414ae7e3ff2e11af0885bc84cedc8249fdc1c5e71cdca8ba",
+      "Cab": "Nov2008_XAudio_x64.cab"
+    },
+    {
+      "Name": "xaudio2_4.dll",
+      "Architecture": "x64",
+      "Version": "9.26.1590.0",
+      "Sha256": "df7ddbea32acecc7fd6743002d211506ab75cb1685b4d2b708ea160c610a6f0d",
+      "Cab": "Mar2009_XAudio_x64.cab"
+    },
+    {
+      "Name": "xaudio2_5.dll",
+      "Architecture": "x64",
+      "Version": "9.27.1734.0",
+      "Sha256": "36c77312026a3bd5fb928f4fe599a077b08264a82f2863875c2d4619ee133b71",
+      "Cab": "Aug2009_XAudio_x64.cab"
+    },
+    {
+      "Name": "xaudio2_6.dll",
+      "Architecture": "x64",
+      "Version": "9.28.1886.0",
+      "Sha256": "3240447ef7bab48ec32a19f36e990bbddfdcb0f664fd9f58449f46788b5c32dd",
+      "Cab": "Feb2010_XAudio_x64.cab"
+    },
+    {
+      "Name": "xaudio2_7.dll",
+      "Architecture": "x64",
+      "Version": "9.29.1962.0",
+      "Sha256": "f8636ccc37bbfc84107992b60e4226eb7237417112267ed64b08f72983ac4314",
+      "Cab": "Jun2010_XAudio_x64.cab"
+    },
+    {
+      "Name": "xinput1_1.dll",
+      "Architecture": "x64",
+      "Version": "9.12.589.0",
+      "Sha256": "87c7f921bbf171fa04f7c2adaf8b25d4bf152d12c6b99771da42f3af07f78987",
+      "Cab": "Apr2006_xinput_x64.cab"
+    },
+    {
+      "Name": "xinput1_2.dll",
+      "Architecture": "x64",
+      "Version": "9.14.701.0",
+      "Sha256": "77055b6a144c4017acd0a8b34520cf9a84be6b9c75db40f7a708b9f4e38aa138",
+      "Cab": "AUG2006_xinput_x64.cab"
+    },
+    {
+      "Name": "xinput1_3.dll",
+      "Architecture": "x64",
+      "Version": "9.18.944.0",
+      "Sha256": "756cad002e1553cfa1a91ebe8c1b9380ffabe0b4b1916c4a4db802396ddfbef8",
+      "Cab": "APR2007_xinput_x64.cab"
+    },
+    {
+      "Name": "d3dcompiler_33.dll",
+      "Architecture": "x86",
+      "Version": "9.18.904.15",
+      "Sha256": "12e238af4b4edc1f774213709a87a91b77b2c9d2d18fe475b027872923b6fa17",
+      "Cab": "APR2007_d3dx10_33_x86.cab"
+    },
+    {
+      "Name": "d3dcompiler_34.dll",
+      "Architecture": "x86",
+      "Version": "9.19.949.46",
+      "Sha256": "5044a5810fd931339933a8d0c56115a5a5c27d8c0d8e348977e2724a032accf0",
+      "Cab": "JUN2007_d3dx10_34_x86.cab"
+    },
+    {
+      "Name": "d3dcompiler_35.dll",
+      "Architecture": "x86",
+      "Version": "9.19.949.1104",
+      "Sha256": "5a866cdf74f981e783624dafb0e72f133ad9f9b293856d7a18c7558fa357beb1",
+      "Cab": "AUG2007_d3dx10_35_x86.cab"
+    },
+    {
+      "Name": "d3dcompiler_36.dll",
+      "Architecture": "x86",
+      "Version": "9.19.949.2111",
+      "Sha256": "f15efcab1780fe7d784a3cd3798f147fa249e81b7ef9a494b85dc7fdab084734",
+      "Cab": "Nov2007_d3dx10_36_x86.cab"
+    },
+    {
+      "Name": "d3dcompiler_37.dll",
+      "Architecture": "x86",
+      "Version": "9.22.949.2248",
+      "Sha256": "715876d15b590936e4d32602a764d810650eec134922b32eea742e2fa71791c1",
+      "Cab": "Mar2008_d3dx10_37_x86.cab"
+    },
+    {
+      "Name": "d3dcompiler_38.dll",
+      "Architecture": "x86",
+      "Version": "9.23.949.2378",
+      "Sha256": "ddcaadbdd47bcba02c8d1880d456acc20732d21554977338ae507987ed04046e",
+      "Cab": "JUN2008_d3dx10_38_x86.cab"
+    },
+    {
+      "Name": "d3dcompiler_39.dll",
+      "Architecture": "x86",
+      "Version": "9.24.949.2307",
+      "Sha256": "b99b655abc4ec45851cc2acdb7a348e739687200a4fe3be9c35d6738dd61112f",
+      "Cab": "Aug2008_d3dx10_39_x86.cab"
+    },
+    {
+      "Name": "d3dcompiler_40.dll",
+      "Architecture": "x86",
+      "Version": "9.24.950.2656",
+      "Sha256": "f0a6f156d13150de6ebb094233e5ff78581fbdb77bd0ff8d083698c42bc8e13b",
+      "Cab": "Nov2008_d3dx10_40_x86.cab"
+    },
+    {
+      "Name": "d3dcompiler_41.dll",
+      "Architecture": "x86",
+      "Version": "9.26.952.2844",
+      "Sha256": "69ddadf8f5be24f10382706480b55e2492008d102001779f976608e880c65aab",
+      "Cab": "Mar2009_d3dx10_41_x86.cab"
+    },
+    {
+      "Name": "d3dcompiler_42.dll",
+      "Architecture": "x86",
+      "Version": "9.27.952.3022",
+      "Sha256": "6c976311406c23aa71018d274da0ecdef43b6e3a3b0b01e941a5e8e4e974386c",
+      "Cab": "Aug2009_D3DCompiler_42_x86.cab"
+    },
+    {
+      "Name": "d3dcompiler_43.dll",
+      "Architecture": "x86",
+      "Version": "9.29.952.3111",
+      "Sha256": "2f23182ec6f4889397ac4bf03d62536136c5bdba825c7d2c4ef08c827f3a8a1c",
+      "Cab": "Jun2010_D3DCompiler_43_x86.cab"
+    },
+    {
+      "Name": "d3dcsx_42.dll",
+      "Architecture": "x86",
+      "Version": "9.27.952.3022",
+      "Sha256": "e462eb3d41db54988ce3be46ced60b0073f8d939a9946cda67fb1df3c8afe0a1",
+      "Cab": "Aug2009_d3dcsx_42_x86.cab"
+    },
+    {
+      "Name": "d3dcsx_43.dll",
+      "Architecture": "x86",
+      "Version": "9.29.952.3111",
+      "Sha256": "b46a44b6fce8f141c9e02798645db2ee0da5c69ea71195e29f83a91a355fa2ca",
+      "Cab": "Jun2010_d3dcsx_43_x86.cab"
+    },
+    {
+      "Name": "d3dx10_33.dll",
+      "Architecture": "x86",
+      "Version": "9.18.904.21",
+      "Sha256": "b04e2b089656eae01a0071359f9d7fb040dea804c1b9d2379431864174259c2d",
+      "Cab": "APR2007_d3dx10_33_x86.cab"
+    },
+    {
+      "Name": "d3dx10_34.dll",
+      "Architecture": "x86",
+      "Version": "9.19.949.46",
+      "Sha256": "330e120d745e1132252df81800362a7ae0b61a9060afc800165ba8a1d55d3fb3",
+      "Cab": "JUN2007_d3dx10_34_x86.cab"
+    },
+    {
+      "Name": "d3dx10_35.dll",
+      "Architecture": "x86",
+      "Version": "9.19.949.1104",
+      "Sha256": "db775655fd923e29509402556f86002dd9aea062cdcdba7073e1057a67b5ce50",
+      "Cab": "AUG2007_d3dx10_35_x86.cab"
+    },
+    {
+      "Name": "d3dx10_36.dll",
+      "Architecture": "x86",
+      "Version": "9.19.949.2009",
+      "Sha256": "aee0248f18dfef8194451a22c69adda1cca38c03ae9aa776114da9d8851d4c38",
+      "Cab": "Nov2007_d3dx10_36_x86.cab"
+    },
+    {
+      "Name": "d3dx10_37.dll",
+      "Architecture": "x86",
+      "Version": "9.19.949.2187",
+      "Sha256": "61aaf973712f848b24c3e769e3252248ece96db63f206de0ca7ff43d9ed87a51",
+      "Cab": "Mar2008_d3dx10_37_x86.cab"
+    },
+    {
+      "Name": "d3dx10_38.dll",
+      "Architecture": "x86",
+      "Version": "9.23.949.2378",
+      "Sha256": "bf463b7ee2235f351309b5fd790f514acf2b55a4a1f90222f7479024cc28fc34",
+      "Cab": "JUN2008_d3dx10_38_x86.cab"
+    },
+    {
+      "Name": "d3dx10_39.dll",
+      "Architecture": "x86",
+      "Version": "9.24.949.2307",
+      "Sha256": "613afdb8b44bb3bed945279229d9604a3cd553f8c2b9b091235cbab8cd00de61",
+      "Cab": "Aug2008_d3dx10_39_x86.cab"
+    },
+    {
+      "Name": "d3dx10_40.dll",
+      "Architecture": "x86",
+      "Version": "9.24.950.2656",
+      "Sha256": "c05787cbf3aa4527baae96a425ceac910090ef48809990a450c33f3cda0e4767",
+      "Cab": "Nov2008_d3dx10_40_x86.cab"
+    },
+    {
+      "Name": "d3dx10_41.dll",
+      "Architecture": "x86",
+      "Version": "9.26.952.2844",
+      "Sha256": "9f4c15e1f68795727eded4737acc5a1aa85f896cd9e6924fddc9128b48f1bbd6",
+      "Cab": "Mar2009_d3dx10_41_x86.cab"
+    },
+    {
+      "Name": "d3dx10_42.dll",
+      "Architecture": "x86",
+      "Version": "9.27.952.3001",
+      "Sha256": "46429c4affe041b08a7acfda0e9162ba42de966acb2cbcaf09ef976232073b51",
+      "Cab": "Aug2009_d3dx10_42_x86.cab"
+    },
+    {
+      "Name": "d3dx10_43.dll",
+      "Architecture": "x86",
+      "Version": "9.29.952.3111",
+      "Sha256": "56fcd13650fd1f075743154e8c48465dd68a236ab8960667d75373139d2631bf",
+      "Cab": "Jun2010_d3dx10_43_x86.cab"
+    },
+    {
+      "Name": "d3dx10.dll",
+      "Architecture": "x86",
+      "Version": "9.16.843.0",
+      "Sha256": "fd2caa28493ea76021b93641958238b7a933f4f6db1a2070be03cc81d87d8307",
+      "Cab": "DEC2006_d3dx10_00_x86.cab"
+    },
+    {
+      "Name": "d3dx11_42.dll",
+      "Architecture": "x86",
+      "Version": "9.27.952.3022",
+      "Sha256": "8c8fa8dce19e2f43e82cecd73a268e831a5ce0a16023845f7fa7fcb597772e85",
+      "Cab": "Aug2009_d3dx11_42_x86.cab"
+    },
+    {
+      "Name": "d3dx11_43.dll",
+      "Architecture": "x86",
+      "Version": "9.29.952.3111",
+      "Sha256": "492e960cb3ccfc8c25fc83f7c464ba77c86a20411347a1a9b3e5d3e8c9180a8d",
+      "Cab": "Jun2010_d3dx11_43_x86.cab"
+    },
+    {
+      "Name": "d3dx9_24.dll",
+      "Architecture": "x86",
+      "Version": "9.5.132.0",
+      "Sha256": "94ec67763f67932dd4273ef5cc12889a5cef090ffea3ee78a80c7b530272b1b5",
+      "Cab": "Feb2005_d3dx9_24_x86.cab"
+    },
+    {
+      "Name": "d3dx9_25.dll",
+      "Architecture": "x86",
+      "Version": "9.6.168.0",
+      "Sha256": "4c54df27ce84d21b2924e64ff79b13e7876ce85d8e0c9c1d0abd8da73888187a",
+      "Cab": "Apr2005_d3dx9_25_x86.cab"
+    },
+    {
+      "Name": "d3dx9_26.dll",
+      "Architecture": "x86",
+      "Version": "9.7.239.0",
+      "Sha256": "8ea96fe01c3c86a36fcb3795ae03eb12034003e335ef475571efaeda17c5bc78",
+      "Cab": "Jun2005_d3dx9_26_x86.cab"
+    },
+    {
+      "Name": "d3dx9_27.dll",
+      "Architecture": "x86",
+      "Version": "9.8.299.0",
+      "Sha256": "a70d571cd675c97c9eeb4a234dba1d667ffb54ec3bb14defb36b3e2f605ae257",
+      "Cab": "Aug2005_d3dx9_27_x86.cab"
+    },
+    {
+      "Name": "d3dx9_28.dll",
+      "Architecture": "x86",
+      "Version": "9.10.455.0",
+      "Sha256": "f3e391b5f1c1f9637cabf2b812b6f5d65e4776c89d779f506f6b643cc563176d",
+      "Cab": "Dec2005_d3dx9_28_x86.cab"
+    },
+    {
+      "Name": "d3dx9_29.dll",
+      "Architecture": "x86",
+      "Version": "9.11.519.0",
+      "Sha256": "c5e21c18f8c79bc517da59e3192c39ea73bdcaf85867628187f6b3cca07dd21f",
+      "Cab": "Feb2006_d3dx9_29_x86.cab"
+    },
+    {
+      "Name": "d3dx9_30.dll",
+      "Architecture": "x86",
+      "Version": "9.12.589.0",
+      "Sha256": "5edeed79f2359527a55b8189cfa8b9b121cd608d44eead905a0f3436938ad532",
+      "Cab": "Apr2006_d3dx9_30_x86.cab"
+    },
+    {
+      "Name": "d3dx9_31.dll",
+      "Architecture": "x86",
+      "Version": "9.15.779.0",
+      "Sha256": "e2065619fe6eb0034833b1dc0369deb4a6edc3110e38a1132eeafcf430c578a5",
+      "Cab": "OCT2006_d3dx9_31_x86.cab"
+    },
+    {
+      "Name": "d3dx9_32.dll",
+      "Architecture": "x86",
+      "Version": "9.16.843.0",
+      "Sha256": "e96693794daa05a75a83c11df2e7b42f2de61567c6ad0b69e353b50f6c88119f",
+      "Cab": "DEC2006_d3dx9_32_x86.cab"
+    },
+    {
+      "Name": "d3dx9_33.dll",
+      "Architecture": "x86",
+      "Version": "9.18.904.15",
+      "Sha256": "c6b7b2ad7742dde5dd8d1a35fdc1c185e586e551ad9c74d3fb21759cd8ca4da8",
+      "Cab": "APR2007_d3dx9_33_x86.cab"
+    },
+    {
+      "Name": "d3dx9_34.dll",
+      "Architecture": "x86",
+      "Version": "9.19.949.46",
+      "Sha256": "b6f77f06518d35345fb61172b6a13159125ed60c469d28b1a2e07970e9ddf81d",
+      "Cab": "JUN2007_d3dx9_34_x86.cab"
+    },
+    {
+      "Name": "d3dx9_35.dll",
+      "Architecture": "x86",
+      "Version": "9.19.949.1104",
+      "Sha256": "2198022938156b790e9cfb0f7997494b66a11a1ad49b395be58251d635b66b26",
+      "Cab": "AUG2007_d3dx9_35_x86.cab"
+    },
+    {
+      "Name": "d3dx9_36.dll",
+      "Architecture": "x86",
+      "Version": "9.19.949.2111",
+      "Sha256": "c12f0ab0338eb5031d3d04beaf7208ac848f7e037d21ff963d2af90221cbe935",
+      "Cab": "Nov2007_d3dx9_36_x86.cab"
+    },
+    {
+      "Name": "d3dx9_37.dll",
+      "Architecture": "x86",
+      "Version": "9.22.949.2248",
+      "Sha256": "c2ccb84c672a9d8966e82a28005a4269886ee304972ac3590c0b8a9c1622a3d8",
+      "Cab": "Mar2008_d3dx9_37_x86.cab"
+    },
+    {
+      "Name": "d3dx9_38.dll",
+      "Architecture": "x86",
+      "Version": "9.23.949.2378",
+      "Sha256": "743e77a228e7d75442263ad70051e44534f7972c6326fd34b505a9c2c245894b",
+      "Cab": "JUN2008_d3dx9_38_x86.cab"
+    },
+    {
+      "Name": "d3dx9_39.dll",
+      "Architecture": "x86",
+      "Version": "9.24.949.2307",
+      "Sha256": "5d29988cad858f754ecc62c3d30de555f82cc21b5b26c448b890295e9b7bee82",
+      "Cab": "Aug2008_d3dx9_39_x86.cab"
+    },
+    {
+      "Name": "d3dx9_40.dll",
+      "Architecture": "x86",
+      "Version": "9.24.950.2656",
+      "Sha256": "16fd909aeb68d0d1aca8529dc7f78880b97d6649d70ce8d03a2c858bc28e216b",
+      "Cab": "Nov2008_d3dx9_40_x86.cab"
+    },
+    {
+      "Name": "d3dx9_41.dll",
+      "Architecture": "x86",
+      "Version": "9.26.952.2844",
+      "Sha256": "6ac4df203af419d3f3b7d9a99e14a3490ea3ad307c474bfe36baea642b1421f6",
+      "Cab": "Mar2009_d3dx9_41_x86.cab"
+    },
+    {
+      "Name": "d3dx9_42.dll",
+      "Architecture": "x86",
+      "Version": "9.27.952.3001",
+      "Sha256": "f8b9cfab7fffbc8f98e41aa439d72921dc180634a1febca2a9d41a0df35d3472",
+      "Cab": "Aug2009_d3dx9_42_x86.cab"
+    },
+    {
+      "Name": "d3dx9_43.dll",
+      "Architecture": "x86",
+      "Version": "9.29.952.3111",
+      "Sha256": "0b28546be22c71834501f7d7185ede5d79742457331c7ee09efc14490dd64f5f",
+      "Cab": "Jun2010_d3dx9_43_x86.cab"
+    },
+    {
+      "Name": "x3daudio1_0.dll",
+      "Architecture": "x86",
+      "Version": "9.11.519.0",
+      "Sha256": "228dfece2b4555a243a73e7bf461036f1e53951977625651ff5a59deaeaf4b88",
+      "Cab": "Apr2006_XACT_x86.cab"
+    },
+    {
+      "Name": "x3daudio1_1.dll",
+      "Architecture": "x86",
+      "Version": "9.15.779.0",
+      "Sha256": "ff15f14174a5543f028fa49cca745582fe4cacf3bbe490749cf43444690ab359",
+      "Cab": "APR2007_XACT_x86.cab"
+    },
+    {
+      "Name": "x3daudio1_2.dll",
+      "Architecture": "x86",
+      "Version": "9.21.1148.0",
+      "Sha256": "4c448c7f77e3b4385d2cd35d0c470589cdf0524e532f9cf7ae084a8f88aa949a",
+      "Cab": "NOV2007_X3DAudio_x86.cab"
+    },
+    {
+      "Name": "x3daudio1_3.dll",
+      "Architecture": "x86",
+      "Version": "9.22.1284.0",
+      "Sha256": "74ec3e6b253af1b68252e62a5c08479453b3341d49c606adcf36913fe9ed9717",
+      "Cab": "Mar2008_X3DAudio_x86.cab"
+    },
+    {
+      "Name": "x3daudio1_4.dll",
+      "Architecture": "x86",
+      "Version": "9.23.1350.0",
+      "Sha256": "799b38139523a3b30d26e21798ee705375c61eed8ae2434fddb52fde51f4bb78",
+      "Cab": "JUN2008_X3DAudio_x86.cab"
+    },
+    {
+      "Name": "x3daudio1_5.dll",
+      "Architecture": "x86",
+      "Version": "9.25.1476.0",
+      "Sha256": "315944bb2a1959c8a4bd2677ed415363e1611c7351ce55319dc98fd2aac83f87",
+      "Cab": "Nov2008_X3DAudio_x86.cab"
+    },
+    {
+      "Name": "x3daudio1_6.dll",
+      "Architecture": "x86",
+      "Version": "9.26.1590.0",
+      "Sha256": "574d14ab9a641c6cbadd78f2cd6c088b64b59c3646057952e63cad7d2778e1c3",
+      "Cab": "Mar2009_X3DAudio_x86.cab"
+    },
+    {
+      "Name": "x3daudio1_7.dll",
+      "Architecture": "x86",
+      "Version": "9.28.1886.0",
+      "Sha256": "288c701bdedf1d45c63dd0b7d424a752f8819f90feb5088c582f76bc98970ba3",
+      "Cab": "Feb2010_X3DAudio_x86.cab"
+    },
+    {
+      "Name": "xactengine2_0.dll",
+      "Architecture": "x86",
+      "Version": "9.11.519.0",
+      "Sha256": "cfd1c2d34feb7d94f282e97bf762a99bfa7309dc7353d96dfe4aadc187d26c67",
+      "Cab": "Feb2006_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine2_1.dll",
+      "Architecture": "x86",
+      "Version": "9.12.589.0",
+      "Sha256": "666cef7d27a38f709063c9c581fd95e6b3fa27167bff4beff484dba2dc922a2b",
+      "Cab": "Apr2006_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine2_10.dll",
+      "Architecture": "x86",
+      "Version": "9.21.1148.0",
+      "Sha256": "113640ae8cf78caa7cface2f906f9e6b60809906f5c26e08b2e90fc48430f3b7",
+      "Cab": "NOV2007_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine2_2.dll",
+      "Architecture": "x86",
+      "Version": "9.13.644.0",
+      "Sha256": "4f996edb65022e33ae9c9f7acf7232c8d444f75c50c72894f6d3173b55404ebe",
+      "Cab": "JUN2006_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine2_3.dll",
+      "Architecture": "x86",
+      "Version": "9.14.701.0",
+      "Sha256": "ca20cf8e4034719a46bf67c6009486c2c1cfc2da10ffed3a67dcae677b4f6793",
+      "Cab": "AUG2006_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine2_4.dll",
+      "Architecture": "x86",
+      "Version": "9.15.779.0",
+      "Sha256": "1e0e09fc077bdeee3de065c663b83f6717d39d56778833f030955077d490d000",
+      "Cab": "OCT2006_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine2_5.dll",
+      "Architecture": "x86",
+      "Version": "9.16.857.0",
+      "Sha256": "ec68b5163cbb5f15e2fbe37fdf5fcb0d01dffbe53a460cb2cf668f31f0127ad5",
+      "Cab": "DEC2006_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine2_6.dll",
+      "Architecture": "x86",
+      "Version": "9.17.892.0",
+      "Sha256": "be45aef0889b03e2243282a912f41580e8566db666a782c26a1d4d7988799d03",
+      "Cab": "FEB2007_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine2_7.dll",
+      "Architecture": "x86",
+      "Version": "9.18.944.0",
+      "Sha256": "a43c92af3fbe91dfe2a1d415342631fe64e18c7dd3e16e93b6c78947b68e7bd6",
+      "Cab": "APR2007_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine2_8.dll",
+      "Architecture": "x86",
+      "Version": "9.19.1007.0",
+      "Sha256": "15d82e89bea30bf82de6ba0cfbe97eeaf05d1e06bc0133f0d1ee8d0cc41f51f6",
+      "Cab": "JUN2007_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine2_9.dll",
+      "Architecture": "x86",
+      "Version": "9.20.1057.0",
+      "Sha256": "93a0d8fc38e4e9a301d9e721afbeedc5af40becc0b11a6e7e8e38f08f366ff6e",
+      "Cab": "AUG2007_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine3_0.dll",
+      "Architecture": "x86",
+      "Version": "9.22.1284.0",
+      "Sha256": "887329745c479ce8d3023c969adf66780dd7e51ab536f0a08550ba4c77066c20",
+      "Cab": "Mar2008_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine3_1.dll",
+      "Architecture": "x86",
+      "Version": "9.23.1350.0",
+      "Sha256": "088999560171c60129c95f9b541852392602561dce43e4c61a453d48065f52ca",
+      "Cab": "JUN2008_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine3_2.dll",
+      "Architecture": "x86",
+      "Version": "9.24.1400.0",
+      "Sha256": "e6a34c1f068f89d6515cb460eed3b4dbb53522c5579e6c75741482f0d40d9f99",
+      "Cab": "Aug2008_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine3_3.dll",
+      "Architecture": "x86",
+      "Version": "9.25.1476.0",
+      "Sha256": "ef052bc9b7fde596fff3ea2d9c8fc994f3282953dead1b7f5477e7154af67245",
+      "Cab": "Nov2008_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine3_4.dll",
+      "Architecture": "x86",
+      "Version": "9.26.1590.0",
+      "Sha256": "d3bad7995b998f2c95dbb33020a198ef5a248825321032f051619f353d46182b",
+      "Cab": "Mar2009_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine3_5.dll",
+      "Architecture": "x86",
+      "Version": "9.27.1734.0",
+      "Sha256": "1d37ab9b90372eaaafb5055401449dc3184428fed559baaf36fbcccd2479611a",
+      "Cab": "Aug2009_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine3_6.dll",
+      "Architecture": "x86",
+      "Version": "9.28.1886.0",
+      "Sha256": "8a7e7c5ac2e6230f0249d46751522e7ecf85e7490cf7491ab73bf2e7e59e4c0f",
+      "Cab": "Feb2010_XACT_x86.cab"
+    },
+    {
+      "Name": "xactengine3_7.dll",
+      "Architecture": "x86",
+      "Version": "9.29.1962.0",
+      "Sha256": "d7b1cf58898046c430d49cf8f778e4898280f4709340c3938d3139894166fe8d",
+      "Cab": "Jun2010_XACT_x86.cab"
+    },
+    {
+      "Name": "xapofx1_0.dll",
+      "Architecture": "x86",
+      "Version": "9.23.1350.0",
+      "Sha256": "8b396d275de2550af8ada6a1ff71f0f4870b51c8407e44044c2dde7ad6b754cc",
+      "Cab": "JUN2008_XAudio_x86.cab"
+    },
+    {
+      "Name": "xapofx1_1.dll",
+      "Architecture": "x86",
+      "Version": "9.24.1400.0",
+      "Sha256": "5ab63c0f040fdf65e681eba4daa55ed83e89ea10c426dc2fc763da0fc94f3ace",
+      "Cab": "Aug2008_XAudio_x86.cab"
+    },
+    {
+      "Name": "xapofx1_2.dll",
+      "Architecture": "x86",
+      "Version": "9.25.1476.0",
+      "Sha256": "d1a55061bcb42f69b7cf35e2985d48e30c7a90f0bc668e90390f465b36bd0161",
+      "Cab": "Nov2008_XAudio_x86.cab"
+    },
+    {
+      "Name": "xapofx1_3.dll",
+      "Architecture": "x86",
+      "Version": "9.26.1590.0",
+      "Sha256": "b05ad9417028b9777f69422caa01ae9fd22c7bfe542bc6e7de2649e28a4ea643",
+      "Cab": "Aug2009_XAudio_x86.cab"
+    },
+    {
+      "Name": "xapofx1_4.dll",
+      "Architecture": "x86",
+      "Version": "9.28.1886.0",
+      "Sha256": "0aee44b12913a95840ee6431d90518b0d72c54a27392e21ee6995e2151554a06",
+      "Cab": "Feb2010_XAudio_x86.cab"
+    },
+    {
+      "Name": "xapofx1_5.dll",
+      "Architecture": "x86",
+      "Version": "9.29.1962.0",
+      "Sha256": "becfdcd6b16523573cb52df87aa7d993f1b345ba903d0618c3b36535c3800197",
+      "Cab": "Jun2010_XAudio_x86.cab"
+    },
+    {
+      "Name": "xaudio2_0.dll",
+      "Architecture": "x86",
+      "Version": "9.22.1284.0",
+      "Sha256": "e435b73193bdf651f7ae564eba05266595ac672db45e0e22dce92d0bcb3c6513",
+      "Cab": "Mar2008_XAudio_x86.cab"
+    },
+    {
+      "Name": "xaudio2_1.dll",
+      "Architecture": "x86",
+      "Version": "9.23.1350.0",
+      "Sha256": "32a7c6a4edef46f025a4a5c64b892e29baaae948e86d9ed49e82014eec1441de",
+      "Cab": "JUN2008_XAudio_x86.cab"
+    },
+    {
+      "Name": "xaudio2_2.dll",
+      "Architecture": "x86",
+      "Version": "9.24.1400.0",
+      "Sha256": "9c7897b4ee1bcd190b1c0b7b77e64ee731d234764683a1e2286af70d86b62753",
+      "Cab": "Aug2008_XAudio_x86.cab"
+    },
+    {
+      "Name": "xaudio2_3.dll",
+      "Architecture": "x86",
+      "Version": "9.25.1476.0",
+      "Sha256": "04dec9d7c68962e01efec0aac0ef7a3499bc4c16e8a41bd61fe6641da48d7dcc",
+      "Cab": "Nov2008_XAudio_x86.cab"
+    },
+    {
+      "Name": "xaudio2_4.dll",
+      "Architecture": "x86",
+      "Version": "9.26.1590.0",
+      "Sha256": "bcde4317debd0052b1436a6fda60e1dcb1e308979498117fa0cb50061f38101c",
+      "Cab": "Mar2009_XAudio_x86.cab"
+    },
+    {
+      "Name": "xaudio2_5.dll",
+      "Architecture": "x86",
+      "Version": "9.27.1734.0",
+      "Sha256": "c596de2ab8394fb62538fef0b4657317f4ead50a6d798c5d066e25e334576c27",
+      "Cab": "Aug2009_XAudio_x86.cab"
+    },
+    {
+      "Name": "xaudio2_6.dll",
+      "Architecture": "x86",
+      "Version": "9.28.1886.0",
+      "Sha256": "61b57170f7c6365714396072d22cb98746718c0f44c9f0d5c62fdb1b218639c7",
+      "Cab": "Feb2010_XAudio_x86.cab"
+    },
+    {
+      "Name": "xaudio2_7.dll",
+      "Architecture": "x86",
+      "Version": "9.29.1962.0",
+      "Sha256": "d1690b602cb317f7f1e1e13e3fc5819ad8b5b38a92d812078afb1b408ccc4b69",
+      "Cab": "Jun2010_XAudio_x86.cab"
+    },
+    {
+      "Name": "xinput1_1.dll",
+      "Architecture": "x86",
+      "Version": "9.12.589.0",
+      "Sha256": "69cd725c53e0302e75db20e9a3e4b33f58dceaa2e6ea4938b2733df8bc289a71",
+      "Cab": "Apr2006_xinput_x86.cab"
+    },
+    {
+      "Name": "xinput1_2.dll",
+      "Architecture": "x86",
+      "Version": "9.14.701.0",
+      "Sha256": "9714d146a785d458f0de8fef387d82c9f8e101c02407a0cbeb06f02a69518eec",
+      "Cab": "AUG2006_xinput_x86.cab"
+    },
+    {
+      "Name": "xinput1_3.dll",
+      "Architecture": "x86",
+      "Version": "9.18.944.0",
+      "Sha256": "8d540d484ea41e374fd0107d55d253f87ded4ce780d515d8fd59bbe8c98970a7",
+      "Cab": "APR2007_xinput_x86.cab"
+    }
+  ]
+}

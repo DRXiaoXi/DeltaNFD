@@ -95,51 +95,6 @@ public sealed partial class LabPage : Page
         }
     }
 
-    private async void RemoveMemoryLimitButton_Click(object sender, RoutedEventArgs e)
-    {
-        var confirm = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = "移除 12GB 内存限制？",
-            Content = "将执行 bcdedit /deletevalue removememory 并移除内存限制。\n"
-                      + "重启电脑后系统将恢复全部可用内存。\n\n"
-                      + "建议使用「显卡伪装」来影响游戏行为——不会损失任何内存。",
-            PrimaryButtonText = "移除限制",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Primary,
-        };
-
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
-        {
-            return;
-        }
-
-        var result = await ViewModel.RemoveMemoryLimitAsync();
-        if (result is { Success: false })
-        {
-            await new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = "移除失败",
-                Content = result.Message,
-                CloseButtonText = "知道了",
-                DefaultButton = ContentDialogButton.Close,
-            }.ShowAsync();
-        }
-        else if (result is { Success: true, RequiresReboot: true })
-        {
-            await new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = "内存限制已移除",
-                Content = result.Message + "\n\n是否立即重启电脑？",
-                PrimaryButtonText = "立即重启",
-                CloseButtonText = "稍后自己重启",
-                DefaultButton = ContentDialogButton.Primary,
-            }.ShowAsync();
-        }
-    }
-
     private async void ExcludeCpu0Button_Click(object sender, RoutedEventArgs e)
     {
         var result = await ViewModel.ExcludeCpu0Async();

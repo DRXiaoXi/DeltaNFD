@@ -172,8 +172,8 @@ public interface IFrameService : INotifyPropertyChanged
     /// <summary>立即重启电脑（5 秒倒计时，强制关闭未保存的应用）。</summary>
     OperationResult RebootNow();
 
-    /// <summary>手动立即重启 DWM（不等待游戏启动；重启瞬间屏幕闪一下属正常现象）。</summary>
-    OperationResult RestartDwmNow();
+    /// <summary>手动立即重启 DWM（交由 CPU/帧格后端执行；重启瞬间屏幕闪一下属正常现象）。</summary>
+    Task<OperationResult> RestartDwmNowAsync();
 
     /// <summary>
     /// 立即重载指定显卡（显卡伪装临时模式用）：按黑屏保护闸门执行——

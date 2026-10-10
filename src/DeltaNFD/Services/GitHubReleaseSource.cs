@@ -6,8 +6,37 @@ namespace DeltaNFD.Services;
 internal static class GitHubReleaseSource
 {
     internal const string ReleasesUrl = "https://api.github.com/repos/DRXiaoXi/DeltaNFD/releases?per_page=100";
+    internal const string NoMatchingReleaseReason = "当前更新通道没有已发布版本。";
 
-    internal static bool TryParse(string json, UpdateConfig config, out UpdateManifest? manifest, out string reason)
+    /// <summary>
+    /// 判断 URL 是否指向本仓库的 Releases API（允许 gh-proxy 前缀和任意 query 后缀）。
+    /// 用于 UpdateService 决定是否需要分页拉取完整发布列表。
+    /// </summary>
+    internal static bool IsRepositoryReleasesApi(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return false;
+        }
+
+        var effective = url;
+        if (UpdateUrlRewriter.IsGhProxyUrl(effective))
+        {
+            // 剥掉 gh-proxy 前缀，还原成官方地址再判断
+            effective = effective[UpdateUrlRewriter.GhProxyPrefixLength..];
+        }
+
+        if (!Uri.TryCreate(effective, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        return string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(uri.Host, "api.github.com", StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(uri.AbsolutePath, "/repos/DRXiaoXi/DeltaNFD/releases", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool TryParse(string json, UpdateConfig config, out UpdateManifest? manifest, out string reason, UpdateChannel? channel = null)
     {
         manifest = null;
         reason = "";
@@ -16,7 +45,7 @@ internal static class GitHubReleaseSource
             var releases = JsonSerializer.Deserialize<List<Release>>(json);
             if (releases is null || releases.Count == 0)
             {
-                reason = "仓库尚无已发布版本。";
+                reason = channel.HasValue ? NoMatchingReleaseReason : "仓库尚无已发布版本。";
                 return false;
             }
 
@@ -27,6 +56,8 @@ internal static class GitHubReleaseSource
             {
                 if (release is null || release.Draft ||
                     !UpdateService.TryParseVersion(release.Tag, out var version)) continue;
+                if (channel.HasValue && !UpdateChannelPolicy.Allows(channel.Value,
+                    UpdateChannelPolicy.Classify(release.Tag, release.Name, prerelease: release.Prerelease))) continue;
                 if (highest is null || UpdateService.CompareVersions(version, highest) > 0 ||
                     (UpdateService.CompareVersions(version, highest) == 0 &&
                      string.CompareOrdinal(release.PublishedAt, latest?.PublishedAt) > 0))
@@ -38,11 +69,11 @@ internal static class GitHubReleaseSource
 
             if (latest is null || highest is null)
             {
-                reason = "没有具有有效版本号的已发布 Release。";
+                reason = channel.HasValue ? NoMatchingReleaseReason : "没有具有有效版本号的已发布 Release。";
                 return false;
             }
 
-            // Alpha releases are intentional. Never fall back to an older version with usable assets.
+            // Select the highest version within the chosen channel before validating its assets.
             var assets = (latest.Assets ?? []).Where(a => a is not null &&
                 a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
                 a.Name.Contains("DeltaNFD", StringComparison.OrdinalIgnoreCase) &&
@@ -69,7 +100,7 @@ internal static class GitHubReleaseSource
             {
                 Version = AppVersion.Format(highest),
                 DisplayVersion = string.IsNullOrWhiteSpace(latest.Name) ? latest.Tag : latest.Name,
-                Channel = latest.Prerelease ? "alpha" : "stable",
+                Channel = UpdateChannelPolicy.Classify(latest.Tag, latest.Name, prerelease: latest.Prerelease).ToString().ToLowerInvariant(),
                 ReleasePageUrl = latest.PageUrl,
                 Notes = latest.Body ?? "",
                 PublishedAtUtc = latest.PublishedAt,

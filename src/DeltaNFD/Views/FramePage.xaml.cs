@@ -313,7 +313,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
             return;
         }
 
-        var result = FrameSrv.RestartDwmNow();
+        var result = await FrameSrv.RestartDwmNowAsync();
         await new ContentDialog
         {
             XamlRoot = XamlRoot,

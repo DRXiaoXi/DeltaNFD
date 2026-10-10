@@ -1,13 +1,14 @@
-using System.Text;
+﻿using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DeltaNFD.Services;
 
 namespace DeltaNFD.ViewModels;
 
-/// <summary>运行库页（14.51.36247 检测 / AIO 修复 / 防护模式）的页面状态。</summary>
+/// <summary>运行库页（安装记录/版本检测、Beta0.9 AIO 修复、新版防护模式）的页面状态。</summary>
 public partial class RuntimeViewModel : ObservableObject
 {
     private readonly IRuntimeGuardService _guard = ServiceLocator.Guard;
+    private bool _detectionFailed;
 
     // ---------------- 检测 ----------------
 
@@ -47,6 +48,7 @@ public partial class RuntimeViewModel : ObservableObject
         try
         {
             var report = await _guard.ScanVcRedistsAsync();
+            _detectionFailed = false;
             HasIssue = report.HasAbnormal;
             HasSuboptimal = report.HasSuboptimal;
 
@@ -66,11 +68,11 @@ public partial class RuntimeViewModel : ObservableObject
 
             if (report.HasSuboptimal)
             {
-                text.AppendLine($"⚠ 检测到 {report.Suboptimal.Count} 项运行库非最适版本（低于推荐版本或未安装）：");
+                text.AppendLine($"⚠ 检测到 {report.Suboptimal.Count} 项运行库版本提醒（低于基线或未检测到安装记录）：");
                 foreach (var s in report.Suboptimal)
                 {
                     text.AppendLine(string.IsNullOrEmpty(s.InstalledVersion)
-                        ? $"· {s.Branch}：未安装（推荐 {s.RecommendedVersion}）"
+                        ? $"· {s.Branch}：未检测到安装记录（推荐 {s.RecommendedVersion}）"
                         : $"· {s.Branch}：{s.InstalledVersion}（推荐 ≥ {s.RecommendedVersion}）");
                 }
             }
@@ -82,6 +84,14 @@ public partial class RuntimeViewModel : ObservableObject
             text.Append("👉 " + report.Advice);
             CheckText = text.ToString();
         }
+        catch (Exception ex)
+        {
+            _detectionFailed = true;
+            HasIssue = true;
+            HasSuboptimal = false;
+            CheckText = "运行库检测失败，不能确认安装状态；不应据此执行全量卸载：" + ex.Message;
+            Log.Error("运行库页面检测失败", ex);
+        }
         finally
         {
             IsChecking = false;
@@ -91,17 +101,52 @@ public partial class RuntimeViewModel : ObservableObject
     // ---------------- 修复 / 重装 ----------------
 
     [ObservableProperty] private bool isRepairing;
+    [ObservableProperty] private bool strongRepairMode;
+    public string StrongRepairDescription => StrongRepairConfirmation;
+    public const string StrongRepairConfirmation = "开启后，两种修复都会先使用 DISM／SFC 修复 Windows 系统组件，并抽查 API Sets／UCRT；兼容性修复还会重新修复已安装的同版本 C++ 包。可能需要联网，耗时较长，部分情况需重启。";
     [ObservableProperty] private string repairStatusText = "";
+    [ObservableProperty] private string compatibilityRepairStatusText = "";
+    [ObservableProperty] private bool compatibilityRepairSelected;
+    public bool IsHighFpsRepairing => IsRepairing && !CompatibilityRepairSelected;
+    public bool IsCompatibilityRepairing => IsRepairing && CompatibilityRepairSelected;
+    public bool CanCancelHighFpsRepair => CanCancelRepair && !CompatibilityRepairSelected;
+    public bool CanCancelCompatibilityRepair => CanCancelRepair && CompatibilityRepairSelected;
+    public string CompatibilityRepairButtonText => IsCompatibilityRepairing ? "兼容性修复中…" : "兼容性修复";
+    [ObservableProperty] private bool repairCancelRequested;
+    private CancellationTokenSource? _repairCancellation;
+    public bool CanCancelRepair => IsRepairing && !RepairCancelRequested;
+    public RuntimeRepairMode RepairMode => RuntimeRepairMode.FullReinstall;
+    partial void OnRepairCancelRequestedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanCancelRepair));
+        OnPropertyChanged(nameof(CanCancelHighFpsRepair));
+        OnPropertyChanged(nameof(CanCancelCompatibilityRepair));
+    }
+    partial void OnCompatibilityRepairSelectedChanged(bool value) => NotifyRepairModes();
+    private void NotifyRepairModes()
+    {
+        OnPropertyChanged(nameof(IsHighFpsRepairing)); OnPropertyChanged(nameof(IsCompatibilityRepairing));
+        OnPropertyChanged(nameof(CanCancelHighFpsRepair)); OnPropertyChanged(nameof(CanCancelCompatibilityRepair));
+        OnPropertyChanged(nameof(RepairButtonText)); OnPropertyChanged(nameof(CompatibilityRepairButtonText));
+    }
+    public void CancelRepair()
+    {
+        if (!CanCancelRepair) return;
+        RepairCancelRequested = true;
+        if (CompatibilityRepairSelected) CompatibilityRepairStatusText = "已请求停止后续兼容性修复；当前事务可能仍在运行，执行证据保留。";
+        else RepairStatusText = "已请求停止后续步骤；当前安装事务可能仍在运行，不会强杀，也不代表已还原。";
+        _repairCancellation?.Cancel();
+    }
 
     public bool RepairEnabled => !IsRepairing && !IsChecking && !UninstallV14Busy;
 
-    /// <summary>按钮三态：检测到 v14 → 修复运行库；非最适版本 → 重装运行库（升级到最适）；全部正常 → 重装运行库（确保纯净）。</summary>
-    public string RepairButtonText => IsRepairing
-        ? "处理中…"
-        : HasIssue ? "修复运行库" : "重装运行库";
+    /// <summary>Beta0.9 完整 AIO 修复；防护继续使用新版实现。</summary>
+    public string RepairButtonText => IsHighFpsRepairing ? "高帧性修复中…" : "高帧性修复";
 
     partial void OnIsRepairingChanged(bool value)
     {
+        NotifyRepairModes();
+        OnPropertyChanged(nameof(CanCancelRepair));
         OnPropertyChanged(nameof(RepairEnabled));
         OnPropertyChanged(nameof(RepairButtonText));
         OnPropertyChanged(nameof(CanCheck));
@@ -113,19 +158,35 @@ public partial class RuntimeViewModel : ObservableObject
     }
 
     /// <summary>静默重装运行库，逐包记录安装结果，并在完成后复检。</summary>
-    public async Task<OperationResult?> RepairAsync()
+    public Task<OperationResult?> RepairAsync(RuntimeRepairMode? confirmedMode = null, bool? confirmedStrongMode = null)
+        => RepairCoreAsync(false, confirmedMode, confirmedStrongMode ?? StrongRepairMode);
+    public Task<OperationResult?> RepairCompatibilityAsync(bool? confirmedStrongMode = null)
+        => RepairCoreAsync(true, null, confirmedStrongMode ?? StrongRepairMode);
+    private async Task<OperationResult?> RepairCoreAsync(bool compatibility, RuntimeRepairMode? confirmedMode, bool strongMode)
     {
-        if (IsRepairing)
+        if (!RepairEnabled)
         {
             return null;
         }
 
+        using var cancellation = new CancellationTokenSource();
+        _repairCancellation = cancellation;
+        RepairCancelRequested = false;
+        CompatibilityRepairSelected = compatibility;
         IsRepairing = true;
         try
         {
-            var progress = new Progress<string>(s => RepairStatusText = s);
-            var result = await _guard.RepairVcRedistAsync(progress);
-            RepairStatusText = result.Success ? "修复流程及分支复检通过。" : "修复未完成，请查看失败明细及诊断目录。";
+            var progress = new Progress<string>(s =>
+            {
+                if (IsRepairing && !RepairCancelRequested && ReferenceEquals(_repairCancellation, cancellation))
+                { if (compatibility) CompatibilityRepairStatusText = s; else RepairStatusText = s; }
+            });
+            var result = compatibility ? await _guard.RepairCompatibilityAsync(progress, cancellation.Token, strongMode)
+                : await _guard.RepairVcRedistAsync(progress, confirmedMode ?? RepairMode, cancellation.Token, strongMode);
+            var status = result.Success ? "修复流程及组件复检通过。" : "修复未完成，请查看失败明细及诊断目录。";
+            if (compatibility) CompatibilityRepairStatusText = status; else RepairStatusText = status;
+            if (result.OutcomeUnknown || RepairCancelRequested)
+                return result;
             try { await LoadAsync(); }
             catch (Exception ex)
             {
@@ -134,10 +195,21 @@ public partial class RuntimeViewModel : ObservableObject
                 return new OperationResult { Success = false, RequiresReboot = result.RequiresReboot,
                     Message = result.Message + "\n页面检测刷新失败：" + ex.Message };
             }
+            if (_detectionFailed)
+                return new OperationResult { Success = false, RequiresReboot = result.RequiresReboot,
+                    Message = result.Message + "\n" + CheckText };
             return result;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("运行库修复请求未完成", ex);
+            var error = "运行库操作未完成：" + ex.Message;
+            if (compatibility) CompatibilityRepairStatusText = error; else RepairStatusText = error;
+            return OperationResult.Fail(error);
         }
         finally
         {
+            if (ReferenceEquals(_repairCancellation, cancellation)) _repairCancellation = null;
             IsRepairing = false;
         }
     }
@@ -181,7 +253,7 @@ public partial class RuntimeViewModel : ObservableObject
         {
             var progress = new Progress<string>(s => UninstallV14StatusText = s);
             var result = await _guard.UninstallV14Async(progress);
-            await LoadAsync();
+            if (!result.OutcomeUnknown) await LoadAsync();
             return result;
         }
         finally
@@ -265,24 +337,23 @@ public partial class RuntimeViewModel : ObservableObject
         OnPropertyChanged(nameof(GuardModeIndex));
         GuardUe4Path = status.Ue4PrereqPath;
         GuardIsEnabled = status.IfeoManagedCount > 0 || status.Ue4PrereqDenied || status.Ue4RestorePending || status.IfeoRestorePending;
-        GuardIsPartial = GuardIsEnabled && (status.CanRepairLegacyUe4Acl || !status.IfeoApplied ||
-            (status.Mode == RuntimeGuardMode.Full && status.Ue4PrereqFound && !status.Ue4PrereqDenied) || status.IfeoExternalCount > 0);
+        GuardIsPartial = GuardIsEnabled && (status.CanRepairLegacyUe4Acl || !status.IfeoApplied || status.IfeoExternalCount > 0);
         OnPropertyChanged(nameof(GuardToggleEnabled));
         OnPropertyChanged(nameof(GuardModeEnabled));
         OnPropertyChanged(nameof(GuardCleanupEnabled));
         GuardStatusText = status.IfeoApplied
-            ? $"{(status.Mode == RuntimeGuardMode.BasicV14 ? "基础 V14" : "完全防护")}：已管理 {status.ScopeManagedCount}/{status.IfeoTotal} 个安装器"
-              + (status.Mode == RuntimeGuardMode.Full && status.Ue4PrereqFound
-                  ? (status.Ue4PrereqDenied ? "，UE4 前置包已拒绝执行" : "，UE4 前置包未拦截")
-                  : "")
+            ? $"{(status.Mode == RuntimeGuardMode.BasicV14 ? "基础 V14" : "完全防护")}：已拦截 {status.ScopeManagedCount}/{status.IfeoTotal} 个安装器"
+              + (status.Mode == RuntimeGuardMode.Full ? "（含 UE4 前置包）" : "")
             : GuardIsEnabled
-                ? $"防护部分生效或待恢复：当前范围 IFEO {status.ScopeBlockedCount}/{status.IfeoTotal}；可关闭以清理残留"
-                : $"本工具防护未开启；检测到 {status.IfeoCount} 项安装器拦截";
-        if (status.IfeoExternalCount > 0)
-            GuardStatusText += $"；另有 {status.IfeoExternalCount} 项外部/归属不明拦截。";
-        if (CanCleanupLegacyIfeo) GuardStatusText += $"；{_legacyIfeo.Count} 项固定旧拦截可通过“关闭 / 清理旧拦截”确认清理。";
-        if (status.Ue4RestorePending) GuardStatusText += "；UE4 原文件权限恢复记录仍保留。";
-        if (status.CanRepairLegacyUe4Acl) GuardStatusText += "；关闭时可确认修复旧 UE4 单条执行拒绝，不会重置目录权限。";
+                ? $"防护部分生效或有残留：当前范围已拦截 {status.ScopeManagedCount}/{status.IfeoTotal}；关闭防护即可清理残留"
+                : status.IfeoCount > 0
+                    ? $"本工具防护未开启；检测到 {status.IfeoCount} 项其他程序设置的安装器拦截"
+                    : "本工具防护未开启";
+        var externalOther = status.IfeoExternalCount - _legacyIfeo.Count;
+        if (CanCleanupLegacyIfeo) GuardStatusText += $"；{_legacyIfeo.Count} 项由独立防护工具写入，需「强制清理拦截」移除";
+        if (GuardIsEnabled && externalOther > 0) GuardStatusText += $"；另有 {externalOther} 项其他程序的 Debugger";
+        if (status.CanRepairLegacyUe4Acl) GuardStatusText += "；UE4 前置包残留旧版拒绝执行权限，关闭防护或强制清理时自动移除";
+        if (status.GuardIssue.Length > 0) GuardStatusText += "；" + status.GuardIssue + "（可用「强制清理拦截」重置）";
     }
 
     public async Task<OperationResult?> ChangeGuardModeAsync(int index)
@@ -298,38 +369,28 @@ public partial class RuntimeViewModel : ObservableObject
         finally { GuardIsBusy = false; }
     }
 
-    public async Task<OperationResult?> CleanupLegacyIfeoAsync()
+    /// <summary>强制清理全部安装器拦截（不依赖防护记录，兼容旧版本与独立防护工具）。不要求先读到状态，作为最终兜底入口。</summary>
+    public async Task<OperationResult?> ForceCleanupGuardAsync()
     {
-        if (!GuardToggleEnabled || !CanCleanupLegacyIfeo) return null;
-        var confirmed = _legacyIfeo.ToArray();
+        if (!GuardCleanupEnabled) return null;
         GuardIsBusy = true;
         try
         {
-            var result = await _guard.CleanupLegacyIfeoAsync(confirmed);
-            await RefreshGuardCoreAsync();
-            return result;
-        }
-        finally { GuardIsBusy = false; }
-    }
-
-    public async Task<OperationResult?> RepairLegacyUe4AclAsync()
-    {
-        if (GuardIsBusy || !CanRepairLegacyUe4Acl) return null;
-        GuardIsBusy = true;
-        try
-        {
-            var result = await _guard.RepairLegacyUe4AclAsync(GuardUe4Path);
-            await RefreshGuardCoreAsync();
+            var result = await _guard.CleanupLegacyIfeoAsync([]);
+            try { await RefreshGuardCoreAsync(); }
+            catch (Exception ex)
+            {
+                Log.Error("运行库防护：强制清理后读取状态失败", ex);
+                _guardStateKnown = false;
+                GuardStatusText = "清理后无法读取防护状态：" + ex.Message;
+                OnPropertyChanged(nameof(GuardToggleEnabled));
+            }
             return result;
         }
         catch (Exception ex)
         {
-            _guardStateKnown = false;
-            CanRepairLegacyUe4Acl = false;
-            GuardStatusText = "旧权限修复/状态复核失败：" + ex.Message + "；请重新进入此页复核。";
-            OnPropertyChanged(nameof(GuardToggleEnabled));
-            Log.Error("旧 UE4 权限修复状态无法确认", ex);
-            return OperationResult.Fail(GuardStatusText);
+            Log.Error("运行库防护：强制清理异常", ex);
+            return OperationResult.Fail("强制清理异常：" + ex.Message);
         }
         finally { GuardIsBusy = false; }
     }

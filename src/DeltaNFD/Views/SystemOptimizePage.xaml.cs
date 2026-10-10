@@ -175,8 +175,8 @@ public sealed partial class SystemOptimizePage : Page
     {
         // 显式刷新：作废主页扫描缓存后全量重读
         OptimizationScan.Invalidate();
-        ServiceLocator.Bx.InvalidateTaskCache();
-        ServiceLocator.Bx.InvalidateAppxCache();
+        await ServiceLocator.Bx.InvalidateTaskCacheAsync();
+        await ServiceLocator.Bx.InvalidateAppxCacheAsync();
         await ViewModel.Bx.LoadItemsAsync();
     }
 
@@ -367,7 +367,7 @@ public sealed partial class SystemOptimizePage : Page
                 case ContentDialogResult.Primary:
                     if (addExclusion)
                     {
-                        await DefenderGuard.AddSessionExclusionsAsync(report);
+                        await ServiceLocator.DefenderGuard.AddSessionExclusionsAsync();
                     }
 
                     if (!report.DefenderPresent)
@@ -376,7 +376,7 @@ public sealed partial class SystemOptimizePage : Page
                     }
 
                     // 重新检测：实时保护与篡改防护都关闭才算通过（篡改防护开着时照样拦截服务停止与策略写入）
-                    (rtpStillOn, tamperStillOn) = await DefenderGuard.RefreshProtectionStateAsync(report);
+                    (rtpStillOn, tamperStillOn) = await ServiceLocator.DefenderGuard.RefreshProtectionStateAsync();
                     if (!rtpStillOn && !tamperStillOn)
                     {
                         Log.Info("DefenderGuard：重新检测通过（实时保护与篡改防护均已关闭），继续应用");
@@ -389,7 +389,7 @@ public sealed partial class SystemOptimizePage : Page
                 case ContentDialogResult.Secondary:
                     if (addExclusion)
                     {
-                        await DefenderGuard.AddSessionExclusionsAsync(report);
+                        await ServiceLocator.DefenderGuard.AddSessionExclusionsAsync();
                     }
 
                     Log.Info("DefenderGuard：用户选择跳过引导继续应用");

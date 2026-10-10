@@ -29,7 +29,8 @@
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="选择 .dnfdplugin 文件（非加密 ZIP，≤100MiB）。导入只做解析、验证与解包，不运行任何入口、依赖或安装脚本；导入后默认禁用，必须逐项确认授权后才能使用。" />
                     <StackPanel Orientation="Horizontal" Spacing="12">
-                        <Button Content="选择文件并导入…" Click="ImportButton_Click" />
+                        <Button x:Name="ImportButton" Content="选择文件并导入…" Click="ImportButton_Click"
+                                AutomationProperties.Name="选择插件包并导入" />
                     </StackPanel>
                     <TextBlock x:Name="ImportStatusText" Style="{StaticResource CardDescStyle}"
                                TextWrapping="Wrap" IsTextSelectionEnabled="True" />

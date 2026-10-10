@@ -5,19 +5,23 @@
   Usage (from anywhere; the script only needs an absolute or relative installer path):
 
     powershell -ExecutionPolicy Bypass -File installer\make-update-manifest.ps1 `
-      -InstallerPath installer\Output\三角帧不掉洲_DeltaNFD_安装包_0.90.0_x64.exe `
-      -Version 0.90.0 `
-      -DisplayVersion "Beta0.9" `
-      -InstallerUrl "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.90.0/<asset>.exe" `
-      -NotesFile notes\0.90.0.txt
+      -InstallerPath installer\Output\三角帧不掉洲_DeltaNFD_安装包_0.91.0_x64.exe `
+      -Version 0.91.0 `
+      -DisplayVersion "Beta0.91" `
+      -InstallerUrl "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.91.0/<asset>.exe" `
+      -NotesFile notes\0.91.0.txt
 
   Optional:
-    -DisplayVersion       display text; pass "Beta0.9" for version 0.90.0
+    -DisplayVersion       display text; pass "Beta0.91" for version 0.91.0
     -ReleaseTag           default "v<Version>"
     -ReleasePageUrl       default the GitHub release tag page
     -MinimumSupportedVersion  clients below this version are forced to update
     -Mandatory            force the update even if the user skipped that version
     -MirrorUrl            one or more extra https download urls (same bytes, same hash)
+    -MirrorFirst          try the mirror urls BEFORE the primary github url. Needed for the
+                          "weaknet-boost" plugin: its accelerated source config makes the host
+                          read this manifest through a gh-proxy prefix, and the host only uses
+                          the accelerator for the download if the mirror entry comes first.
     -OutFile              default: <repo root>\update.json
 
   IMPORTANT (project rule, see HANDOFF section 11.2): keep this script body pure ASCII.
@@ -36,6 +40,7 @@ param(
     [string]$ReleasePageUrl = '',
     [string]$MinimumSupportedVersion = '',
     [string[]]$MirrorUrl = @(),
+    [switch]$MirrorFirst,
     [string]$NotesFile = '',
     [switch]$Mandatory,
     [string]$OutFile = ''
@@ -90,9 +95,18 @@ if (-not [string]::IsNullOrWhiteSpace($NotesFile)) {
 }
 
 $installers = New-Object System.Collections.Generic.List[object]
+# -MirrorFirst: the client walks installers[] in order and uses the first usable entry, so the
+# accelerated (mirror) url must lead for the weaknet-boost plugin to actually speed up downloads.
+if ($MirrorFirst) {
+    foreach ($mirror in $MirrorUrl) {
+        $installers.Add([ordered]@{ url = $mirror; sizeBytes = $size; sha256 = $hash })
+    }
+}
 $installers.Add([ordered]@{ url = $InstallerUrl; sizeBytes = $size; sha256 = $hash })
-foreach ($mirror in $MirrorUrl) {
-    $installers.Add([ordered]@{ url = $mirror; sizeBytes = $size; sha256 = $hash })
+if (-not $MirrorFirst) {
+    foreach ($mirror in $MirrorUrl) {
+        $installers.Add([ordered]@{ url = $mirror; sizeBytes = $size; sha256 = $hash })
+    }
 }
 
 $manifest = [ordered]@{
@@ -165,4 +179,6 @@ Write-Host "  * Clients only update when the manifest version is HIGHER than the
 Write-Host "  * Clients on a build without the updater (0.82.0 or older) need one manual install first."
 Write-Host "  * Every mirror host must be added to src\DeltaNFD\Assets\UpdateConfig.json -> allowedHosts,"
 Write-Host "    otherwise the client refuses to download from it."
+Write-Host "  * To let the weaknet-boost plugin actually accelerate the download, pass -MirrorFirst"
+Write-Host "    (mirror url first) and list the accelerator host (for example gh-proxy.com) in allowedHosts."
 Write-Host "  * The client always verifies sha256 + size before running the installer."

@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
+using DeltaNFD.Backends;
 using DeltaNFD.Models;
 
 namespace DeltaNFD.Services;
@@ -14,6 +15,9 @@ namespace DeltaNFD.Services;
 public sealed class RealSystemOptimizer : ISystemOptimizer
 {
     private const string GameProcessName = GameProcessService.GameProcessName;
+
+    /// <summary>一键优化中「系统维护」部分的执行已迁入后端；前端只负责编排与展示。</summary>
+    private static readonly Backends.BackendCaller OptimizeCaller = new(BackendModules.System);
 
     /// <summary>一键优化的步骤总数（进度条分母）。</summary>
     public int FullOptimizeStepCount => 5;
@@ -147,7 +151,7 @@ public sealed class RealSystemOptimizer : ISystemOptimizer
         {
             try
             {
-                var priority = gameProcess.ApplyPriorityNow();
+                var priority = await gameProcess.ApplyPriorityNowAsync();
                 if (!priority.Success) throw new InvalidOperationException(priority.Message);
 
                 progress?.Report("已将目标游戏进程优先级提升至 High");
@@ -167,8 +171,7 @@ public sealed class RealSystemOptimizer : ISystemOptimizer
             progress?.Report("正在扫描可清理的后台进程…");
             var processes = await gameProcess.GetScannableProcessesAsync();
             var (killed, freedMb) = await gameProcess.KillManyAsync(processes, progress);
-            report.ReclaimedMemoryMb += freedMb;
-            report.AppliedSteps.Add($"结束 {killed} 个后台进程，释放 {freedMb:0} MB");
+            report.AppliedSteps.Add($"结束 {killed} 个后台进程，原工作集约 {freedMb:0} MB（估算，不计入实测释放量）");
             ct.ThrowIfCancellationRequested();
         }
 
@@ -183,33 +186,38 @@ public sealed class RealSystemOptimizer : ISystemOptimizer
             ct.ThrowIfCancellationRequested();
         }
 
-        // 4. 卓越性能电源计划
-        if (settings.OptimizeUltimatePower)
+        // 4–5. 系统维护后端执行：卓越性能电源计划 + 关闭鼠标加速（写操作与状态读取均在后端）。
+        // 前端编排：进程优先级走 CPU/帧格后端，后台清理/工作集裁剪走系统维护后端。
+        progress?.Report("正在执行系统优化步骤…");
+        try
         {
-            progress?.Report("正在切换卓越性能电源计划…");
-            var result = await ServiceLocator.Power.SetSchemeAsync(PowerService.UltimateSchemeTemplateGuid);
-            progress?.Report(result.Success ? "已切换至卓越性能电源计划" : result.Message);
-            if (result.Success)
+            var result = await OptimizeCaller.InvokeAsync(
+                BackendCommands.SystemOptimizeRun,
+                new OptimizeRunArgs { UltimatePower = settings.OptimizeUltimatePower, DisableMouseAcceleration = true },
+                progress, ct);
+            if (result.Status is BackendResultStatuses.Ok or BackendResultStatuses.Partial && result.Data is { } data)
             {
-                report.AppliedSteps.Add("电源计划 → 卓越性能");
+                var run = BackendJson.Deserialize<OptimizeRunReport>(data);
+                report.AppliedSteps.AddRange(run.AppliedSteps);
+                report.ReclaimedMemoryMb += run.ReclaimedMemoryMb;
             }
-
-            ct.ThrowIfCancellationRequested();
-        }
-
-        // 5. 游戏调度微调（鼠标加速未应用时补上）
-        var tweaks = ServiceLocator.SystemTweaks;
-        var statuses = await tweaks.GetStatusesAsync();
-
-        var mouseAccel = statuses.FirstOrDefault(s => s.Tweak == SystemTweak.MouseAccelerationOff);
-        if (mouseAccel is { IsOptimized: false })
-        {
-            var result = await tweaks.DisableAsync(SystemTweak.MouseAccelerationOff);
-            if (result.Success)
+            else
             {
-                report.AppliedSteps.Add("鼠标加速已关闭");
+                progress?.Report("系统优化步骤未完成：" + result.Message);
+                Log.Warn("一键优化：系统维护后端步骤未完成 —— " + result.Message);
             }
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            progress?.Report("系统优化步骤失败（详见日志）");
+            Log.Warn("一键优化：系统维护后端步骤失败 —— " + ex.Message);
+        }
+
+        ct.ThrowIfCancellationRequested();
 
         progress?.Report("优化完成");
         Log.Info($"一键优化：完成，执行 {report.AppliedSteps.Count} 步（{string.Join("；", report.AppliedSteps)}），释放 {report.ReclaimedMemoryMb:0} MB");

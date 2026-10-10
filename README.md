@@ -4,7 +4,7 @@
 
 针对《三角洲行动》（Delta Force）的 Windows 系统级游戏优化工具，WinUI 3 原生应用。**本工具为非官方粉丝工具，与腾讯游戏、《三角洲行动》官方无关；三角洲行动及相关标识归腾讯所有。**
 
-![.NET](https://img.shields.io/badge/.NET-8.0-blue) ![WinUI](https://img.shields.io/badge/WinUI-3%20%2F%20Windows%20App%20SDK%201.8-orange) ![Platform](https://img.shields.io/badge/Windows-10%201809%2B%20%2F%2011-lightgrey) ![License](https://img.shields.io/badge/License-GPL--3.0-green)
+![.NET](https://img.shields.io/badge/.NET-8.0-blue) ![WinUI](https://img.shields.io/badge/WinUI-3%20%2F%20Windows%20App%20SDK%201.8-orange) ![Platform](https://img.shields.io/badge/Windows-10%201809%2B%20%2F%2011-lightgrey) ![License](https://img.shields.io/badge/License-Source%20Available%20%2F%20Noncommercial-orange)
 
 部分功能会**真实修改系统设置**。配置类操作会尽可能备份原值并提供恢复入口；文件清理、APPX 移除等操作无法自动恢复。
 
@@ -52,6 +52,12 @@
 - 只有通过安装包安装的版本支持自动更新；从压缩包手动解压运行会提示前往发布页下载
 - 支持配置多下载地址回退；自动检查开启时每次启动检查，只有新版才弹窗，「稍后再更新」不屏蔽下次启动提醒
 
+## 运行库修复方式
+
+- **高帧性修复**：保留原有 Beta0.9 C++ AIO 流程，校验资源后卸载检测到的运行库条目，再完整重装并复检。
+- **兼容性修复**：本项目独立实现 DirectX 旧版游戏组件检测、微软安装器调用及 C++ 按需安装/修复，不预先卸载已有 C++，保留较新版本。不会调用第三方 DirectX Repair 程序，也不替换 Windows 自带的 DirectX 11/12 核心。
+- **运行库防护**：继续使用新版实现，修复前应先关闭防护。
+
 ## 系统要求
 
 - Windows 10 1809+ 或 Windows 11（x64）
@@ -70,9 +76,11 @@ dotnet build src/DeltaNFD/DeltaNFD.csproj -c Debug -p:Platform=x64
 src\DeltaNFD\bin\x64\Debug\net8.0-windows10.0.19041.0\win-x64\DeltaNFD.exe
 ```
 
-> **VC++ 运行库**：AIO 修复安装器使用完整解包目录 `src\DeltaNFD\Assets\VCRedistRepair_unpacked\`（保留原有目录结构及 `payload_manifest_sha256.csv`），另需 `VCRedist2015-2022-x64.exe` 和 `VCRedist2015-2022-x86.exe`。这些文件只作为安装器的构建输入，不单独发布；运行 `installer\make-installer.cmd` 会将应用与运行库一起封装为单个 `三角帧不掉洲_DeltaNFD_安装包_<版本>_x64.exe`。x86/x64 包可从[微软官方页面](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170)获取，AIO 修复包按其[上游项目](https://github.com/abbodi1406/vcredist)说明获取。
+> **VC++ 运行库**：AIO 修复安装器使用完整解包目录 `src\DeltaNFD\Assets\VCRedistRepair\`（保留原有目录结构及 `payload_manifest_sha256.csv`），另需 `VCRedist2015-2022-x64.exe` 和 `VCRedist2015-2022-x86.exe`。这些文件只作为安装器的构建输入，不单独发布；运行 `installer\make-installer.cmd` 会将应用与运行库一起封装为单个 `三角帧不掉洲_DeltaNFD_安装包_<版本>_x64.exe`。x86/x64 包可从[微软官方页面](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170)获取，AIO 修复包按其[上游项目](https://github.com/abbodi1406/vcredist)说明获取。
 
 生成安装包需要 Windows、.NET 8 SDK 和 Inno Setup 6：
+
+兼容性修复另需 `Assets\DirectXRepair\` 微软官方离线资源。运行 `installer\prepare-directx-resources.ps1` 可下载并只解包，不执行安装；脚本核对固定 SHA256 和逐文件清单。`make-installer.cmd` 会自动调用该准备步骤。资源来源：[微软 DirectX End-User Runtimes（June 2010）](https://www.microsoft.com/en-us/download/details.aspx?id=8109)。
 
 ```cmd
 installer\make-installer.cmd
@@ -90,21 +98,23 @@ installer\make-installer.cmd
 
 自动更新读取仓库 `main` 分支根目录的 `update.json`，比对版本后会提示用户下载对应安装包。发布步骤：
 
-1. 同步主程序和官方助手 csproj 的 `Version` / `InformationalVersion`、`MainWindow` 的首启公告常量，以及安装脚本的 `MyAppVersion` / `MyAppDisplayVersion`。
+1. 同步主程序、五个官方后端、官方助手及共享程序集的 `Version` / `InformationalVersion`，以及安装脚本的 `MyAppVersion` / `MyAppDisplayVersion`；发布新公告时再更新首启公告常量。
 2. 运行 `installer\make-installer.cmd` 生成安装包。
 3. 用 `installer\make-update-manifest.ps1` 生成清单（会写入 SHA256、字节数与显示版本，并打印发布清单）：
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File installer\make-update-manifest.ps1 `
-     -InstallerPath "<安装包路径>" -Version 0.90.1 -DisplayVersion "Beta0.9" `
-     -InstallerUrl "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.90.1/<附件名>" `
-     -NotesFile "<更新说明.txt>"
+     -InstallerPath "<安装包路径>" -Version 0.9092 -DisplayVersion "AAlpha0.912" `
+     -InstallerUrl "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9092/<附件名>" `
+     -NotesFile "notes/0.9092.txt"
    ```
 
 4. 把安装包上传到该 tag 的 Release，**并把生成的 `update.json` 提交到 `main`**。
 5. 校验：`dotnet run --project tools/BackendSmokeTest -- --update-live`。
 
 > **更新源与镜像**：发布方改 `src/DeltaNFD/Assets/UpdateConfig.json`（随程序分发，升级安装会覆盖）；用户想自己加国内镜像，用设置页「更新源配置」生成并编辑 `%APPDATA%\Delta NFD\update-source.json`（优先级更高、升级不覆盖）。两种方式都要把**镜像主机写进 `allowedHosts`**，并在 `update.json` 的 `installers` 里加上镜像地址（`-MirrorUrl` 即可）。所有地址共用同一条 SHA256，客户端下载后强制校验，镜像内容被替换会被拒绝。
+>
+> **弱网加速插件**：`src/Plugin.WeakNetBoost` 是一个可选拓展插件，装上后用户可以在插件页开关「弱网加速」，由插件代为改写上面那个用户级更新源，把检查更新与安装包下载指向 gh-proxy 加速节点（改写前整份备份，关闭或卸载时还原）。要让它真的加速下载，发布时必须用 `-MirrorFirst` 生成 `update.json`，并把 `gh-proxy.com` 写进 `allowedHosts`；只加 `-MirrorUrl` 时镜像排在同一条清单的后面，宿主仍会先试直连。打包用 `tools\pack-plugin.ps1 -ProjectPath src\Plugin.WeakNetBoost`。
 >
 > 注意：`0.82.0` 及更早版本不含更新器，收不到自动更新，需要用户先手动安装一次带更新器的版本。
 
@@ -113,8 +123,11 @@ installer\make-installer.cmd
 | 项目 | 说明 |
 | --- | --- |
 | `src/DeltaNFD` | WinUI 3 主程序 |
+| `src/Plugin.WeakNetBoost` | 可选拓展插件「弱网加速」（独立管理员后端 + 声明式前端，不引用宿主） |
+| `src/Example.Plugin.HardwareReport` | 拓展插件只读示例（规范 1.0 参考实现） |
 | `tools/BackendSmokeTest` | 只读冒烟测试（枚举显卡 / 读取各项状态，不修改系统） |
 | `tools/GpuBackupTool` | 显卡原始型号一次性备份工具（只备份，不修改注册表） |
+| `tools/pack-plugin.ps1` | 把插件工程打包成可导入的 `.dnfdplugin` |
 
 ## 项目结构
 
@@ -149,8 +162,16 @@ src/DeltaNFD/
 - 「重载显卡立即生效」「重启 DWM」等操作会短暂黑屏/闪屏，可能导致正在运行的游戏崩溃。
 - 本项目与腾讯游戏、《三角洲行动》官方无关。
 
+## 致谢
+
+感谢 [abbodi1406 / VisualCppRedist AIO](https://github.com/abbodi1406/vcredist) 及其上游贡献者。本项目的运行库修复功能使用了该项目提供的 AIO 运行库整合资源和 `Installer.cmd` 安装脚本，并在此基础上集成资源校验、调用和诊断记录。
+
+Microsoft Visual C++ 运行库由微软提供；感谢上游项目对运行库整合、安装脚本和兼容性的持续维护。
+
 ## 协议
 
-本项目基于 [GPL-3.0](LICENSE) 协议开源。
+自 Beta0.91 起，本项目采用 [源码可用非商业许可证 1.0](LICENSE)，不再宣称采用标准开源许可证。允许遵守协议的免费、非商业使用；禁止收费转售、闭源二次开发、用于收费产品、商业使用及删除原作者署名。派生作品须保持源码公开、保留作者与修改说明；商业使用需事先另行获得书面授权。
+
+历史 GPL 版本的既有授权不被追溯撤回。第三方内容继续适用各自许可证，新限制不对其重新授权，详见 [第三方与历史授权](THIRD-PARTY-NOTICES.md)。
 
 优化项均为对 Windows 公开系统设置（注册表 / 服务 / 计划任务 / 电源策略）的调整，键值整理自公开流传的系统调优资料与社区实践；「无省电释放模式」电源计划文件基于 [AtlasOS](https://github.com/Atlas-OS/Atlas) 项目导出并改名，致谢 AtlasOS 及其贡献者。

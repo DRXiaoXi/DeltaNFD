@@ -11,37 +11,26 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseAppHost>true</UseAppHost>
-    <Version>0.90.1</Version>
-    <InformationalVersion>Beta0.9</InformationalVersion>
+    <Version>0.91</Version>
+    <InformationalVersion>Beta0.91</InformationalVersion>
     <WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
 
-  <!-- Link only the non-WinUI BCL/native code needed by the temporary helper. -->
+  <!--
+    前后端分离 C5：脱机助手引用后端库（DeltaNFD.Execution）与合同程序集，不再自编译
+    共享基础设施副本；只保留执行库尚未纳管的脱机专用源文件。
+  -->
   <ItemGroup>
-    <Compile Include="..\DeltaNFD\Native\CpuSets.cs" Link="Native\CpuSets.cs" />
-    <Compile Include="..\DeltaNFD\Native\OfflineCpuSetCatalog.cs" Link="Native\OfflineCpuSetCatalog.cs" />
-    <Compile Include="..\DeltaNFD\Native\Privilege.cs" Link="Native\Privilege.cs" />
-    <Compile Include="..\DeltaNFD\Services\AppDataPaths.cs" Link="Services\AppDataPaths.cs" />
-    <Compile Include="..\DeltaNFD\Services\AppSettingsStore.cs" Link="Services\AppSettingsStore.cs" />
-    <Compile Include="..\DeltaNFD\Services\CcdTopologyDetector.cs" Link="Services\CcdTopologyDetector.cs" />
-    <Compile Include="..\DeltaNFD\Services\CpuTopologyService.cs" Link="Services\CpuTopologyService.cs" />
-    <Compile Include="..\DeltaNFD\Services\DeltaForceLocator.cs" Link="Services\DeltaForceLocator.cs" />
-    <Compile Include="..\DeltaNFD\Services\ElevationHelper.cs" Link="Services\ElevationHelper.cs" />
-    <Compile Include="..\DeltaNFD\Services\GameTargetService.cs" Link="Services\GameTargetService.cs" />
-    <Compile Include="..\DeltaNFD\Services\ICpuTopologyService.cs" Link="Services\ICpuTopologyService.cs" />
-    <Compile Include="..\DeltaNFD\Services\IPowerService.cs" Link="Services\IPowerService.cs" />
-    <Compile Include="..\DeltaNFD\Services\Log.cs" Link="Services\Log.cs" />
-    <Compile Include="..\DeltaNFD\Services\OfflineCpuSetPlanner.cs" Link="Services\OfflineCpuSetPlanner.cs" />
-    <Compile Include="..\DeltaNFD\Services\OfflineCpuSetScheduler.cs" Link="Services\OfflineCpuSetScheduler.cs" />
-    <Compile Include="..\DeltaNFD\Services\OfflineModeExecutionLock.cs" Link="Services\OfflineModeExecutionLock.cs" />
+    <ProjectReference Include="..\DeltaNFD.Contracts\DeltaNFD.Contracts.csproj" />
+    <ProjectReference Include="..\DeltaNFD.Shared\DeltaNFD.Shared.csproj" />
+    <ProjectReference Include="..\DeltaNFD.Execution\DeltaNFD.Execution.csproj" />
+  </ItemGroup>
+
+  <!-- 仅链接执行库尚未编译的脱机专用源代码。CPU 拓扑/CCD 检测已由执行库承载。 -->
+  <ItemGroup>
     <Compile Include="..\DeltaNFD\Services\OfflineHelperSession.cs" Link="Services\OfflineHelperSession.cs" />
     <Compile Include="..\DeltaNFD\Services\OfflineHelperCompletion.cs" Link="Services\OfflineHelperCompletion.cs" />
     <Compile Include="..\DeltaNFD\Services\OfflineHelperDeadline.cs" Link="Services\OfflineHelperDeadline.cs" />
-    <Compile Include="..\DeltaNFD\Services\OfflineModeGuard.cs" Link="Services\OfflineModeGuard.cs" />
-    <Compile Include="..\DeltaNFD\Services\OfflineModeState.cs" Link="Services\OfflineModeState.cs" />
-    <Compile Include="..\DeltaNFD\Services\OfflineModeStateStore.cs" Link="Services\OfflineModeStateStore.cs" />
-    <Compile Include="..\DeltaNFD\Services\OperationResult.cs" Link="Services\OperationResult.cs" />
-    <Compile Include="..\DeltaNFD\Services\TweakBackupStore.cs" Link="Services\TweakBackupStore.cs" />
   </ItemGroup>
 
   <ItemGroup>

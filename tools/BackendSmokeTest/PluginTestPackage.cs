@@ -8,6 +8,14 @@ internal static class PluginTestPackage
 {
     public static PluginIndexEntry Seal(PluginIndexEntry entry)
     {
+        // The copied apphost still loads BackendSmokeTest and its project dependencies.
+        var hostDirectory = Path.GetDirectoryName(Environment.ProcessPath!)!;
+        var backendDirectory = Path.GetDirectoryName(entry.EntryExecutable)!;
+        foreach (var dependency in Directory.EnumerateFiles(hostDirectory, "*.dll"))
+        {
+            var destination = Path.Combine(backendDirectory, Path.GetFileName(dependency));
+            if (!File.Exists(destination)) File.Copy(dependency, destination);
+        }
         var path = Path.Combine(entry.InstallDirectory, "manifest.json");
         var manifest = JsonNode.Parse(File.ReadAllText(path))!;
         manifest["backend"]!["entry"] = Path.GetRelativePath(entry.InstallDirectory, entry.EntryExecutable).Replace('\\', '/');

@@ -1,4 +1,4 @@
-using DeltaNFD.Native;
+﻿using DeltaNFD.Native;
 using DeltaNFD.Services;
 using DeltaNFD.Services.Plugins;
 using DeltaNFD.Views;
@@ -292,6 +292,70 @@ public sealed partial class MainWindow : Window
         {
             // 更新相关对话框必须排在公告之后（同一时刻只能有一个 ContentDialog）
             await TryHandleUpdateOnStartupAsync();
+
+            // 内存限制警告排在最后：检测到 bcdedit removememory 时给出去除入口。
+            await CheckMemoryLimitOnStartupAsync();
+        }
+    }
+
+    /// <summary>
+    /// 启动时检测 12GB 内存限制（bcdedit removememory）并弹窗警告。
+    /// 机制保留在后端（DetectMemoryLimitAsync/RemoveMemoryLimitAsync），仅把入口从 CPU 实验室移到启动提示。
+    /// 检测/移除失败只提示，不阻塞启动。
+    /// </summary>
+    private async Task CheckMemoryLimitOnStartupAsync()
+    {
+        try
+        {
+            var (detected, removedMb, _) = await ServiceLocator.Cpu.DetectMemoryLimitAsync();
+            if (!detected) return;
+
+            var warning = new ContentDialog
+            {
+                XamlRoot = ContentFrame.XamlRoot,
+                Title = "检测到 12GB 内存限制",
+                Content = $"检测到 bcdedit removememory = {removedMb} MB（可用内存被限制为约 12 GB）。\n\n"
+                          + "其他「优化工具」常用这个手段限制可用内存，损失巨大。本工具的显卡伪装方案不需要限制内存。\n\n"
+                          + "是否现在移除该限制？将执行 bcdedit /deletevalue removememory，重启电脑后恢复全部可用内存。",
+                PrimaryButtonText = "移除限制",
+                CloseButtonText = "暂不处理",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+
+            if (await warning.ShowAsync() != ContentDialogResult.Primary) return;
+
+            var result = await ServiceLocator.Cpu.RemoveMemoryLimitAsync();
+            if (result is null) return;
+            if (!result.Success)
+            {
+                await new ContentDialog
+                {
+                    XamlRoot = ContentFrame.XamlRoot,
+                    Title = "移除失败",
+                    Content = result.Message,
+                    CloseButtonText = "知道了",
+                    DefaultButton = ContentDialogButton.Close,
+                }.ShowAsync();
+                return;
+            }
+
+            if (result.RequiresReboot)
+            {
+                var reboot = await new ContentDialog
+                {
+                    XamlRoot = ContentFrame.XamlRoot,
+                    Title = "内存限制已移除",
+                    Content = result.Message + "\n\n是否立即重启电脑？",
+                    PrimaryButtonText = "立即重启",
+                    CloseButtonText = "稍后自己重启",
+                    DefaultButton = ContentDialogButton.Primary,
+                }.ShowAsync();
+                if (reboot == ContentDialogResult.Primary) ServiceLocator.Frame.RebootNow();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("启动内存限制检测失败（不阻塞启动）：" + ex.Message);
         }
     }
 
@@ -331,7 +395,7 @@ public sealed partial class MainWindow : Window
         _gpuWatchInFlight = true;
         try
         {
-            var scanned = await Task.Run(GpuSpoofWatch.Check);
+            var scanned = await ServiceLocator.GpuSpoof.CheckInvalidationAsync();
             var items = scanned.Where(x => !_gpuWatchDismissed.Contains((x.Entry.RegistryPath, x.CurrentDriverStamp, x.Entry.ExpectedName))).ToList();
             if (!_gpuWatchReady) return;
             _gpuWatchItems = items;
@@ -484,16 +548,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>自动更新专用退出：更新已登记，退出后由安装器覆盖安装并重新拉起新版本。</summary>
-    public void RequestExitForUpdate()
-    {
-        Services.Log.Info("更新：退出应用以便安装新版本");
-        _exitRequested = true;
-        _trayIcon?.Dispose();
-        _trayIcon = null;
-        Application.Current.Exit();
-    }
-
     private async Task EnsureGameDirectoryOnStartupAsync()
     {
         if (ServiceLocator.GameTarget.IsCustom || DeltaForceLocator.FindRoots().Any())
@@ -505,18 +559,113 @@ public sealed partial class MainWindow : Window
         {
             XamlRoot = ContentFrame.XamlRoot,
             Title = "未检测到三角洲游戏目录",
-            Content = "请定位三角洲行动的游戏安装目录。保存后，着色器、ACE 清理、运行库保护等功能会共用这个目录。",
-            PrimaryButtonText = "立即定位",
-            CloseButtonText = "稍后设置",
+            Content = "请定位三角洲行动的游戏安装目录。保存后，着色器、ACE 清理、运行库保护等功能会共用这个目录。\n\n"
+                      + "· 全盘搜索：在所有固定盘递归查找（可能数十秒）\n"
+                      + "· 指定目录搜索：先选一个目录（如 D:\\Games），再在该目录内查找\n"
+                      + "· 手动选择目录：直接选安装目录",
+            PrimaryButtonText = "全盘搜索",
+            SecondaryButtonText = "指定目录搜索",
+            CloseButtonText = "手动选择目录",
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await prompt.ShowAsync() != ContentDialogResult.Primary)
+        var choice = await prompt.ShowAsync();
+        if (choice == ContentDialogResult.Primary)
         {
+            await RunGameDirectorySearchAsync(null);
+        }
+        else if (choice == ContentDialogResult.Secondary)
+        {
+            var owner = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            var root = FolderPickerDialog.Pick(owner, null);
+            if (!string.IsNullOrWhiteSpace(root))
+            {
+                await RunGameDirectorySearchAsync(root);
+            }
+            else
+            {
+                await RunManualGameDirectoryPickAsync();
+            }
+        }
+        else if (choice == ContentDialogResult.None)
+        {
+            // 稍后设置
             Services.Log.Info("启动：用户选择稍后设置三角洲游戏目录");
+        }
+        else
+        {
+            await RunManualGameDirectoryPickAsync();
+        }
+    }
+
+    /// <summary>在全盘或指定子树搜索三角洲安装目录，命中后让用户确认并登记。</summary>
+    private async Task RunGameDirectorySearchAsync(string? scopedRoot)
+    {
+        var cts = new CancellationTokenSource();
+        var statusText = new TextBlock { Text = "准备搜索…", TextWrapping = TextWrapping.Wrap };
+        var progressDialog = new ContentDialog
+        {
+            XamlRoot = ContentFrame.XamlRoot,
+            Title = "正在搜索三角洲安装目录",
+            Content = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    new ProgressBar { IsIndeterminate = true },
+                    statusText,
+                },
+            },
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        progressDialog.CloseButtonClick += (_, _) => cts.Cancel();
+
+        var results = new List<string>();
+        var progress = new Progress<string>(p => statusText.Text = p);
+        var searchTask = Task.Run(async () =>
+        {
+            var source = scopedRoot is null
+                ? DeltaForceSearcher.SearchAllFixedDrivesAsync(progress, cts.Token)
+                : DeltaForceSearcher.SearchDirectoryAsync(scopedRoot, progress, cts.Token);
+            await foreach (var hit in source.WithCancellation(cts.Token))
+            {
+                results.Add(hit);
+            }
+        });
+
+        _ = progressDialog.ShowAsync();
+        try { await searchTask; }
+        catch (OperationCanceledException) { }
+        progressDialog.Hide();
+
+        if (cts.IsCancellationRequested)
+        {
+            Log.Info("启动：用户取消了三角洲目录搜索");
             return;
         }
 
+        if (results.Count == 0)
+        {
+            var none = await new ContentDialog
+            {
+                XamlRoot = ContentFrame.XamlRoot,
+                Title = "未找到三角洲安装目录",
+                Content = "搜索完成，但未找到三角洲游戏文件。是否改为手动选择目录？",
+                PrimaryButtonText = "手动选择",
+                CloseButtonText = "稍后设置",
+                DefaultButton = ContentDialogButton.Primary,
+            }.ShowAsync();
+            if (none == ContentDialogResult.Primary) await RunManualGameDirectoryPickAsync();
+            return;
+        }
+
+        await ConfirmAndRegisterGameRootsAsync(results, ContentFrame.XamlRoot);
+    }
+
+    /// <summary>手动选择目录并登记（带重试）。</summary>
+    private async Task RunManualGameDirectoryPickAsync()
+    {
         while (true)
         {
             string? selectedPath;
@@ -546,7 +695,6 @@ public sealed partial class MainWindow : Window
 
             if (DeltaForceLocator.TryGetValidGameRoot(selectedPath, out var gameRoot))
             {
-                // 所有依赖游戏路径的功能都通过 DeltaForceLocator 读取这一共享设置。
                 AppSettingsStore.Update(s => s.GameRootOverride = gameRoot);
                 Services.Log.Info("启动：已设置三角洲游戏目录 " + gameRoot);
                 return;
@@ -566,6 +714,43 @@ public sealed partial class MainWindow : Window
             {
                 return;
             }
+        }
+    }
+
+    /// <summary>让用户确认搜索到的安装目录并登记到持久化列表。</summary>
+    internal static async Task ConfirmAndRegisterGameRootsAsync(IReadOnlyList<string> roots, XamlRoot xamlRoot)
+    {
+        if (roots.Count == 0) return;
+        var panel = new StackPanel { Spacing = 8 };
+        var boxes = new List<(CheckBox Box, string Root)>();
+        foreach (var root in roots)
+        {
+            var box = new CheckBox { Content = root, IsChecked = true };
+            boxes.Add((box, root));
+            panel.Children.Add(box);
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = xamlRoot,
+            Title = "找到三角洲安装目录",
+            Content = new ScrollViewer { MaxHeight = 360, Content = panel },
+            PrimaryButtonText = "登记所选目录",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        var selected = boxes.Where(t => t.Box.IsChecked == true).Select(t => t.Root).ToList();
+        foreach (var root in selected)
+        {
+            DeltaForceLocator.AddRegisteredRoot(root);
+        }
+
+        if (selected.Count > 0)
+        {
+            Log.Info($"已登记 {selected.Count} 个三角洲安装目录");
         }
     }
 
@@ -725,8 +910,10 @@ public sealed partial class MainWindow : Window
             (settings.GameAffinityRuleEnabled && settings.GameAffinityRuleMask != 0)
             || settings.SingleCcdExcludeCpu0Enabled
             || settings.DualCcdImmediateEnabled
-            || CpuTopologyService.SingleCcdExcludeActive
-            || CpuTopologyService.DualCcdSchedulingActive;
+            || CpuFrameStatusState.SingleCcdExcludeActive
+            || CpuFrameStatusState.DualCcdSchedulingActive
+            || CpuFrameStatusState.SingleCcdExcludeActive
+            || CpuFrameStatusState.DualCcdSchedulingActive;
 
         return frameMonitoringActive || cpuSchedulingActive;
     }
@@ -752,22 +939,85 @@ public sealed partial class MainWindow : Window
     /// <summary>快捷方式再次启动时，恢复托盘中的主窗口并将其激活。</summary>
     public void ActivateFromSecondLaunch() => RestoreFromTray();
 
+    private bool _deploymentInProgress;
+    internal async Task<DeploymentHandover> PrepareDeploymentAsync(bool uninstall)
+    {
+        if (_pluginExitInProgress || _deploymentInProgress) throw new InvalidOperationException("正在处理退出，请稍后重试安装/卸载。");
+        _deploymentInProgress = true;
+        if (Content is UIElement root) root.IsHitTestVisible = false;
+        try
+        {
+            var result = await DeploymentHandover.PrepareAsync(uninstall);
+            if (result.Ready) return result;
+            _deploymentInProgress = false;
+            if (Content is UIElement content) content.IsHitTestVisible = true;
+            return result;
+        }
+        catch
+        {
+            _deploymentInProgress = false;
+            if (Content is UIElement content) content.IsHitTestVisible = true;
+            throw;
+        }
+    }
+
+    internal void ExitForDeployment()
+    {
+        App.ExitAlreadyPrepared = true;
+        _exitRequested = true;
+        _trayIcon?.Dispose();
+        _trayIcon = null;
+        Application.Current.Exit();
+    }
+
     /// <summary>托盘菜单「退出」：先移除图标再退出应用（不留幽灵图标）。</summary>
     private bool _pluginExitInProgress;
     private async void ExitApplication()
     {
-        if (_pluginExitInProgress) return;
+        if (_pluginExitInProgress || _deploymentInProgress) return;
         _pluginExitInProgress = true;
+
+        IDisposable? pluginBlock = null;
+        IDisposable? backendBlock = null;
+
         try
         {
-            using var blocked = ServiceLocator.PluginRuntime.BlockNewOperations();
+            pluginBlock = ServiceLocator.PluginRuntime.BlockNewOperations();
+            backendBlock = Services.Backends.BackendOperationGate.BlockNewOperations();
+
             var allowAutonomous = OfflineModeGuard.BlocksNormalAutomation && AppSettingsStore.Read().AllowPluginsInOfflineMode;
             var blocker = await PluginLifecycleGuard.PrepareHandoverAsync(ServiceLocator.Plugins, ServiceLocator.PluginRuntime,
                 "退出", restoreChanges: false, allowAutonomous: allowAutonomous);
             if (blocker.Length > 0)
             {
+                // 优化：排空失败时显式释放阻止，恢复正常操作
+                pluginBlock?.Dispose();
+                backendBlock?.Dispose();
+                pluginBlock = null;
+                backendBlock = null;
+
                 RestoreFromTray();
                 await new ContentDialog { XamlRoot = ContentFrame.XamlRoot, Title = "插件尚未安全停止", Content = blocker,
+                    CloseButtonText = "知道了" }.ShowAsync();
+                return;
+            }
+            // 前后端分离 T5：退出前也必须排空官方后端；任一模块未确认退出（含在途/未知操作、
+            // 未结束的子进程）就阻止退出，不能只按主进程 PID 判断。
+            var backendFailures = await Services.Backends.BackendLifecycle.PrepareHandoverAsync("退出");
+            if (backendFailures.Count > 0)
+            {
+                var backendBlocker = Services.Backends.BackendLifecycle.DescribeBlocker(backendFailures, "退出");
+                Services.Log.Warn(backendBlocker);
+
+                // 优化：排空失败时显式释放阻止，恢复正常操作
+                pluginBlock?.Dispose();
+                backendBlock?.Dispose();
+                pluginBlock = null;
+                backendBlock = null;
+
+                RestoreFromTray();
+                await new ContentDialog { XamlRoot = ContentFrame.XamlRoot, Title = "退出前需要核对官方后端",
+                    Content = new TextBlock { Text = backendBlocker, TextWrapping = TextWrapping.Wrap },
                     CloseButtonText = "知道了" }.ShowAsync();
                 return;
             }
@@ -776,8 +1026,22 @@ public sealed partial class MainWindow : Window
             _trayIcon = null;
             Application.Current.Exit();
         }
-        catch (Exception ex) { Log.Error("退出前插件处理失败，应用保持打开", ex); }
-        finally { _pluginExitInProgress = false; }
+        catch (Exception ex)
+        {
+            Log.Error("退出前插件处理失败，应用保持打开", ex);
+
+            // 优化：异常时确保释放阻止
+            pluginBlock?.Dispose();
+            backendBlock?.Dispose();
+        }
+        finally
+        {
+            _pluginExitInProgress = false;
+
+            // 优化：兜底释放阻止
+            pluginBlock?.Dispose();
+            backendBlock?.Dispose();
+        }
     }
 
     /// <summary>脱机助手已完成启动握手后，主界面直接退出，不进入托盘驻留。</summary>
