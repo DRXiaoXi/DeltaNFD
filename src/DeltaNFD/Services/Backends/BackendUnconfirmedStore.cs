@@ -63,6 +63,25 @@ internal static class BackendUnconfirmedStore
     public static IReadOnlyList<string> PendingModules() => BackendModules.All.Keys
         .Where(m => File.Exists(RecordPath(m)) || Directory.Exists(RecordPath(m))).ToArray();
 
+    /// <summary>仅异常/遗留证据用于主动提示；不把正常在途 intent 或成功临时备份当成报错。</summary>
+    internal static string? AttentionFingerprint(string module)
+    {
+        var path = RecordPath(module);
+        if (Directory.Exists(path)) return "invalid-directory";
+        if (!File.Exists(path)) return null;
+        try
+        {
+            var bytes = ReadEvidence(path);
+            var evidence = JsonSerializer.Deserialize<Evidence>(bytes);
+            if (evidence is not null && evidence.Phase == PhaseIntent
+                && evidence.Pid > 0 && evidence.StartTicks > 0 && IsProcessAlive(evidence.Pid, evidence.StartTicks)) return null;
+            if (evidence is not null && evidence.Reason == BackendResultStatuses.Ok
+                && evidence.Phase == PhaseUnconfirmed) return null;
+            return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
+        }
+        catch { return "unreadable-evidence"; }
+    }
+
     /// <summary>
     /// 启动新后端前的阻塞检查：原后端进程仍在运行或身份无法确认时拒绝启动（避免出现重复执行者）；
     /// 若原后端已确认退出，则允许启动只读核对/恢复后端——新的写入操作仍会被 <see cref="BeginIntent"/> 拒绝，

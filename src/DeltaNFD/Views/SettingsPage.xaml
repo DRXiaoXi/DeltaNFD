@@ -288,6 +288,44 @@
                 </StackPanel>
             </Border>
 
+            <!-- .NET 环境修复 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text=".NET 环境检测与修复" Style="{StaticResource SectionTitleStyle}" />
+
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="仅检查本工具主程序、官方后端和助手所需的 .NET 8 x64。正式包自带运行时；不要求 SDK、ASP.NET 或 WPF/WinForms 桌面运行时。" />
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text=".NET 环境状态" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind DotNet.Status, Mode=OneWay}"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="重新检测" Command="{x:Bind DotNet.RefreshCommand}"
+                                IsEnabled="{x:Bind DotNet.CanAct, Mode=OneWay}" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <ProgressBar IsIndeterminate="{x:Bind DotNet.IsBusy, Mode=OneWay}" />
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="安装 / 修复所需 .NET" Click="RepairDotNetButton_Click"
+                                IsEnabled="{x:Bind DotNet.CanAct, Mode=OneWay}" Style="{StaticResource AccentButtonStyle}" />
+                        <Button Content="取消下载" Command="{x:Bind DotNet.CancelDownloadCommand}"
+                                IsEnabled="{x:Bind DotNet.IsBusy, Mode=OneWay}" />
+                    </StackPanel>
+                    <Expander Header="检测详情" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                        <TextBlock Text="{x:Bind DotNet.Details, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                    </Expander>
+
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Opacity="0.7"
+                               Text="优先使用随工具携带的 .NET 8 x64 离线修复包，核验后打开官方安装器；缺少离线包时才联网下载。无法启动工具时可从开始菜单打开“.NET 环境修复”。工具自带文件缺损需重新安装工具；取消下载不会终止已启动的安装器。" />
+                </StackPanel>
+            </Border>
+
             <!-- 三角帧本体设置 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
@@ -370,6 +408,24 @@
                                       OnContent="" OffContent="" MinWidth="0" Margin="0"
                                       HorizontalAlignment="Right" VerticalAlignment="Center" />
                     </Grid>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="接收紧急算法策略" FontWeight="SemiBold" />
+                            <TextBlock Text="已安装版本启动时及每 15 分钟检查一次，沿用上方更新通道。仅应用签名验证通过的参数、内置方案和故障功能停用策略，无需重装；新算法代码仍需安装更新。关闭后立即使用内置算法。"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" IsOn="{x:Bind Update.EmergencyPolicyEnabled, Mode=TwoWay}"
+                                      AutomationProperties.Name="接收紧急算法策略"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+                    <TextBlock Text="{x:Bind Update.EmergencyPolicyStatus, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
 
                     <InfoBar IsOpen="{x:Bind Update.InfoBarOpen, Mode=OneWay}"
                              Severity="{x:Bind Update.Severity, Mode=OneWay}"

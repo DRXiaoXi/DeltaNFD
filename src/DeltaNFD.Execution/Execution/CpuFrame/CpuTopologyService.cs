@@ -236,6 +236,8 @@ public sealed class CpuTopologyService : ICpuTopologyService
     /// <returns>true = 实际发生了变更。</returns>
     public static bool ApplyHardAffinity(Process process, ulong mask)
     {
+        using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(process.Id, "affinity");
+        if (ownership is null) return false;
         var target = (nint)mask;
         if (process.ProcessorAffinity == target)
         {
@@ -281,6 +283,8 @@ public sealed class CpuTopologyService : ICpuTopologyService
                     {
                         var pid = process.Id;
                         livePids.Add(pid);
+                        using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(pid, "affinity");
+                        if (ownership is null) continue;
                         var startTime = process.StartTime.ToUniversalTime();
                         if (AffinityRuleOriginals.TryGetValue(pid, out var original) && original.StartTime != startTime)
                             AffinityRuleOriginals.Remove(pid);
@@ -321,6 +325,8 @@ public sealed class CpuTopologyService : ICpuTopologyService
                     using var process = Process.GetProcessById(pid);
                     if (process.StartTime.ToUniversalTime() == original.StartTime)
                     {
+                        using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(pid, "affinity", true);
+                        if (ownership is null) continue;
                         process.ProcessorAffinity = original.OriginalMask;
                         Log.Info($"CPU亲和性：目标游戏 PID {pid} 已恢复原掩码 0x{(ulong)original.OriginalMask:X}");
                     }
@@ -375,6 +381,8 @@ public sealed class CpuTopologyService : ICpuTopologyService
     /// </summary>
     private static bool TryApplyCcdSoft(Process process, ulong mask)
     {
+        using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(process.Id, "cpuSet");
+        if (ownership is null) return false;
         var handle = Native.CpuSets.OpenProcessForCpuSets(process.Id);
         if (handle == nint.Zero)
         {

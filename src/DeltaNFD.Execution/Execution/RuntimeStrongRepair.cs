@@ -22,7 +22,7 @@ internal interface IRuntimeStrongRepairEnvironment
 }
 
 /// <summary>Shared opt-in phase. Windows owns API Sets/UCRT; never deploy arbitrary forwarder DLLs.</summary>
-internal sealed class RuntimeStrongRepair(IRuntimeStrongRepairEnvironment environment, RuntimeRepairDiagnostics diagnostics)
+internal sealed class RuntimeStrongRepair(IRuntimeStrongRepairEnvironment environment, RuntimeRepairDiagnostics diagnostics, TimeSpan? repairBudget = null)
 {
     internal static readonly TimeSpan SystemBudget = TimeSpan.FromMinutes(60);
     internal static readonly TimeSpan TotalBudget = SystemBudget + RuntimeRepairCoordinator.TotalBudget + TimeSpan.FromMinutes(1);
@@ -33,7 +33,7 @@ internal sealed class RuntimeStrongRepair(IRuntimeStrongRepairEnvironment enviro
         IProgress<string>? progress, CancellationToken token)
     {
         using var total = CancellationTokenSource.CreateLinkedTokenSource(token);
-        total.CancelAfter(TotalBudget);
+        total.CancelAfter(repairBudget.HasValue ? SystemBudget + repairBudget.Value + TimeSpan.FromMinutes(1) : TotalBudget);
         var reboot = false;
         var originalStarted = false;
         OperationResult Stop(string message, bool unknown = false) => new()

@@ -185,6 +185,8 @@ public sealed class OfflineCpuSetScheduler
             using (process)
             {
                 var handle = CpuSets.OpenProcessForDefaultCpuSets(entry.ProcessId);
+                using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(entry.ProcessId, "cpuSet");
+                if (ownership is null) { CpuSets.CloseHandleSafe(handle); failed.Add($"PID {entry.ProcessId} CPU 集合由其他控制方持有，记录保留"); continue; }
                 if (handle == IntPtr.Zero)
                 {
                     MarkRestoreFailed(entry, "无法打开原进程读取 CPU Sets。");
@@ -243,6 +245,8 @@ public sealed class OfflineCpuSetScheduler
         _lastApplyError = "";
         using var process = TryGetMatchingProcess(identity, target);
         if (process is null) { _lastApplyError = "进程已退出或身份不匹配"; return ApplyResult.Failed; }
+        using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(identity.ProcessId, "cpuSet");
+        if (ownership is null) { _lastApplyError = "CPU 集合由通用管理器控制，已暂停冲突属性"; return ApplyResult.Failed; }
         {
             if (!HasFullHardAffinity(process, allMask)) { _lastApplyError = "已有硬亲和性限制，未触碰"; return ApplyResult.Failed; }
             var handle = CpuSets.OpenProcessForDefaultCpuSets(identity.ProcessId);

@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>BackendSmokeTest</RootNamespace>
     <!-- 与产品同版本：官方后端客户端（已链接进本测试）按 AppVersion 校验后端版本。 -->
-    <Version>0.91</Version>
-    <InformationalVersion>Beta0.91</InformationalVersion>
+    <Version>0.914</Version>
+    <InformationalVersion>Alpha0.914</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -34,6 +34,7 @@
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceService.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceVirtualizationCheck.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceCleanupEnvironment.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceRegistrySafety.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceCleanupGuard.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\OfflineHelperSession.cs" />
     <Compile Include="..\..\src\DeltaNFD\Native\FileDialogNative.cs" />
@@ -46,6 +47,7 @@
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\OfflineCpuSetRecovery.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\FrameTweaksService.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\FramePowerLifecycle.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\CpuFrameEngine.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\OfflineTaskOwnership.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginContract.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginPath.cs" />
@@ -80,6 +82,7 @@
     <Compile Include="..\..\src\DeltaNFD\Services\FrameFeatureState.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\CpuFrameStatusState.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\AppVersion.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\ProcmanRuleProjection.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\BackendEnvironment.cs" />
     <!-- 官方后端宿主（T5 生命周期检查的临时测试后端夹具）：纯 BCL，无 WinUI 依赖。 -->
     <Compile Include="..\..\src\DeltaNFD.Execution\BackendHost.cs" />
@@ -88,6 +91,10 @@
     <Compile Include="..\..\src\DeltaNFD\Services\CpuPlanService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\IUpdateService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\UpdateService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\DotNetEnvironmentService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\DotNetRepairService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\BundledDotNetRuntime.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\EmergencyPolicyUpdateService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\GitHubReleaseSource.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\UpdateChannelPolicy.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\UpdateChannelInstallation.cs" />
@@ -110,8 +117,11 @@
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeSystemProbeProcess.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeCompatibilityRepair.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeMsiMetadata.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeSxsResolver.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeMsiInstaller.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeUnifiedUninstaller.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeBulkUninstall.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimePreUninstall.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeUnifiedUninstallBackend.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeRepairDiagnostics.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeGuardProtection.cs" />
@@ -122,6 +132,8 @@
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\ApplicationPreLaunchControl.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\PagefileService.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\ProcessMaintenanceService.cs" />
+    <!-- 进程管理（procman）引擎与控制权核心：同一份源码编译测试，避免测试和实现各写一份漂移。 -->
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\Procman\*.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Native\*.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RegistryAclHelper.cs" />
     <!-- BxCatalog 已迁入 Contracts（项目引用）；BxService 执行实现已物理移入执行库。 -->
@@ -131,6 +143,7 @@
   <ItemGroup>
     <PackageReference Include="System.Management" Version="8.0.0" />
     <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.1" />
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="8.0.1" />
   </ItemGroup>
 
   <!-- DefenderGuard 的配置数据文件（冒烟测试的 Defender 状态只读查询要用） -->

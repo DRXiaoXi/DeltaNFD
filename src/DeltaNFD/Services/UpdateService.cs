@@ -106,6 +106,12 @@ public sealed class UpdateService : IUpdateService
     """;
 
     private readonly UpdateConfig _config;
+    private readonly string[] _originalManifestUrls;
+    private readonly string _originalReleasePageUrl;
+    private readonly Func<Task<bool>> _connectivityProbe;
+    private readonly object _sourceGate = new();
+    private int _probeInFlight;
+    internal Task? AccelerationProbeTask { get; private set; }
 
     /// <summary>加速探测结果缓存有效期：30 分钟内不重复探测。</summary>
     private static readonly TimeSpan AccelerationProbeCacheLifetime = TimeSpan.FromMinutes(30);
@@ -117,13 +123,19 @@ public sealed class UpdateService : IUpdateService
             Path.Combine(AppDataPaths.Root, "update-source.json"),
             out var source);
         ConfigSourceDescription = source;
+        _originalManifestUrls = [.. _config.ManifestUrls ?? []];
+        _originalReleasePageUrl = _config.ReleasePageUrl;
+        _connectivityProbe = () => GitHubConnectivity.IsGitHubReachableAsync(TimeSpan.FromSeconds(5), SharedClient.Value);
         ApplyAccelerationMode(_config, AppSettingsStore.Read());
     }
 
-    internal UpdateService(UpdateConfig config)
+    internal UpdateService(UpdateConfig config, Func<Task<bool>>? connectivityProbe = null)
     {
         _config = config;
         ConfigSourceDescription = "测试注入配置";
+        _originalManifestUrls = [.. config.ManifestUrls ?? []];
+        _originalReleasePageUrl = config.ReleasePageUrl;
+        _connectivityProbe = connectivityProbe ?? (() => GitHubConnectivity.IsGitHubReachableAsync(TimeSpan.FromSeconds(5), SharedClient.Value));
         ApplyAccelerationMode(_config, AppSettingsStore.Read());
     }
 
@@ -135,44 +147,54 @@ public sealed class UpdateService : IUpdateService
 
     /// <summary>
     /// 根据当前设置和探测结果调整更新源：
-    /// 关 = 不动；开 = 探测/读缓存，直连不可用则把 GitHub 地址切到 gh-proxy 前缀。
+    /// 从原始用户配置重新计算：本次使用缓存，冷缓存探测在后台进行，后续检查生效。
     /// </summary>
     private void ApplyAccelerationMode(UpdateConfig config, AppSettings settings)
     {
-        if (!settings.GitHubAccelerateEnabled)
+        lock (_sourceGate)
         {
-            return;
-        }
+            if (!settings.GitHubAccelerateEnabled)
+            {
+                ApplyAccelerationResult(config, false);
+                return;
+            }
 
-        var now = DateTime.UtcNow;
-        var status = settings.GitHubDirectStatus;
-        var checkedAt = settings.GitHubDirectCheckedUtc;
+            var now = DateTime.UtcNow;
+            var status = settings.GitHubDirectStatus;
+            var checkedAt = settings.GitHubDirectCheckedUtc;
 
-        // 缓存有效则直接用，避免每次启动都探测
-        if (status is 0 or 1 && checkedAt.HasValue && now - checkedAt.Value < AccelerationProbeCacheLifetime)
-        {
+            // 缓存有效则直接用，避免每次启动都探测
+            if (status is 0 or 1 && checkedAt.HasValue && checkedAt.Value <= now && now - checkedAt.Value < AccelerationProbeCacheLifetime)
+            {
+                ApplyAccelerationResult(config, status == 1);
+                return;
+            }
+
             ApplyAccelerationResult(config, status == 1);
-            return;
+            if (Interlocked.CompareExchange(ref _probeInFlight, 1, 0) != 0) return;
+            AccelerationProbeTask = Task.Run(async () =>
+            {
+                try
+                {
+                    var reachable = await _connectivityProbe().ConfigureAwait(false);
+                    AppSettingsStore.Update(s =>
+                    {
+                        s.GitHubDirectStatus = reachable ? 0 : 1;
+                        s.GitHubDirectCheckedUtc = DateTime.UtcNow;
+                    });
+                }
+                catch (Exception ex) { Log.Warn("更新：后台 GitHub 连通性探测失败：" + ex.Message); }
+                finally { Interlocked.Exchange(ref _probeInFlight, 0); }
+            });
         }
-
-        // 需要探测：同步等 5 秒，构造器里不能 await
-        var reachable = GitHubConnectivity.IsGitHubReachableAsync(
-                TimeSpan.FromSeconds(5), SharedClient.Value)
-            .ConfigureAwait(false).GetAwaiter().GetResult();
-
-        var newStatus = reachable ? 0 : 1;
-        AppSettingsStore.Update(s =>
-        {
-            s.GitHubDirectStatus = newStatus;
-            s.GitHubDirectCheckedUtc = now;
-        });
-
-        ApplyAccelerationResult(config, newStatus == 1);
     }
 
     /// <summary>把加速决策落到配置：true = 切 gh-proxy，false = 恢复/保持直连。</summary>
-    private static void ApplyAccelerationResult(UpdateConfig config, bool useAcceleration)
+    private void ApplyAccelerationResult(UpdateConfig config, bool useAcceleration)
     {
+        // 只撤销本实例自动加上的代理，用户原本配置的镜像与顺序保持原样。
+        config.ManifestUrls = [.. _originalManifestUrls];
+        config.ReleasePageUrl = _originalReleasePageUrl;
         if (useAcceleration)
         {
             // 清单地址：把官方 GitHub 地址前缀为 gh-proxy
@@ -268,6 +290,9 @@ public sealed class UpdateService : IUpdateService
     private async Task<UpdateCheckResult> CheckCoreAsync(bool manual, CancellationToken cancellationToken, AppSettings settings)
     {
         var config = _config;
+        ApplyAccelerationMode(config, settings);
+        if (manual)
+            EmergencyPolicyUpdateService.RequestCheck(IsInstalledCopy);
 
         if (!manual)
         {
@@ -807,6 +832,7 @@ public sealed class UpdateService : IUpdateService
     /// <summary>安装前的条件复检（等价 Inno 脚本 PrepareToInstall 的拒绝条件），把失败前置成可读提示。</summary>
     internal string? DescribeInstallBlocker()
     {
+        if (DotNetRepairService.IsBusy) return ".NET 安装/修复正在运行，请完成后再更新工具。";
         var installLocation = ReadInstalledLocation();
         if (string.IsNullOrWhiteSpace(installLocation))
         {
@@ -1359,10 +1385,14 @@ public sealed class UpdateService : IUpdateService
         return TryParseManifest(json, config, out manifest, out reason);
     }
 
-    internal static async Task<string> FetchUpdateSourceAsync(string url, UpdateConfig config, CancellationToken cancellationToken)
+    internal static async Task<string> FetchUpdateSourceAsync(string url, UpdateConfig config, CancellationToken cancellationToken,
+        Func<string, UpdateConfig, CancellationToken, Task<string>>? fetch = null)
     {
+        fetch ??= FetchStringAsync;
         var isRepositoryApi = GitHubReleaseSource.IsRepositoryReleasesApi(url);
-        var json = await FetchStringAsync(isRepositoryApi ? GitHubReleaseSource.ReleasesUrl : url, config, cancellationToken)
+        var sourceUrl = isRepositoryApi ? (UpdateUrlRewriter.IsGhProxyUrl(url)
+            ? UpdateUrlRewriter.TryPrefixGhProxy(GitHubReleaseSource.ReleasesUrl)! : GitHubReleaseSource.ReleasesUrl) : url;
+        var json = await fetch(sourceUrl, config, cancellationToken)
             .ConfigureAwait(false);
         if (!isRepositoryApi) return json;
 
@@ -1375,7 +1405,7 @@ public sealed class UpdateService : IUpdateService
             releases.AddRange(document.RootElement.EnumerateArray().Select(r => r.Clone()));
             if (document.RootElement.GetArrayLength() < 100) return JsonSerializer.Serialize(releases);
             if (page == 10) throw new InvalidDataException("发布记录超出检查上限，不能可靠确定最高版本。");
-            json = await FetchStringAsync(GitHubReleaseSource.ReleasesUrl + "&page=" + (page + 1), config, cancellationToken)
+            json = await fetch(sourceUrl + "&page=" + (page + 1), config, cancellationToken)
                 .ConfigureAwait(false);
         }
         throw new InvalidDataException("无法读取完整发布列表。");

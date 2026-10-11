@@ -156,7 +156,11 @@ internal static class BackendHandoverChecks
             Environment.SetEnvironmentVariable("DELTANFD_TEST_RESTORE_CHILD_MS", null);
         }
         var failed = await BackendLifecycle.PrepareHandoverAsync("模拟还原超时", TimeSpan.FromMilliseconds(300));
-        Check(failed.Contains(BackendModules.CpuFrame) && client.RequiresAttention, "还原超时阻止退出并保留未知会话");
+        Check(failed.Contains(BackendModules.CpuFrame) && client.RequiresAttention
+            || client.ExitConfirmed && client.CpuRestoreConfirmed && !BackendUnconfirmedStore.PendingModules().Contains(BackendModules.CpuFrame),
+            "还原超时保留未知；若迟到结果已复核且进程已退出，可收敛但不得重建伪未知记录：failed="
+            + string.Join(",", failed) + "; attention=" + client.RequiresAttention + "; exited=" + client.ExitConfirmed
+            + "; restoreConfirmed=" + client.CpuRestoreConfirmed + "; records=" + string.Join(",", BackendUnconfirmedStore.PendingModules()));
         await WaitUntilAsync(() => client.ExitConfirmed, TimeSpan.FromSeconds(15), "超时夹具完成后退出");
         await client.QuiesceAsync(TimeSpan.FromSeconds(5));
         Check(!BackendUnconfirmedStore.PendingModules().Contains(BackendModules.CpuFrame), "迟到的完整还原成功自动归档本请求证据："
@@ -326,6 +330,7 @@ internal static class BackendHandoverChecks
             var result = await client.InvokeAsync(command, new { testDelayMs = 600 }, null, cancel.Token);
             Check(result.Status == BackendResultStatuses.Failed && result.Message.Contains("只读"), "只读失败如实报告检测失败：" + command);
             Check(!client.RequiresAttention && !BackendUnconfirmedStore.PendingModules().Contains(module), "只读失败不形成恢复义务：" + command);
+            Check(!BackendAttention.Snapshot().Any(p => p.Module == module), "只读失败不误弹系统修改恢复引导：" + command);
             await client.QuiesceAsync(TimeSpan.FromSeconds(5));
             Check(client.ExitConfirmed, "只读失败后可以安全停止：" + command);
         }
@@ -334,6 +339,7 @@ internal static class BackendHandoverChecks
         using var monitorCancel = new CancellationTokenSource(150);
         await cpu.InvokeAsync(BackendCommands.CpuFrameStatus, new { testDelayMs = 500 }, null, monitorCancel.Token);
         Check(cpu.RequiresAttention, "CPU 监控运行时只读断线仍保留后台修改证据");
+        Check(BackendAttention.Snapshot().Any(p => p.Module == BackendModules.CpuFrame), "后台 CPU 监控异常主动进入核对提示队列");
         await cpu.QuiesceAsync(TimeSpan.FromSeconds(5));
         await AcknowledgeAsync(BackendModules.CpuFrame);
     }
@@ -343,6 +349,7 @@ internal static class BackendHandoverChecks
         var client = await BackendClient.StartAsync(BackendModules.System, default);
         var result = await client.InvokeAsync(BackendCommands.SystemBxApply, new { testPartial = 1 }, null, default);
         Check(result.Status == BackendResultStatuses.Partial && client.RequiresAttention && !client.ExitConfirmed, "部分失败的活动会话保留证据");
+        Check(BackendAttention.Snapshot().Any(p => p.Module == BackendModules.System), "部分失败在结果返回时已提供直接恢复提示");
         var reviews = await BackendLifecycle.PrepareReviewAsync();
         Check(client.ExitConfirmed && reviews.Single(r => r.Module == BackendModules.System).CanRestore, "直接核对入口停止原后端并开放恢复，不依赖先尝试退出");
         await AcknowledgeAsync(BackendModules.System);

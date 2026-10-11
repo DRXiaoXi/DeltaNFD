@@ -118,11 +118,11 @@ internal static class FrameModeFlow
                         Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock
                         {
                             TextWrapping = TextWrapping.Wrap,
-                            Text = details + "\n\n无法恢复丢失的原值，继续重试不会补回备份。是否保留当前 USB/PCIe 电源值，并将这些旧记录移至证据目录？\n这不是恢复默认值或还原成功，不会写入电源设置。\n同时关闭“降低省电延迟”，再尝试开启其他已选择的帧格功能。原 JSON 保留用于后续排查；其他有效备份仍按原值恢复。",
+                            Text = details + "\n\n这些原值或设置项无法完整确认。是否保留当前电源值，并将列出的旧记录移至证据目录？\n这不是恢复默认值或还原成功，归档步骤不会写入电源值。\n同时关闭“降低省电延迟”；若包括内容快照，也会关闭电源计划锁定，再尝试其他帧格功能。原 JSON 保留用于后续排查；其他有效备份仍按原值恢复。",
                         } },
                         PrimaryButtonText = "保留当前值并继续", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
                     };
-                    if (await confirm.ShowAsync() == ContentDialogResult.Primary)
+                    if (await confirm.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary)
                     {
                         var preserved = await frame.PreserveCurrentPowerValuesAsync(incomplete);
                         result = preserved.Success ? await frame.ActivateFrameModeAsync() : preserved;
@@ -160,7 +160,7 @@ internal static class FrameModeFlow
         }
         else
         {
-            await ShowMessageAsync(root, "帧格模式已开启", result.Message);
+            await ShowMessageAsync(root, result.IsPartial ? "帧格已部分开启" : "帧格模式已开启", result.Message);
         }
     }
 
@@ -212,7 +212,7 @@ internal static class FrameModeFlow
             Content = new TextBlock { Text = blocker, TextWrapping = TextWrapping.Wrap },
             PrimaryButtonText = "核对并处理旧记录", CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
-        }.ShowAsync();
+        }.ShowWithBackendRecoveryAsync(hasReviewAction: true);
         if (choice != ContentDialogResult.Primary) return false;
         await BackendReviewFlow.RunAsync(root, FrameBackendReadiness.RequiredModules(includesGpu));
         blocker = FrameBackendReadiness.DescribeBlocker(includesGpu);
@@ -224,7 +224,7 @@ internal static class FrameModeFlow
     private static async Task ReportFailureAsync(XamlRoot root, string action, Exception ex)
     {
         Log.Error("帧格" + action + "界面流程失败", ex);
-        try { await ShowMessageAsync(root, "帧格" + action + "未完成", ex.Message + "\n若有旧操作记录，请在「设置 → 核对未确认操作」中处理后重试。"); }
+        try { await ShowMessageAsync(root, "帧格" + action + "未完成", ex.Message); }
         catch (Exception dialogError) { Log.Error("帧格失败提示无法显示", dialogError); }
     }
 
@@ -265,7 +265,7 @@ internal static class FrameModeFlow
         };
         timer.Start();
 
-        var result = await dialog.ShowAsync();
+        var result = await dialog.ShowWithBackendRecoveryAsync();
         timer.Stop();
 
         if (result == ContentDialogResult.Primary)
@@ -288,7 +288,7 @@ internal static class FrameModeFlow
             PrimaryButtonText = "确认",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
-        }.ShowAsync().AsTask().ContinueWith(t => t.Result == ContentDialogResult.Primary);
+        }.ShowWithBackendRecoveryAsync().ContinueWith(t => t.Result == ContentDialogResult.Primary);
 
     private static async Task AskRebootAsync(XamlRoot root, IFrameService frame, string title, string message)
     {
@@ -302,7 +302,7 @@ internal static class FrameModeFlow
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary)
         {
             frame.RebootNow();
         }
@@ -316,5 +316,5 @@ internal static class FrameModeFlow
             Content = message,
             CloseButtonText = "知道了",
             DefaultButton = ContentDialogButton.Close,
-        }.ShowAsync().AsTask();
+        }.ShowWithBackendRecoveryAsync();
 }

@@ -90,7 +90,7 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
             DefaultButton = ContentDialogButton.Close,
         };
 
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
         {
             return;
         }
@@ -117,7 +117,7 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
             DefaultButton = ContentDialogButton.Close,
         };
 
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
         {
             return;
         }
@@ -145,5 +145,5 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
         Content = message,
         CloseButtonText = "知道了",
         DefaultButton = ContentDialogButton.Close,
-    }.ShowAsync();
+    }.ShowWithBackendRecoveryAsync();
 }

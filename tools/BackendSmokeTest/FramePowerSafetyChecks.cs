@@ -4,6 +4,7 @@ using DeltaNFD.Services.TweakDb;
 
 internal static class FramePowerSafetyChecks
 {
+    private static int _assertions;
     private const string Scheme = "11111111-1111-1111-1111-111111111111";
     private const string Other = "44444444-4444-4444-4444-444444444444";
     private const string Subgroup = "22222222-2222-2222-2222-222222222222";
@@ -11,8 +12,12 @@ internal static class FramePowerSafetyChecks
 
     internal static async Task RunAsync()
     {
+        _assertions = 0;
         var root = Path.Combine(Path.GetTempPath(), "DeltaNFD_FramePower_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
+        var testId = Guid.NewGuid();
+        File.WriteAllText(Path.Combine(root, "isolated-test.marker"), testId.ToString("D"));
+        AppDataPaths.ConfigureIsolatedDataRoot(root, testId);
         var fake = new FakePower();
         var service = new FrameTweaksService(root, fake.RunAsync, () => fake.Active);
         var snapshot = Path.Combine(root, "frame_power_scheme_snapshot.json");
@@ -79,6 +84,43 @@ internal static class FramePowerSafetyChecks
             fake.Ac = 99;
             Assert((await service.VerifyAndRestorePowerSchemeContentAsync(Scheme)).Success && fake.Ac == 10, "失败后可重试精确还原");
             Assert(service.DiscardPowerSchemeContentSnapshot().Success && !File.Exists(snapshot), "成功后显式清理");
+            Assert(Directory.GetFiles(Path.Combine(root, "restored-frame-power")).Length > 0, "恢复成功后归档原快照而不是销毁证据");
+            await service.SnapshotPowerSchemeContentAsync(Scheme);
+            fake.Ac = 99; fake.Active = Other; fake.Writes.Clear();
+            Assert((await service.VerifyAndRestorePowerSchemeContentAsync(Scheme)).Success
+                && fake.Ac == 10 && !fake.Writes.Any(w => w.StartsWith("/setactive")), "恢复旧计划内容不会抢占当前活动计划");
+            service.DiscardPowerSchemeContentSnapshot();
+            fake.Active = Scheme;
+            await service.SnapshotPowerSchemeContentAsync(Scheme);
+            AppSettingsStore.Update(s => { s.FramePowerPreviousSchemeGuid = Other; s.FramePowerLockedSchemeGuid = Other; s.FramePowerRestorePending = true; });
+            using (var engine = new DeltaNFD.Execution.CpuFrame.CpuFrameEngine(new FakePowerService(fake), service))
+            {
+                Assert((await engine.SetPowerLockAsync(false, "")).Success && !service.HasPowerSchemeContentSnapshot
+                    && !AppSettingsStore.Read().FramePowerRestorePending, "历史计划元数据与快照不一致：按快照归属恢复再切原计划");
+                fake.Active = Scheme;
+                await service.SnapshotPowerSchemeContentAsync(Scheme);
+                AppSettingsStore.Update(s => { s.FramePowerPreviousSchemeGuid = Other; s.FramePowerLockedSchemeGuid = Other; s.FramePowerRestorePending = true; });
+                Assert((await engine.SetPowerLockAsync(true, Scheme)).Success && service.PowerSchemeSnapshotGuid == Scheme,
+                    "带旧备份再次开启：先恢复旧会话，成功后新建而非覆盖");
+                Assert((await engine.SetPowerLockAsync(false, "")).Success, "新会话可完整关闭恢复");
+            }
+            await service.SnapshotPowerSchemeContentAsync(Scheme);
+            fake.HideFromFull = true; fake.Ac = 99;
+            Assert((await service.VerifyAndRestorePowerSchemeContentAsync(Scheme)).Success && fake.Ac == 10,
+                "全量明细缺少隐藏项时用单项查询恢复且核验");
+            fake.DirectFails = true;
+            Assert(!(await service.VerifyAndRestorePowerSchemeContentAsync(Scheme)).Success && File.Exists(snapshot),
+                "单项也不可读取时保留快照，不冒充成功");
+            var snapshotReview = await service.GetIncompletePowerBackupsAsync();
+            Assert(snapshotReview.Count == 1 && snapshotReview[0].FileName == "frame_power_scheme_snapshot.json",
+                "永久缺项快照进入明确人工核对入口");
+            File.AppendAllText(snapshot, " ");
+            Assert(!(await service.PreserveCurrentPowerValuesAsync(snapshotReview)).Success && File.Exists(snapshot),
+                "确认后快照变化不得归档");
+            snapshotReview = await service.GetIncompletePowerBackupsAsync(); fake.Writes.Clear();
+            Assert((await service.PreserveCurrentPowerValuesAsync(snapshotReview)).Success && !File.Exists(snapshot) && fake.Writes.Count == 0,
+                "人工确认保留当前值后只归档证据，无电源写入");
+            fake.HideFromFull = false; fake.DirectFails = false;
             fake.Empty = true;
             Assert(!(await service.SnapshotPowerSchemeContentAsync(Scheme)).Success && !File.Exists(snapshot), "空明细不能变成有效快照");
             fake.Empty = false;
@@ -161,7 +203,7 @@ internal static class FramePowerSafetyChecks
                 && SystemTweakService.AssessHyperVFeatureStates("[{\"State\":\"DisablePending\"}]") == false
                 && SystemTweakService.AssessHyperVFeatureStates("bad json") is null,
                 "完整状态必须包含可选功能及重启等待状态，查询失败为未知");
-            Console.WriteLine("Frame power safety checks passed: failed reads, precise restore, persistent snapshots, failures, cancellation/drain, stale callbacks, shared Hyper-V backend. All power writes were mocked.");
+            Console.WriteLine($"Frame power safety checks passed: {_assertions} assertions; failed reads, precise restore, persistent snapshots, failures, cancellation/drain, stale callbacks, shared Hyper-V backend. All power writes were mocked.");
         }
         finally
         {
@@ -173,25 +215,27 @@ internal static class FramePowerSafetyChecks
     }
 
     private static TaskCompletionSource<bool> NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private static void Assert(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
+    private static void Assert(bool value, string message) { if (!value) throw new InvalidOperationException(message); _assertions++; }
 
     private sealed class FakePower
     {
         public string Active = Scheme;
         public long Ac = 10, Dc = 20;
         public bool QueryFails, WriteFails, RefreshFails, Empty;
+        public bool HideFromFull, DirectFails;
         public TaskCompletionSource<bool>? QueryEntered, QueryRelease;
         public List<string> Writes { get; } = new();
         public async Task<(int Code, string StdOut, string StdErr)> RunAsync(string arguments, TimeSpan timeout)
         {
             var parts = arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (parts[0] == "/q")
+            if (parts[0] is "/q" or "/qh")
             {
                 QueryEntered?.TrySetResult(true);
                 if (QueryRelease is not null) await QueryRelease.Task;
                 if (QueryFails) return (5, "", "fixture access denied");
+                if (parts.Length == 4 && DirectFails) return (87, "", "fixture setting unsupported");
                 var output = $"Scheme {parts[1]}\nSubgroup {Subgroup}\n";
-                if (!Empty) output += $"Setting {Setting}\nAC 0x{Ac:X8}\nDC 0x{Dc:X8}\n";
+                if (!Empty) output += $"Setting {(HideFromFull && parts.Length == 2 ? "44444444-4444-4444-4444-444444444444" : Setting)}\nAC 0x{Ac:X8}\nDC 0x{Dc:X8}\n";
                 return (0, output, "");
             }
             Writes.Add(arguments);
@@ -200,6 +244,20 @@ internal static class FramePowerSafetyChecks
             if (parts[0] == "/setdcvalueindex") Dc = long.Parse(parts[^1]);
             return (0, "", "");
         }
+    }
+
+    private sealed class FakePowerService(FakePower fake) : IPowerService
+    {
+        public Task<List<PowerSchemeInfo>> GetSchemesAsync() => Task.FromResult(new List<PowerSchemeInfo>
+        { new() { Guid = Scheme, Name = "fixture", IsActive = fake.Active == Scheme }, new() { Guid = Other, Name = "previous", IsActive = fake.Active == Other } });
+        public Task<OperationResult> SetSchemeAsync(string guid) { fake.Active = guid; return Task.FromResult(OperationResult.Ok("fixture")); }
+        public Task<OperationResult> ImportNoPowerSaveSchemeAsync() => throw new InvalidOperationException("unexpected fixture operation");
+        public Task<OperationResult> EnsureNoPowerSaveSchemeNameAsync() => throw new InvalidOperationException("unexpected fixture operation");
+        public Task<bool> IsHibernateEnabledAsync() => throw new InvalidOperationException("unexpected fixture operation");
+        public Task<OperationResult> SetHibernateAsync(bool enable) => throw new InvalidOperationException("unexpected fixture operation");
+        public Task<List<HeteroPolicyInfo>> GetHeteroPoliciesAsync() => throw new InvalidOperationException("unexpected fixture operation");
+        public Task<OperationResult> SetHeteroPolicyAsync(string setting, int value) => throw new InvalidOperationException("unexpected fixture operation");
+        public Task<OperationResult> SetHeteroPolicyValuesAsync(string setting, int ac, int dc) => throw new InvalidOperationException("unexpected fixture operation");
     }
 
     private sealed class FakeDeepTweaks : ISystemTweakService

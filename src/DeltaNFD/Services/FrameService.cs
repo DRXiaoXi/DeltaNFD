@@ -666,8 +666,8 @@ public sealed class FrameService : IFrameService
         var pendingTweaks = await cpuFrame.RevertTweaksAsync();
         
         // 区分"无待恢复记录（幂等成功）"与"恢复失败（有原值但还原失败）"
-        var powerBlocked = !pendingPower.Success && pendingPower.Message.Contains("失败");
-        var tweaksBlocked = !pendingTweaks.Success && pendingTweaks.Message.Contains("失败");
+        var powerBlocked = !pendingPower.Success;
+        var tweaksBlocked = !pendingTweaks.Success;
         
         if (powerBlocked || tweaksBlocked)
         {
@@ -764,7 +764,13 @@ public sealed class FrameService : IFrameService
         var dualNote = await ApplyArmedDualCcdAsync();
 
         // 加速响应 / 临时优化 / 电源锁定：由后端执行。
-        var notes = dualNote + await SyncBackendExecutionAsync();
+        var execution = await SyncBackendExecutionAsync();
+        var notes = dualNote + execution.Message;
+        if (!execution.Success)
+            return new OperationResult { Success = true, IsPartial = true,
+                RequiresReboot = useSpoof && GpuSpoofApplyMode == GpuSpoofApplyMode.Reboot,
+                RequiresDisplayConfirm = needsDisplayConfirm,
+                Message = "帧格已部分开启；部分功能未完成，不能视为全部生效。" + notes };
 
         // 内存清理（实验性）：开启帧格时立即执行一次，给游戏腾出干净的可用内存
         if (_memoryCleanEnabled)
@@ -909,7 +915,7 @@ public sealed class FrameService : IFrameService
     /// 按当前设置与帧格状态把加速响应/临时优化/电源锁定的期望下发给后端（后端执行）。
     /// 返回可拼接的状态说明。
     /// </summary>
-    private async Task<string> SyncBackendExecutionAsync()
+    private async Task<OperationResult> SyncBackendExecutionAsync()
     {
         try
         {
@@ -918,19 +924,22 @@ public sealed class FrameService : IFrameService
             var cpuFrame = Backends.BackendCpuFrameService.Instance;
             if (!active)
             {
-                await cpuFrame.ApplyBoostAsync(false, false, false);
-                await cpuFrame.RevertTweaksAsync();
-                await cpuFrame.UnlockPowerAsync();
-                return "";
+                var stopped = await cpuFrame.ApplyBoostAsync(false, false, false);
+                var restored = await cpuFrame.RevertTweaksAsync();
+                var unlocked = await cpuFrame.UnlockPowerAsync();
+                return stopped.Success && restored.Success && unlocked.Success ? OperationResult.Ok("")
+                    : OperationResult.Fail(stopped.Message + " " + restored.Message + " " + unlocked.Message);
             }
 
             var boost = settings.FrameResponseBoostEnabled;
-            await cpuFrame.ApplyBoostAsync(
+            var boosted = await cpuFrame.ApplyBoostAsync(
                 boost && settings.FrameResponseBoostCoreParkingEnabled,
                 boost && settings.FrameResponseBoostEcoQosEnabled,
                 boost && settings.FrameResponseBoostTimerEnabled);
 
             var notes = new List<string>();
+            var complete = boosted.Success;
+            if (!boosted.Success) notes.Add(boosted.Message);
             var laptop = await GetChassisKindAsync() == ChassisKind.Laptop;
             if (settings.FrameForegroundBoostEnabled || settings.FramePowerSaveLatencyEnabled)
             {
@@ -944,29 +953,36 @@ public sealed class FrameService : IFrameService
                     LaptopExcluded = laptop,
                 });
                 if (tweaks.Message.Length > 0) notes.Add(tweaks.Message.TrimEnd('。'));
+                complete &= tweaks.Success;
             }
             else
             {
-                await cpuFrame.RevertTweaksAsync();
+                var restored = await cpuFrame.RevertTweaksAsync();
+                complete &= restored.Success;
+                if (!restored.Success) notes.Add(restored.Message);
             }
 
             if (settings.FramePowerLockEnabled)
             {
                 var power = await cpuFrame.SetPowerLockAsync(true, _powerLockTargetGuid);
                 if (!power.Success) notes.Add("电源锁定：" + power.Message);
+                complete &= power.Success;
             }
             else
             {
-                await cpuFrame.UnlockPowerAsync();
+                var power = await cpuFrame.UnlockPowerAsync();
+                complete &= power.Success;
+                if (!power.Success) notes.Add(power.Message);
             }
 
             await cpuFrame.EnsureMonitorAsync();
-            return notes.Count == 0 ? "" : " " + string.Join("；", notes) + "。";
+            var message = notes.Count == 0 ? "" : " " + string.Join("；", notes) + "。";
+            return complete ? OperationResult.Ok(message) : OperationResult.Fail(message);
         }
         catch (Exception ex)
         {
             Log.Warn("帧格执行同步失败：" + ex.Message);
-            return " 帧格执行同步失败：" + ex.Message;
+            return OperationResult.Fail(" 帧格执行同步失败：" + ex.Message);
         }
     }
 
@@ -1046,7 +1062,9 @@ public sealed class FrameService : IFrameService
             var spoofPart = IsGpuSpoofInFrame && _gpuSpoofEnabled
                 ? $" · 显卡伪装为「{_gpuSpoofFakeName}」" : "";
             var powerPart = _powerPlanLockEnabled
-                ? (string.IsNullOrWhiteSpace(_powerLockTargetGuid) ? " · 电源计划锁定" : " · 电源计划锁定（指定计划）") : "";
+                ? (Backends.BackendCpuFrameService.Instance.Latest is { PowerLockActive: true }
+                    ? (string.IsNullOrWhiteSpace(_powerLockTargetGuid) ? " · 电源计划锁定已生效" : " · 电源计划锁定已生效（指定计划）")
+                    : " · 电源锁定尚未确认（请核对恢复记录）") : "";
             var dualPart = _dualCcdArmed && _dualCcdEnabled ? " · 双CCD调度" : "";
             var boostPart = _responseBoostEnabled ? " · 加速响应" : "";
             var foregroundPart = _foregroundBoostEnabled ? " · 前台加速" : "";

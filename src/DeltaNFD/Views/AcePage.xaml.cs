@@ -74,7 +74,7 @@ public sealed partial class AcePage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
         {
             return;
         }
@@ -90,7 +90,7 @@ public sealed partial class AcePage : Page
                 PrimaryButtonText = AceCleanupReadiness.RequiresReview ? "核对当前状态" : "",
                 CloseButtonText = "知道了",
                 DefaultButton = ContentDialogButton.Close,
-            }.ShowAsync();
+            }.ShowWithBackendRecoveryAsync(hasReviewAction: AceCleanupReadiness.RequiresReview);
             if (choice == ContentDialogResult.Primary) await ReviewCleanupAsync();
         }
         else if (result is { Success: true })
@@ -107,7 +107,7 @@ public sealed partial class AcePage : Page
                           + "③ 修复会重新安装干净的 ACE 组件，之后正常启动游戏即可。",
                 CloseButtonText = "知道了",
                 DefaultButton = ContentDialogButton.Primary,
-            }.ShowAsync();
+            }.ShowWithBackendRecoveryAsync();
         }
     }
 
@@ -117,7 +117,7 @@ public sealed partial class AcePage : Page
         try
         {
             await new ContentDialog { XamlRoot = XamlRoot, Title = "ACE 操作未完成",
-                Content = ex.Message + "\n若有上次清理记录，请点击「核对上次清理」。", CloseButtonText = "知道了" }.ShowAsync();
+                Content = ex.Message + "\n若有上次清理记录，请点击「核对上次清理」。", CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
         }
         catch (Exception dialogError) { Log.Error("ACE 失败提示无法显示", dialogError); }
     }
@@ -150,7 +150,7 @@ public sealed partial class AcePage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
         };
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
         {
             return;
         }

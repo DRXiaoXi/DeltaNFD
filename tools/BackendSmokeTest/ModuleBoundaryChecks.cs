@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Xml.Linq;
 using DeltaNFD.Backends;
 using DeltaNFD.Services;
@@ -54,7 +54,7 @@ internal static class ModuleBoundaryChecks
     private static void CheckBackendBoundaries(string repo)
     {
         var backends = Directory.GetDirectories(Path.Combine(repo, "src"), "DeltaNFD.Backend.*");
-        Check(backends.Length == 5, $"存在五个后端项目（找到 {backends.Length} 个）");
+        Check(backends.Length == 6, $"存在六个后端项目（找到 {backends.Length} 个）");
         foreach (var backend in backends.OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
         {
             var name = Path.GetFileName(backend);

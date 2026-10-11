@@ -36,6 +36,8 @@ public static class BackendCommands
     public const string RuntimeRepair = "runtime.repair";
     public const string RuntimeCompatibilityRepair = "runtime.compatibility.repair";
     public const string RuntimeRedistUninstall = "runtime.redist.uninstall";
+    public const string RuntimeRedistPreviewAll = "runtime.redist.preview-all";
+    public const string RuntimeRedistUninstallAll = "runtime.redist.uninstall-all";
     public const string RuntimeReconcile = "runtime.reconcile";
     public const string RuntimeRecover = "runtime.recover";
 
@@ -69,6 +71,26 @@ public static class BackendCommands
     public const string CpuFrameReconcile = "cpuframe.reconcile";
     public const string CpuFrameRecover = "cpuframe.recover";
     public const string CpuFrameOfflineRestore = "cpuframe.offline.restore";
+
+    // ---- 进程管理（模块 procman）----
+    public const string ProcmanStatus = "procman.status";
+    public const string ProcmanActivate = "procman.activate";
+    public const string ProcmanList = "procman.process.list";
+    public const string ProcmanDetail = "procman.process.detail";
+    public const string ProcmanCapability = "procman.process.capability";
+    public const string ProcmanCpuTopology = "procman.cpu.topology";
+    public const string ProcmanReconcile = "procman.reconcile";
+    public const string ProcmanSet = "procman.process.set";
+    public const string ProcmanReset = "procman.process.reset";
+    public const string ProcmanRelease = "procman.process.release";
+    public const string ProcmanRestoreAll = "procman.restore-all";
+    public const string ProcmanRecover = "procman.recover";
+    public const string ProcmanRulesList = "procman.rules.list";
+    public const string ProcmanRulesSave = "procman.rules.save";
+    public const string ProcmanRulesDelete = "procman.rules.delete";
+    public const string ProcmanResponsivenessConfig = "procman.responsiveness.config";
+    public const string ProcmanResponsivenessEvents = "procman.responsiveness.events";
+    public const string ProcmanNativeProbe = "procman.native.probe";
 
     // ---- 系统维护（模块 system）----
     public const string SystemCleanupScan = "system.cleanup.scan";
@@ -142,6 +164,7 @@ public static class BackendModules
     public const string Gpu = "gpu";
     public const string Runtime = "runtime";
     public const string CpuFrame = "cpuframe";
+    public const string Procman = "procman";
     public const string System = "system";
 
     private static readonly TimeSpan TwoMinutes = TimeSpan.FromMinutes(2);
@@ -201,10 +224,12 @@ public static class BackendModules
                     [BackendCommands.RuntimeUe4RepairAcl] = FiveMinutes,
                     [BackendCommands.RuntimeRedistScan] = TwoMinutes,
                     [BackendCommands.RuntimeRedistListV14] = TwoMinutes,
-                    // 强力模式：系统组件最多 60 分钟，原修复最多 26 分钟，保留交接余量。
+                    // 强力系统阶段最多 60 分钟；高帧性后续 26 分钟，含全量卸载的兼容性后续 80 分钟。
                     [BackendCommands.RuntimeRepair] = TimeSpan.FromMinutes(90),
-                    [BackendCommands.RuntimeCompatibilityRepair] = TimeSpan.FromMinutes(90),
+                    [BackendCommands.RuntimeCompatibilityRepair] = TimeSpan.FromMinutes(145),
                     [BackendCommands.RuntimeRedistUninstall] = ThirtyMinutes,
+                    [BackendCommands.RuntimeRedistPreviewAll] = TwoMinutes,
+                    [BackendCommands.RuntimeRedistUninstallAll] = TimeSpan.FromMinutes(90),
                     [BackendCommands.RuntimeReconcile] = FiveMinutes,
                     [BackendCommands.RuntimeRecover] = FifteenMinutes,
                 }, FiveMinutes),
@@ -241,6 +266,29 @@ public static class BackendModules
                     [BackendCommands.CpuFrameReconcile] = TwoMinutes,
                     [BackendCommands.CpuFrameRecover] = FifteenMinutes,
                     [BackendCommands.CpuFrameOfflineRestore] = FiveMinutes,
+                }, TwoMinutes),
+
+            [Procman] = Make(Procman, "进程管理后端", "DeltaNFD.Backend.Procman.exe",
+                new Dictionary<string, TimeSpan>(StringComparer.Ordinal)
+                {
+                    [BackendCommands.ProcmanActivate] = FiveMinutes,
+                    [BackendCommands.ProcmanStatus] = TwoMinutes,
+                    [BackendCommands.ProcmanList] = TwoMinutes,
+                    [BackendCommands.ProcmanDetail] = TwoMinutes,
+                    [BackendCommands.ProcmanCapability] = TwoMinutes,
+                    [BackendCommands.ProcmanCpuTopology] = TwoMinutes,
+                    [BackendCommands.ProcmanReconcile] = TwoMinutes,
+                    [BackendCommands.ProcmanSet] = TwoMinutes,
+                    [BackendCommands.ProcmanReset] = TwoMinutes,
+                    [BackendCommands.ProcmanRelease] = TwoMinutes,
+                    [BackendCommands.ProcmanRestoreAll] = FiveMinutes,
+                    [BackendCommands.ProcmanRecover] = FifteenMinutes,
+                    [BackendCommands.ProcmanRulesList] = TwoMinutes,
+                    [BackendCommands.ProcmanRulesSave] = TwoMinutes,
+                    [BackendCommands.ProcmanRulesDelete] = TwoMinutes,
+                    [BackendCommands.ProcmanResponsivenessConfig] = TwoMinutes,
+                    [BackendCommands.ProcmanResponsivenessEvents] = TwoMinutes,
+                    [BackendCommands.ProcmanNativeProbe] = TwoMinutes,
                 }, TwoMinutes),
 
             [System] = Make(System, "系统维护后端", "DeltaNFD.Backend.SystemMaintenance.exe",
@@ -320,10 +368,16 @@ public static class BackendModules
         BackendCommands.GpuDriverStatus, BackendCommands.GpuDriverRead, BackendCommands.GpuReconcile,
         BackendCommands.RuntimeStatus, BackendCommands.RuntimeRedistScan,
         BackendCommands.RuntimeRedistListV14, BackendCommands.RuntimeReconcile,
+        BackendCommands.RuntimeRedistPreviewAll,
         BackendCommands.CpuFrameStatus, BackendCommands.CpuFrameReconcile,
         BackendCommands.CpuFrameTopology, BackendCommands.CpuFrameAffinityCheck,
         BackendCommands.CpuFrameAffinityPending, BackendCommands.CpuFrameMemoryLimitDetect,
         BackendCommands.CpuFramePowerIncomplete,
+        BackendCommands.ProcmanStatus, BackendCommands.ProcmanList,
+        BackendCommands.ProcmanDetail, BackendCommands.ProcmanCapability,
+        BackendCommands.ProcmanCpuTopology, BackendCommands.ProcmanReconcile,
+        BackendCommands.ProcmanNativeProbe,
+        BackendCommands.ProcmanRulesList, BackendCommands.ProcmanResponsivenessEvents,
         BackendCommands.SystemCleanupScan, BackendCommands.SystemTweaksStatus,
         BackendCommands.SystemTweaksBackups, BackendCommands.SystemTweaksHyperV, BackendCommands.SystemTweaksVbs,
         BackendCommands.SystemAdvancedStatus, BackendCommands.SystemPowerSchemes,
@@ -354,7 +408,7 @@ public static class BackendModules
     private static readonly HashSet<string> NoIntentCommands = new(StringComparer.Ordinal)
     {
         BackendCommands.GpuRecover, BackendCommands.RuntimeRecover, BackendCommands.SystemRecover,
-        BackendCommands.CpuFrameRecover,
+        BackendCommands.CpuFrameRecover, BackendCommands.ProcmanRecover,
         BackendCommands.SystemDefenderPostApply,
     };
 
@@ -376,6 +430,7 @@ public static class BackendModules
         Gpu => BackendCommands.GpuReconcile,
         Runtime => BackendCommands.RuntimeReconcile,
         CpuFrame => BackendCommands.CpuFrameReconcile,
+        Procman => BackendCommands.ProcmanReconcile,
         System => BackendCommands.SystemReconcile,
         _ => null,
     };
@@ -386,6 +441,7 @@ public static class BackendModules
         Gpu => BackendCommands.GpuRecover,
         Runtime => BackendCommands.RuntimeRecover,
         CpuFrame => BackendCommands.CpuFrameRecover,
+        Procman => BackendCommands.ProcmanRecover,
         System => BackendCommands.SystemRecover,
         _ => null,
     };

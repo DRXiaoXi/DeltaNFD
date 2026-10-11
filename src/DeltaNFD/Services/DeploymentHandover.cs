@@ -10,6 +10,7 @@ internal sealed class DeploymentHandover : IDisposable
     private readonly IDisposable _plugins;
     private DeploymentHandover()
     {
+        if (DotNetRepairService.IsBusy) throw new InvalidOperationException(".NET 安装/修复正在运行，请完成或取消微软安装器后重试。");
         _backends = BackendOperationGate.BlockNewOperations();
         try { _plugins = ServiceLocator.PluginRuntime.BlockNewOperations(); }
         catch { _backends.Dispose(); throw; }

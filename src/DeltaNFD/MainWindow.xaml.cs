@@ -1,4 +1,4 @@
-﻿using DeltaNFD.Native;
+using DeltaNFD.Native;
 using DeltaNFD.Services;
 using DeltaNFD.Services.Plugins;
 using DeltaNFD.Views;
@@ -26,6 +26,33 @@ public sealed partial class MainWindow : Window
     private bool _announcementChecked;
 
     private bool _startupInitializationStarted;
+    private int _backendAttentionQueued;
+
+    private void OnBackendAttention()
+    {
+        if (_exitRequested || Interlocked.CompareExchange(ref _backendAttentionQueued, 1, 0) != 0) return;
+        if (!DispatcherQueue.TryEnqueue(async () =>
+        {
+            var completedNormally = false;
+            try
+            {
+                // Allow the calling page to present its own error first; that dialog gets the same action.
+                await Task.Delay(500);
+                if (_exitRequested || Content.XamlRoot is null) return;
+                if (Services.Backends.BackendAttention.Snapshot(onlyUnshown: true).Count == 0) return;
+                ActivateFromSecondLaunch();
+                await BackendDialogExtensions.ShowUnconfirmedAsync(Content.XamlRoot);
+                completedNormally = true;
+            }
+            catch (Exception ex) { Log.Error("未确认后端操作引导未能显示", ex); }
+            finally
+            {
+                Volatile.Write(ref _backendAttentionQueued, 0);
+                if (completedNormally && !_exitRequested && !BackendReviewFlow.IsReviewing
+                    && Services.Backends.BackendAttention.Snapshot(onlyUnshown: true).Count > 0) OnBackendAttention();
+            }
+        })) Volatile.Write(ref _backendAttentionQueued, 0);
+    }
     private bool _gpuWatchReady;
     private bool _gpuWatchInFlight;
     private IReadOnlyList<GpuSpoofInvalidation> _gpuWatchItems = [];
@@ -43,6 +70,8 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Services.Backends.BackendAttention.Changed += OnBackendAttention;
+        Closed += (_, _) => Services.Backends.BackendAttention.Changed -= OnBackendAttention;
         ServiceLocator.GameTarget.Changed += OnGameTargetChanged;
         Closed += (_, _) => ServiceLocator.GameTarget.Changed -= OnGameTargetChanged;
         UpdateGameTargetNavigation();
@@ -211,6 +240,7 @@ public sealed partial class MainWindow : Window
         }
 
         _startupInitializationStarted = true;
+        Services.Backends.BackendAttention.RefreshPersisted();
 
         try
         {
@@ -224,6 +254,7 @@ public sealed partial class MainWindow : Window
         {
             StartupGameDirectoryCheckCompleted = true;
         }
+        _ = Services.Backends.BackendProcmanService.Instance.ActivateSavedRulesAsync();
 
         // 启动时主页可能在目录提示之前已创建；路径设置完成后立即使用真实游戏目录重扫。
         if (ContentFrame.Content is DashboardPage dashboard)
@@ -246,7 +277,7 @@ public sealed partial class MainWindow : Window
 
             var qr = new Image
             {
-                Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "FeedbackGroupQr.jpg"))),
+                Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "FeedbackGroupQr.png"))),
                 MaxWidth = 360, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center,
             };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(qr, "反馈群二维码，群号 1126191382");
@@ -277,7 +308,7 @@ public sealed partial class MainWindow : Window
                 CloseButtonText = "开始使用",
                 DefaultButton = ContentDialogButton.Close,
             };
-            await dialog.ShowAsync();
+            await dialog.ShowWithBackendRecoveryAsync();
 
             // 展示成功后才记录：展示失败（如异常）时下次启动重试
             AppSettingsStore.Update(s => s.AnnouncementVersionSeen = CurrentAnnouncementVersion);
@@ -322,7 +353,7 @@ public sealed partial class MainWindow : Window
                 DefaultButton = ContentDialogButton.Primary,
             };
 
-            if (await warning.ShowAsync() != ContentDialogResult.Primary) return;
+            if (await warning.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
 
             var result = await ServiceLocator.Cpu.RemoveMemoryLimitAsync();
             if (result is null) return;
@@ -335,7 +366,7 @@ public sealed partial class MainWindow : Window
                     Content = result.Message,
                     CloseButtonText = "知道了",
                     DefaultButton = ContentDialogButton.Close,
-                }.ShowAsync();
+                }.ShowWithBackendRecoveryAsync();
                 return;
             }
 
@@ -349,7 +380,7 @@ public sealed partial class MainWindow : Window
                     PrimaryButtonText = "立即重启",
                     CloseButtonText = "稍后自己重启",
                     DefaultButton = ContentDialogButton.Primary,
-                }.ShowAsync();
+                }.ShowWithBackendRecoveryAsync();
                 if (reboot == ContentDialogResult.Primary) ServiceLocator.Frame.RebootNow();
             }
         }
@@ -462,7 +493,7 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            await dialog.ShowAsync();
+            await dialog.ShowWithBackendRecoveryAsync();
         }
         catch (Exception ex)
         {
@@ -476,9 +507,10 @@ public sealed partial class MainWindow : Window
     /// <summary>启动时的自动检查（只提醒，不下载）。</summary>
     private async Task CheckUpdatesOnStartupAsync()
     {
+        EmergencyPolicyUpdateService.Start(ServiceLocator.Update.IsInstalledCopy);
         if (!AppSettingsStore.Read().AutoUpdateCheckEnabled)
         {
-            Services.Log.Info("更新：启动自动检查已关闭，未联网。");
+            Services.Log.Info("更新：整包启动自动检查已关闭；紧急策略按独立开关处理。");
             return;
         }
 
@@ -519,7 +551,7 @@ public sealed partial class MainWindow : Window
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        var choice = await dialog.ShowAsync();
+        var choice = await dialog.ShowWithBackendRecoveryAsync();
         if (choice == ContentDialogResult.Primary)
         {
             NavigateByTag("settings");
@@ -569,7 +601,7 @@ public sealed partial class MainWindow : Window
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        var choice = await prompt.ShowAsync();
+        var choice = await prompt.ShowWithBackendRecoveryAsync();
         if (choice == ContentDialogResult.Primary)
         {
             await RunGameDirectorySearchAsync(null);
@@ -634,7 +666,7 @@ public sealed partial class MainWindow : Window
             }
         });
 
-        _ = progressDialog.ShowAsync();
+        _ = progressDialog.ShowWithBackendRecoveryAsync();
         try { await searchTask; }
         catch (OperationCanceledException) { }
         progressDialog.Hide();
@@ -655,7 +687,7 @@ public sealed partial class MainWindow : Window
                 PrimaryButtonText = "手动选择",
                 CloseButtonText = "稍后设置",
                 DefaultButton = ContentDialogButton.Primary,
-            }.ShowAsync();
+            }.ShowWithBackendRecoveryAsync();
             if (none == ContentDialogResult.Primary) await RunManualGameDirectoryPickAsync();
             return;
         }
@@ -684,7 +716,7 @@ public sealed partial class MainWindow : Window
                     Content = "请稍后到「设置」页，在三角洲游戏目录一栏手动选择或粘贴游戏路径。",
                     CloseButtonText = "知道了",
                     DefaultButton = ContentDialogButton.Close,
-                }.ShowAsync();
+                }.ShowWithBackendRecoveryAsync();
                 return;
             }
 
@@ -710,7 +742,7 @@ public sealed partial class MainWindow : Window
                 DefaultButton = ContentDialogButton.Primary,
             };
 
-            if (await retry.ShowAsync() != ContentDialogResult.Primary)
+            if (await retry.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
             {
                 return;
             }
@@ -740,7 +772,7 @@ public sealed partial class MainWindow : Window
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
 
         var selected = boxes.Where(t => t.Box.IsChecked == true).Select(t => t.Root).ToList();
         foreach (var root in selected)
@@ -854,7 +886,7 @@ public sealed partial class MainWindow : Window
                 DefaultButton = ContentDialogButton.Primary,
             };
 
-            var choice = await dialog.ShowAsync();
+            var choice = await dialog.ShowWithBackendRecoveryAsync();
             if (choice == ContentDialogResult.Primary)
             {
                 var tray = GetOrCreateTrayIcon();
@@ -868,7 +900,7 @@ public sealed partial class MainWindow : Window
                         Content = "托盘图标注册失败，工具将保持打开。请稍后重试。",
                         CloseButtonText = "知道了",
                         DefaultButton = ContentDialogButton.Close,
-                    }.ShowAsync();
+                    }.ShowWithBackendRecoveryAsync();
                     return;
                 }
 
@@ -965,6 +997,7 @@ public sealed partial class MainWindow : Window
     {
         App.ExitAlreadyPrepared = true;
         _exitRequested = true;
+        EmergencyPolicyUpdateService.Stop();
         _trayIcon?.Dispose();
         _trayIcon = null;
         Application.Current.Exit();
@@ -975,6 +1008,13 @@ public sealed partial class MainWindow : Window
     private async void ExitApplication()
     {
         if (_pluginExitInProgress || _deploymentInProgress) return;
+        if (DotNetRepairService.IsBusy)
+        {
+            RestoreFromTray();
+            await new ContentDialog { XamlRoot = ContentFrame.XamlRoot, Title = ".NET 修复正在运行",
+                Content = "请先在设置中取消下载，或在微软安装器中完成/取消安装，再退出工具。", CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
+            return;
+        }
         _pluginExitInProgress = true;
 
         IDisposable? pluginBlock = null;
@@ -998,7 +1038,7 @@ public sealed partial class MainWindow : Window
 
                 RestoreFromTray();
                 await new ContentDialog { XamlRoot = ContentFrame.XamlRoot, Title = "插件尚未安全停止", Content = blocker,
-                    CloseButtonText = "知道了" }.ShowAsync();
+                    CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
                 return;
             }
             // 前后端分离 T5：退出前也必须排空官方后端；任一模块未确认退出（含在途/未知操作、
@@ -1018,10 +1058,11 @@ public sealed partial class MainWindow : Window
                 RestoreFromTray();
                 await new ContentDialog { XamlRoot = ContentFrame.XamlRoot, Title = "退出前需要核对官方后端",
                     Content = new TextBlock { Text = backendBlocker, TextWrapping = TextWrapping.Wrap },
-                    CloseButtonText = "知道了" }.ShowAsync();
+                    CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
                 return;
             }
             _exitRequested = true;
+            EmergencyPolicyUpdateService.Stop();
             _trayIcon?.Dispose();
             _trayIcon = null;
             Application.Current.Exit();
@@ -1134,6 +1175,7 @@ public sealed partial class MainWindow : Window
             "ace" => typeof(AcePage),
             "runtime" => typeof(RuntimePage),
             "lab" => typeof(LabPage),
+            "process" => typeof(ProcessPage),
             "plugins" => typeof(PluginPage),
             "settings" => typeof(SettingsPage),
             _ => typeof(DashboardPage),

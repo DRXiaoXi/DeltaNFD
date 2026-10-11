@@ -180,6 +180,9 @@ public sealed class AppSettings
     /// <summary>启动后自动检查更新（关闭后仍可在设置页手动「检查更新」）。</summary>
     public bool AutoUpdateCheckEnabled { get; set; } = true;
 
+    /// <summary>独立于整包更新提示：启动及运行期间接收已签名的紧急算法策略。</summary>
+    public bool EmergencyPolicyEnabled { get; set; } = true;
+
     /// <summary>默认保留旧版接收 Alpha 的行为；公测仅接收 Beta / Release。</summary>
     public UpdateChannel UpdateChannel { get; set; } = UpdateChannel.Internal;
     /// <summary>已处理的安装批次，防止每次启动覆盖用户后来选择的通道。</summary>

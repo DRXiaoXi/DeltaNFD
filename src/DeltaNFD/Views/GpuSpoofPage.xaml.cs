@@ -65,7 +65,7 @@ public sealed partial class GpuSpoofPage : Page
                     DefaultButton = ContentDialogButton.Primary,
                 };
 
-                if (await restartConfirm.ShowAsync() != ContentDialogResult.Primary)
+                if (await restartConfirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
                 {
                     return;
                 }
@@ -144,7 +144,7 @@ public sealed partial class GpuSpoofPage : Page
                 DefaultButton = ContentDialogButton.Primary,
             };
 
-            if (await directConfirm.ShowAsync() != ContentDialogResult.Primary)
+            if (await directConfirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
             {
                 return;
             }
@@ -179,7 +179,7 @@ public sealed partial class GpuSpoofPage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
         {
             return;
         }
@@ -220,7 +220,7 @@ public sealed partial class GpuSpoofPage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
         {
             return;
         }

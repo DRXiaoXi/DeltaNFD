@@ -37,6 +37,11 @@ public interface IAceCleanupEnvironment
 
     void DeleteRegistryTree(RegistryHive hive, string path, bool throwOnMissingSubKey);
 
+    IReadOnlyList<string> EnumerateSubKeyNames(RegistryHive hive, string path);
+    /// <summary>受限候选位置且安装路径值精确匹配已知 ACE 目录，才确认为本工具可清理的键。</summary>
+    bool HasAceRegistryOwnership(RegistryHive hive, string path);
+    Task<OperationResult> BackupRegistryKeyAsync(RegistryHive hive, string path);
+
     bool DirectoryExists(string path);
 
     /// <summary>true = 目录/文件是重解析点（符号链接/联接）；清理必须拒绝，避免被改道删除他处。</summary>
@@ -102,8 +107,35 @@ internal sealed class RealAceCleanupEnvironment : IAceCleanupEnvironment
 
     public void DeleteRegistryTree(RegistryHive hive, string path, bool throwOnMissingSubKey)
     {
+        if (AceRegistryPolicy.IsSharedPath(path) && !HasAceRegistryOwnership(hive, path))
+            throw new InvalidOperationException("共享注册表键归属未确认，已拒绝删除。");
         using var key = Open(hive);
         key?.DeleteSubKeyTree(path, throwOnMissingSubKey);
+    }
+
+    public IReadOnlyList<string> EnumerateSubKeyNames(RegistryHive hive, string path)
+    {
+        using var key = Open(hive, path);
+        return key?.GetSubKeyNames() ?? [];
+    }
+
+    public bool HasAceRegistryOwnership(RegistryHive hive, string path)
+    {
+        if (!AceRegistryPolicy.IsCandidatePath(path)) return false;
+        using var key = Open(hive, path);
+        if (key is null) return false;
+        var roots = new[] { AceInstallDirectory }.Concat(GameAceDirectories()).ToArray();
+        foreach (var name in new[] { "InstallLocation", "InstallPath", "InstallDir", "BasePath" })
+            if (key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames) is string value
+                && AceRegistryPolicy.MatchesInstallRoot(value, roots)) return true;
+        return false;
+    }
+
+    public Task<OperationResult> BackupRegistryKeyAsync(RegistryHive hive, string path)
+    {
+        if (!Environment.Is64BitProcess || !HasAceRegistryOwnership(hive, path))
+            return Task.FromResult(OperationResult.Fail("无法确认 64 位注册表视图或 ACE 归属，保留原键。"));
+        return AceRegistryBackups.ExportAsync(Path.Combine(AppDataPaths.Root, "ace-registry-backup"), hive, path, RunCommandAsync);
     }
 
     public bool DirectoryExists(string path) => Directory.Exists(path);
@@ -161,12 +193,9 @@ internal sealed class RealAceCleanupEnvironment : IAceCleanupEnvironment
 
     private static RegistryKey? Open(RegistryHive hive, string? subKey = null)
     {
-        var baseKey = hive switch
-        {
-            RegistryHive.Users => Registry.Users,
-            _ => Registry.LocalMachine,
-        };
-        return subKey is null ? baseKey : baseKey.OpenSubKey(subKey);
+        var baseKey = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
+        if (subKey is null) return baseKey;
+        using (baseKey) return baseKey.OpenSubKey(subKey);
     }
 
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]

@@ -158,7 +158,7 @@ public sealed class AceCoreCheckResult
 /// 清除范围：
 /// 1) 进程：ACE-Tray / ACE-Service64/32 / ACE-Setup64/32
 /// 2) 服务：ACE-BASE / ACE-GAME / ACE-BOOT / ACE-CORE / ACE-SSC-DRV64 / ACE-ADVT（自保护用 SDDL 接管后停止删除）
-/// 3) 注册表：卸载项 Uninstall\{141E7813-...}、HKLM\SOFTWARE\AppDataLow、HKU\.DEFAULT\SOFTWARE\AppDataLow
+/// 3) 注册表：已知 ACE 卸载项；共享 AppDataLow 仅清理受限位置、安装路径归属已确认且导出备份已核验的 ACE 子键，绝不删除共享根
 /// 4) 文件：%ProgramFiles%\AntiCheatExpert 整树 + {游戏根}\DeltaForce\Binaries\Win64\AntiCheatExpert
 /// 被占用文件走 MoveFileEx 延迟到重启后删除。下次启动游戏时 ACE 会自动重新安装。
 /// （自 C2 起，执行实现仅存在于 ACE 后端；前端只保留确认弹窗与结果展示。）

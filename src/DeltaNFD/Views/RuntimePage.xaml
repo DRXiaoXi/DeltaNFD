@@ -58,6 +58,9 @@
                                    Text="⚠ 注意：重装会改变系统运行库环境——如果你近期有用 C++ 写东西（开发环境依赖特定运行库版本），请谨慎修复。" />
                         <TextBlock Text="{x:Bind ViewModel.RepairStatusText, Mode=OneWay}"
                                    FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
+                        <ProgressBar IsIndeterminate="True" Margin="0,8,0,0"
+                                     Visibility="{x:Bind BusyVisibility(ViewModel.IsHighFpsRepairing), Mode=OneWay}"
+                                     AutomationProperties.Name="高帧性修复正在执行，当前步骤见上方状态" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Vertical" Spacing="8" VerticalAlignment="Center">
@@ -81,9 +84,12 @@
                     <StackPanel Spacing="4">
                         <TextBlock Text="兼容性修复" FontWeight="SemiBold" />
                         <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                   Text="检测并修复 DirectX 旧版游戏组件和 C++ 依赖，不预先卸载已有运行库，保留较新版本。适合排查游戏启动及 DLL 依赖问题；系统自带的 DirectX 11/12 核心由 Windows 维护。" />
+                                   Text="先校验全部资源，按高帧性修复的受控流程卸载当前 C++ 可再发行运行库，再修复 DirectX 旧版游戏组件、安装 C++ 并复检。适合排查启动及 DLL 依赖问题；此操作会改变已有 C++ 环境。" />
                         <TextBlock Text="{x:Bind ViewModel.CompatibilityRepairStatusText, Mode=OneWay}"
                                    FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
+                        <ProgressBar IsIndeterminate="True" Margin="0,8,0,0"
+                                     Visibility="{x:Bind BusyVisibility(ViewModel.IsCompatibilityRepairing), Mode=OneWay}"
+                                     AutomationProperties.Name="兼容性修复正在执行，当前步骤见上方状态" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center">
                         <ProgressRing Width="24" Height="24" Foreground="{StaticResource AppAccentBrush}"
@@ -109,6 +115,24 @@
             </Border>
 
             <!-- 单独卸载 V14 运行库 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="卸载全部 C++ 运行库" FontWeight="SemiBold" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="列出并卸载微软 Visual C++ 可再发行运行库（2005–2026 及 v14），不自动重装。依赖这些组件的应用可能无法运行，直到重新安装；请先关闭运行库防护。共享依赖或身份无法确认时会停止并提示。" />
+                    <TextBlock Text="{x:Bind ViewModel.UninstallAllStatusText, Mode=OneWay}" TextWrapping="Wrap"
+                               AutomationProperties.LiveSetting="Polite" Style="{StaticResource CardDescStyle}" />
+                    <ProgressBar IsIndeterminate="True"
+                                 Visibility="{x:Bind BusyVisibility(ViewModel.UninstallAllBusy), Mode=OneWay}"
+                                 AutomationProperties.Name="全部 C++ 运行库卸载正在执行，当前步骤见上方状态" />
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="卸载全部 C++ 运行库" Click="UninstallAllButton_Click"
+                                IsEnabled="{x:Bind ViewModel.UninstallAllEnabled, Mode=OneWay}" />
+                        <Button Content="停止后续卸载" Click="CancelUninstallAllButton_Click"
+                                IsEnabled="{x:Bind ViewModel.CanCancelUninstallAll, Mode=OneWay}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
             <Border Style="{StaticResource CardBorderStyle}">
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>

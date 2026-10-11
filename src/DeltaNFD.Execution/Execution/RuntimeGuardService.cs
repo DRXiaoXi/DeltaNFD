@@ -525,7 +525,7 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         var repair = new RuntimeCompatibilityRepair(environment, diagnostics);
         diagnostics.Save("repair-options.json", new { StrongRepairMode = strongRepairMode, Repair = "compatibility" });
         return strongRepairMode
-            ? await new RuntimeStrongRepair(new RuntimeStrongRepairEnvironment(diagnostics), diagnostics)
+            ? await new RuntimeStrongRepair(new RuntimeStrongRepairEnvironment(diagnostics), diagnostics, RuntimeCompatibilityRepair.TotalBudget)
                 .RunAsync(environment.VerifyAsync, repair.RunAsync, progress, token)
             : await repair.RunAsync(progress, token);
     }
@@ -586,6 +586,19 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
     public Task<OperationResult> UninstallV14Async(IProgress<string>? progress = null) =>
         Task.Run(() => RuntimeGuardProtection.Exclusive(() => UninstallV14CoreAsync(progress).GetAwaiter().GetResult()));
 
+    public async Task<RuntimeUninstallPreview> PreviewUninstallAllAsync() => RuntimeBulkUninstall.Preview((await ScanVcRedistsAsync()).All);
+
+    public Task<OperationResult> UninstallAllAsync(string fingerprint, IProgress<string>? progress = null, CancellationToken cancellationToken = default) =>
+        Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
+        {
+            if (!ElevationHelper.IsElevated) return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
+            var diagnostics = new RuntimeRepairDiagnostics(Log.LogDirectory);
+            var environment = new RuntimeRepairEnvironment(this, diagnostics, repairInstallerServices: false);
+            return new RuntimeBulkUninstall(new RuntimeBulkUninstallEnvironment(environment,
+                async () => _protection.RepairBlocker(await FindUe4PrereqAsync())), diagnostics)
+                .RunAsync(fingerprint, progress, cancellationToken).GetAwaiter().GetResult();
+        }));
+
     private async Task<OperationResult> UninstallV14CoreAsync(IProgress<string>? progress)
     {
         Log.Info("运行库：单独卸载 v14 命名运行库（仅名字带 v14 的条目）");
@@ -636,6 +649,7 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
     // ---------------- 三角洲 UE4 前置包定位 ----------------
 
     private static Task<string> FindUe4PrereqAsync() => DeltaForceLocator.FindUe4PrereqAsync();
+    internal async Task<string?> RepairProtectionBlockerAsync() => _protection.RepairBlocker(await FindUe4PrereqAsync());
 
     private static Task<IReadOnlyList<string>> FindUe4PrereqPathsAsync() => DeltaForceLocator.FindUe4PrereqPathsAsync();
 

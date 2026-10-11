@@ -36,7 +36,7 @@ public sealed partial class ShaderPage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
         {
             return;
         }
@@ -51,7 +51,7 @@ public sealed partial class ShaderPage : Page
                 Content = result.Message,
                 CloseButtonText = "知道了",
                 DefaultButton = ContentDialogButton.Close,
-            }.ShowAsync();
+            }.ShowWithBackendRecoveryAsync();
         }
         else if (result is { Success: true })
         {
@@ -65,7 +65,7 @@ public sealed partial class ShaderPage : Page
                           + "首次进图会重新编译着色器，出现卡顿 / 掉帧属正常现象，多跑两图即恢复。",
                 CloseButtonText = "知道了",
                 DefaultButton = ContentDialogButton.Primary,
-            }.ShowAsync();
+            }.ShowWithBackendRecoveryAsync();
         }
     }
 
@@ -91,7 +91,7 @@ public sealed partial class ShaderPage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
         {
             return;
         }
@@ -109,6 +109,6 @@ public sealed partial class ShaderPage : Page
             Content = result.Message,
             CloseButtonText = "知道了",
             DefaultButton = ContentDialogButton.Close,
-        }.ShowAsync();
+        }.ShowWithBackendRecoveryAsync();
     }
 }

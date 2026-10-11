@@ -65,6 +65,7 @@ internal static class BackendPaths
         BackendModules.Gpu => "Gpu",
         BackendModules.Runtime => "Runtime",
         BackendModules.CpuFrame => "CpuFrame",
+        BackendModules.Procman => "Procman",
         BackendModules.System => "SystemMaintenance",
         _ => moduleId,
     };

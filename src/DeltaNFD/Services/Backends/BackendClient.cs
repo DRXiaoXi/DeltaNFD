@@ -465,6 +465,8 @@ internal sealed class BackendClient : IAsyncDisposable
         try
         {
             BackendOperationGate.Check();
+            if (EmergencyPolicies.BlockReason(command) is { } emergencyReason)
+                return BackendResult.Failed("emergency-policy.blocked", emergencyReason);
             if (!IsUsable)
                 return BackendResult.Failed("backend.unavailable", "官方后端未运行或已退出。");
             if (_readerEnded)
@@ -521,6 +523,8 @@ internal sealed class BackendClient : IAsyncDisposable
                     BackendUnconfirmedStore.ResolveIntent(_spec.Id, requestId, result.Status, result.PendingRestore,
                         result.Items.Select(i => $"{i.Id}:{i.Status}").ToArray());
                     _unconfirmedOperation = BackendUnconfirmedStore.PendingModules().Contains(ModuleId);
+                    if (_unconfirmedOperation && result.Status != BackendResultStatuses.Ok)
+                        BackendAttention.Report(ModuleId);
                 }
                 else if (!pending.ReaderFailed && BackendModules.IsMutating(ModuleId, command)
                     && (result.PendingRestore || result.Status == BackendResultStatuses.Partial))
@@ -612,10 +616,13 @@ internal sealed class BackendClient : IAsyncDisposable
         catch (Exception ex)
         {
             Interlocked.Exchange(ref _dead, 1);
-            if (NeedsEvidence(_lastCommand ?? ""))
+            PendingRequest? pending;
+            lock (_pendingLock) pending = _pending;
+            // Waiting for exit can time out just as a late restore is verified. A historical
+            // mutating command alone is not a new unknown operation after that obligation ended.
+            if (_unconfirmedOperation || pending is not null && !pending.Completion.Task.IsCompleted && NeedsEvidence(pending.Command)
+                || ModuleId == BackendModules.CpuFrame && _cpuMayNeedRestore && !_cpuRestoreConfirmed)
             {
-                PendingRequest? pending;
-                lock (_pendingLock) pending = _pending;
                 await PromoteUnknownAsync(pending?.RequestId ?? Guid.NewGuid(), pending?.Command ?? _lastCommand ?? "", "drain-unconfirmed");
             }
             throw new BackendContractException("后端未确认排空，未强杀进程，交接已阻止：" + ex.Message);
@@ -693,6 +700,7 @@ internal sealed class BackendClient : IAsyncDisposable
             var (children, ok) = BackendUnconfirmedStore.CaptureDescendants(_process.Id);
             BackendUnconfirmedStore.PromoteIntent(_spec.Id, requestId, reason, _process.Id, _processStartTicks,
                 _processImagePath, command, children, childrenUnknown: !ok, sessionId: _sessionId);
+            BackendAttention.Report(ModuleId);
         }
         catch (Exception ex) { Log.Error("后端未知记录保存失败，仍阻止本轮交接", ex); }
         return Task.CompletedTask;

@@ -9,18 +9,25 @@ namespace DeltaNFD.Views;
 internal static class BackendReviewFlow
 {
     private static int _reviewing;
+    internal static bool IsReviewing => Volatile.Read(ref _reviewing) != 0;
     internal static async Task RunAsync(XamlRoot root, IReadOnlyCollection<string>? modules = null)
     {
-        if (Interlocked.CompareExchange(ref _reviewing, 1, 0) != 0) return;
+        while (await RunOnceAsync(root, modules)) { }
+    }
+    private static async Task<bool> RunOnceAsync(XamlRoot root, IReadOnlyCollection<string>? modules)
+    {
+        if (Interlocked.CompareExchange(ref _reviewing, 1, 0) != 0) return false;
+        var retry = false;
         using var blocked = BackendOperationGate.BlockNewOperations();
         using var control = BackendOperationGate.AllowControlOperations();
+        using var dialogs = await BackendDialogExtensions.EnterReviewAsync();
         try
         {
             var reviews = await BackendLifecycle.PrepareReviewAsync(modules);
             if (reviews.Count == 0)
             {
                 await new ContentDialog { XamlRoot = root, Title = "未确认操作", Content = "没有待核对的官方后端记录。", CloseButtonText = "知道了" }.ShowAsync();
-                return;
+                return false;
             }
             foreach (var review in reviews)
             {
@@ -59,11 +66,14 @@ internal static class BackendReviewFlow
                 {
                     XamlRoot = root, Title = "核对操作：" + BackendLifecycle.ModuleDisplayName(review.Module),
                     Content = new ScrollViewer { MaxHeight = 420, Content = content },
-                    PrimaryButtonText = scopes.Count > 0 ? "按可信备份恢复" : "",
+                    PrimaryButtonText = scopes.Count > 0 ? "按可信备份恢复" : !canKeep ? "刷新并重新核对" : "",
                     SecondaryButtonText = canKeep ? "确认保留当前状态" : "",
                     CloseButtonText = "暂不处理", DefaultButton = scopes.Count > 0 ? ContentDialogButton.Primary : ContentDialogButton.Close,
                 };
                 var choice = await dialog.ShowAsync();
+
+                if (choice == ContentDialogResult.Primary && scopes.Count == 0 && !canKeep)
+                { retry = true; break; }
 
                 if (choice == ContentDialogResult.Primary && scopes.Count > 0)
                 {
@@ -71,18 +81,22 @@ internal static class BackendReviewFlow
                     try
                     {
                         var outcome = await BackendRecovery.RestoreAsync(review, scope.Id);
-                        await new ContentDialog
+                        var recoveryChoice = await new ContentDialog
                         {
                             XamlRoot = root, Title = outcome.Verified ? "恢复已复核通过" : "恢复未通过复核",
                             Content = outcome.Message + (outcome.Verified ? "\n原始证据已归档；原值备份未删除。" : "\n阻塞与原始证据均已保留，可稍后重试。"),
+                            PrimaryButtonText = outcome.Verified ? "" : "重新核对",
                             CloseButtonText = "知道了",
+                            DefaultButton = ContentDialogButton.Close,
                         }.ShowAsync();
+                        retry = !outcome.Verified && recoveryChoice == ContentDialogResult.Primary;
                     }
                     catch (Exception ex)
                     {
                         Log.Error("按备份恢复失败，证据保留", ex);
-                        await new ContentDialog { XamlRoot = root, Title = "未解除阻塞", Content = ex.Message, CloseButtonText = "知道了" }.ShowAsync();
+                        retry = await ShowRetryAsync(root, "未解除阻塞", ex.Message);
                     }
+                    if (retry) break;
                     continue;
                 }
 
@@ -100,16 +114,31 @@ internal static class BackendReviewFlow
                 catch (Exception ex)
                 {
                     Log.Error("后端核对失败，证据保留", ex);
-                    await new ContentDialog { XamlRoot = root, Title = "未解除阻塞", Content = ex.Message, CloseButtonText = "知道了" }.ShowAsync();
+                    retry = await ShowRetryAsync(root, "未解除阻塞", ex.Message);
                 }
+                if (retry) break;
             }
         }
         catch (Exception ex)
         {
             Log.Error("后端核对未能完成，原始证据保留", ex);
-            await new ContentDialog { XamlRoot = root, Title = "核对未能完成",
-                Content = ex.Message + "\n旧记录仍保留，请稍后重试。", CloseButtonText = "知道了" }.ShowAsync();
+            retry = await ShowRetryAsync(root, "核对未能完成", ex.Message);
         }
-        finally { Volatile.Write(ref _reviewing, 0); }
+        finally
+        {
+            // The review sequence itself explained the remaining blockers; do not immediately duplicate it.
+            BackendAttention.Presented(BackendAttention.Snapshot().Where(p => modules is null || modules.Contains(p.Module)));
+            Volatile.Write(ref _reviewing, 0);
+            BackendAttention.NotifyUnshown();
+        }
+        return retry;
     }
+
+    private static async Task<bool> ShowRetryAsync(XamlRoot root, string title, string message) =>
+        await new ContentDialog
+        {
+            XamlRoot = root, Title = title,
+            Content = message + "\n原始证据仍保留。若相关安装程序尚未结束，请先等待；结束后可直接重新核对。",
+            PrimaryButtonText = "重新核对", CloseButtonText = "暂不处理", DefaultButton = ContentDialogButton.Close,
+        }.ShowAsync() == ContentDialogResult.Primary;
 }

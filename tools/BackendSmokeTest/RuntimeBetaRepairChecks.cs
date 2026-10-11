@@ -17,7 +17,7 @@ internal static class RuntimeBetaRepairChecks
         var badResource = new Fake { Verified = false };
         check(!(await Run(badResource)).Success && badResource.Trace.SequenceEqual(new[] { "verify" }), "资源损坏时先拒绝，不卸载任何运行库");
         var failedUninstall = new Fake { Uninstall = new(1603, "fixture") };
-        check(!(await Run(failedUninstall)).Success && failedUninstall.Trace.Contains("aio"), "沿用 Beta：普通卸载失败仍尝试 AIO，最终报告保留失败");
+        check(!(await Run(failedUninstall)).Success && !failedUninstall.Trace.Contains("aio"), "统一卸载未完成时停止安装，不绕过失败继续 AIO");
         var unknownUninstall = new Fake { Uninstall = new(null, "pending", OutcomeUnknown: true) };
         check((await Run(unknownUninstall)).OutcomeUnknown && !unknownUninstall.Trace.Contains("aio"), "未知卸载执行者未结束时不启动 AIO，不强杀");
         var unknownAio = new Fake { Aio = new(null, "pending", OutcomeUnknown: true) };
@@ -82,7 +82,7 @@ internal static class RuntimeBetaRepairChecks
         {
             token.ThrowIfCancellationRequested(); Trace.Add(_scans == 0 ? "scan-before" : "scan-after");
             return Task.FromResult(_scans++ == 0 ? new VcRedistScanReport { Advice = "", Abnormal = [], Suboptimal = [], All =
-                [new() { DisplayName = "fixture", DisplayVersion = "1.0", Architecture = "x64", KeyName = "fixture", UninstallKind = "Msi" }] } : After);
+                [new() { DisplayName = "Microsoft Visual C++ 2005 Redistributable", DisplayVersion = "8.0.61187", Architecture = "x86", KeyName = "fixture", UninstallKind = "Msi" }] } : After);
         }
         public Task<RuntimeStepResult> UninstallAsync(VcRedistEntry entry, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
         { Trace.Add("uninstall"); return Task.FromResult(Uninstall); }

@@ -74,7 +74,7 @@ public sealed partial class LabPage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
         {
             return;
         }
@@ -214,7 +214,7 @@ public sealed partial class LabPage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
         {
             return;
         }
@@ -237,7 +237,7 @@ public sealed partial class LabPage : Page
             Content = content,
             CloseButtonText = "知道了",
             DefaultButton = ContentDialogButton.Close,
-        }.ShowAsync();
+        }.ShowWithBackendRecoveryAsync();
     }
 
     /// <summary>建议文件名：DeltaNFD_CPU方案_&lt;型号&gt;_&lt;核&gt;C&lt;线程&gt;T。</summary>

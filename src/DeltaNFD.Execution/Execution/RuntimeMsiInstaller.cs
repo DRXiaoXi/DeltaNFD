@@ -5,6 +5,8 @@ namespace DeltaNFD.Services;
 internal sealed record RuntimeMsiFile(string Component, string KeyFileName, string FileName, Version Version)
 {
     public string Sha256 { get; init; } = "";
+    public RuntimeSxsIdentity? Assembly { get; init; }
+    public string Condition { get; init; } = "";
 }
 internal sealed record RuntimeMsiPackage(string Product, string Name, string Publisher, string Version,
     string Architecture, IReadOnlyList<RuntimeMsiFile> Files)
@@ -107,7 +109,7 @@ internal sealed class RuntimeMsiInstaller(IRuntimeMsiInstallBackend backend, Run
         return info;
     }
 
-    private static void ValidatePackage(RuntimeMsiPackage package, RuntimeRepairStep step)
+    internal static void ValidatePackage(RuntimeMsiPackage package, RuntimeRepairStep step)
     {
         var arch = step.Branch.EndsWith("(x64)", StringComparison.Ordinal) ? "x64"
             : step.Branch.EndsWith("(x86)", StringComparison.Ordinal) ? "x86" : "";
@@ -139,7 +141,8 @@ internal sealed class RuntimeMsiInstaller(IRuntimeMsiInstallBackend backend, Run
 }
 
 internal sealed class RuntimeMsiInstallBackend(RuntimeRepairProcessRunner runner,
-    Func<string, string, string>? componentPath = null, string? verifiedSourceRoot = null) : IRuntimeMsiInstallBackend
+    Func<string, string, string>? componentPath = null, string? verifiedSourceRoot = null,
+    Func<RuntimeSxsIdentity, string>? assemblyDirectory = null) : IRuntimeMsiInstallBackend
 {
     public RuntimeMsiPackage ReadPackage(string path)
     {
@@ -170,11 +173,20 @@ internal sealed class RuntimeMsiInstallBackend(RuntimeRepairProcessRunner runner
     public OperationResult VerifyFiles(RuntimeMsiPackage package)
     {
         var errors = new List<string>();
-        foreach (var file in package.Files)
+        var assemblies = new Dictionary<RuntimeSxsIdentity, string>();
+        var verifiedSxs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var alternativeSkipped = 0;
+        foreach (var file in package.Files.OrderByDescending(f => f.Assembly is not null))
         {
             try
             {
-                var keyPath = (componentPath ?? RuntimeMsiMetadata.ReadComponentPath)(package.Product, file.Component);
+                string keyPath;
+                if (file.Assembly is { } assembly)
+                {
+                    if (!assemblies.TryGetValue(assembly, out var directory)) assemblies.Add(assembly, directory = (assemblyDirectory ?? RuntimeSxsResolver.Resolve)(assembly));
+                    keyPath = Path.Combine(directory, file.KeyFileName);
+                }
+                else keyPath = (componentPath ?? RuntimeMsiMetadata.ReadComponentPath)(package.Product, file.Component);
                 if (!Path.GetFileName(keyPath).Equals(file.KeyFileName, StringComparison.OrdinalIgnoreCase)
                     || Path.GetFileName(file.FileName) != file.FileName) throw new IOException("MSI 组件路径与安装包不一致。");
                 var path = Path.Combine(Path.GetDirectoryName(keyPath)!, file.FileName);
@@ -197,10 +209,15 @@ internal sealed class RuntimeMsiInstallBackend(RuntimeRepairProcessRunner runner
                     var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream));
                     if (!hash.Equals(file.Sha256, StringComparison.OrdinalIgnoreCase)) throw new IOException("同版本 DLL 内容与已校验的内置源文件不一致。");
                 }
+                if (file.Assembly is not null) verifiedSxs.Add(file.FileName + "|" + file.Version);
             }
+            catch (RuntimeComponentPathException ex) when (ex.State == -7 && file.Assembly is null && file.Condition.Length > 0
+                && verifiedSxs.Contains(file.FileName + "|" + file.Version))
+            { alternativeSkipped++; } // conditional legacy component is disabled; its same-version SxS file was actually verified
             catch (Exception ex) { errors.Add(file.FileName + "：" + ex.Message); }
         }
         return errors.Count == 0 && package.Files.Count > 0 ? OperationResult.Ok($"MSI 登记及 {package.Files.Count} 个关键 DLL 的存在、版本和架构复核通过。"
+            + (alternativeSkipped > 0 ? $"另有 {alternativeSkipped} 个条件禁用的旧组件由同版本、同架构 SxS DLL 核验覆盖。" : "")
             + (package.Files.All(f => f.Sha256.Length != 0) ? "同版本文件已与内置源文件比对 SHA256；较新文件保留，仅核对版本和架构。" : "不等于所有 DLL 字节完整性验证。"))
             : OperationResult.Fail("关键 DLL 复核未通过：" + string.Join("；", errors.Take(8)));
     }

@@ -45,8 +45,9 @@ public sealed class FrameTweaksService
     private readonly string _powerBackupRoot;
     private readonly Func<string, TimeSpan, Task<(int Code, string StdOut, string StdErr)>> _powerRunner;
     private readonly Func<string?> _activeSchemeReader;
+    private readonly bool _nativePowerReads;
 
-    public FrameTweaksService() : this(AppDataPaths.Root, RunPowerCfgAsync, ReadActivePowerScheme) { }
+    public FrameTweaksService() : this(AppDataPaths.Root, RunPowerCfgAsync, ReadActivePowerScheme) { _nativePowerReads = true; }
 
     internal FrameTweaksService(string backupRoot,
         Func<string, TimeSpan, Task<(int Code, string StdOut, string StdErr)>> powerRunner,
@@ -252,15 +253,33 @@ public sealed class FrameTweaksService
     public async Task<IReadOnlyList<FrameIncompletePowerBackup>> GetIncompletePowerBackupsAsync()
     {
         var result = new List<FrameIncompletePowerBackup>();
-        foreach (var name in new[] { UsbBackupFile, PcieBackupFile })
+        foreach (var name in new[] { UsbBackupFile, PcieBackupFile, "frame_power_scheme_snapshot.json" })
         {
             var path = Path.Combine(_powerBackupRoot, name);
             if (!PowerFileExists(path)) continue;
             var bytes = await ReadPowerBackupBytesAsync(path);
-            if (!IncompletePowerBackup(bytes, out var reason)) continue;
+            var reason = name == "frame_power_scheme_snapshot.json" ? await SnapshotReviewReasonAsync(bytes) : IncompletePowerBackup(bytes, out var why) ? why : null;
+            if (reason is null) continue;
             result.Add(new(name, path, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)), reason));
         }
         return result;
+    }
+
+    private async Task<string?> SnapshotReviewReasonAsync(byte[] bytes)
+    {
+        SchemeContentSnapshot? snapshot;
+        try { snapshot = System.Text.Json.JsonSerializer.Deserialize<SchemeContentSnapshot>(bytes); }
+        catch (System.Text.Json.JsonException) { return "电源内容快照损坏，原值无法完整确认"; }
+        if (!ValidSnapshot(snapshot)) return "电源内容快照元数据或原值不完整";
+        var live = await QuerySchemeSettingsAsync(snapshot!.Scheme);
+        if (live is null) return "无法读取快照所属计划（可能已删除或访问失败），未猜测恢复";
+        var missing = new List<string>();
+        foreach (var expected in snapshot.Settings.Where(s => !live.Any(a => a.Subgroup == s.Subgroup && a.Setting == s.Setting)))
+        {
+            var direct = await QueryPlanSettingValuesAsync(snapshot.Scheme, expected.Subgroup, expected.Setting);
+            if (!ValidPowerValue(direct.Ac) || !ValidPowerValue(direct.Dc)) missing.Add(expected.Setting);
+        }
+        return missing.Count == 0 ? null : "计划=" + snapshot.Scheme + "；无法确认的设置：" + string.Join("、", missing);
     }
 
     private static bool IncompletePowerBackup(byte[] bytes, out string reason)
@@ -289,14 +308,15 @@ public sealed class FrameTweaksService
     {
         try
         {
-            if (confirmed.Count is < 1 or > 2 || confirmed.Select(x => x.FileName).Distinct().Count() != confirmed.Count)
+            if (confirmed.Count is < 1 or > 3 || confirmed.Select(x => x.FileName).Distinct().Count() != confirmed.Count)
                 return OperationResult.Fail("确认清单无效，未移动备份。");
             foreach (var item in confirmed)
             {
-                if (item.FileName is not (UsbBackupFile or PcieBackupFile)) return OperationResult.Fail("拒绝处理其他备份。");
+                if (item.FileName is not (UsbBackupFile or PcieBackupFile or "frame_power_scheme_snapshot.json")) return OperationResult.Fail("拒绝处理其他备份。");
                 var path = Path.Combine(_powerBackupRoot, item.FileName);
                 var bytes = await ReadPowerBackupBytesAsync(path);
-                if (!IncompletePowerBackup(bytes, out _) || Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)) != item.Fingerprint)
+                var unresolved = item.FileName == "frame_power_scheme_snapshot.json" ? await SnapshotReviewReasonAsync(bytes) is not null : IncompletePowerBackup(bytes, out _);
+                if (!unresolved || Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)) != item.Fingerprint)
                     return OperationResult.Fail("备份已变化，请重新确认；未移动备份。");
             }
             var directory = Path.Combine(_powerBackupRoot, "unresolved-frame-power");
@@ -525,6 +545,13 @@ public sealed class FrameTweaksService
     private async Task<(long? Ac, long? Dc)> QueryPlanSettingValuesAsync(
         string scheme, string subgroup, string setting)
     {
+        if (_nativePowerReads)
+        {
+            if (!Guid.TryParse(scheme, out var schemeGuid) || !Guid.TryParse(subgroup, out var subgroupGuid) || !Guid.TryParse(setting, out var settingGuid)) return (null, null);
+            var acStatus = PowerReadACValueIndex(IntPtr.Zero, ref schemeGuid, ref subgroupGuid, ref settingGuid, out var ac);
+            var dcStatus = PowerReadDCValueIndex(IntPtr.Zero, ref schemeGuid, ref subgroupGuid, ref settingGuid, out var dc);
+            return (acStatus == 0 ? ac : null, dcStatus == 0 ? dc : null);
+        }
         var (code, stdout, _) = await _powerRunner(
             $"/q {scheme} {subgroup} {setting}", TimeSpan.FromSeconds(20));
         if (code != 0 || stdout is null)
@@ -540,6 +567,8 @@ public sealed class FrameTweaksService
 
         return (ParseHexAt(matches, matches.Count - 2), ParseHexAt(matches, matches.Count - 1));
     }
+    [System.Runtime.InteropServices.DllImport("powrprof.dll")] private static extern uint PowerReadACValueIndex(IntPtr root, ref Guid scheme, ref Guid subgroup, ref Guid setting, out uint value);
+    [System.Runtime.InteropServices.DllImport("powrprof.dll")] private static extern uint PowerReadDCValueIndex(IntPtr root, ref Guid scheme, ref Guid subgroup, ref Guid setting, out uint value);
 
     /// <summary>MatchCollection 中第 index 个 0x 令牌的数值；解析失败返回 null。</summary>
     private static long? ParseHexAt(MatchCollection matches, int index) =>
@@ -564,6 +593,14 @@ public sealed class FrameTweaksService
 
     /// <summary>计划内容快照文件（与帧格其它备份文件同目录；解除锁定时删除）。</summary>
     private string SchemeContentSnapshotPath => Path.Combine(_powerBackupRoot, "frame_power_scheme_snapshot.json");
+    public string? PowerSchemeSnapshotGuid
+    {
+        get
+        {
+            try { var value = System.Text.Json.JsonSerializer.Deserialize<SchemeContentSnapshot>(File.ReadAllText(SchemeContentSnapshotPath)); return ValidSnapshot(value) ? value!.Scheme : null; }
+            catch { return null; }
+        }
+    }
     public bool HasPowerSchemeContentSnapshot
     {
         get { try { return PowerFileExists(SchemeContentSnapshotPath); } catch { return true; } }
@@ -673,7 +710,9 @@ public sealed class FrameTweaksService
         {
             if (PowerFileExists(SchemeContentSnapshotPath))
             {
-                File.Delete(SchemeContentSnapshotPath);
+                var directory = Path.Combine(_powerBackupRoot, "restored-frame-power");
+                Directory.CreateDirectory(directory);
+                File.Move(SchemeContentSnapshotPath, Path.Combine(directory, Guid.NewGuid().ToString("N") + "-snapshot.json"));
             }
             return OperationResult.Ok("");
         }
@@ -721,8 +760,10 @@ public sealed class FrameTweaksService
             {
                 if (!liveMap.TryGetValue(expected.Subgroup + "/" + expected.Setting, out var actual))
                 {
-                    failures.Add($"设置 {expected.Setting} 缺失，无法确认已恢复");
-                    continue;
+                    var direct = await QueryPlanSettingValuesAsync(snapshot.Scheme, expected.Subgroup, expected.Setting);
+                    if (!ValidPowerValue(direct.Ac) || !ValidPowerValue(direct.Dc))
+                    { failures.Add($"设置 {expected.Setting} 无法直接读取，未猜测原值，快照保留供核对"); continue; }
+                    actual = new SchemeSettingEntry { Subgroup = expected.Subgroup, Setting = expected.Setting, Ac = direct.Ac, Dc = direct.Dc };
                 }
 
                 var acDrifted = actual.Ac != expected.Ac;
@@ -761,8 +802,13 @@ public sealed class FrameTweaksService
             {
                 // 与帧格临时改写同款收尾：/setactive 让还原立即生效
                 cancellationToken.ThrowIfCancellationRequested();
-                var (code, _, _) = await _powerRunner($"/setactive {snapshot.Scheme}", TimeSpan.FromSeconds(20));
-                if (code != 0) failures.Add($"计划内容刷新失败（退出码 {code}）");
+                var active = _activeSchemeReader();
+                if (active is null) failures.Add("无法读取活动计划，未擅自切换计划");
+                else if (active.Equals(snapshot.Scheme, StringComparison.OrdinalIgnoreCase))
+                {
+                    var (code, _, _) = await _powerRunner($"/setactive {snapshot.Scheme}", TimeSpan.FromSeconds(20));
+                    if (code != 0) failures.Add($"计划内容刷新失败（退出码 {code}）");
+                }
                 cancellationToken.ThrowIfCancellationRequested();
                 var checkedSettings = await QuerySchemeSettingsAsync(snapshot.Scheme);
                 cancellationToken.ThrowIfCancellationRequested();
@@ -771,9 +817,14 @@ public sealed class FrameTweaksService
                 {
                     var checkMap = checkedSettings.ToDictionary(s => s.Subgroup + "/" + s.Setting, StringComparer.OrdinalIgnoreCase);
                     foreach (var expected in snapshot.Settings)
-                        if (!checkMap.TryGetValue(expected.Subgroup + "/" + expected.Setting, out var actual)
-                            || actual.Ac != expected.Ac || actual.Dc != expected.Dc)
-                            failures.Add($"设置 {expected.Setting} 还原后值不符");
+                    {
+                        if (!checkMap.TryGetValue(expected.Subgroup + "/" + expected.Setting, out var actual))
+                        {
+                            var direct = await QueryPlanSettingValuesAsync(snapshot.Scheme, expected.Subgroup, expected.Setting);
+                            if (direct.Ac != expected.Ac || direct.Dc != expected.Dc) failures.Add($"设置 {expected.Setting} 直接复检不符");
+                        }
+                        else if (actual.Ac != expected.Ac || actual.Dc != expected.Dc) failures.Add($"设置 {expected.Setting} 还原后值不符");
+                    }
                 }
                 Log.Info($"帧格·电源锁定：计划内容被改动，已自动还原 {restored.Count} 项 —— {string.Join("，", restored)}");
             }
@@ -807,7 +858,7 @@ public sealed class FrameTweaksService
     /// </summary>
     private async Task<List<SchemeSettingEntry>?> QuerySchemeSettingsAsync(string schemeGuid)
     {
-        var (code, stdout, _) = await _powerRunner($"/q {schemeGuid}", TimeSpan.FromSeconds(30));
+        var (code, stdout, _) = await _powerRunner($"/qh {schemeGuid}", TimeSpan.FromSeconds(30));
         if (code != 0 || string.IsNullOrWhiteSpace(stdout))
         {
             Log.Warn($"帧格·电源锁定：读取计划 {schemeGuid} 的设置明细失败（退出码 {code}）");
@@ -866,6 +917,13 @@ public sealed class FrameTweaksService
                 Dc = hexValues.Count >= 2 ? hexValues[^1] : null,
             });
         }
+
+        if (_nativePowerReads)
+            foreach (var entry in settings)
+            {
+                var value = await QueryPlanSettingValuesAsync(schemeGuid, entry.Subgroup, entry.Setting);
+                entry.Ac = value.Ac; entry.Dc = value.Dc;
+            }
 
         return ValidSnapshot(new SchemeContentSnapshot { Scheme = schemeGuid, Settings = settings }) ? settings : null;
     }

@@ -190,19 +190,15 @@ public sealed class AceService : IAceService
         }
 
         var registryKeys = new List<string>();
-        if (Registry.LocalMachine.OpenSubKey(UninstallKeyPath) is not null)
+        if (_environment.RegistryKeyExists(RegistryHive.LocalMachine, UninstallKeyPath))
         {
             registryKeys.Add(@"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{141E7813-...}（卸载项）");
         }
 
-        if (Registry.LocalMachine.OpenSubKey(@"SOFTWARE\AppDataLow") is not null)
+        foreach (var (hive, label, root) in AceRegistryPolicy.Roots)
         {
-            registryKeys.Add(@"HKLM\SOFTWARE\AppDataLow");
-        }
-
-        if (Registry.Users.OpenSubKey(@".DEFAULT\SOFTWARE\AppDataLow") is not null)
-        {
-            registryKeys.Add(@"HKU\.DEFAULT\SOFTWARE\AppDataLow");
+            foreach (var path in AceRegistryPolicy.Candidates(p => _environment.EnumerateSubKeyNames(hive, p), root))
+                registryKeys.Add($"{label}\\{path}" + (_environment.HasAceRegistryOwnership(hive, path) ? "" : "（归属未确认，将保留）"));
         }
 
         return new AceScanResult
@@ -321,17 +317,33 @@ public sealed class AceService : IAceService
         // 阶段 4：注册表清理
         if (Gate("registry") is { } gateRegistry) return gateRegistry;
         progress?.Report("正在清理注册表…");
-        var registryTargets = (ValueTuple<string, Microsoft.Win32.RegistryHive, string>[])
-        [
-            ("HKLM", Microsoft.Win32.RegistryHive.LocalMachine, UninstallKeyPath),
-            ("HKLM", Microsoft.Win32.RegistryHive.LocalMachine, @"SOFTWARE\AppDataLow"),
-        ];
+        var registryTargets = new List<(string Label, RegistryHive Hive, string Path)>
+        { ("HKLM", RegistryHive.LocalMachine, UninstallKeyPath) };
+        foreach (var (hive, label, root) in AceRegistryPolicy.Roots)
+        {
+            try
+            {
+                foreach (var path in AceRegistryPolicy.Candidates(p => _environment.EnumerateSubKeyNames(hive, p), root))
+                {
+                    if (Gate("registry-backup:" + path) is { } gateBackup) return gateBackup;
+                    if (!_environment.HasAceRegistryOwnership(hive, path))
+                    { problems.Add($"注册表 {label}\\{path} 归属未确认，已保留"); continue; }
+                    var backup = await _environment.BackupRegistryKeyAsync(hive, path);
+                    if (!backup.Success) { problems.Add($"注册表 {label}\\{path} 备份未核验，已保留：{backup.Message}"); continue; }
+                    Log.Info(backup.Message);
+                    registryTargets.Add((label, hive, path));
+                }
+            }
+            catch (Exception ex) { problems.Add($"注册表 {label}\\{root} 枚举或备份未完成，保留未确认项：{ex.Message}"); }
+        }
 
         foreach (var (label, hive, keyPath) in registryTargets)
         {
             if (Gate("registry:" + keyPath) is { } gateKey) return gateKey;
             try
             {
+                if (AceRegistryPolicy.IsSharedPath(keyPath) && !_environment.HasAceRegistryOwnership(hive, keyPath))
+                { problems.Add($"注册表 {label}\\{keyPath} 备份后归属变化，已保留"); continue; }
                 _environment.DeleteRegistryTree(hive, keyPath, throwOnMissingSubKey: false);
                 done.Add(new BackendResultItem($"registry:{keyPath}", BackendResultStatuses.Ok, $"注册表 {label}\\{keyPath} 已删除"));
             }
@@ -339,18 +351,6 @@ public sealed class AceService : IAceService
             {
                 problems.Add($"注册表 {keyPath}: {ex.Message}");
             }
-        }
-
-        try
-        {
-            _environment.DeleteRegistryTree(
-                Microsoft.Win32.RegistryHive.Users, @".DEFAULT\SOFTWARE\AppDataLow", throwOnMissingSubKey: false);
-            done.Add(new BackendResultItem(@"registry:HKU\.DEFAULT\SOFTWARE\AppDataLow", BackendResultStatuses.Ok,
-                @"注册表 HKU\.DEFAULT\SOFTWARE\AppDataLow 已删除"));
-        }
-        catch
-        {
-            // 不存在或已删除
         }
 
         // 阶段 5：删除文件目录（被占用文件延迟到重启后删除）

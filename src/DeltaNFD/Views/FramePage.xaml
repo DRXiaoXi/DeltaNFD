@@ -79,6 +79,7 @@
                     </Grid>
 
                     <!-- 功能：电源计划锁定（可选定目标计划防改） -->
+                    <Button Content="恢复 / 核对电源锁定记录" Click="ReviewPowerBackup_Click" HorizontalAlignment="Left" />
                     <Grid ColumnSpacing="16" Padding="0,10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />

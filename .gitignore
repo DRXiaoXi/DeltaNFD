@@ -71,6 +71,7 @@ src/DeltaNFD/Assets/VCRedist2015-2022-x64.exe
 src/DeltaNFD/Assets/VCRedist2015-2022-x86.exe
 src/DeltaNFD/Assets/VCRedistRepair/
 src/DeltaNFD/Assets/DirectXRepair/
+src/DeltaNFD/Assets/DotNetRepair/*.exe
 src/DeltaNFD/Assets/background.png
 
 # ---------- 本机运行时生成的文件 ----------

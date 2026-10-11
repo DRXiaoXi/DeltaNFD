@@ -25,8 +25,28 @@ jobs:
       - name: Build smoke test
         run: dotnet build tools/BackendSmokeTest/BackendSmokeTest.csproj -c Release
 
+      - name: Signed emergency policy checks (isolated, offline)
+        run: dotnet run --project tools/EmergencyPolicyChecks -c Release -p:Platform=x64 --
+
       - name: Update channels and installation policy checks (isolated, offline)
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --update-channel-checks
+
+      - name: ACE registry, cleanup scope and update responsiveness checks (isolated, offline)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --external-fix-regression-checks
+
+      - name: Tool .NET dependency and installer validation checks (isolated, offline)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --dotnet-environment-checks
+      - name: Backend error recovery notification checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --backend-attention-checks
+
+      - name: Process management repair checks (unique process and isolated state)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --procman-core-checks
+
+      - name: Frame power recovery checks (all power operations simulated)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-power-safety-checks
+
+      - name: Confirmed C++ bulk uninstall checks (simulated removal)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-bulk-uninstall-checks
 
       - name: Frame feature state checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-feature-checks

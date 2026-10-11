@@ -75,6 +75,11 @@ public partial class UpdateViewModel : ObservableObject
     private bool autoCheck = true;
 
     [ObservableProperty]
+    private bool emergencyPolicyEnabled = true;
+
+    public string EmergencyPolicyStatus => EmergencyPolicyUpdateService.Status;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(UpdateChannelDescription))]
     private int updateChannelIndex;
 
@@ -120,6 +125,7 @@ public partial class UpdateViewModel : ObservableObject
     {
         // 直接写字段：构造期赋值不应触发 OnAutoCheckChanged / OnGitHubAccelerateChanged 的持久化
         autoCheck = AppSettingsStore.Read().AutoUpdateCheckEnabled;
+        emergencyPolicyEnabled = AppSettingsStore.Read().EmergencyPolicyEnabled;
         gitHubAccelerate = AppSettingsStore.Read().GitHubAccelerateEnabled;
         updateChannelIndex = UpdateChannelPolicy.Normalize(AppSettingsStore.Read().UpdateChannel) == UpdateChannel.Internal ? 0 : 1;
         CurrentVersionText = AppVersion.Text;
@@ -136,6 +142,7 @@ public partial class UpdateViewModel : ObservableObject
 
         _attached = true;
         _update.AvailabilityChanged += OnAvailabilityChanged;
+        EmergencyPolicyUpdateService.Changed += OnEmergencyPolicyChanged;
     }
 
     public void Detach()
@@ -147,9 +154,25 @@ public partial class UpdateViewModel : ObservableObject
 
         _attached = false;
         _update.AvailabilityChanged -= OnAvailabilityChanged;
+        EmergencyPolicyUpdateService.Changed -= OnEmergencyPolicyChanged;
     }
 
     private void OnAvailabilityChanged(bool available) => _dispatcher?.TryEnqueue(RenderLastResult);
+
+    private void OnEmergencyPolicyChanged() => _dispatcher?.TryEnqueue(() => OnPropertyChanged(nameof(EmergencyPolicyStatus)));
+
+    partial void OnEmergencyPolicyEnabledChanged(bool value)
+    {
+        AppSettingsStore.Update(s => s.EmergencyPolicyEnabled = value);
+        OnPropertyChanged(nameof(EmergencyPolicyStatus));
+        if (value) _ = RefreshEmergencyPolicyAsync();
+    }
+
+    private async Task RefreshEmergencyPolicyAsync()
+    {
+        try { await EmergencyPolicyUpdateService.CheckAsync(_update.IsInstalledCopy); }
+        catch (Exception ex) { Log.Warn("紧急策略检查未完成：" + ex.Message); }
+    }
 
     private void RenderLastResult()
     {
@@ -422,6 +445,8 @@ public partial class UpdateViewModel : ObservableObject
         if (value is not (0 or 1)) return;
         var channel = value == 0 ? UpdateChannel.Internal : UpdateChannel.Public;
         AppSettingsStore.Update(s => s.UpdateChannel = channel);
+        OnPropertyChanged(nameof(EmergencyPolicyStatus));
+        _ = RefreshEmergencyPolicyAsync();
         _update.ResetCheckResult();
         RenderLastResult();
         StatusText = "已切换到" + UpdateChannelPolicy.Name(channel) + "，请重新检查更新。";

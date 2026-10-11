@@ -351,7 +351,7 @@ public sealed partial class PluginPage : Page
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
         };
-        var answer = await dialog.ShowAsync();
+        var answer = await dialog.ShowWithBackendRecoveryAsync();
         if (answer != ContentDialogResult.Primary) return;
         // 用户点“确认全部”即视为逐项确认；文本原样传给管理服务做内容比对。
         if (ViewModel.TryAuthorize(checklist, out var error))
@@ -428,7 +428,7 @@ public sealed partial class PluginPage : Page
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
         var result = await ServiceLocator.PluginRuntime.StartPersistentAsync(entry);
         DetailStatusText.Text = result.Length == 0 ? "已持续运行（心跳监控中）。" : result;
     }
@@ -472,7 +472,7 @@ public sealed partial class PluginPage : Page
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
         DetailStatusText.Text = "正在恢复…";
         try
         {
@@ -514,7 +514,7 @@ public sealed partial class PluginPage : Page
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
         if (ViewModel.TryUninstall(out var error))
         {
             DetailStatusText.Text = "已卸载。";
@@ -535,6 +535,6 @@ public sealed partial class PluginPage : Page
             CloseButtonText = "知道了",
             XamlRoot = XamlRoot,
         };
-        await dialog.ShowAsync();
+        await dialog.ShowWithBackendRecoveryAsync();
     }
 }

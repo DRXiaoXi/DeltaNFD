@@ -25,6 +25,19 @@ public sealed partial class SettingsPage : Page
     public string[] ThemeOptions { get; } = ["浅色", "深色", "跟随系统"];
 
     public SettingsViewModel ViewModel { get; } = new();
+    public DotNetEnvironmentViewModel DotNet { get; } = DotNetEnvironmentViewModel.Current;
+
+    private async void RepairDotNetButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!DotNet.CanAct) return;
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot, Title = "安装 / 修复工具所需 .NET",
+            Content = new TextBlock { Text = "将先检测实际依赖。仅在工具使用系统运行时时，优先校验并使用随工具携带的 .NET 8 x64 离线包，缺少离线包时才从微软下载，然后打开官方安装器。不会卸载其他 .NET 版本；安装器可能要求重启。工具自带运行时缺损需要重新安装工具；无法启动工具时也可使用开始菜单中的“.NET 环境修复”。", TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = "检测并继续", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
+        };
+        if (await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary) await DotNet.RepairAsync();
+    }
 
     /// <summary>「软件更新」卡的 ViewModel（检查 / 下载 / 安装交接）。</summary>
     public UpdateViewModel Update { get; } = new();
@@ -84,7 +97,7 @@ public sealed partial class SettingsPage : Page
                 CloseButtonText = "取消",
                 DefaultButton = ContentDialogButton.Close,
             };
-            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+            return await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
         };
 
         var current = BackgroundManager.ResolveCurrent();
@@ -101,6 +114,7 @@ public sealed partial class SettingsPage : Page
             Update.Attach();
             RefreshOfflineModeControls();
             RefreshFsoStatus();
+            if (DotNet.CanAct) _ = DotNet.RefreshAsync();
         };
         Unloaded += (_, _) =>
         {
@@ -231,7 +245,7 @@ public sealed partial class SettingsPage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
         };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        return await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
     }
 
     private async void AllowPluginsOfflineToggle_Toggled(object sender, RoutedEventArgs e)
@@ -388,7 +402,7 @@ public sealed partial class SettingsPage : Page
                     DefaultButton = ContentDialogButton.Close,
                     XamlRoot = XamlRoot,
                 };
-                if (await dialog.ShowAsync() == ContentDialogResult.Primary) navigateAfter = cpuRelated ? "lab" : "frame";
+                if (await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary) navigateAfter = cpuRelated ? "lab" : "frame";
                 return;
             }
             var existing = AppSettingsStore.Read().CustomGameExecutablePath;
@@ -411,7 +425,7 @@ public sealed partial class SettingsPage : Page
                     Content = new TextBlock { Text = backendBlocker, TextWrapping = TextWrapping.Wrap },
                     CloseButtonText = "知道了",
                     XamlRoot = XamlRoot,
-                }.ShowAsync();
+                }.ShowWithBackendRecoveryAsync();
                 return;
             }
             var result = await ServiceLocator.GameTarget.ChangeAsync(enabled, path);
@@ -424,7 +438,7 @@ public sealed partial class SettingsPage : Page
             try
             {
                 await new ContentDialog { Title = "目标选择失败", Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
-                    CloseButtonText = "知道了", XamlRoot = XamlRoot }.ShowAsync();
+                    CloseButtonText = "知道了", XamlRoot = XamlRoot }.ShowWithBackendRecoveryAsync();
             }
             catch { /* Another dialog or window shutdown must not crash the settings page. */ }
         }
@@ -491,7 +505,7 @@ public sealed partial class SettingsPage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary)
         {
             ApplyAccent(picker.Color);
         }
@@ -656,7 +670,7 @@ public sealed partial class SettingsPage : Page
             await foreach (var hit in source.WithCancellation(cts.Token)) results.Add(hit);
         });
 
-        _ = dialog.ShowAsync();
+        _ = dialog.ShowWithBackendRecoveryAsync();
         try { await searchTask; }
         catch (OperationCanceledException) { }
         dialog.Hide();

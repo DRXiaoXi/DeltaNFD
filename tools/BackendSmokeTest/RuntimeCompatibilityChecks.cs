@@ -16,7 +16,8 @@ internal static class RuntimeCompatibilityChecks
         async Task<OperationResult> Run(Fake fake, CancellationToken token = default, TimeSpan? budget = null) =>
             await new RuntimeCompatibilityRepair(fake, new RuntimeRepairDiagnostics(root), budget).RunAsync(null, token);
         var plan = RuntimeCompatibilityRepair.CppPlan();
-        Check(plan.Count == 18 && plan.All(s => s.Kind == "msi"), "兼容性 C++ 计划只安装/修复 18 个 MSI，不含卸载、INF 包装或旧基线覆盖");
+        RuntimeSxsChecks.Run(root, Check);
+        Check(plan.Count == 18 && plan.All(s => s.Kind == "msi"), "共享卸载阶段之后安装/修复 18 个 MSI，不执行包装安装或旧基线覆盖");
         foreach (var step in plan)
         {
             var msi = Path.GetFullPath(Path.Combine("src/DeltaNFD/Assets/VCRedistRepair", step.RelativeFile));
@@ -25,7 +26,8 @@ internal static class RuntimeCompatibilityChecks
                 "强力模式关键 DLL 哈希源完整且无歧义：" + step.Label);
         }
         var good = new Fake();
-        Check((await Run(good)).Success && good.DxCalls == 1 && good.CppCalls == 18, "缺失 DirectX 安装并复检后，继续非卸载式 C++ 修复");
+        Check((await Run(good)).Success && good.UninstallCalls == 1 && good.DxCalls == 1 && good.CppCalls == 18
+            && good.Trace.IndexOf("uninstall") < good.Trace.IndexOf("dx"), "资源验证后先卸载全部 C++，再安装 DirectX 和 C++");
         var strong = new Fake();
         Check((await RuntimeStrongRepairChecks.WithSystemPhaseAsync(root, strong.VerifyAsync,
             new RuntimeCompatibilityRepair(strong, new RuntimeRepairDiagnostics(root)).RunAsync)).Success
@@ -34,7 +36,19 @@ internal static class RuntimeCompatibilityChecks
         var healthy = new Fake { Before = [new("d3dx9_43.dll", "x64", true, "healthy")] };
         Check((await Run(healthy)).Success && healthy.DxCalls == 0, "DirectX 组件健康时跳过安装器");
         var corruptResource = new Fake { Verified = false };
-        Check(!(await Run(corruptResource)).Success && corruptResource.DxCalls == 0 && corruptResource.CppCalls == 0, "资源损坏时在任何系统修改前停止");
+        Check(!(await Run(corruptResource)).Success && corruptResource.UninstallCalls == 0 && corruptResource.DxCalls == 0 && corruptResource.CppCalls == 0, "资源损坏时在任何卸载或安装前停止");
+        var failedRemoval = new Fake { UninstallResult = new(1603) };
+        Check(!(await Run(failedRemoval)).Success && failedRemoval.DxCalls == 0 && failedRemoval.CppCalls == 0, "卸载失败不继续 DirectX/C++ 安装");
+        var unknownRemoval = new Fake { UninstallResult = new(null, OutcomeUnknown: true) };
+        Check((await Run(unknownRemoval)).OutcomeUnknown && unknownRemoval.DxCalls == 0, "卸载事务未知保留证据并停止后续");
+        var rebootRemoval = new Fake { UninstallResult = new(3010) };
+        Check((await Run(rebootRemoval)).RequiresReboot && rebootRemoval.CppCalls == 0, "卸载要求重启时不继续安装");
+        var delayedDx = new Fake { DirectXResult = new(3010) };
+        Check((await Run(delayedDx)).RequiresReboot && delayedDx.CppCalls == 0, "DirectX 返回 3010 后重启要求不能继续其他安装");
+        var delayedCpp = new Fake { CppResult = new(3010) };
+        Check((await Run(delayedCpp)).RequiresReboot && delayedCpp.CppCalls == 1, "C++ 返回 3010 停止后续步骤");
+        var preRemovalProbe = new Fake { Before = [] };
+        Check(!(await Run(preRemovalProbe)).Success && preRemovalProbe.UninstallCalls == 0, "DirectX 预检清单无效时先拒绝卸载");
         var unknownDx = new Fake { DirectXResult = new(null, OutcomeUnknown: true) };
         Check((await Run(unknownDx)).OutcomeUnknown && unknownDx.CppCalls == 0, "DirectX 未确认结束时不启动 C++ 安装");
         var immediateDx = new Fake { DirectXResult = new(1641) };
@@ -46,7 +60,7 @@ internal static class RuntimeCompatibilityChecks
         var wrongProbe = new Fake { After = [new("other.dll", "x64", true, "wrong identity")] };
         Check(!(await Run(wrongProbe)).Success, "同数量但不同 DirectX 项目的复检不能通过");
         var cppFailed = new Fake { CppResult = new(1603, "fixture") };
-        Check(!(await Run(cppFailed)).Success && cppFailed.CppCalls == 18, "普通 C++ 失败汇总，不冒充成功、不全量卸载");
+        Check(!(await Run(cppFailed)).Success && cppFailed.CppCalls == 18, "卸载后普通 C++ 安装失败汇总，不冒充成功");
         var unknownCpp = new Fake { CppResult = new(null, OutcomeUnknown: true) };
         Check((await Run(unknownCpp)).OutcomeUnknown && unknownCpp.CppCalls == 1, "未知 MSI 结果立即停止后续且保留证据");
         var immediateCpp = new Fake { CppResult = new(1641) };
@@ -102,6 +116,9 @@ internal static class RuntimeCompatibilityChecks
     {
         internal bool Verified = true;
         internal int DxCalls, CppCalls, ProbeCalls;
+        internal int UninstallCalls;
+        internal List<string> Trace = [];
+        internal RuntimeStepResult UninstallResult = new(0);
         internal IReadOnlyList<DirectXProbeResult> Before = [new("d3dx9_43.dll", "x64", false, "missing")];
         internal IReadOnlyList<DirectXProbeResult> After = [new("d3dx9_43.dll", "x64", true, "healthy")];
         internal RuntimeStepResult DirectXResult = new(0), CppResult = new(0);
@@ -110,8 +127,12 @@ internal static class RuntimeCompatibilityChecks
         public Task<IReadOnlyList<DirectXProbeResult>> ProbeAsync(CancellationToken token)
         { token.ThrowIfCancellationRequested(); return Task.FromResult(ProbeCalls++ == 0 ? Before : After); }
         public Task<RuntimeStepResult> InstallDirectXAsync(TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
-        { DxCalls++; return Task.FromResult(DirectXResult); }
+        { Trace.Add("dx"); DxCalls++; return Task.FromResult(DirectXResult); }
         public Task<RuntimeStepResult> RepairCppAsync(RuntimeRepairStep step, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
         { CppCalls++; return Task.FromResult(CppResult); }
+        public Task<VcRedistScanReport> ScanCppAsync(CancellationToken token) => Task.FromResult(new VcRedistScanReport
+        { All = [new() { DisplayName = "Microsoft Visual C++ 2005 Redistributable", Architecture = "x86", KeyName = "fixture", UninstallKind = "Msi" }], Abnormal = [], Suboptimal = [], Advice = "" });
+        public Task<RuntimeStepResult> UninstallCppAsync(VcRedistEntry entry, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
+        { Trace.Add("uninstall"); UninstallCalls++; return Task.FromResult(UninstallResult); }
     }
 }

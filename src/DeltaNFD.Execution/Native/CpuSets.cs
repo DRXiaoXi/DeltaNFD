@@ -50,14 +50,16 @@ public static class CpuSets
 
     /// <summary>PROCESS_SET_QUOTA | PROCESS_SET_INFORMATION——SetProcessDefaultCpuSetMasks 所需权限，
     /// 远低于全访问权，受保护程度一般的进程也能打开成功。</summary>
-    private const uint ProcessAccessForCpuSets = 0x0100 | 0x0200;
+    private const uint ProcessAccessForCpuSets = 0x0100 | 0x0200 | 0x1000;
 
     // PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_LIMITED_INFORMATION。
     // 脱机路径只操作进程默认 CPU Set，不申请线程句柄或硬亲和性写入权限。
     private const uint ProcessAccessForDefaultCpuSets = 0x1000 | 0x2000;
 
     /// <summary>THREAD_SET_INFORMATION | THREAD_SET_LIMITED_INFORMATION——SetThreadSelectedCpuSetMasks 所需权限。</summary>
-    private const uint ThreadAccessForCpuSets = 0x0020 | 0x0400;
+    private const uint ThreadAccessForCpuSets = 0x0020 | 0x0400 | 0x0800;
+    [DllImport("kernel32.dll")] private static extern uint GetProcessId(IntPtr handle);
+    [DllImport("kernel32.dll")] private static extern uint GetProcessIdOfThread(IntPtr handle);
 
     /// <summary>
     /// 按最小必要权限打开进程句柄（供 CPU Sets 写入用）。返回 IntPtr.Zero = 打开失败
@@ -113,6 +115,8 @@ public static class CpuSets
     /// <summary>设置/清除 Windows 10 的进程默认 CPU Set ID 集合；空集合表示清除默认集合。</summary>
     public static bool TrySetDefaultCpuSetIds(IntPtr processHandle, IReadOnlyList<uint> ids)
     {
+        using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame((int)GetProcessId(processHandle), "cpuSet");
+        if (ownership is null) return false;
         try
         {
             if (ids.Count > 4096 || ids.Distinct().Count() != ids.Count) return false;
@@ -155,6 +159,8 @@ public static class CpuSets
     /// <summary>设置/清除 Windows 11 的进程默认组掩码集合；空集合表示清除默认集合。</summary>
     public static bool TrySetDefaultCpuSetMasks(IntPtr processHandle, IReadOnlyList<CpuSetGroupMask> masks)
     {
+        using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame((int)GetProcessId(processHandle), "cpuSet");
+        if (ownership is null) return false;
         try
         {
             if (masks.Count > 64 || masks.Any(m => m.Mask == 0) || masks.Select(m => m.Group).Distinct().Count() != masks.Count)
@@ -191,6 +197,8 @@ public static class CpuSets
     /// <summary>把指定线程的「线程所选 CPU 集」设为掩码（对既有线程生效；新线程走进程默认集）。</summary>
     public static bool SetThreadSelectedByMask(IntPtr threadHandle, ulong mask, ushort group = 0)
     {
+        using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame((int)GetProcessIdOfThread(threadHandle), "cpuSet");
+        if (ownership is null) return false;
         try
         {
             var masks = new[] { new GROUP_AFFINITY { Mask = (nuint)mask, Group = group } };
@@ -205,6 +213,8 @@ public static class CpuSets
     /// <summary>把进程默认 CPU 集设为指定掩码（软亲和性绑定）。</summary>
     public static bool SetDefaultByMask(IntPtr processHandle, ulong mask, ushort group = 0)
     {
+        using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame((int)GetProcessId(processHandle), "cpuSet");
+        if (ownership is null) return false;
         try
         {
             var masks = new[] { new GROUP_AFFINITY { Mask = (nuint)mask, Group = group } };

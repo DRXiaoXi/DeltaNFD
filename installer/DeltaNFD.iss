@@ -1,8 +1,8 @@
 ﻿; 三角帧不掉洲（Delta No FPS Drops / Delta NFD）安装脚本 · Inno Setup 6
 ; 编译：ISCC.exe DeltaNFD.iss
-; 产物：三角帧不掉洲_DeltaNFD_安装包_0.91_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
+; 产物：三角帧不掉洲_DeltaNFD_安装包_0.914_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
 ;
-; 当前源码版本：0.91 / Beta0.91。发布清单须在安装包生成后重新生成。
+; 当前源码版本：0.914 / Alpha0.914。发布清单须在安装包生成后重新生成。
 ;
 ; 安装/卸载统一安全交接：先封锁新启动，通知主程序完成恢复并退出，再核对所有官方执行者。
 ; 卸载保留备份时，在删除程序前复制并校验完整数据；历史记录仍待核对时保留原目录。
@@ -14,8 +14,8 @@
 #define MyAppShortName "Delta NFD"
 #define MyAppEnglishName "Delta No FPS Drops"
 #define MyAppDisplayName "三角帧不掉洲（Delta NFD）"
-#define MyAppVersion "0.91"
-#define MyAppDisplayVersion "Beta0.91"
+#define MyAppVersion "0.914"
+#define MyAppDisplayVersion "Alpha0.914"
 #define MyAppExeName "DeltaNFD.exe"
 ; 登录任务名（与 AppControlService / FrameService 创建的一致）
 #define AutoStartTaskName "DeltaNFD_AutoStart"
@@ -25,6 +25,11 @@
 #define LegacyDataDirName "DeltaOptimizer"
 #ifndef PublishDir
   #define PublishDir "publish\DeltaNFD"
+#endif
+
+; An incomplete publish layout must not silently produce an installer without offline .NET repair.
+#if !FileExists(PublishDir + "\Assets\DotNetRepair\dotnet-runtime-8.0.31-win-x64.exe")
+  #error "Missing bundled .NET 8 x64 repair installer; publish the current source first."
 #endif
 
 [Setup]
@@ -87,6 +92,7 @@ Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubd
 [Icons]
 Name: "{group}\{#MyAppShortcutName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\卸载 {#MyAppShortcutName}"; Filename: "{uninstallexe}"
+Name: "{group}\.NET 环境修复"; Filename: "{app}\Assets\DotNetRepair\RepairDotNet.cmd"; WorkingDir: "{app}\Assets\DotNetRepair"
 Name: "{autodesktop}\{#MyAppShortcutName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
@@ -719,9 +725,9 @@ begin
 
   { 6. 注册表兜底：Inno 自己会删卸载登记项，这里显式再删一次，
        避免历史版本残留的 _is1 键在「已安装的应用」里留下幽灵条目。
-       路径与 [Setup] 的 AppId 对应（Inno 存储时会去掉花括号，故这里不加转义）。 }
+       路径与 [Setup] 的 AppId 对应：实际 GUID 保留花括号，与安装阶段读写的键一致。 }
   if not RegDeleteKeyIncludingSubkeys(HKLM64,
-    'Software\Microsoft\Windows\CurrentVersion\Uninstall\7A3E9C4D-52B8-4E1F-9A6C-D0F1B2E3A4C5_is1') then
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7A3E9C4D-52B8-4E1F-9A6C-D0F1B2E3A4C5}_is1') then
     Log('卸载：注册表卸载登记项删除返回失败（可能已被 Inno 删除，通常无需处理）');
 
   { 7. 安装目录空目录骨架：Inno 卸载只删文件不删目录（createallsubdirs 的空目录全留下，

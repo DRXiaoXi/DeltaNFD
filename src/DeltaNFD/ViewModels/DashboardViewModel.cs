@@ -32,11 +32,13 @@ public partial class DashboardViewModel : ObservableObject
     [ObservableProperty] private DashboardHealthState aceHealthState = DashboardHealthState.Checking;
     [ObservableProperty] private string runtimeStatusText = "检测中…";
     [ObservableProperty] private DashboardHealthState runtimeHealthState = DashboardHealthState.Checking;
+    [ObservableProperty] private string dotNetStatusText = "检测中…";
+    [ObservableProperty] private DashboardHealthState dotNetHealthState = DashboardHealthState.Checking;
     [ObservableProperty] private bool isHealthScanning;
 
     public bool CanRefreshHealth => !IsHealthScanning;
 
-    public string HealthSummary => DashboardHealthPresentation.Summary(IsHealthScanning, ShaderHealthState, AceHealthState, RuntimeHealthState);
+    public string HealthSummary => DashboardHealthPresentation.Summary(IsHealthScanning, ShaderHealthState, AceHealthState, RuntimeHealthState, DotNetHealthState);
     [ObservableProperty] private string targetName = "三角洲";
     [ObservableProperty] private string targetModeText = "三角洲模式";
     [ObservableProperty] private string targetPathText = "三角洲默认主进程";
@@ -65,6 +67,7 @@ public partial class DashboardViewModel : ObservableObject
     partial void OnShaderHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
     partial void OnAceHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
     partial void OnRuntimeHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
+    partial void OnDotNetHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
     partial void OnIsHealthScanningChanged(bool value)
     { OnPropertyChanged(nameof(CanRefreshHealth)); OnPropertyChanged(nameof(HealthSummary)); }
 
@@ -131,8 +134,10 @@ public partial class DashboardViewModel : ObservableObject
         }
 
         IsHealthScanning = true;
-        ShaderHealthState = AceHealthState = RuntimeHealthState = DashboardHealthState.Checking;
-        ShaderStatusText = AceStatusText = RuntimeStatusText = "检测中…";
+        ShaderHealthState = AceHealthState = RuntimeHealthState = DotNetHealthState = DashboardHealthState.Checking;
+        ShaderStatusText = AceStatusText = RuntimeStatusText = DotNetStatusText = "检测中…";
+        // Local .NET inspection must not wait for a backend that itself cannot start without .NET.
+        var dotNetCheck = LoadDotNetHealthAsync();
 
         try
         {
@@ -165,6 +170,17 @@ public partial class DashboardViewModel : ObservableObject
             RuntimeHealthState = DashboardHealthState.Failed;
             RuntimeStatusText = "检测失败：" + ex.Message;
             Log.Error("主页：运行库组件检测失败", ex);
+        }
+
+        try
+        {
+            await dotNetCheck;
+        }
+        catch (Exception ex)
+        {
+            DotNetHealthState = DashboardHealthState.Failed;
+            DotNetStatusText = "检测失败：" + ex.Message;
+            Log.Error("主页：.NET 环境检测失败", ex);
         }
         finally
         {
@@ -281,6 +297,21 @@ public partial class DashboardViewModel : ObservableObject
             : report.HasSuboptimal
                 ? $"{report.Suboptimal.Count} 项运行库非最适版本（低于推荐版本或未安装）"
                 : "各分支运行库均为最适版本";
+    }
+
+    private async Task LoadDotNetHealthAsync()
+    {
+        var result = await DotNetEnvironmentService.CheckAsync();
+
+        DotNetHealthState = result.Level switch
+        {
+            DotNetCheckLevel.Complete => DashboardHealthState.Normal,
+            DotNetCheckLevel.Incomplete => DashboardHealthState.Warning,
+            DotNetCheckLevel.Failed => DashboardHealthState.Failed,
+            _ => DashboardHealthState.Checking
+        };
+
+        DotNetStatusText = result.Summary;
     }
 
     [RelayCommand]

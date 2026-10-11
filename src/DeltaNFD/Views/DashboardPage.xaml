@@ -114,6 +114,17 @@
                         <Button Grid.Column="3" Tag="runtime" Click="JumpButton_Click" Content="去处理" Padding="12,5"
                                 Visibility="{x:Bind ActionVisibility(ViewModel.RuntimeHealthState), Mode=OneWay}" VerticalAlignment="Center"/>
                     </Grid>
+
+                    <Grid ColumnSpacing="10" Padding="0,6">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{x:Bind StatusBrush(ViewModel.DotNetHealthState), Mode=OneWay}"/>
+                        <TextBlock Grid.Column="1" Text=".NET 环境" Width="64" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.DotNetStatusText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                   Foreground="{x:Bind StatusBrush(ViewModel.DotNetHealthState), Mode=OneWay}"
+                                   FontWeight="{x:Bind WeightFor(ViewModel.DotNetHealthState), Mode=OneWay}" VerticalAlignment="Center"/>
+                        <Button Grid.Column="3" Tag="settings" Click="JumpButton_Click" Content="去修复" Padding="12,5"
+                                Visibility="{x:Bind ActionVisibility(ViewModel.DotNetHealthState), Mode=OneWay}" VerticalAlignment="Center"/>
+                    </Grid>
                     <TextBlock Text="{x:Bind ViewModel.LastHealthCheckText, Mode=OneWay}" FontSize="11" Margin="0,6,0,0"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                 </StackPanel>

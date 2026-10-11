@@ -2,7 +2,7 @@
 
 namespace DeltaNFD.Services;
 
-internal sealed class RuntimeRepairEnvironment(RuntimeGuardService service, RuntimeRepairDiagnostics diagnostics) : IRuntimeRepairEnvironment
+internal sealed class RuntimeRepairEnvironment(RuntimeGuardService service, RuntimeRepairDiagnostics diagnostics, bool repairInstallerServices = true) : IRuntimeRepairEnvironment
 {
     private readonly RuntimeRepairProcessRunner _runner = new(AppDataPaths.Root);
     private readonly HashSet<string> _retainedBranches = [];
@@ -18,7 +18,7 @@ internal sealed class RuntimeRepairEnvironment(RuntimeGuardService service, Runt
             if (pending is not null) snapshot = snapshot with { Error = pending };
         }
         // 自动尝试修复安装服务状态问题
-        if (snapshot.Blocker is not null && snapshot.Services.Any(s => s.StartType == 4 || (s.State is < 1 or > 4)))
+        if (repairInstallerServices && snapshot.Blocker is not null && snapshot.Services.Any(s => s.StartType == 4 || (s.State is < 1 or > 4)))
         {
             Log.Info("检测到安装服务状态异常，尝试自动修复。");
             var repairResult = RuntimeRepairPreflight.TryRepairInstallerService();

@@ -131,7 +131,14 @@ internal static class BackendContractChecks
 
     private static void ModuleChecks()
     {
-        Check(BackendModules.All.Count == 5, "注册了 5 个官方后端模块");
+        Check(BackendModules.All.Count == 6, "注册了 6 个官方后端模块（ace/gpu/runtime/cpuframe/procman/system）");
+        Check(BackendModules.IsAllowed(BackendModules.Procman, BackendCommands.ProcmanSet), "procman.process.set 在白名单内");
+        Check(BackendModules.IsReadOnly(BackendModules.Procman, BackendCommands.ProcmanList), "procman.process.list 为只读");
+        Check(BackendModules.IsMutating(BackendModules.Procman, BackendCommands.ProcmanSet), "procman.process.set 视为写入");
+        Check(!BackendModules.RequiresWriteIntent(BackendModules.Procman, BackendCommands.ProcmanRecover),
+            "procman.recover 属于恢复核对，不写新的执行意图");
+        Check(BackendModules.ReconcileCommand(BackendModules.Procman) == BackendCommands.ProcmanReconcile, "procman 核对命令已登记");
+        Check(BackendModules.RecoverCommand(BackendModules.Procman) == BackendCommands.ProcmanRecover, "procman 恢复命令已登记");
         foreach (var spec in BackendModules.All.Values)
         {
             Check(spec.Commands.Count > 0, $"{spec.Id} 有非空命令白名单");

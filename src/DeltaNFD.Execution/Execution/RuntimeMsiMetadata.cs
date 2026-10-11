@@ -3,6 +3,12 @@ using System.Text;
 
 namespace DeltaNFD.Services;
 
+internal sealed class RuntimeComponentPathException(string component, int state)
+    : IOException($"MSI 组件路径无法确认：{component}；状态 {state}。")
+{
+    internal int State { get; } = state;
+}
+
 internal static class RuntimeMsiMetadata
 {
     internal static RuntimeMsiPackage ReadPackage(string path)
@@ -11,8 +17,20 @@ internal static class RuntimeMsiMetadata
             $"SELECT `Value` FROM `Property` WHERE `Property`='{name}'", 1).Single()[0];
         var files = ReadRows(path, "SELECT `File`,`Component_`,`FileName`,`Version` FROM `File`", 4)
             .ToDictionary(r => r[0], StringComparer.OrdinalIgnoreCase);
-        var components = ReadRows(path, "SELECT `Component`,`ComponentId`,`Attributes`,`KeyPath` FROM `Component`", 4)
+        var components = ReadRows(path, "SELECT `Component`,`ComponentId`,`Attributes`,`KeyPath`,`Condition` FROM `Component`", 5)
             .ToDictionary(r => r[0], StringComparer.OrdinalIgnoreCase);
+        var assemblies = new Dictionary<string, RuntimeSxsIdentity>(StringComparer.OrdinalIgnoreCase);
+        if (ReadRows(path, "SELECT `Name` FROM `_Tables` WHERE `Name`='MsiAssembly'", 1).Count > 0)
+        {
+            var names = ReadRows(path, "SELECT `Component_`,`Name`,`Value` FROM `MsiAssemblyName`", 3)
+                .GroupBy(r => r[0]).ToDictionary(g => g.Key, g => g.ToDictionary(r => r[1], r => r[2], StringComparer.OrdinalIgnoreCase));
+            foreach (var row in ReadRows(path, "SELECT `Component_`,`Attributes`,`File_Application` FROM `MsiAssembly`", 3))
+            {
+                if (row[1] != "1" || row[2].Length != 0 || !names.TryGetValue(row[0], out var identity)) continue;
+                string Required(string name) => identity.TryGetValue(name, out var value) ? value : throw new InvalidDataException("SxS 身份缺少 " + name);
+                assemblies[row[0]] = new(Required("name"), Required("version"), Required("processorArchitecture"), Required("publicKeyToken"), identity.GetValueOrDefault("language"));
+            }
+        }
         var dlls = new List<RuntimeMsiFile>();
         foreach (var file in files.Values)
         {
@@ -21,7 +39,8 @@ internal static class RuntimeMsiMetadata
             if (!components.TryGetValue(file[1], out var component) || !Guid.TryParse(component[1], out var componentId)
                 || !int.TryParse(component[2], out var attributes) || (attributes & 4) != 0
                 || !files.TryGetValue(component[3], out var keyFile)) continue;
-            dlls.Add(new(componentId.ToString("B"), keyFile[2].Split('|')[^1], name, version));
+            dlls.Add(new(componentId.ToString("B"), keyFile[2].Split('|')[^1], name, version)
+                { Assembly = assemblies.GetValueOrDefault(file[1]), Condition = component[4] });
         }
         return new(ReadProductCode(path), Property("ProductName"), Property("Manufacturer"),
             Property("ProductVersion"), ReadArchitecture(path), dlls)
@@ -93,7 +112,7 @@ internal static class RuntimeMsiMetadata
         var buffer = new StringBuilder(32768); uint length = 32768;
         var state = MsiGetComponentPathExW(product, component, null, 4, buffer, ref length);
         if (state != 3 || !Path.IsPathFullyQualified(buffer.ToString()))
-            throw new IOException($"MSI 组件未在本机完整安装：{component}；状态 {state}。");
+            throw new RuntimeComponentPathException(component, state);
         return buffer.ToString();
     }
     internal static RuntimeMsiProduct ReadInstalledProduct(string product)

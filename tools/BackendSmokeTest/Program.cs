@@ -1,5 +1,91 @@
 using DeltaNFD.Services;
 
+if (args.Contains("--backend-attention-checks"))
+{
+    BackendAttentionChecks.Run();
+    return;
+}
+
+if (args.Contains("--runtime-sxs-readonly"))
+{
+    var root = Path.Combine(Path.GetTempPath(), "DeltaNFD-sxs-readonly-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root); var id = Guid.NewGuid(); File.WriteAllText(Path.Combine(root, "isolated-test.marker"), id.ToString("D"));
+    AppDataPaths.ConfigureIsolatedDataRoot(root, id);
+    foreach (var step in RuntimeCompatibilityRepair.CppPlan().Where(s => s.Branch.StartsWith("2005") || s.Branch.StartsWith("2008")))
+    {
+        var path = Path.GetFullPath(Path.Combine("src/DeltaNFD/Assets/VCRedistRepair", step.RelativeFile));
+        var package = RuntimeMsiMetadata.ReadPackage(path);
+        var files = new RuntimeMsiInstallBackend(new RuntimeRepairProcessRunner(root)).VerifyFiles(package);
+        Console.WriteLine($"READONLY {step.Branch}: SxS={package.Files.Count(f => f.Assembly is not null)}/{package.Files.Count}, Verified={files.Success}, {files.Message}");
+    }
+    return;
+}
+
+if (args.Contains("--runtime-bulk-uninstall-checks"))
+{
+    try { await RuntimeBulkUninstallChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Length == 2 && args[0] == "--frame-power-readonly-probe")
+{
+    if (!Guid.TryParse(args[1], out _)) throw new ArgumentException("expected scheme GUID");
+    var runner = new Func<string, TimeSpan, Task<(int, string, string)>>(async (command, timeout) =>
+    {
+        if (!command.StartsWith("/q", StringComparison.Ordinal)) throw new InvalidOperationException("read-only probe");
+        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "powercfg.exe"), command)
+        { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true })!;
+        var stdout = process.StandardOutput.ReadToEndAsync(); var stderr = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync().WaitAsync(timeout);
+        return (process.ExitCode, await stdout, await stderr);
+    });
+    var service = new FrameTweaksService(Path.Combine(Path.GetTempPath(), "read-only-probe-unused"), runner, () => null);
+    typeof(FrameTweaksService).GetField("_nativePowerReads", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(service, true);
+    var task = (Task)typeof(FrameTweaksService).GetMethod("QuerySchemeSettingsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(service, [args[1]])!;
+    await task;
+    var value = (System.Collections.ICollection?)task.GetType().GetProperty("Result")!.GetValue(task);
+    Console.WriteLine(value is null ? "READ-ONLY: settings could not be fully verified" : $"READ-ONLY: {value.Count} power settings verified through native AC/DC reads");
+    Environment.ExitCode = value is null ? 1 : 0;
+    return;
+}
+
+if (args.Length == 2 && args[0] == "--dotnet-environment-inspect")
+{
+    var result = await DotNetEnvironmentService.CheckAtAsync(Path.GetFullPath(args[1]));
+    Console.WriteLine(result.Summary);
+    Console.WriteLine(result.Details);
+    Environment.ExitCode = result.Level == DotNetCheckLevel.Complete ? 0 : 1;
+    return;
+}
+
+if (args.Contains("--dotnet-environment-checks"))
+{
+    try { await DotNetEnvironmentChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--external-fix-regression-checks"))
+{
+    try { await ExternalFixRegressionChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--procman-test-child", StringComparer.Ordinal))
+{
+    ProcmanCoreChecks.RunChild();
+    return;
+}
+
+if (args.Contains("--procman-core-checks", StringComparer.Ordinal))
+{
+    try { ProcmanCoreChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args.Length is 4 or 5 && args[0] == "--deployment-install-fixture")
 {
     try { Environment.ExitCode = await DeploymentInstallFixture.RunAsync(args[1], args[2], args[3], args.Length == 5 ? int.Parse(args[4]) : 0); }

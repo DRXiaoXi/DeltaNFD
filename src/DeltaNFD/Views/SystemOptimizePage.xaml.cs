@@ -30,7 +30,7 @@ public sealed partial class SystemOptimizePage : Page
                 CloseButtonText = "取消",
                 DefaultButton = ContentDialogButton.Close,
             };
-            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+            return await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
         };
 
         // 服务禁用影响警告弹窗：逐组复选框（默认勾选=应用），取消勾选的组本次跳过（勾选意图保留）
@@ -83,7 +83,7 @@ public sealed partial class SystemOptimizePage : Page
                 CloseButtonText = "取消",
                 DefaultButton = ContentDialogButton.Close,
             };
-            var choice = await dialog.ShowAsync();
+            var choice = await dialog.ShowWithBackendRecoveryAsync();
             return choice == ContentDialogResult.Primary ? excluded : null;
         };
 
@@ -103,7 +103,7 @@ public sealed partial class SystemOptimizePage : Page
                 CloseButtonText = "返回更换盘符",
                 DefaultButton = ContentDialogButton.Close,
             };
-            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+            return await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
         };
 
         // 关闭 Hyper-V/VBS 前的 Windows Hello 操作引导（见 BxDbViewModel.WindowsHelloGuidanceHook 注释）
@@ -198,7 +198,7 @@ public sealed partial class SystemOptimizePage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
         };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        return await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
     }
 
     private async void ApplyPagefileButton_Click(object sender, RoutedEventArgs e)
@@ -235,7 +235,7 @@ public sealed partial class SystemOptimizePage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
         {
             return;
         }
@@ -250,7 +250,7 @@ public sealed partial class SystemOptimizePage : Page
                 Content = result.Message,
                 CloseButtonText = "知道了",
                 DefaultButton = ContentDialogButton.Close,
-            }.ShowAsync();
+            }.ShowWithBackendRecoveryAsync();
         }
     }
 
@@ -266,7 +266,7 @@ public sealed partial class SystemOptimizePage : Page
             DefaultButton = ContentDialogButton.Close,
         };
 
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
         {
             return;
         }
@@ -281,7 +281,7 @@ public sealed partial class SystemOptimizePage : Page
                 Content = result.Message,
                 CloseButtonText = "知道了",
                 DefaultButton = ContentDialogButton.Close,
-            }.ShowAsync();
+            }.ShowWithBackendRecoveryAsync();
         }
     }
 
@@ -296,7 +296,7 @@ public sealed partial class SystemOptimizePage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
         {
             return;
         }
@@ -310,7 +310,7 @@ public sealed partial class SystemOptimizePage : Page
                 Title = "恢复失败",
                 Content = result.Message,
                 CloseButtonText = "知道了",
-            }.ShowAsync();
+            }.ShowWithBackendRecoveryAsync();
         }
     }
 
@@ -360,7 +360,7 @@ public sealed partial class SystemOptimizePage : Page
                 CloseButtonText = "取消",
                 DefaultButton = ContentDialogButton.Close,
             };
-            var choice = await dialog.ShowAsync();
+            var choice = await dialog.ShowWithBackendRecoveryAsync();
 
             switch (choice)
             {
@@ -465,7 +465,7 @@ public sealed partial class SystemOptimizePage : Page
             CloseButtonText = "知道了",
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary)
         {
             OpenWindowsSecurity();
         }

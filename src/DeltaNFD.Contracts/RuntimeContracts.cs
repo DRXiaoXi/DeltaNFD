@@ -1,6 +1,9 @@
 namespace DeltaNFD.Services;
 
 public enum RuntimeGuardMode { BasicV14, Full }
+
+public sealed record RuntimeUninstallPreview(List<VcRedistEntry> Entries, string Fingerprint);
+public sealed class RuntimeUninstallAllArgs { public string Fingerprint { get; set; } = ""; }
 public enum RuntimeRepairMode { MissingOrOutdated, Legacy2005And2008, FullReinstall }
 public sealed record RuntimeGuardLegacyEntry(string Name, string Fingerprint);
 
@@ -142,7 +145,7 @@ public interface IRuntimeGuardService
         RuntimeRepairMode mode = RuntimeRepairMode.FullReinstall, CancellationToken cancellationToken = default,
         bool strongRepairMode = false);
 
-    /// <summary>兼容性修复：DirectX 旧版组件及 C++ 安装/修复，不先卸载已安装运行库。</summary>
+    /// <summary>兼容性修复：先共享高帧性修复的受控 C++ 卸载阶段，再修复 DirectX 旧组件并安装 C++，最后复检。</summary>
     Task<OperationResult> RepairCompatibilityAsync(IProgress<string>? progress = null, CancellationToken cancellationToken = default,
         bool strongRepairMode = false);
 
@@ -157,4 +160,9 @@ public interface IRuntimeGuardService
     /// （含 2026）一律不碰。逐条静默卸载；IFEO 防护处于开启状态时拒绝执行（卸载器自身会被拦截）。
     /// </summary>
     Task<OperationResult> UninstallV14Async(IProgress<string>? progress = null);
+    /// <summary>只读预览全部微软 C++ 可再发行运行库；不包括 SDK/Debug/VSTO。指纹用于确认后复核。</summary>
+    Task<RuntimeUninstallPreview> PreviewUninstallAllAsync() => throw new NotSupportedException("后端未提供全量卸载预览。");
+    /// <summary>按已确认清单执行受控卸载，清单变化则拒绝；不强杀安装事务。</summary>
+    Task<OperationResult> UninstallAllAsync(string fingerprint, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+        => Task.FromResult(OperationResult.Fail("后端未提供全量卸载。"));
 }

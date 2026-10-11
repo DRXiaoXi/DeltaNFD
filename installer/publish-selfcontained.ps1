@@ -22,6 +22,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
+& (Join-Path $PSScriptRoot 'prepare-dotnet-repair.ps1')
 $frontendProject = Join-Path $repo "src/DeltaNFD/DeltaNFD.csproj"
 $out = [IO.Path]::GetFullPath($(if ([IO.Path]::IsPathRooted($OutDir)) { $OutDir } else { Join-Path $repo $OutDir }))
 if (Test-Path -LiteralPath $out) { throw "Output must be a new directory: $out" }
@@ -64,8 +65,12 @@ $required = @(
     "Backends/DeltaNFD.Backend.Runtime.exe",
     "Backends/DeltaNFD.Backend.SystemMaintenance.exe",
     "Backends/DeltaNFD.Backend.CpuFrame.exe",
+    "Backends/DeltaNFD.Backend.Procman.exe",
     "Backends/DeltaNFD.OfflineHelper.exe",
     "Assets/UpdateConfig.json",
+    "Assets/DotNetRepair/dotnet-runtime-8.0.31-win-x64.exe",
+    "Assets/DotNetRepair/RepairDotNet.cmd",
+    "Assets/DotNetRepair/RepairDotNet.ps1",
     "Assets/TweakDb/RegistryTweaks.json"
     "Assets/VCRedistRepair/Installer.cmd"
     "Assets/DirectXRepair/DXSETUP.exe"

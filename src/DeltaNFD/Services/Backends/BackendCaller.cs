@@ -44,6 +44,11 @@ internal sealed class BackendCaller(string moduleId) : IAsyncDisposable
             var client = await EnsureClientAsync(cancellationToken);
             return await client.InvokeAsync(command, args, progress, cancellationToken);
         }
+        catch
+        {
+            BackendAttention.Report(ModuleId);
+            throw;
+        }
         finally
         {
             _gate.Release();

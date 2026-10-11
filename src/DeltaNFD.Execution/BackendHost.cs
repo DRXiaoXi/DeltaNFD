@@ -362,6 +362,14 @@ public static class BackendHost
                         continue;
                     }
 
+                    // 在执行和写前日志之前拒绝；恢复/停止命令不属于可禁用能力。
+                    if (EmergencyPolicies.BlockReason(invoke.Command) is { } emergencyReason)
+                    {
+                        await writer.SafeWriteAsync(BackendMessages.EncodeResult(options.Module.Id, sessionId, frame.RequestId,
+                            BackendResult.Failed("emergency-policy.blocked", emergencyReason)));
+                        continue;
+                    }
+
                     inFlightRequest = frame.RequestId;
                     inFlightCommand = invoke.Command;
                     var requestId = frame.RequestId;

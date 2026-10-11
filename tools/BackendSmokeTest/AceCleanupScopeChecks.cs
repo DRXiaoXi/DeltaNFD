@@ -28,7 +28,9 @@ internal static class AceCleanupScopeChecks
             Check(result.Status == BackendResultStatuses.Ok, "正常清理应成功");
             Check(env.ServiceKeys.Count == 0, "清理范围覆盖全部 ACE 服务");
             Check(env.RunningPids.Count == 0, "清理范围覆盖全部 ACE 进程");
-            Check(env.RegistryKeys.Count == 0, "清理范围覆盖 ACE 注册表项");
+            Check(env.RegistryKeys.SetEquals([FakeEnvironment.SharedRootLm, FakeEnvironment.SharedRootUsers, FakeEnvironment.ForeignKey]),
+                "仅删已核验归属的 ACE 子键，保留共享根与其他厂商同名键");
+            Check(env.Backups.Count == 2, "两个 ACE 子键删除前均已核验备份");
             Check(env.Directories.Count == 0, "清理范围覆盖系统与游戏 ACE 目录");
             Check(result.Message.Contains("清理完成", StringComparison.Ordinal), "完整清理如实报告完成");
 
@@ -123,6 +125,30 @@ internal static class AceCleanupScopeChecks
             Check(r11.Status == BackendResultStatuses.Partial && r11.Items.Count > 0, "已有改动再取消时保留部分完成状态和明细");
             Check(!AceCleanupResults.ToOperationResult(r11).Success, "部分完成后取消不能映射为成功");
 
+            var unknown = new FakeEnvironment();
+            const string unknownKey = @"LocalMachine|SOFTWARE\AppDataLow\Software\ACE-Unrelated";
+            unknown.RegistryKeys.Add(unknownKey);
+            var r12 = await new AceService(store, new GameTargetService(settingsPath), static () => false, unknown).CleanPhasedAsync(null, CancellationToken.None);
+            Check(unknown.RegistryKeys.Contains(unknownKey) && r12.Status == BackendResultStatuses.Partial,
+                "同名前缀但无安装路径归属证据的键保留，不宣称完全成功");
+            var noBackup = new FakeEnvironment { BackupFails = true };
+            var r13 = await new AceService(store, new GameTargetService(settingsPath), static () => false, noBackup).CleanPhasedAsync(null, CancellationToken.None);
+            Check(noBackup.OwnedKeys.All(noBackup.RegistryKeys.Contains) && r13.Status == BackendResultStatuses.Partial,
+                "备份失败时保留对应键");
+            var changedOwner = new FakeEnvironment { OwnershipChangesAfterBackup = true };
+            var r14 = await new AceService(store, new GameTargetService(settingsPath), static () => false, changedOwner).CleanPhasedAsync(null, CancellationToken.None);
+            Check(changedOwner.RegistryKeys.Contains(FakeEnvironment.OwnedLm) && r14.Status == BackendResultStatuses.Partial,
+                "备份后归属变化时拒绝删除");
+            var unreadable = new FakeEnvironment { EnumerationFails = true };
+            var r15 = await new AceService(store, new GameTargetService(settingsPath), static () => false, unreadable).CleanPhasedAsync(null, CancellationToken.None);
+            Check(unreadable.RegistryKeys.Contains(FakeEnvironment.OwnedLm) && r15.Status == BackendResultStatuses.Partial,
+                "共享键枚举失败不折算为清理完成");
+            var exportRace = new FakeEnvironment();
+            exportRace.AfterBackup = () => exportRace.RunningNames.Add("sguard64");
+            var r16 = await new AceService(store, new GameTargetService(settingsPath), static () => false, exportRace).CleanPhasedAsync(null, CancellationToken.None);
+            Check(exportRace.RegistryKeys.Contains(FakeEnvironment.OwnedLm) && r16.Status == BackendResultStatuses.Partial,
+                "导出期间守卫启动，停止后续删除");
+
             Console.WriteLine($"ACE cleanup scope checks passed ({passed} assertions): full range, elevation/custom/guard gates, " +
                 "startup race, cancel, delete failure, self-protection refusal, locked-file reboot, out-of-scope/reparse refusal. All mutations simulated.");
         }
@@ -147,6 +173,17 @@ internal static class AceCleanupScopeChecks
         };
         public HashSet<string> ServiceKeys { get; } = ["ACE-BASE", "ACE-GAME", "ACE-BOOT", "ACE-CORE", "ACE-SSC-DRV64", "ACE-ADVT"];
         public HashSet<string> RegistryKeys { get; } = [];
+        public const string SharedRootLm = @"LocalMachine|SOFTWARE\AppDataLow";
+        public const string SharedRootUsers = @"Users|.DEFAULT\SOFTWARE\AppDataLow";
+        public const string OwnedLm = SharedRootLm + @"\Software\AntiCheatExpert";
+        public const string OwnedUsers = SharedRootUsers + @"\Software\AntiCheatExpert";
+        public const string ForeignKey = SharedRootLm + @"\Software\OtherVendor\ACE-Preferences";
+        public HashSet<string> OwnedKeys { get; } = [OwnedLm, OwnedUsers];
+        public List<string> Backups { get; } = [];
+        public bool BackupFails { get; set; }
+        public bool OwnershipChangesAfterBackup { get; set; }
+        public bool EnumerationFails { get; set; }
+        public Action? AfterBackup { get; set; }
         public HashSet<string> Directories { get; } = [];
         public HashSet<string> ReparseDirectories { get; } = [];
         public HashSet<string> LockedDirectories { get; } = [];
@@ -162,8 +199,7 @@ internal static class AceCleanupScopeChecks
             Directories.Add(@"C:\Games2\DeltaForce\Binaries\Win64\AntiCheatExpert");
             GameDirectories.Add(@"C:\Games2\DeltaForce\Binaries\Win64\AntiCheatExpert");
             RegistryKeys.Add(@"LocalMachine|SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{141E7813-148F-4451-A632-2DA347859F5D}");
-            RegistryKeys.Add(@"LocalMachine|SOFTWARE\AppDataLow");
-            RegistryKeys.Add(@"Users|.DEFAULT\SOFTWARE\AppDataLow");
+            RegistryKeys.UnionWith([SharedRootLm, SharedRootUsers, OwnedLm, OwnedUsers, ForeignKey]);
         }
 
         public bool IsElevated => Elevated;
@@ -214,8 +250,28 @@ internal static class AceCleanupScopeChecks
         public bool RegistryKeyExists(RegistryHive hive, string path) => RegistryKeys.Contains($"{hive}|{path}");
         public void DeleteRegistryTree(RegistryHive hive, string path, bool throwOnMissingSubKey)
         {
-            if (!RegistryKeys.Remove($"{hive}|{path}") && throwOnMissingSubKey)
+            var prefix = $"{hive}|{path}";
+            var removed = RegistryKeys.RemoveWhere(k => k.Equals(prefix, StringComparison.OrdinalIgnoreCase) || k.StartsWith(prefix + "\\", StringComparison.OrdinalIgnoreCase));
+            if (removed == 0 && throwOnMissingSubKey)
                 throw new IOException("键不存在：" + path);
+        }
+
+        public IReadOnlyList<string> EnumerateSubKeyNames(RegistryHive hive, string path)
+        {
+            if (EnumerationFails) throw new IOException("simulated denied");
+            var prefix = $"{hive}|{path}\\";
+            return RegistryKeys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                .Select(k => k[prefix.Length..].Split('\\')[0]).Distinct().ToArray();
+        }
+        public bool HasAceRegistryOwnership(RegistryHive hive, string path) =>
+            AceRegistryPolicy.IsCandidatePath(path) && OwnedKeys.Contains($"{hive}|{path}");
+        public Task<OperationResult> BackupRegistryKeyAsync(RegistryHive hive, string path)
+        {
+            if (BackupFails) return Task.FromResult(OperationResult.Fail("simulated backup failure"));
+            Backups.Add(path);
+            if (OwnershipChangesAfterBackup) OwnedKeys.Remove($"{hive}|{path}");
+            AfterBackup?.Invoke();
+            return Task.FromResult(OperationResult.Ok("simulated verified backup"));
         }
 
         public bool DirectoryExists(string path) => Directories.Contains(path);

@@ -18,15 +18,14 @@ public sealed class CpuFrameEngine : IDisposable
 {
     private const string DwmProcessName = "dwm";
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan DwmRestartDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan PowerGuardInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan MemoryCleanCheckInterval = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan MemoryCleanCooldown = TimeSpan.FromMinutes(10);
 
     private readonly object _gate = new();
+    private readonly SemaphoreSlim _powerGate = new(1, 1);
     private readonly CpuTopologyService _cpu;
-    private readonly FrameTweaksService _tweaks = new();
-    private readonly IPowerService _power = new PowerService();
+    private readonly FrameTweaksService _tweaks;
+    private readonly IPowerService _power;
     private CancellationTokenSource? _cts;
     private Task? _loop;
 
@@ -66,13 +65,16 @@ public sealed class CpuFrameEngine : IDisposable
     private CpuFrameTempArgs _tweaksArgs = new();
 
     private readonly Dictionary<int, (GameProcessIdentity Identity, ProcessPriorityClass Original)> _priorityOriginals = [];
-    private readonly Dictionary<int, GameProcessIdentity> _ecoQosOriginals = [];
+    private readonly Dictionary<int, (GameProcessIdentity Identity, string Original)> _ecoQosOriginals = [];
     private CoreParkingLoop? _parkingLoop;
     private int? _parkedCores;
     private int _memoryCleanRunning;
 
-    public CpuFrameEngine()
+    public CpuFrameEngine() : this(new PowerService(), new FrameTweaksService()) { }
+
+    internal CpuFrameEngine(IPowerService power, FrameTweaksService tweaks)
     {
+        _power = power; _tweaks = tweaks;
         _cpu = new CpuTopologyService(TweakBackupStore.Default, _power);
     }
 
@@ -194,7 +196,8 @@ public sealed class CpuFrameEngine : IDisposable
         // ⑤ 游戏启动后自动重启 DWM（延迟 5 秒，避免初始化窗口）
         if (!gameRunning) _dwmHandledForSession = false;
         if (frameActive && settings.DwmRestartOnGameStart && gameRunning && !_dwmHandledForSession
-            && GetGameUptime(identities) >= DwmRestartDelay)
+            && EmergencyPolicies.BlockReason(DeltaNFD.Backends.BackendCommands.CpuFrameDwmRestart) is null
+            && GetGameUptime(identities) >= TimeSpan.FromSeconds(EmergencyPolicies.DwmDelaySeconds))
         {
             var result = RestartDwmCore();
             _dwmHandledForSession = true;
@@ -202,6 +205,11 @@ public sealed class CpuFrameEngine : IDisposable
         }
 
         // ⑥ 帧格电源锁定与内容守护
+        await _powerGate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+        settings = AppSettingsStore.Read();
+        frameActive = settings.FrameModeActive && !OfflineModeGuard.BlocksNormalAutomation;
         if (frameActive && settings.FramePowerLockEnabled)
         {
             if (!_powerLockReady || !_powerLockActive)
@@ -216,6 +224,8 @@ public sealed class CpuFrameEngine : IDisposable
         {
             await RevertPowerLockCoreAsync(settings).ConfigureAwait(false);
         }
+        }
+        finally { _powerGate.Release(); }
 
         // ⑦ 帧格临时优化（期望由前端命令设定；备份丢失时自动补应用）
         if (_tweaksDesired && !_tempOptimizationApplied)
@@ -292,6 +302,8 @@ public sealed class CpuFrameEngine : IDisposable
             {
                 using var process = Process.GetProcessById(identity.Id);
                 if (!GameTargetService.Default.Matches(process, identity)) continue;
+                using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(identity.Id, "priority");
+                if (ownership is null) continue;
                 if (_priorityOriginals.TryGetValue(identity.Id, out var old) && old.Identity.StartTimeUtc != identity.StartTimeUtc)
                     _priorityOriginals.Remove(identity.Id);
                 if (process.PriorityClass != ProcessPriorityClass.High)
@@ -354,6 +366,8 @@ public sealed class CpuFrameEngine : IDisposable
                     continue;
                 }
                 if (!GameTargetService.Default.Matches(process, saved.Identity)) continue;
+                using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(id, "priority", true);
+                if (ownership is null) continue;
                 if (process.PriorityClass == ProcessPriorityClass.High) process.PriorityClass = saved.Original;
                 _priorityOriginals.Remove(id);
             }
@@ -497,20 +511,33 @@ public sealed class CpuFrameEngine : IDisposable
             foreach (var identity in identities)
             {
                 if (_ecoQosOriginals.ContainsKey(identity.Id)) continue;
-                if (ProcessPerf.DisablePowerThrottling(identity.Id)) _ecoQosOriginals[identity.Id] = identity;
+                using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(identity.Id, "ecoQos");
+                if (ownership is null) continue;
+                var processIdentity = new DeltaNFD.Execution.Procman.ProcmanProcessIdentity(identity.Id, identity.StartTimeUtc, identity.ExecutablePath);
+                try
+                {
+                    using var pin = DeltaNFD.Execution.Procman.ProcmanCapabilities.Pin(processIdentity);
+                    var original = DeltaNFD.Execution.Procman.ProcmanCapabilities.ReadEcoQos(identity.Id);
+                    if (original.Ok && DeltaNFD.Execution.Procman.ProcmanCapabilities.SetEcoQos(identity.Id, false).Ok)
+                        _ecoQosOriginals[identity.Id] = (identity, original.Value!);
+                }
+                catch (Exception ex) { SetError("帧格 EcoQoS 未应用：" + ex.Message); }
             }
             _ecoQosApplied = _ecoQosOriginals.Count > 0;
         }
         else if (_ecoQosOriginals.Count > 0)
         {
-            foreach (var (pid, identity) in _ecoQosOriginals.ToArray())
+            foreach (var (pid, saved) in _ecoQosOriginals.ToArray())
             {
                 try
                 {
+                    var identity = saved.Identity;
                     using var process = Process.GetProcessById(pid);
-                    if (process.HasExited || process.StartTime.ToUniversalTime() != identity.StartTimeUtc
-                        || (GameTargetService.Default.Matches(process, identity) && ProcessPerf.RestorePowerThrottling(pid)))
-                        _ecoQosOriginals.Remove(pid);
+                    if (process.HasExited || process.StartTime.ToUniversalTime() != identity.StartTimeUtc) { _ecoQosOriginals.Remove(pid); continue; }
+                    using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(pid, "ecoQos", true);
+                    if (ownership is null || !GameTargetService.Default.Matches(process, identity)) continue;
+                    using var pin = DeltaNFD.Execution.Procman.ProcmanCapabilities.Pin(new(pid, identity.StartTimeUtc, identity.ExecutablePath));
+                    if (DeltaNFD.Execution.Procman.ProcmanCapabilities.RestoreEcoQos(pid, saved.Original).Ok) _ecoQosOriginals.Remove(pid);
                 }
                 catch (ArgumentException) { _ecoQosOriginals.Remove(pid); }
                 catch { }
@@ -527,6 +554,8 @@ public sealed class CpuFrameEngine : IDisposable
 
     private static OperationResult RestartDwmCore()
     {
+        if (EmergencyPolicies.BlockReason(DeltaNFD.Backends.BackendCommands.CpuFrameDwmRestart) is { } emergencyReason)
+            return OperationResult.Fail(emergencyReason);
         try
         {
             var processes = Process.GetProcessesByName(DwmProcessName);
@@ -592,25 +621,53 @@ public sealed class CpuFrameEngine : IDisposable
 
     public async Task<OperationResult> PreserveCurrentPowerValuesAsync(IReadOnlyList<FrameIncompletePowerBackup> confirmed)
     {
+        await _powerGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+        if (AppSettingsStore.Read().FrameModeActive || _powerLockActive) return OperationResult.Fail("请先停用帧格及电源守护，再核对保留当前值。");
         var result = await _tweaks.PreserveCurrentPowerValuesAsync(confirmed).ConfigureAwait(false);
+        if (result.Success && confirmed.Any(c => c.FileName == "frame_power_scheme_snapshot.json"))
+        {
+            AppSettingsStore.Update(s => { s.FramePowerRestorePending = false; s.FramePowerPreviousSchemeGuid = "";
+                s.FramePowerLockedSchemeGuid = ""; s.FramePowerLockEnabled = false; });
+            _powerLockedGuid = ""; _powerLockReady = false;
+            GameTargetService.Default.SetRestoreFailure("帧格电源计划", false);
+        }
         SetResult("帧格旧电源记录处理", result);
         return result;
+        }
+        finally { _powerGate.Release(); }
     }
 
     // ---------------- 帧格电源锁定 ----------------
 
     public async Task<OperationResult> SetPowerLockAsync(bool enabled, string targetGuid)
     {
+        await _powerGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
         if (!enabled) return await RevertPowerLockCoreAsync(AppSettingsStore.Read()).ConfigureAwait(false);
         AppSettingsStore.Update(s => s.FramePowerLockTargetGuid = targetGuid ?? "");
         return await ApplyPowerLockCoreAsync(AppSettingsStore.Read(), resume: false).ConfigureAwait(false);
+        }
+        finally { _powerGate.Release(); }
     }
 
     private async Task<OperationResult> ApplyPowerLockCoreAsync(AppSettings settings, bool resume)
     {
-        if (_powerLockReady && _powerLockActive) return OperationResult.Ok("电源锁定已生效。");
+        if (_powerLockReady && _powerLockActive && (string.IsNullOrWhiteSpace(settings.FramePowerLockTargetGuid)
+            || settings.FramePowerLockTargetGuid.Equals(_powerLockedGuid, StringComparison.OrdinalIgnoreCase))) return OperationResult.Ok("电源锁定已生效。");
         try
         {
+            // Never overwrite a pending original plan with a new attempt. Recover the snapshot's actual plan first.
+            if ((!resume && (settings.FramePowerRestorePending || _tweaks.HasPowerSchemeContentSnapshot))
+                || (resume && _tweaks.PowerSchemeSnapshotGuid is { } snapshotGuid
+                    && !snapshotGuid.Equals(settings.FramePowerLockedSchemeGuid, StringComparison.OrdinalIgnoreCase)))
+            {
+                var recovered = await RevertPowerLockCoreAsync(settings).ConfigureAwait(false);
+                if (!recovered.Success) return OperationResult.Fail("旧电源锁定尚未恢复，未覆盖原记录：" + recovered.Message);
+                settings = AppSettingsStore.Read(); resume = false;
+            }
             var schemes = await _power.GetSchemesAsync().ConfigureAwait(false);
             var active = schemes.FirstOrDefault(s => s.IsActive);
             if (active is null || string.IsNullOrEmpty(active.Guid))
@@ -670,6 +727,8 @@ public sealed class CpuFrameEngine : IDisposable
 
     private async Task<OperationResult> RevertPowerLockCoreAsync(AppSettings settings)
     {
+        // Stop guarding immediately, including when exact recovery fails and requires user review.
+        _powerLockActive = false; _powerLockReady = false;
         if (!_tweaks.HasPowerSchemeContentSnapshot && !settings.FramePowerRestorePending)
         {
             _powerLockActive = false;
@@ -679,8 +738,9 @@ public sealed class CpuFrameEngine : IDisposable
         try
         {
             var previous = settings.FramePowerPreviousSchemeGuid;
-            var expected = !string.IsNullOrWhiteSpace(_powerLockedGuid) ? _powerLockedGuid
-                : !string.IsNullOrWhiteSpace(settings.FramePowerLockTargetGuid) ? settings.FramePowerLockTargetGuid : previous;
+            var expected = _tweaks.PowerSchemeSnapshotGuid
+                ?? (!string.IsNullOrWhiteSpace(_powerLockedGuid) ? _powerLockedGuid
+                    : !string.IsNullOrWhiteSpace(settings.FramePowerLockedSchemeGuid) ? settings.FramePowerLockedSchemeGuid : previous);
             var content = _tweaks.HasPowerSchemeContentSnapshot
                 ? await _tweaks.VerifyAndRestorePowerSchemeContentAsync(expected).ConfigureAwait(false)
                 : OperationResult.Ok("");
@@ -742,6 +802,8 @@ public sealed class CpuFrameEngine : IDisposable
 
     public (bool Success, string Message) CleanMemoryNow()
     {
+        if (EmergencyPolicies.BlockReason(DeltaNFD.Backends.BackendCommands.CpuFrameMemoryClean) is { } emergencyReason)
+            return (false, emergencyReason);
         if (Interlocked.CompareExchange(ref _memoryCleanRunning, 1, 0) != 0)
             return (false, "内存清理正在执行中，请稍候。");
         try
@@ -765,13 +827,16 @@ public sealed class CpuFrameEngine : IDisposable
 
     private void MemoryCleanTick(AppSettings settings)
     {
+        var emergency = EmergencyPolicies.Current;
+        if (emergency.ManualMemoryCleanOnly
+            || emergency.BlockReason(DeltaNFD.Backends.BackendCommands.CpuFrameMemoryClean) is not null) return;
         var now = DateTime.Now;
         if (now - _lastMemoryCleanCheck < MemoryCleanCheckInterval) return;
         _lastMemoryCleanCheck = now;
-        if (now - _lastMemoryClean < MemoryCleanCooldown) return;
+        if (now - _lastMemoryClean < TimeSpan.FromSeconds(emergency.MemoryCooldownSeconds)) return;
         var memory = MemoryPurge.QueryMemory();
         if (memory.TotalPhys == 0) return;
-        var threshold = Math.Clamp(settings.FrameMemoryCleanThresholdPercent, 30, 95);
+        var threshold = emergency.MemoryThreshold(Math.Clamp(settings.FrameMemoryCleanThresholdPercent, 30, 95));
         if (memory.LoadPercent < threshold) return;
         _ = Task.Run(() => CleanMemoryNow());
     }
@@ -814,7 +879,7 @@ public sealed class CpuFrameEngine : IDisposable
         var tweaks = await RevertTweaksCoreAsync().ConfigureAwait(false);
         messages.Add("临时优化：" + tweaks.Message);
         if (!tweaks.Success) failures.Add("临时优化：" + tweaks.Message);
-        var power = await RevertPowerLockCoreAsync(AppSettingsStore.Read()).ConfigureAwait(false);
+        var power = await SetPowerLockAsync(false, "").ConfigureAwait(false);
         messages.Add("电源锁定：" + power.Message);
         if (!power.Success) failures.Add("电源锁定：" + power.Message);
         if (failures.Count > 0) return OperationResult.Fail("帧格还原未完成：" + string.Join("；", failures));
@@ -912,7 +977,7 @@ public sealed class CpuFrameEngine : IDisposable
             }
             case "power":
             {
-                var result = await RevertPowerLockCoreAsync(AppSettingsStore.Read()).ConfigureAwait(false);
+                var result = await SetPowerLockAsync(false, "").ConfigureAwait(false);
                 ok = result.Success;
                 message = "电源锁定：" + result.Message;
                 break;

@@ -43,19 +43,9 @@ internal sealed class RuntimeBetaRepair(IRuntimeBetaRepairEnvironment environmen
             var verified = await environment.VerifyAsync(progress, deadline.Token);
             if (!verified.Success) return verified;
             var before = await environment.ScanAsync(deadline.Token);
-            diagnostics.Save("before-scan.json", before);
-            var uninstalls = new List<object>();
-            foreach (var entry in before.All)
-            {
-                progress?.Report("正在卸载：" + entry.DisplayName);
-                var result = await environment.UninstallAsync(entry, Remaining(TimeSpan.FromMinutes(3)), progress, deadline.Token);
-                reboot |= result.RequiresReboot;
-                uninstalls.Add(new { Entry = entry, Result = result });
-                diagnostics.Save("uninstall-results.json", uninstalls);
-                if (result.OutcomeUnknown || result.ExitCode == 1641) return Stop(result, "运行库卸载");
-                if (!result.Success) issues.Add(entry.DisplayName + "：" + result.Details);
-                // Beta0.9 continues to the AIO after ordinary uninstall failures; unknown live transactions stop.
-            }
+            var removal = await RuntimePreUninstall.RunAsync(before, environment.UninstallAsync, Remaining, diagnostics, progress, deadline.Token);
+            reboot |= removal.Reboot;
+            if (removal.Stopped is { } stopped) return Stop(stopped, "运行库卸载");
             progress?.Report("正在运行完整 AIO 安装器，静默重装 2005–2026 全系列…");
             var aio = await environment.InstallAioAsync(Remaining(TimeSpan.FromMinutes(20)), progress, deadline.Token);
             reboot |= aio.RequiresReboot;
@@ -176,11 +166,10 @@ internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, 
     {
         try
         {
-            var info = BuildUninstallCommand(entry, Path.Combine(diagnostics.DirectoryPath, "uninstall-" + Guid.NewGuid().ToString("N") + ".log"));
-            var result = await _runner.RunAsync(info, entry.DisplayName, timeout, progress, token);
-            if (entry.UninstallKind == "Msi" && result.ExitCode == 1605 && !result.OutcomeUnknown)
-                return result with { Skipped = true, Details = "未登记此 MSI 产品（1605）。" };
-            return result;
+            var guarded = new RuntimeRepairEnvironment(service, diagnostics, repairInstallerServices: false);
+            if (await service.RepairProtectionBlockerAsync() is { } protection) return new(-1, protection);
+            if ((await guarded.PreflightAsync(token)).Blocker is { } blocker) return new(-1, blocker);
+            return await guarded.ExecuteAsync(new("repair-uninstall-" + Guid.NewGuid().ToString("N"), entry.DisplayName, "", "uninstall", "", entry), timeout, progress, token);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) { return new(null, "卸载入口未执行：" + ex.Message); }

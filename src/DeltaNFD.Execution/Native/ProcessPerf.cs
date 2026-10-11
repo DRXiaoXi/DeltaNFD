@@ -31,11 +31,13 @@ public static class ProcessPerf
     [DllImport("kernel32.dll")]
     private static extern bool CloseHandle(IntPtr handle);
 
-    private const uint ProcessSetInformation = 0x0400; // PROCESS_SET_INFORMATION
+    private const uint ProcessSetInformation = 0x0200; // PROCESS_SET_INFORMATION
 
     /// <summary>禁用指定进程的电源限制（EcoQoS off，强制高性能电源状态）。</summary>
     public static bool DisablePowerThrottling(int pid)
     {
+        using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(pid, "ecoQos");
+        if (ownership is null) return false;
         try
         {
             var handle = OpenProcess(ProcessSetInformation, false, pid);
@@ -69,6 +71,8 @@ public static class ProcessPerf
     /// <summary>恢复指定进程由系统自控的电源限制策略（交还 EcoQoS 控制）。</summary>
     public static bool RestorePowerThrottling(int pid)
     {
+        using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(pid, "ecoQos", true);
+        if (ownership is null) return false;
         try
         {
             var handle = OpenProcess(ProcessSetInformation, false, pid);

@@ -60,6 +60,15 @@ internal static class BackendLifecycle
         }
 
         Log.Info($"前后端分离：{reason}前开始排空官方后端。");
+        foreach (var client in BackendSessions.Snapshot().Where(c => c.ModuleId == BackendModules.Procman && c.IsUsable && !c.RequiresAttention))
+        {
+            try
+            {
+                var result = await client.InvokeAsync(BackendCommands.ProcmanRestoreAll, new { }, null, CancellationToken.None);
+                if (result.Status != BackendResultStatuses.Ok) Log.Warn("进程管理还原未完成，后续停止保留证据：" + result.Message);
+            }
+            catch (Exception ex) { Log.Warn("进程管理交接还原失败：" + ex.Message); }
+        }
         foreach (var client in BackendSessions.Snapshot().Where(c => c.ModuleId == BackendModules.CpuFrame && c.IsUsable && !c.RequiresAttention))
         {
             try

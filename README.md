@@ -55,8 +55,18 @@
 ## 运行库修复方式
 
 - **高帧性修复**：保留原有 Beta0.9 C++ AIO 流程，校验资源后卸载检测到的运行库条目，再完整重装并复检。
-- **兼容性修复**：本项目独立实现 DirectX 旧版游戏组件检测、微软安装器调用及 C++ 按需安装/修复，不预先卸载已有 C++，保留较新版本。不会调用第三方 DirectX Repair 程序，也不替换 Windows 自带的 DirectX 11/12 核心。
+- **兼容性修复**：先校验资源并共用高帧性修复的受控 C++ 卸载阶段，再修复微软 DirectX 旧版组件、安装 C++ 并复检。卸载未完成时停止后续安装。不会调用第三方 DirectX Repair 程序，也不替换 Windows 自带的 DirectX 11/12 核心。
 - **运行库防护**：继续使用新版实现，修复前应先关闭防护。
+
+## Alpha0.914 内测功能
+
+- **进程管理**：属性操作分为“当前”和“总是”，分别调整本次进程或按完整应用路径保存持续规则；支持 CPU 优先级、亲和性、CPU 集合、效率模式、动态提升、I/O、内存及受支持的 GPU 调度设置。
+- **后台抑制**：持续高负载时临时降低合适后台应用的优先级，负载回落后恢复。排除三角洲主进程、系统进程、前台应用及已有手动设置或启用规则的进程。
+- **工具 .NET 检测与离线修复**：检查工具实际依赖，优先使用随包携带的官方 .NET 8 x64 安装器；主程序无法启动时可使用开始菜单独立入口。
+- **运行库进度与全量卸载**：修复显示当前步骤；全量卸载先确认候选清单，通过身份核验后执行，不自动重装。
+- **后端异常即时处理**：报错弹窗直接提供核对与可信恢复入口，处理失败可原地重试，保留真实未确认证据。
+
+Alpha 预发布仅向内测通道提供；公测通道仍筛选 Beta/Release。仓库根目录 `update.json` 保留公测版本，内测更新通过 GitHub 预发布及对应 Release 附件 `update.json` 提供。
 
 ## 系统要求
 
@@ -78,6 +88,8 @@ src\DeltaNFD\bin\x64\Debug\net8.0-windows10.0.19041.0\win-x64\DeltaNFD.exe
 
 > **VC++ 运行库**：AIO 修复安装器使用完整解包目录 `src\DeltaNFD\Assets\VCRedistRepair\`（保留原有目录结构及 `payload_manifest_sha256.csv`），另需 `VCRedist2015-2022-x64.exe` 和 `VCRedist2015-2022-x86.exe`。这些文件只作为安装器的构建输入，不单独发布；运行 `installer\make-installer.cmd` 会将应用与运行库一起封装为单个 `三角帧不掉洲_DeltaNFD_安装包_<版本>_x64.exe`。x86/x64 包可从[微软官方页面](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170)获取，AIO 修复包按其[上游项目](https://github.com/abbodi1406/vcredist)说明获取。
 
+> **.NET 离线修复**：安装包携带微软 .NET Runtime 8.0.31 x64 原版安装器。设置页优先校验并使用离线包；主程序无法启动时，可从开始菜单的“.NET 环境修复”打开独立入口。系统运行时安装器不能替换工具自带的缺损文件，这种情况需重新安装工具。发布脚本自动获取并核验固定 SHA512 的构建输入；也可先运行 `powershell -File installer/prepare-dotnet-repair.ps1` 准备资源。
+
 生成安装包需要 Windows、.NET 8 SDK 和 Inno Setup 6：
 
 兼容性修复另需 `Assets\DirectXRepair\` 微软官方离线资源。运行 `installer\prepare-directx-resources.ps1` 可下载并只解包，不执行安装；脚本核对固定 SHA256 和逐文件清单。`make-installer.cmd` 会自动调用该准备步骤。资源来源：[微软 DirectX End-User Runtimes（June 2010）](https://www.microsoft.com/en-us/download/details.aspx?id=8109)。
@@ -96,7 +108,7 @@ installer\make-installer.cmd
 
 ### 发布一个新版本（含自动更新清单）
 
-自动更新读取仓库 `main` 分支根目录的 `update.json`，比对版本后会提示用户下载对应安装包。发布步骤：
+自动更新默认读取 GitHub Releases API（由 `Assets/UpdateConfig.json` 配置），按所选通道选择已发布版本，并校验安装包 SHA256。用户配置中的官方直连 raw `main/update.json` 地址会被迁移为 Releases API；弱网加速插件仍优先读取代理后的静态 `main/update.json`，因此正式发布时也必须维护静态清单。历史源码 tag/ZIP 中的清单可能对应上一版安装包，应以当前 `main` 和实际已发布资产为准。发布步骤：
 
 1. 同步主程序、五个官方后端、官方助手及共享程序集的 `Version` / `InformationalVersion`，以及安装脚本的 `MyAppVersion` / `MyAppDisplayVersion`；发布新公告时再更新首启公告常量。
 2. 运行 `installer\make-installer.cmd` 生成安装包。
@@ -104,12 +116,14 @@ installer\make-installer.cmd
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File installer\make-update-manifest.ps1 `
-     -InstallerPath "<安装包路径>" -Version 0.9092 -DisplayVersion "AAlpha0.912" `
-     -InstallerUrl "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9092/<附件名>" `
-     -NotesFile "notes/0.9092.txt"
+     -InstallerPath "<安装包路径>" -Version 0.91 -DisplayVersion "Beta0.91" `
+     -InstallerUrl "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.91/<附件名>" `
+     -NotesFile "notes/0.91.txt"
    ```
 
 4. 把安装包上传到该 tag 的 Release，**并把生成的 `update.json` 提交到 `main`**。
+
+本地重打包不应覆盖线上清单；同版本不同哈希的安装包也不会向已安装同版本的用户提示更新。正式发布修复版应递增内部版本，并在对应资产上传后更新清单。
 5. 校验：`dotnet run --project tools/BackendSmokeTest -- --update-live`。
 
 > **更新源与镜像**：发布方改 `src/DeltaNFD/Assets/UpdateConfig.json`（随程序分发，升级安装会覆盖）；用户想自己加国内镜像，用设置页「更新源配置」生成并编辑 `%APPDATA%\Delta NFD\update-source.json`（优先级更高、升级不覆盖）。两种方式都要把**镜像主机写进 `allowedHosts`**，并在 `update.json` 的 `installers` 里加上镜像地址（`-MirrorUrl` 即可）。所有地址共用同一条 SHA256，客户端下载后强制校验，镜像内容被替换会被拒绝。

@@ -6,7 +6,7 @@ namespace DeltaNFD.Services;
 /// </summary>
 public sealed class CleanupService : ICleanupService
 {
-    private sealed record Target(string Name, Func<string[]> Paths, string Note = "");
+    private sealed record Target(string Name, Func<string[]> Paths, string Note = "", string? FilePattern = null);
 
     private static readonly Target[] Targets =
     [
@@ -22,7 +22,7 @@ public sealed class CleanupService : ICleanupService
         new("Windows 更新下载缓存", () => [Environment.SystemDirectory + "\\..\\SoftwareDistribution\\Download"],
             "清理后 Windows 更新需重新下载，更新服务运行时部分文件跳过"),
         new("缩略图缓存", () => [Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + "\\Microsoft\\Windows\\Explorer"],
-            "仅清 thumbcache_*.db，资源管理器会自动重建"),
+            "仅清 thumbcache_*.db，资源管理器会自动重建", FilePattern: "thumbcache_*.db"),
         new("错误报告与转储", () => [
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) + "\\CrashDumps",
             Environment.SystemDirectory + "\\..\\LiveKernelReports",
@@ -41,7 +41,7 @@ public sealed class CleanupService : ICleanupService
         foreach (var target in Targets)
         {
             var paths = target.Paths();
-            var sizeMb = paths.Sum(path => GetDirectorySizeMb(path));
+            var sizeMb = paths.Sum(path => GetDirectorySizeMb(path, target.FilePattern));
             result.Add(new CleanupTarget
             {
                 Name = target.Name,
@@ -71,15 +71,17 @@ public sealed class CleanupService : ICleanupService
         {
             foreach (var path in target.Paths())
             {
-                var before = GetDirectorySizeMb(path);
+                var before = GetDirectorySizeMb(path, target.FilePattern);
                 if (before <= 0)
                 {
                     continue;
                 }
 
                 progress?.Report($"正在清理：{target.Name}");
-                var failed = CleanDirectoryContents(path);
-                freedMb += Math.Max(0, before - GetDirectorySizeMb(path));
+                var failed = target.FilePattern is null
+                    ? CleanDirectoryContents(path)
+                    : CleanMatchingFiles(path, target.FilePattern);
+                freedMb += Math.Max(0, before - GetDirectorySizeMb(path, target.FilePattern));
                 if (failed > 0)
                 {
                     skipped.Add($"{target.Name}：{failed} 个文件被占用，已跳过");
@@ -92,7 +94,8 @@ public sealed class CleanupService : ICleanupService
 
     // ---------------- 内部 ----------------
 
-    private static double GetDirectorySizeMb(string path)
+    /// <summary>pattern 为空时统计整个目录树；否则只统计该目录顶层匹配的文件（与清理范围一致）。</summary>
+    private static double GetDirectorySizeMb(string path, string? pattern = null)
     {
         try
         {
@@ -102,14 +105,46 @@ public sealed class CleanupService : ICleanupService
             }
 
             var dirInfo = new DirectoryInfo(path);
-            return dirInfo
-                .EnumerateFiles("*", SearchOption.AllDirectories)
+            return (pattern is null
+                    ? dirInfo.EnumerateFiles("*", SearchOption.AllDirectories)
+                    : dirInfo.EnumerateFiles(pattern, SearchOption.TopDirectoryOnly))
                 .Sum(file => { try { return file.Length; } catch { return 0; } }) / 1024.0 / 1024.0;
         }
         catch
         {
             return 0;
         }
+    }
+
+    /// <summary>只删除目录顶层匹配 pattern 的文件（不递归、不动子目录），返回删除失败的文件数。</summary>
+    private static int CleanMatchingFiles(string path, string pattern)
+    {
+        var failed = 0;
+        try
+        {
+            if (!Directory.Exists(path))
+            {
+                return 0;
+            }
+
+            foreach (var file in Directory.EnumerateFiles(path, pattern, SearchOption.TopDirectoryOnly))
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch
+                {
+                    failed++;
+                }
+            }
+        }
+        catch
+        {
+            // 目录访问失败：整体跳过
+        }
+
+        return failed;
     }
 
     /// <summary>清空目录内容（保留目录本身），返回删除失败的文件数。</summary>

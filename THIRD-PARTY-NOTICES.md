@@ -7,6 +7,8 @@ Delta NFD 自定义非商业许可证只覆盖著作权人有权重新授权的�
 - **abbodi1406 / VisualCppRedist AIO**：运行库整合资源与 `Installer.cmd` 来自 https://github.com/abbodi1406/vcredist ，保留原作者及上游贡献者声明。项目许可证不重新授权该脚本或资源。
 - **Microsoft Visual C++ / DirectX**：安装包、MSI、CAB、DLL 和相关材料按微软或相应权利人的原始条款提供，不受 Delta NFD 自定义许可证重新授权。DirectX 资源来自微软 June 2010 redistributable。
 - **.NET、Windows App SDK、Windows SDK、CommunityToolkit.Mvvm**：保留各自上游许可证及自包含运行时附带的声明。为避免覆盖运行时文件，项目许可证在安装目录命名为 `DELTA-NFD-LICENSE.txt`。
+- **Microsoft .NET 8 x64 离线修复安装器**：随工具携带微软原版 .NET Runtime 8.0.31 x64 安装器（未修改），来源为微软正式版发布元数据及 `builds.dotnet.microsoft.com`；核验官方 SHA512 和微软数字签名。安装器及其内容沿用微软原始条款，不受 Delta NFD 自定义非商业许可证重新授权；不包含 .NET SDK、ASP.NET 或 WindowsDesktop Runtime。
+- **Intel / PresentMon 2.6.0（本地稳帧研究工具）**：可选的只读帧事件采集器来自 https://github.com/GameTechDev/PresentMon ，按 MIT 许可证使用，声明保留于 `tools/FramePacingResearch/PresentMon-LICENSE.txt`。当前仅下载到忽略的本地研究目录，不纳入主程序或安装包；项目非商业条款不重新授权此第三方组件。
 - **第三方名称、商标和独立素材**：不因被本项目使用而转移权利；已有独立声明优先适用。
 
 系统设置事实、Windows 接口名称及其他不受著作权专有控制的内容，不因项目许可证产生额外排他权。第三方内容的遗漏可通过原项目仓库反馈补充，本清单不构成对未核实权利的额外授权。

@@ -106,6 +106,17 @@ internal sealed class BackendRuntimeGuardService : IRuntimeGuardService
         return Map(result, "卸载 v14 运行库");
     }
 
+    public async Task<RuntimeUninstallPreview> PreviewUninstallAllAsync()
+    {
+        var result = await InvokeAsync(BackendCommands.RuntimeRedistPreviewAll, new { }, null, CancellationToken.None);
+        return RequireData<RuntimeUninstallPreview>(result, "预览全部 C++ 卸载条目");
+    }
+    public async Task<OperationResult> UninstallAllAsync(string fingerprint, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var result = await InvokeAsync(BackendCommands.RuntimeRedistUninstallAll, new RuntimeUninstallAllArgs { Fingerprint = fingerprint }, progress, cancellationToken);
+        return Map(result, "卸载全部 C++ 运行库");
+    }
+
     private static T RequireData<T>(BackendResult result, string what) where T : notnull
     {
         if (result.Status != BackendResultStatuses.Ok || result.Data is null)

@@ -7,6 +7,13 @@ namespace DeltaNFD.ViewModels;
 /// <summary>运行库页（安装记录/版本检测、Beta0.9 AIO 修复、新版防护模式）的页面状态。</summary>
 public partial class RuntimeViewModel : ObservableObject
 {
+    public static RuntimeViewModel Current { get; } = new();
+    [ObservableProperty] private bool uninstallAllPreviewBusy;
+    partial void OnUninstallAllPreviewBusyChanged(bool value)
+    {
+        foreach (var name in new[] { nameof(UninstallAllEnabled), nameof(UninstallV14Enabled), nameof(RepairEnabled),
+            nameof(CanCheck), nameof(GuardToggleEnabled), nameof(GuardModeEnabled), nameof(GuardCleanupEnabled) }) OnPropertyChanged(name);
+    }
     private readonly IRuntimeGuardService _guard = ServiceLocator.Guard;
     private bool _detectionFailed;
 
@@ -19,7 +26,7 @@ public partial class RuntimeViewModel : ObservableObject
     /// <summary>存在非最适版本运行库（低于推荐版本或未安装，黄色提醒）。</summary>
     [ObservableProperty] private bool hasSuboptimal;
 
-    public bool CanCheck => !IsChecking && !IsRepairing && !UninstallV14Busy;
+    public bool CanCheck => !IsChecking && !IsRepairing && !UninstallV14Busy && !UninstallAllBusy && !UninstallAllPreviewBusy && !GuardIsBusy;
 
     public string CheckButtonText => IsChecking ? "检测中…" : "重新检测";
 
@@ -31,6 +38,7 @@ public partial class RuntimeViewModel : ObservableObject
         // 否则进页自动检测把按钮判灰后，检测完成按钮永远不会再亮（x:Bind 不会自动追踪依赖属性）
         OnPropertyChanged(nameof(RepairEnabled));
         OnPropertyChanged(nameof(UninstallV14Enabled));
+        OnPropertyChanged(nameof(UninstallAllEnabled));
     }
 
     partial void OnHasIssueChanged(bool value) => OnPropertyChanged(nameof(RepairButtonText));
@@ -103,7 +111,7 @@ public partial class RuntimeViewModel : ObservableObject
     [ObservableProperty] private bool isRepairing;
     [ObservableProperty] private bool strongRepairMode;
     public string StrongRepairDescription => StrongRepairConfirmation;
-    public const string StrongRepairConfirmation = "开启后，两种修复都会先使用 DISM／SFC 修复 Windows 系统组件，并抽查 API Sets／UCRT；兼容性修复还会重新修复已安装的同版本 C++ 包。可能需要联网，耗时较长，部分情况需重启。";
+    public const string StrongRepairConfirmation = "开启后，两种修复都会先使用 DISM／SFC 修复 Windows 系统组件，并抽查 API Sets／UCRT，再执行共享的 C++ 卸载阶段。兼容性安装会加强同版本文件内容复核。可能需要联网，耗时较长，部分情况需重启。";
     [ObservableProperty] private string repairStatusText = "";
     [ObservableProperty] private string compatibilityRepairStatusText = "";
     [ObservableProperty] private bool compatibilityRepairSelected;
@@ -138,7 +146,7 @@ public partial class RuntimeViewModel : ObservableObject
         _repairCancellation?.Cancel();
     }
 
-    public bool RepairEnabled => !IsRepairing && !IsChecking && !UninstallV14Busy;
+    public bool RepairEnabled => !IsRepairing && !IsChecking && !UninstallV14Busy && !UninstallAllBusy && !UninstallAllPreviewBusy && !GuardIsBusy;
 
     /// <summary>Beta0.9 完整 AIO 修复；防护继续使用新版实现。</summary>
     public string RepairButtonText => IsHighFpsRepairing ? "高帧性修复中…" : "高帧性修复";
@@ -155,6 +163,7 @@ public partial class RuntimeViewModel : ObservableObject
         OnPropertyChanged(nameof(GuardModeEnabled));
         OnPropertyChanged(nameof(GuardCleanupEnabled));
         OnPropertyChanged(nameof(UninstallV14Enabled));
+        OnPropertyChanged(nameof(UninstallAllEnabled));
     }
 
     /// <summary>静默重装运行库，逐包记录安装结果，并在完成后复检。</summary>
@@ -174,15 +183,19 @@ public partial class RuntimeViewModel : ObservableObject
         RepairCancelRequested = false;
         CompatibilityRepairSelected = compatibility;
         IsRepairing = true;
+        if (compatibility) CompatibilityRepairStatusText = "正在准备兼容性修复…";
+        else RepairStatusText = "正在准备高帧性修复…";
+        bool operationEnded = false;
         try
         {
             var progress = new Progress<string>(s =>
             {
-                if (IsRepairing && !RepairCancelRequested && ReferenceEquals(_repairCancellation, cancellation))
+                if (!operationEnded && IsRepairing && !RepairCancelRequested && ReferenceEquals(_repairCancellation, cancellation))
                 { if (compatibility) CompatibilityRepairStatusText = s; else RepairStatusText = s; }
             });
             var result = compatibility ? await _guard.RepairCompatibilityAsync(progress, cancellation.Token, strongMode)
                 : await _guard.RepairVcRedistAsync(progress, confirmedMode ?? RepairMode, cancellation.Token, strongMode);
+            operationEnded = true;
             var status = result.Success ? "修复流程及组件复检通过。" : "修复未完成，请查看失败明细及诊断目录。";
             if (compatibility) CompatibilityRepairStatusText = status; else RepairStatusText = status;
             if (result.OutcomeUnknown || RepairCancelRequested)
@@ -219,7 +232,7 @@ public partial class RuntimeViewModel : ObservableObject
     [ObservableProperty] private bool uninstallV14Busy;
     [ObservableProperty] private string uninstallV14StatusText = "";
 
-    public bool UninstallV14Enabled => !UninstallV14Busy && !IsRepairing && !IsChecking;
+    public bool UninstallV14Enabled => !UninstallV14Busy && !IsRepairing && !IsChecking && !UninstallAllBusy && !UninstallAllPreviewBusy && !GuardIsBusy;
 
     partial void OnUninstallV14BusyChanged(bool value)
     {
@@ -230,6 +243,7 @@ public partial class RuntimeViewModel : ObservableObject
         OnPropertyChanged(nameof(GuardToggleEnabled));
         OnPropertyChanged(nameof(GuardModeEnabled));
         OnPropertyChanged(nameof(GuardCleanupEnabled));
+        OnPropertyChanged(nameof(UninstallAllEnabled));
     }
 
     /// <summary>确认弹窗用的 v14 条目清单（空串 = 无条目）。</summary>
@@ -243,7 +257,7 @@ public partial class RuntimeViewModel : ObservableObject
     /// <summary>单独卸载名字带「v14」的运行库（年份命名条目不动）；完成后自动重跑检测。</summary>
     public async Task<OperationResult?> UninstallV14Async()
     {
-        if (UninstallV14Busy)
+        if (!UninstallV14Enabled)
         {
             return null;
         }
@@ -263,6 +277,52 @@ public partial class RuntimeViewModel : ObservableObject
     }
 
     // ---------------- 防护模式 ----------------
+    [ObservableProperty] private bool uninstallAllBusy;
+    [ObservableProperty] private string uninstallAllStatusText = "";
+    [ObservableProperty] private bool uninstallAllCancelRequested;
+    private CancellationTokenSource? _allCancellation;
+    public bool UninstallAllEnabled => RepairEnabled;
+    public bool CanCancelUninstallAll => UninstallAllBusy && !UninstallAllCancelRequested;
+    partial void OnUninstallAllCancelRequestedChanged(bool value) => OnPropertyChanged(nameof(CanCancelUninstallAll));
+    partial void OnUninstallAllBusyChanged(bool value)
+    {
+        foreach (var name in new[] { nameof(UninstallAllEnabled), nameof(CanCancelUninstallAll), nameof(UninstallV14Enabled),
+            nameof(RepairEnabled), nameof(CanCheck), nameof(GuardToggleEnabled), nameof(GuardModeEnabled), nameof(GuardCleanupEnabled) }) OnPropertyChanged(name);
+    }
+    public Task<RuntimeUninstallPreview> PreviewUninstallAllAsync() => _guard.PreviewUninstallAllAsync();
+    public void CancelUninstallAll()
+    {
+        if (!CanCancelUninstallAll) return;
+        UninstallAllCancelRequested = true;
+        UninstallAllStatusText = "已请求停止后续卸载；不会强杀安装事务，已卸载的组件不会自动还原。";
+        _allCancellation?.Cancel();
+    }
+    public async Task<OperationResult?> UninstallAllAsync(string fingerprint)
+    {
+        if (!UninstallAllEnabled) return null;
+        UninstallAllBusy = true; UninstallAllCancelRequested = false;
+        using var cancellation = new CancellationTokenSource(); _allCancellation = cancellation;
+        bool operationEnded = false;
+        UninstallAllStatusText = "正在核验已确认的卸载清单…";
+        try
+        {
+            var progress = new Progress<string>(message =>
+            { if (!operationEnded && UninstallAllBusy && !UninstallAllCancelRequested && ReferenceEquals(_allCancellation, cancellation)) UninstallAllStatusText = message; });
+            var result = await _guard.UninstallAllAsync(fingerprint, progress, cancellation.Token);
+            operationEnded = true;
+            UninstallAllStatusText = result.Success ? "全部卸载及复检通过。" : result.OutcomeUnknown ? "卸载事务未确认，请核对诊断记录。" : "卸载未全部完成，详见结果。";
+            if (!result.OutcomeUnknown && !UninstallAllCancelRequested) await LoadAsync();
+            return result;
+        }
+        catch (Exception ex)
+        {
+            UninstallAllStatusText = "卸载未完成：" + ex.Message;
+            Log.Error("全量运行库卸载请求失败", ex);
+            return new OperationResult { Success = false, OutcomeUnknown = ex is OperationCanceledException or IOException,
+                Message = UninstallAllStatusText + (ex is OperationCanceledException or IOException ? "\n不能据此确认后端安装事务已结束，请核对诊断记录。" : "") };
+        }
+        finally { _allCancellation = null; UninstallAllBusy = false; }
+    }
 
     [ObservableProperty] private bool guardIsEnabled;
     [ObservableProperty] private bool guardIsBusy;
@@ -276,10 +336,10 @@ public partial class RuntimeViewModel : ObservableObject
     public bool GuardModeEnabled => GuardToggleEnabled && !GuardIsEnabled && _legacyIfeo.Count == 0;
     private IReadOnlyList<RuntimeGuardLegacyEntry> _legacyIfeo = [];
     public bool CanCleanupLegacyIfeo => _legacyIfeo.Count > 0;
-    public bool GuardCleanupEnabled => !GuardIsBusy && !IsRepairing && !UninstallV14Busy;
+    public bool GuardCleanupEnabled => !GuardIsBusy && !IsRepairing && !UninstallV14Busy && !UninstallAllBusy && !UninstallAllPreviewBusy;
     public string LegacyIfeoNames => string.Join("\n", _legacyIfeo.Select(e => e.Name));
 
-    public bool GuardToggleEnabled => _guardStateKnown && !GuardIsBusy && !IsRepairing && !UninstallV14Busy;
+    public bool GuardToggleEnabled => _guardStateKnown && !GuardIsBusy && !IsRepairing && !UninstallV14Busy && !UninstallAllBusy && !UninstallAllPreviewBusy;
 
     public string GuardToggleText => GuardIsBusy ? "切换中…" : GuardIsPartial ? "防护部分生效"
         : GuardIsEnabled ? "防护已开启" : "防护未开启";
@@ -290,6 +350,8 @@ public partial class RuntimeViewModel : ObservableObject
         OnPropertyChanged(nameof(GuardModeEnabled));
         OnPropertyChanged(nameof(GuardCleanupEnabled));
         OnPropertyChanged(nameof(GuardToggleText));
+        OnPropertyChanged(nameof(UninstallAllEnabled)); OnPropertyChanged(nameof(UninstallV14Enabled));
+        OnPropertyChanged(nameof(RepairEnabled)); OnPropertyChanged(nameof(CanCheck));
     }
 
     partial void OnGuardIsEnabledChanged(bool value)
@@ -399,7 +461,7 @@ public partial class RuntimeViewModel : ObservableObject
     public async Task<OperationResult?> SetGuardAsync(bool enable)
     {
         // Closing also serves as an explicit retry when the previous status read failed.
-        if (GuardIsBusy || IsRepairing || UninstallV14Busy || (enable && !_guardStateKnown))
+        if (GuardIsBusy || IsRepairing || UninstallV14Busy || UninstallAllBusy || (enable && !_guardStateKnown))
         {
             return null;
         }

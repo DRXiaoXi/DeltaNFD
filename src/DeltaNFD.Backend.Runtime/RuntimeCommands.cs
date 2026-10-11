@@ -25,6 +25,8 @@ internal static class RuntimeCommands
             [BackendCommands.RuntimeRepair] = RepairAsync,
             [BackendCommands.RuntimeCompatibilityRepair] = CompatibilityRepairAsync,
             [BackendCommands.RuntimeRedistUninstall] = RedistUninstallAsync,
+            [BackendCommands.RuntimeRedistPreviewAll] = PreviewAllAsync,
+            [BackendCommands.RuntimeRedistUninstallAll] = UninstallAllAsync,
             [BackendCommands.RuntimeReconcile] = ReconcileAsync,
             [BackendCommands.RuntimeRecover] = RecoverAsync,
         },
@@ -124,6 +126,18 @@ internal static class RuntimeCommands
     {
         var progress = new RelayProgress(context);
         return Wrap("runtime.redist.uninstall", await new RuntimeGuardService().UninstallV14Async(progress));
+    }
+
+    private static async Task<BackendResult> PreviewAllAsync(BackendCommandContext context)
+    {
+        var preview = await new RuntimeGuardService().PreviewUninstallAllAsync();
+        return BackendResult.Ok(context.Command, $"全量卸载候选 {preview.Entries.Count} 项。", preview);
+    }
+
+    private static async Task<BackendResult> UninstallAllAsync(BackendCommandContext context)
+    {
+        var args = context.ArgsAs<RuntimeUninstallAllArgs>();
+        return Wrap(context.Command, await new RuntimeGuardService().UninstallAllAsync(args.Fingerprint, new RelayProgress(context), context.CancellationToken));
     }
 
     private static async Task<BackendResult> CompatibilityRepairAsync(BackendCommandContext context)

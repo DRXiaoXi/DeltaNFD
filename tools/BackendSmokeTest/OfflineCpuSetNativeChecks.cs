@@ -29,6 +29,11 @@ internal static class OfflineCpuSetNativeChecks
 
     public static void RunCurrentProcess()
     {
+        var testId = Guid.NewGuid();
+        var data = Path.Combine(Path.GetTempPath(), "DeltaNFD-native-cpuset-" + testId.ToString("N"));
+        Directory.CreateDirectory(data);
+        File.WriteAllText(Path.Combine(data, "isolated-test.marker"), testId.ToString("D"));
+        AppDataPaths.ConfigureIsolatedDataRoot(data, testId);
         var api = Environment.OSVersion.Version.Build >= 22000
             ? OfflineCpuSetApi.Windows11Masks
             : OfflineCpuSetApi.Windows10Ids;

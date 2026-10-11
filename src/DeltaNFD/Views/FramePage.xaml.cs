@@ -18,6 +18,32 @@ public sealed class PowerLockTargetItem
 
 public sealed partial class FramePage : Page, INotifyPropertyChanged
 {
+    private async void ReviewPowerBackup_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (FrameSrv.FrameModeActive)
+            {
+                await new ContentDialog { XamlRoot = XamlRoot, Title = "先停用帧格", Content = "请先关闭一键帧格模式，再核对恢复记录，避免守护继续写入。", CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
+                return;
+            }
+            var recovered = await FrameSrv.DeactivateFrameModeAsync();
+            var unresolved = await FrameSrv.GetIncompletePowerBackupsAsync();
+            if (unresolved.Count == 0)
+            {
+                await new ContentDialog { XamlRoot = XamlRoot, Title = recovered.Success ? "电源记录已核对" : "恢复未完成", Content = recovered.Message, CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
+                return;
+            }
+            var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "无法精确恢复的电源记录",
+                Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = string.Join("\n", unresolved.Select(r => r.Path + "\n" + r.Reason))
+                    + "\n\n先前恢复已尽力处理可读取项。若确认当前电源设置可以保留，可将列出的原记录归档并停用相关保护。这不是恢复成功或恢复默认，不会在此步骤写入电源值；归档后原文件仍可用于排查。" },
+                PrimaryButtonText = "保留当前值并归档", CloseButtonText = "继续保留待恢复", DefaultButton = ContentDialogButton.Close };
+            if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
+            var result = await FrameSrv.PreserveCurrentPowerValuesAsync(unresolved);
+            await new ContentDialog { XamlRoot = XamlRoot, Title = result.Success ? "已归档证据" : "未完成", Content = result.Message, CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
+        }
+        catch (Exception ex) { Log.Error("电源记录核对失败，证据保留", ex); }
+    }
     public string TargetLabel => "当前主进程：" + DeltaNFD.Services.GameTargetService.Default.Current.DisplayName;
     public bool NormalModeControlsEnabled => !OfflineModeGuard.BlocksNormalAutomation;
     private static readonly SolidColorBrush GameRunningBrush =
@@ -287,7 +313,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
                     Content = result.Message,
                     CloseButtonText = "知道了",
                     DefaultButton = ContentDialogButton.Close,
-                }.ShowAsync();
+                }.ShowWithBackendRecoveryAsync();
             }
         }
         finally
@@ -308,7 +334,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
         {
             return;
         }
@@ -321,6 +347,6 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
             Content = result.Message,
             CloseButtonText = "知道了",
             DefaultButton = ContentDialogButton.Close,
-        }.ShowAsync();
+        }.ShowWithBackendRecoveryAsync();
     }
 }
