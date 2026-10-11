@@ -18,6 +18,9 @@ internal static class ProcmanRepairChecks
         foreach (var file in Directory.EnumerateFiles(Path.GetDirectoryName(typeof(ProcmanRepairChecks).Assembly.Location)!))
             File.Copy(file, Path.Combine(fixture, Path.GetFileName(file)));
         using var child = Process.Start(new ProcessStartInfo(Path.Combine(fixture, "BackendSmokeTest.exe"), "--procman-test-child") { UseShellExecute = false, CreateNoWindow = true })!;
+        // Hosted CI can inherit AboveNormal/BelowNormal from its runner. Give the dedicated fixture
+        // a declared baseline; restoration assertions must not assume the host's priority is Normal.
+        child.PriorityClass = ProcessPriorityClass.Normal;
         var count = 0;
         bool completed = false;
         void Check(bool ok, string name) { if (!ok) throw new Exception(name); count++; Console.WriteLine("PASS: " + name); }
