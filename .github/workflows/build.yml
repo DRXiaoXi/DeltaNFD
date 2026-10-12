@@ -19,6 +19,15 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Cache pinned runtime test inputs
+        uses: actions/cache@v4
+        with:
+          path: _buildcheck/ci-runtime-inputs/source.zip
+          key: runtime-inputs-0.914-fd8ace56405aebaee
+
+      - name: Prepare verified redistributable test inputs
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tools/PrepareCiRuntimeResources.ps1
+
       - name: Build main app (x64)
         run: dotnet build src/DeltaNFD/DeltaNFD.csproj -c Release -p:Platform=x64
 
