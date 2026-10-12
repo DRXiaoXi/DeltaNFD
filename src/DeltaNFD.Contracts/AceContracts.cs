@@ -58,13 +58,13 @@ public sealed class AceScanResult
 /// <summary>ACE 虚拟化环境单项检测的符合度。</summary>
 public enum AceVirtStatus
 {
-    /// <summary>符合 ACE 运行要求。</summary>
+    /// <summary>该项满足本工具检测标准。</summary>
     Pass,
 
-    /// <summary>不符合，会导致「未开启或有其他软件占用CPU虚拟化功能」弹框。</summary>
+    /// <summary>已确认不满足该项标准；不代表可以预测所有反作弊判定。</summary>
     Fail,
 
-    /// <summary>建议关注（不一定导致弹框，但可能扣分/触发安全环境提示）。</summary>
+    /// <summary>配置或辅助信息提醒，不能据此断定当前有运行冲突。</summary>
     Warn,
 
     /// <summary>无法检测（需管理员 / 系统接口缺失 / 查询超时）。</summary>
@@ -93,8 +93,8 @@ public sealed class AceVirtCheckItem
 
 /// <summary>
 /// ACE 虚拟化环境检测结果（纯只读快照）。分两层：
-/// 硬件层（BIOS 中 VT-x/SVM 与 VT-d/IOMMU 是否开启）+ 系统层（VBS/HVCI/Hyper-V/沙盒/WSL2 是否占用虚拟化）。
-/// 注意：内核 DMA 保护启用 = VT-d/IOMMU 已开，是 ACE **要求**的状态，与 VBS 关闭不冲突。
+/// 硬件层检查固件 CPU 虚拟化与当前内核 DMA 保护；系统层区分实际运行与配置提醒。
+/// 内核 DMA 保护关闭不能单独证明 IOMMU 关闭；检测结果不是 ACE 通过保证。
 /// </summary>
 public sealed class AceVirtualizationCheckResult
 {
@@ -109,15 +109,22 @@ public sealed class AceVirtualizationCheckResult
 
     public bool HasFailure => Hardware.Concat(System).Any(i => i.Status == AceVirtStatus.Fail);
 
-    public bool HasUnknown => Hardware.Concat(System).Any(i => i.Status == AceVirtStatus.Unknown);
+    public bool HasUnknown => Hardware.Count == 0 || System.Count == 0 || Hardware.Concat(System).Any(i => i.Status == AceVirtStatus.Unknown);
 
-    public bool AllPass => !HasFailure && !HasUnknown;
+    public bool HasWarnings => Hardware.Concat(System).Any(i => i.Status == AceVirtStatus.Warn);
+
+    public bool HasFixableConflict => System.Any(i => i.Status == AceVirtStatus.Fail &&
+        i.Id is "system.hypervisor-runtime" or "system.vbs" or "system.hvci");
+
+    public bool AllPass => !HasFailure && !HasUnknown && !HasWarnings;
 
     public string OverallSummary => HasFailure
-        ? "存在不符合项：按下方指引处理后重启电脑，再重新检测。"
+        ? "存在已确认未达标项：请查看具体状态与处理指引。"
         : HasUnknown
-            ? "部分项目无法确认（可能需要以管理员身份运行本工具），其余均符合要求。"
-            : "虚拟化环境符合 ACE 反作弊运行要求。";
+            ? "部分项目无法确认；读取失败不代表环境不合格，请按单项提示核对。"
+            : HasWarnings
+                ? "未发现已确认的冲突或未达标项；存在配置提醒，请查看详情。"
+                : "本次检测项目均满足本工具的虚拟化兼容性标准；不代表 ACE 通过保证。";
 }
 public enum AceCoreCheckLevel
 {

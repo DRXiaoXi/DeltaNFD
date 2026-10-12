@@ -91,6 +91,9 @@ internal static class RuntimeUnifiedUninstallChecks
             .Where(f => new DirectoryInfo(Path.GetDirectoryName(f)!).Name is "x86" or "x64");
         foreach (var file in msi)
             Check(RuntimeMsiMetadata.ReadArchitecture(file) == new DirectoryInfo(Path.GetDirectoryName(file)!).Name, "真实资源 MSI 架构只读核对：" + file);
+        count += await RuntimeDependencyUninstallChecks.RunAsync(root);
+        count += await RuntimeUninstallBatchChecks.RunAsync(root);
+        count += await RuntimeInfUninstallChecks.RunAsync(root);
         Console.WriteLine($"统一卸载检查通过：{count} 项；卸载和登记清理均为模拟，只读读取 MSI 元数据。");
     }
 
@@ -107,7 +110,7 @@ internal static class RuntimeUnifiedUninstallChecks
         public RuntimeMsiProduct ReadProduct(string product) => Products[product];
         public void ValidateRegistration(RuntimeUnifiedUninstallPlan plan)
         { if (ChangeAfterFirst && Calls.Count > 0) throw new IOException("changed"); }
-        public Task<RuntimeStepResult> UninstallAsync(string product, string log, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
+        public Task<RuntimeStepResult> UninstallAsync(RuntimeUnifiedUninstallPlan plan, string product, string log, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
         {
             Calls.Add(product); var result = Results.Count == 0 ? new RuntimeStepResult(0) : Results[0]; if (Results.Count > 0) Results.RemoveAt(0);
             if (!LeaveInstalled && (result.Success || result.ExitCode == 1605)) Products[product] = Products[product] with { State = -1 };

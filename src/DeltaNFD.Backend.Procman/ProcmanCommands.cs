@@ -28,7 +28,7 @@ internal static class ProcmanCommands
             handlers[command] = async context =>
             {
                 // Recover 是按记录的恢复核对流程，不产生新的未知操作标记。
-                if (context.Command != BackendCommands.ProcmanRecover) _sessionModified = true;
+                if (context.Command is not (BackendCommands.ProcmanRecover or BackendCommands.ProcmanMemoryTrim)) _sessionModified = true;
                 var result = await handler(context);
                 if (context.Command == BackendCommands.ProcmanRestoreAll && result.Status == BackendResultStatuses.Ok)
                     _sessionModified = false;
@@ -62,6 +62,14 @@ internal static class ProcmanCommands
             [BackendCommands.ProcmanRulesDelete] = RulesDeleteAsync,
             [BackendCommands.ProcmanResponsivenessConfig] = ResponsivenessConfigAsync,
             [BackendCommands.ProcmanResponsivenessEvents] = ResponsivenessEventsAsync,
+            [BackendCommands.ProcmanMemoryPreview] = MemoryPreviewAsync,
+            [BackendCommands.ProcmanMemoryTrim] = MemoryTrimAsync,
+            [BackendCommands.ProcmanBackgroundGet] = context => Task.FromResult(BackendResult.Ok(context.Command, "后台管理设置。", Engine.BackgroundStatus())),
+            [BackendCommands.ProcmanBackgroundSave] = context =>
+            {
+                var result = Engine.SaveBackgroundConfig(context.ArgsAs<ProcmanBackgroundConfig>());
+                return Task.FromResult(result.Success ? BackendResult.Ok(context.Command, result.Message, Engine.BackgroundStatus()) : BackendResult.Failed(context.Command, result.Message));
+            },
             [BackendCommands.ProcmanNativeProbe] = NativeProbeAsync,
         },
     };
@@ -83,14 +91,28 @@ internal static class ProcmanCommands
     private static Task<BackendResult> StatusAsync(BackendCommandContext context)
         => Task.FromResult(BackendResult.Ok(context.Command, "进程管理后端就绪。", Engine.Snapshot()));
 
+    private static async Task<BackendResult> MemoryPreviewAsync(BackendCommandContext context)
+    {
+        var preview = await Engine.PreviewMemoryAsync(context.CancellationToken);
+        return BackendResult.Ok(context.Command, preview.Message, preview);
+    }
+
+    private static Task<BackendResult> MemoryTrimAsync(BackendCommandContext context)
+    {
+        var report = Engine.TrimMemory(context.ArgsAs<ProcmanMemoryTrimArgs>(), context.CancellationToken);
+        // Every requested target settles separately; skipped/failed targets are known outcomes,
+        // not an obligation to pretend that discarded working-set pages can be restored.
+        return Task.FromResult(BackendResult.Ok(context.Command, report.Message, report));
+    }
+
     private static async Task<BackendResult> ActivateAsync(BackendCommandContext context)
     {
-        if (OfflineModeGuard.BlocksNormalAutomation) return BackendResult.Failed(context.Command, "脱机模式期间不启动通用进程规则。");
+        if (OfflineModeGuard.BlocksNormalAutomation) return BackendResult.Failed(context.Command, "旧版设置恢复完成前不启动通用进程规则。");
         var recovered = await Engine.RestoreAllAsync();
         if (!recovered.Success) return BackendResult.Failed(context.Command, "上轮恢复未完成，未启动规则：" + recovered.Message);
-        var result = Engine.ListRules().Rules.Any(r => r.Enabled) ? Engine.StartRulesEngine() : OperationResult.Ok("没有启用的持久规则。");
+        var result = Engine.ActivateBackground();
         _sessionModified = Engine.Snapshot().RulesEngineRunning;
-        return BackendResult.Ok(context.Command, result.Message);
+        return result.Success ? BackendResult.Ok(context.Command, result.Message) : BackendResult.Failed(context.Command, result.Message);
     }
 
     private static Task<BackendResult> ListAsync(BackendCommandContext context)

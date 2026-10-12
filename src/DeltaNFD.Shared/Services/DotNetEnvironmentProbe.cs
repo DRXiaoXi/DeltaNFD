@@ -67,10 +67,10 @@ public static class DotNetEnvironmentProbe
                     hostfxr = candidates[0].HostFxr;
                     version = candidates[0].Version;
                 }
-                var key = runtimeDir + "|" + deps + "|" + hostfxr;
+                var key = runtimeDir + "|" + deps + "|" + hostfxr + "|" + version;
                 if (!cache.TryGetValue(key, out var detail))
                 {
-                    detail = ValidateRuntime(runtimeDir, deps, hostfxr, token);
+                    detail = ValidateRuntime(runtimeDir, deps, hostfxr, version, token);
                     cache.Add(key, detail);
                 }
                 results.Add(new(app.Name, (bundled ? "工具自带：" : "系统：") + runtimeDir,
@@ -107,13 +107,13 @@ public static class DotNetEnvironmentProbe
                 yield return new(v, dir, fxr ?? Path.Combine(fxrRoot, "missing", "hostfxr.dll"));
     }
 
-    private static string ValidateRuntime(string directory, string depsPath, string hostfxr, CancellationToken token)
+    private static string ValidateRuntime(string directory, string depsPath, string hostfxr, Version expectedVersion, CancellationToken token)
     {
         using var deps = JsonDocument.Parse(File.ReadAllText(depsPath));
         var targetName = deps.RootElement.GetProperty("runtimeTarget").GetProperty("name").GetString()!;
         var target = deps.RootElement.GetProperty("targets").GetProperty(targetName);
         var assets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var library in target.EnumerateObject().Where(p => p.Name.StartsWith("Microsoft.NETCore.App.Runtime.win-x64/", StringComparison.Ordinal)))
+        foreach (var library in target.EnumerateObject().Where(p => IsRequiredRuntimeLibrary(p.Name, expectedVersion)))
             foreach (var group in new[] { "runtime", "native" })
                 if (library.Value.TryGetProperty(group, out var files))
                     foreach (var file in files.EnumerateObject())
@@ -142,5 +142,17 @@ public static class DotNetEnvironmentProbe
             { failed.Add(Path.GetFileName(file) + "（" + ex.Message + "）"); }
         }
         return failed.Count == 0 ? "" : $"{failed.Count} 个所需文件缺失/不可读/格式异常：" + string.Join("；", failed.Take(6));
+    }
+
+    private static bool IsRequiredRuntimeLibrary(string name, Version expectedVersion)
+    {
+        // A system runtime's own deps uses Microsoft.NETCore.App.Runtime.win-x64/VERSION;
+        // SDK self-contained app publication uses runtimepack.Microsoft.NETCore.App.Runtime.win-x64/VERSION.
+        // Match the complete package identity, architecture and declared version in both layouts.
+        const string sdkPrefix = "runtimepack.";
+        if (name.StartsWith(sdkPrefix, StringComparison.Ordinal)) name = name[sdkPrefix.Length..];
+        var parts = name.Split('/');
+        return parts.Length == 2 && parts[0] == "Microsoft.NETCore.App.Runtime.win-x64"
+            && Version.TryParse(parts[1], out var actual) && actual == expectedVersion;
     }
 }

@@ -6,6 +6,17 @@ namespace DeltaNFD.Services;
 /// </summary>
 public sealed class OperationResult
 {
+    private string _diagnosticsDirectory = "";
+    /// <summary>本次操作的诊断目录；空值表示使用主程序日志。前端打开前校验本地日志范围。</summary>
+    public string DiagnosticsDirectory { get => _diagnosticsDirectory; init => _diagnosticsDirectory = value; }
+
+    public OperationResult WithDiagnostics(string directory)
+    {
+        var copy = (OperationResult)MemberwiseClone();
+        copy._diagnosticsDirectory = directory;
+        return copy;
+    }
+
     public bool Success { get; init; }
 
     /// <summary>只完成了部分操作，不能作为完整成功展示。</summary>

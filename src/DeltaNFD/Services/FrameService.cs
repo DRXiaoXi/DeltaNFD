@@ -381,11 +381,10 @@ public sealed class FrameService : IFrameService
         set
         {
             if (_memoryCleanEnabled == value) return;
-            _memoryCleanEnabled = value;
+            _memoryCleanEnabled = false; // Retired; do not revive from an old caller.
             SaveSettings();
             OnPropertyChanged();
             UpdateStatus();
-            if (value && _frameModeActive) _ = Backends.BackendCpuFrameService.Instance.CleanMemoryNowAsync();
         }
     }
 
@@ -498,7 +497,7 @@ public sealed class FrameService : IFrameService
         set
         {
             if (_memoryCleanGameAutoEnabled == value) return;
-            _memoryCleanGameAutoEnabled = value;
+            _memoryCleanGameAutoEnabled = false;
             SaveSettings();
             OnPropertyChanged();
         }
@@ -771,12 +770,6 @@ public sealed class FrameService : IFrameService
                 RequiresReboot = useSpoof && GpuSpoofApplyMode == GpuSpoofApplyMode.Reboot,
                 RequiresDisplayConfirm = needsDisplayConfirm,
                 Message = "帧格已部分开启；部分功能未完成，不能视为全部生效。" + notes };
-
-        // 内存清理（实验性）：开启帧格时立即执行一次，给游戏腾出干净的可用内存
-        if (_memoryCleanEnabled)
-        {
-            _ = cpuFrame.CleanMemoryNowAsync();
-        }
 
         if (!useSpoof)
         {
@@ -1472,8 +1465,8 @@ public sealed class FrameService : IFrameService
         _responseBoostCoreParking = s.FrameResponseBoostCoreParkingEnabled;
         _responseBoostEcoQos = s.FrameResponseBoostEcoQosEnabled;
         _responseBoostTimer = s.FrameResponseBoostTimerEnabled;
-        _memoryCleanEnabled = s.FrameMemoryCleanEnabled;
-        _memoryCleanGameAutoEnabled = s.FrameMemoryCleanGameAutoEnabled;
+        _memoryCleanEnabled = false; // Ignore the obsolete persisted switch.
+        _memoryCleanGameAutoEnabled = false;
         _memoryCleanThresholdPercent = Math.Clamp(s.FrameMemoryCleanThresholdPercent, 30, 95);
         _memoryCleanThresholdText = _memoryCleanThresholdPercent.ToString();
         _foregroundBoostEnabled = s.FrameForegroundBoostEnabled;
@@ -1507,11 +1500,11 @@ public sealed class FrameService : IFrameService
                 s.FrameResponseBoostCoreParkingEnabled = _responseBoostCoreParking;
                 s.FrameResponseBoostEcoQosEnabled = _responseBoostEcoQos;
                 s.FrameResponseBoostTimerEnabled = _responseBoostTimer;
-                s.FrameMemoryCleanEnabled = _memoryCleanEnabled;
+                s.FrameMemoryCleanEnabled = false;
                 s.GpuSpoofApplyMode = _gpuSpoofApplyMode.ToString();
                 s.GpuSpoofRegistryPath = _gpuSpoofRegistryPath;
                 s.GpuSpoofFakeName = _gpuSpoofFakeName;
-                s.FrameMemoryCleanGameAutoEnabled = _memoryCleanGameAutoEnabled;
+                s.FrameMemoryCleanGameAutoEnabled = false;
                 s.FrameMemoryCleanThresholdPercent = _memoryCleanThresholdPercent;
                 s.FrameForegroundBoostEnabled = _foregroundBoostEnabled;
                 s.FrameForegroundResponsivenessEnabled = _foregroundResponsiveness;

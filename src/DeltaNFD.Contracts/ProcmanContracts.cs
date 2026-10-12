@@ -1,5 +1,28 @@
 namespace DeltaNFD.Services;
 
+public sealed record ProcmanMemoryCandidate(ProcessIdentityArgs Identity, string Name, long WorkingSetBytes, double CpuPercent);
+public sealed record ProcmanMemoryPreview(string Id, DateTimeOffset ExpiresUtc, IReadOnlyList<ProcmanMemoryCandidate> Candidates, string Message);
+public sealed class ProcmanMemoryTrimArgs
+{
+    public string PreviewId { get; set; } = "";
+    public List<ProcessIdentityArgs> Processes { get; set; } = [];
+}
+public sealed record ProcmanMemoryTrimItem(int Pid, string Name, string Status, string Message, long? BeforeBytes = null, long? AfterBytes = null);
+public sealed record ProcmanMemoryTelemetry(ulong TotalPhysicalBytes, ulong AvailablePhysicalBytes, uint LoadPercent,
+    ulong? CommitBytes = null, ulong? CommitLimitBytes = null);
+public sealed record ProcmanMemoryTrimReport(IReadOnlyList<ProcmanMemoryTrimItem> Items, string Message,
+    ProcmanMemoryTelemetry? Before = null, ProcmanMemoryTelemetry? After = null);
+
+public sealed record ProcmanBackgroundConfig
+{
+    public int SchemaVersion { get; init; } = 1;
+    public bool AutomaticMemoryEnabled { get; init; }
+    public int MemoryPressurePercent { get; init; } = 85;
+    public List<string> ExcludedExecutablePaths { get; init; } = [];
+}
+public sealed record ProcmanBackgroundStatus(ProcmanBackgroundConfig Config, bool AutomaticMemoryActive,
+    DateTimeOffset? LastCheckUtc, ProcmanMemoryTrimReport? LastReport, string Note = "", string Feedback = "");
+
 // ---------------- 进程管理（procman）合同 ----------------
 // 设计约束（notes/进程管理与响应性保护待做清单.md）：
 // - 进程身份 = PID + 启动时间 UTC ticks + 完整映像路径；写入前必须重新核对身份。
@@ -21,6 +44,9 @@ public sealed record ProcessIdentityArgs
 /// <summary>进程管理单页枚举请求：offset/limit 分页 + 可选搜索词（只按进程名过滤）。</summary>
 public sealed class ProcmanListArgs
 {
+    /// <summary>all (legacy), general (excluding Delta Force), or delta.</summary>
+    public string Scope { get; set; } = "all";
+    public string SortOrder { get; set; } = "memory";
     public int Offset { get; set; }
 
     /// <summary>页大小上限 500，超出由后端截断并在结果中说明。</summary>

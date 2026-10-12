@@ -27,7 +27,8 @@ internal sealed class RuntimeUnifiedUninstallBackend(RuntimeRepairDiagnostics di
         {
             var products = RuntimeUninstallCommand.ReadQuietInfProducts(RuntimeUninstallCommand.GetInfPath(entry));
             if (products.Length == 0) throw new InvalidDataException("INF 关联 MSI 无法可靠确认。");
-            return new(entry, products, registrations.ToArray());
+            var plan = new RuntimeUnifiedUninstallPlan(entry, products, registrations.ToArray());
+            return plan with { RelatedBundles = ResolveRelatedBundles(plan) };
         }
         if (kind != "Bundle" || !Guid.TryParse(entry.KeyName, out _)) throw new InvalidDataException("不支持的运行库包装登记。");
         var provider = ReadArpValue(registrations[0], "BundleProviderKey");
@@ -62,8 +63,7 @@ internal sealed class RuntimeUnifiedUninstallBackend(RuntimeRepairDiagnostics di
                 {
                     if (ShouldRetainNewerMsi(entry, installed)) { retained.Add(product.ToString("B")); continue; }
                 }
-                if (clients.Any(k => !k.Equals(entry.KeyName, StringComparison.OrdinalIgnoreCase)))
-                    throw new InvalidDataException("关联 MSI 还被其他安装包依赖，未忽略依赖强卸载：" + name);
+                ValidateBundleDependents(entry.KeyName, clients);
                 productsFound.Add(product.ToString("B"));
             }
         }
@@ -99,6 +99,23 @@ internal sealed class RuntimeUnifiedUninstallBackend(RuntimeRepairDiagnostics di
         {
             var current = RuntimeUninstallCommand.ReadQuietInfProducts(RuntimeUninstallCommand.GetInfPath(plan.Entry));
             if (!current.Order().SequenceEqual(plan.Products.Order(), StringComparer.OrdinalIgnoreCase) || plan.RetainedProducts.Length != 0) throw new IOException("INF 产品关联发生变化。");
+            foreach (var owner in plan.RelatedBundles)
+            {
+                ValidateRelatedBundle(plan, owner);
+                ValidateRegistration(owner);
+                foreach (var retained in owner.RetainedProducts)
+                {
+                    var product = ReadProduct(retained);
+                    if (product.State == -1) continue;
+                    RuntimeUnifiedUninstaller.ValidateProduct(plan.Entry, product);
+                    if (!Version.TryParse(product.Version, out var installedVersion) || !Version.TryParse(plan.Entry.DisplayVersion, out var targetVersion)
+                        || NormalizeVersion(installedVersion) != NormalizeVersion(targetVersion))
+                        throw new IOException("旧包装关联的升级产品与 INF 目标版本不同，未清理其引用。");
+                }
+            }
+            var activeOwners = ResolveRelatedBundles(plan);
+            if (activeOwners.Any(o => !plan.RelatedBundles.Any(saved => saved.Entry.KeyName.Equals(o.Entry.KeyName, StringComparison.OrdinalIgnoreCase))))
+                throw new IOException("INF 产品出现未核实的新包装引用，未继续。");
         }
         else
         {
@@ -122,15 +139,126 @@ internal sealed class RuntimeUnifiedUninstallBackend(RuntimeRepairDiagnostics di
         }
     }
 
-    public async Task<RuntimeStepResult> UninstallAsync(string product, string logPath, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
+    internal static void ValidateRelatedBundle(RuntimeUnifiedUninstallPlan inf, RuntimeUnifiedUninstallPlan owner)
+    {
+        var all = owner.Products.Concat(owner.RetainedProducts).ToArray();
+        if (inf.Entry.UninstallKind != "Inf" || owner.Entry.UninstallKind != "Bundle" || owner.RelatedBundles.Length != 0
+            || !RuntimeBulkUninstall.IsCandidate(owner.Entry)
+            || RuntimeUninstallCommand.Classify(owner.Entry.KeyName, owner.Entry.UninstallString, owner.Entry.QuietUninstallString) != "Bundle"
+            || all.Length == 0 || all.Distinct(StringComparer.OrdinalIgnoreCase).Count() != all.Length
+            || all.Any(p => !inf.Products.Contains(p, StringComparer.OrdinalIgnoreCase))
+            || owner.Entry.Architecture != inf.Entry.Architecture || !Guid.TryParse(owner.Entry.KeyName, out var id) || id == Guid.Empty
+            || !Version.TryParse(owner.Entry.DisplayVersion, out var ownerVersion) || !Version.TryParse(inf.Entry.DisplayVersion, out var infVersion)
+            || (owner.RetainedProducts.Length == 0 ? NormalizeVersion(ownerVersion) != NormalizeVersion(infVersion)
+                : owner.Products.Length != 0 || NormalizeVersion(ownerVersion) >= NormalizeVersion(infVersion)))
+            throw new InvalidDataException("INF 的包装引用身份、版本或产品范围无法匹配，未扩大卸载范围。");
+    }
+
+    private RuntimeUnifiedUninstallPlan[] ResolveRelatedBundles(RuntimeUnifiedUninstallPlan inf)
+    {
+        var owners = new Dictionary<string, RuntimeUnifiedUninstallPlan>(StringComparer.OrdinalIgnoreCase);
+        foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+        {
+            using var hive = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+            using var root = hive.OpenSubKey(Dependencies);
+            if (root is null) continue;
+            foreach (var name in root.GetSubKeyNames())
+            {
+                if (!Regex.IsMatch(name, @"^Microsoft\.VS\.VC_Runtime(?:Minimum|Additional)(?:VSU)?_(?:amd64|x86),v(?:11|12|14)$", RegexOptions.IgnoreCase)) continue;
+                using var provider = root.OpenSubKey(name);
+                if (!Guid.TryParse(provider?.GetValue("") as string, out var product)
+                    || !inf.Products.Contains(product.ToString("B"), StringComparer.OrdinalIgnoreCase)) continue;
+                using var dependents = provider!.OpenSubKey("Dependents");
+                var clients = dependents?.GetSubKeyNames() ?? [];
+                diagnostics.Save("dependency-" + product.ToString("N") + "-" + (int)view + ".json",
+                    new { Provider = name, Product = product, View = (int)view, Dependents = clients });
+                foreach (var client in clients)
+                {
+                    if (owners.ContainsKey(client)) continue;
+                    if (!Guid.TryParse(client, out var bundle) || bundle == Guid.Empty)
+                        throw new InvalidDataException("INF 关联 MSI 存在其他软件共享引用，未强制卸载：" + client);
+                    using var ownerHive64 = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+                    using var ownerHive32 = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry32);
+                    using var arp64 = ownerHive64.OpenSubKey(Arp + client);
+                    using var arp32 = ownerHive32.OpenSubKey(Arp + client);
+                    var arp = arp64 ?? arp32;
+                    if (arp is null) throw new InvalidDataException("INF 关联 MSI 的包装引用缺少可靠登记，需核对日志：" + client);
+                    var entry = new VcRedistEntry { KeyName = client,
+                        DisplayName = arp.GetValue("DisplayName") as string ?? "", DisplayVersion = arp.GetValue("DisplayVersion") as string ?? "",
+                        Architecture = inf.Entry.Architecture, UninstallKind = "Bundle",
+                        UninstallString = arp.GetValue("UninstallString") as string ?? "", QuietUninstallString = arp.GetValue("QuietUninstallString") as string ?? "" };
+                    if (!RuntimeBulkUninstall.IsCandidate(entry) || RuntimeUninstallCommand.Classify(client, entry.UninstallString, entry.QuietUninstallString) != "Bundle")
+                        throw new InvalidDataException("INF 关联 MSI 被非运行库安装包引用，保留共享依赖：" + client);
+                    var owner = Resolve(entry);
+                    ValidateRelatedBundle(inf, owner);
+                    owners.Add(client, owner);
+                }
+            }
+        }
+        return owners.Values.OrderBy(p => p.Entry.KeyName, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    internal static void ValidateBundleDependents(string bundle, IEnumerable<string> dependents)
+    {
+        if (!Guid.TryParse(bundle, out var id) || id == Guid.Empty) throw new InvalidDataException("Bundle 身份无效。");
+        var clients = dependents.ToArray();
+        if (clients.Length == 0 || clients.Any(c => !Guid.TryParse(c, out var client) || client != id))
+            throw new InvalidDataException("关联 MSI 仍被其他安装包依赖或归属已变化，未忽略依赖强卸载。");
+    }
+
+    internal static RuntimeUninstallCommand.Plan BuildUninstallCommand(RuntimeUnifiedUninstallPlan plan, string product, string? logPath)
+    {
+        if (!Guid.TryParse(product, out var productId) || productId == Guid.Empty
+            || !plan.Products.Contains(product, StringComparer.OrdinalIgnoreCase)
+            || plan.RetainedProducts.Contains(product, StringComparer.OrdinalIgnoreCase))
+            throw new InvalidDataException("MSI 不属于当前卸载计划，未启动。");
+        var entry = new VcRedistEntry { DisplayName = "verified", Architecture = "", KeyName = product,
+            UninstallKind = "Msi", UninstallString = "msiexec.exe /x " + product };
+        if (!RuntimeUninstallCommand.TryCreate(entry, logPath, out var command, out var error)) throw new InvalidDataException(error);
+        if (RuntimeUninstallCommand.Classify(plan.Entry.KeyName, plan.Entry.UninstallString, plan.Entry.QuietUninstallString) != "Bundle")
+            return command!;
+        if (!Guid.TryParse(plan.Entry.KeyName, out var bundle) || bundle == Guid.Empty)
+            throw new InvalidDataException("Bundle 身份无效，未启动。");
+        // WiX v3 wixdepca.cpp SplitIgnoredDependents accepts exact dependent keys. Never use ALL.
+        // Keep the original dependency metadata until confirmed removal; failure/timeout needs no rollback.
+        return command! with { Arguments = [.. command!.Arguments, "IGNOREDEPENDENCIES=" + bundle.ToString("B")] };
+    }
+
+    public async Task<RuntimeStepResult> UninstallAsync(RuntimeUnifiedUninstallPlan plan, string product, string logPath, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
     {
         var preflight = RuntimeRepairPreflight.Read();
         if (preflight.Blocker is { } blocker) return new(-1, blocker, RebootPending: preflight.RebootPending);
         if (_runner.CheckPending(preflight.InstallerBusy) is { } pending) return new(null, pending, OutcomeUnknown: true);
-        var entry = new VcRedistEntry { DisplayName = "verified", Architecture = "", KeyName = product, UninstallKind = "Msi", UninstallString = "msiexec.exe /x " + product };
-        if (!RuntimeUninstallCommand.TryCreate(entry, logPath, out var command, out var error)) return new(-1, error);
-        var result = await _runner.RunAsync(command!.CreateStartInfo(), "工具统一 MSI 卸载 " + product, timeout, progress, token);
-        try { if (File.Exists(logPath)) result = result with { Details = result.Details + "\n" + diagnostics.ReadErrorDetails(logPath) }; }
+        token.ThrowIfCancellationRequested();
+        ValidateRegistration(plan);
+        var command = BuildUninstallCommand(plan, product, logPath);
+        diagnostics.Event("msi-start-requested", new { Product = product, command.Executable, command.Arguments, Log = logPath });
+        diagnostics.Save(Path.GetFileNameWithoutExtension(logPath) + "-command.json", new { command.Kind, command.Arguments,
+            DependencyScope = command.Arguments.FirstOrDefault(a => a.StartsWith("IGNOREDEPENDENCIES=", StringComparison.Ordinal)) });
+        var result = await _runner.RunAsync(command.CreateStartInfo(), "工具统一 MSI 卸载 " + product, timeout, progress, token,
+            process => diagnostics.Event("msi-started", new { Product = product, Pid = process.Id, command.Executable }));
+        if (result.OutcomeUnknown)
+        {
+            try
+            {
+                var activePath = Path.Combine(AppDataPaths.Root, "runtime-repair-active.json");
+                if (File.Exists(activePath) && new FileInfo(activePath).Length < 64 * 1024)
+                {
+                    using var active = JsonDocument.Parse(File.ReadAllText(activePath));
+                    diagnostics.Save(Path.GetFileNameWithoutExtension(logPath) + "-active.json", active.RootElement);
+                }
+            }
+            catch (Exception ex) { diagnostics.Event("activity-copy-failed", new { Error = ex.Message }); }
+        }
+        try
+        {
+            if (File.Exists(logPath))
+            {
+                var lines = File.ReadLines(logPath).Where(line => line.Contains("WixDependencyCheck:", StringComparison.OrdinalIgnoreCase)
+                    || line.Contains("CustomAction WixDependencyCheck returned actual error code", StringComparison.OrdinalIgnoreCase)).Take(16);
+                result = result with { Details = result.Details + "\n" + diagnostics.ReadErrorDetails(logPath) + "\n" + string.Join("\n", lines) };
+            }
+        }
         catch (Exception ex) { Log.Warn("统一卸载日志无法读取：" + ex.Message); }
         Log.Info($"统一卸载 MSI 返回：产品={product}；退出码={result.ExitCode}；未知={result.OutcomeUnknown}；日志={logPath}");
         return result;

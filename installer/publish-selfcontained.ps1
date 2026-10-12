@@ -3,7 +3,7 @@
 #
 #  Output (default <repo>/_buildcheck/t5/publish):
 #    DeltaNFD.exe                                frontend (WinUI + self-contained .NET/WindowsAppSDK)
-#    Backends/                                  five backends + helper, one self-contained runtime
+#    Backends/                                  six backends, one self-contained runtime
 #    Assets/...                                  TweakDb / UpdateConfig / VC++ repair payload, etc.
 #
 #  Components use one SDK ArtifactsPath with per-project subdirectories,
@@ -66,7 +66,6 @@ $required = @(
     "Backends/DeltaNFD.Backend.SystemMaintenance.exe",
     "Backends/DeltaNFD.Backend.CpuFrame.exe",
     "Backends/DeltaNFD.Backend.Procman.exe",
-    "Backends/DeltaNFD.OfflineHelper.exe",
     "Assets/UpdateConfig.json",
     "Assets/DotNetRepair/dotnet-runtime-8.0.31-win-x64.exe",
     "Assets/DotNetRepair/RepairDotNet.cmd",
@@ -81,5 +80,10 @@ foreach ($relative in $required) {
     if (-not (Test-Path (Join-Path $out $relative))) { $missing += $relative }
 }
 if ($missing.Count -gt 0) { throw ("publish layout missing: " + ($missing -join ", ")) }
+
+Write-Host "Validate actual .NET runtime files and dependency manifests in the final shared layout..."
+dotnet run --project (Join-Path $repo 'tools/DotNetLayoutCheck/DotNetLayoutCheck.csproj') -c Release `
+    -p:Platform=x64 -p:NuGetAudit=false -p:UseArtifactsOutput=true "-p:ArtifactsPath=$artifacts/layout-check" -- $out
+if ($LASTEXITCODE -ne 0) { throw "Published .NET dependency check failed; installer generation is blocked." }
 
 Write-Host "Publish layout complete: $out"

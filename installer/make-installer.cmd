@@ -5,7 +5,7 @@ rem  Delta NFD / Delta No FPS Drops one-click installer build script
 rem  Usage: run from repo root:  installer\make-installer.cmd
 rem  Output: _buildcheck\installer-package-<build-id>\三角帧不掉洲_DeltaNFD_安装包_<version>_x64.exe
 rem
-rem  自前后端分离 T5 起，前端 + 五个官方后端 + 脱机助手的自包含布局统一由
+rem  前端 + 六个官方后端的自包含布局统一由
 rem  installer\publish-selfcontained.ps1 生成（各项目使用隔离 ArtifactsPath，避免
 rem  共享中间目录互相覆盖 assets）；本脚本只负责发布布局 + 编译 Inno Setup 安装包。
 rem
@@ -29,19 +29,19 @@ set "PUB=%CD%\_buildcheck\installer-publish-%BUILD_ID%"
 set "ART=%CD%\_buildcheck\installer-artifacts-%BUILD_ID%"
 set "PKG=%CD%\_buildcheck\installer-package-%BUILD_ID%"
 
-echo [1/2] Publish self-contained layout (frontend + 5 backends + offline helper) ...
+echo [1/2] Publish self-contained layout (frontend + 6 backends) ...
 rem  注意：OpenAlphaV0.83 起安装包必须内置背景图；不要传 IncludeBundledBackground=false。
 powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\installer\publish-selfcontained.ps1" ^
   -OutDir "%PUB%" -ArtifactsRoot "%ART%" -Configuration Release
 if errorlevel 1 goto :fail
 
-rem 背景图与脱机助手缺失要显式失败（发布脚本已检查，这里再兜底一次）。
+rem 背景图与官方后端缺失要显式失败（发布脚本已检查，这里再兜底一次）。
 set "BGFOUND="
 for %%F in ("%PUB%\Assets\background.*") do set "BGFOUND=%%F"
 if not defined BGFOUND goto :missing_background
 echo       background bundled: %BGFOUND%
-if not exist "%PUB%\Backends\DeltaNFD.OfflineHelper.exe" goto :missing_offline_helper
 if not exist "%PUB%\Backends\DeltaNFD.Backend.Ace.exe" goto :missing_backends
+if not exist "%PUB%\Backends\DeltaNFD.Backend.Procman.exe" goto :missing_backends
 
 set ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe
 if not exist "%ISCC%" set ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe
@@ -80,15 +80,9 @@ echo The installer MUST ship it since OpenAlphaV0.83 (otherwise the app falls ba
 echo Check that src\DeltaNFD\Assets\background.png exists and that IncludeBundledBackground is not set to false.
 exit /b 1
 
-:missing_offline_helper
-echo.
-echo [ERROR] The standalone offline helper is missing from the publish output.
-echo Check src\DeltaNFD.OfflineHelper and the publish step.
-exit /b 1
-
 :missing_backends
 echo.
 echo [ERROR] The official backend layout is missing from the publish output.
-echo Expected Backends\DeltaNFD.Backend.Ace.exe and four more modules.
+echo Expected Backends\DeltaNFD.Backend.Ace.exe and five more modules.
 echo Check installer\publish-selfcontained.ps1 and src\DeltaNFD.Backend.*.
 exit /b 1

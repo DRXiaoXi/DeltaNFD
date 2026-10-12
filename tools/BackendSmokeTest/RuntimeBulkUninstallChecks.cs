@@ -31,6 +31,8 @@ internal static class RuntimeBulkUninstallChecks
         Check(result.Success && fake.Executed.Count == 2 && fake.Scans >= 2, "全量卸载后复检零遗留才成功");
         fake = new([good, old]) { Response = new(1603, "fixture failure") }; result = await Run(fake);
         Check(!result.Success && fake.Executed.Count == 1, "一项失败停止后续条目");
+        fake = new([good, old]) { PrepareFailed = true }; result = await Run(fake);
+        Check(!result.Success && fake.Executed.Count == 0, "全量卸载整批预检失败时不得先卸载前几项");
         fake = new([good, old]) { Response = new(null, "fixture still running", OutcomeUnknown: true) }; result = await Run(fake);
         Check(!result.Success && result.OutcomeUnknown && fake.Executed.Count == 1, "事务未知保留证据，不继续或假报完成");
         fake = new([good, old]) { Response = new(3010, "fixture reboot") }; result = await Run(fake);
@@ -54,7 +56,10 @@ internal static class RuntimeBulkUninstallChecks
         public bool KeepEntries { get; init; }
         public string? Blocker { get; init; }
         public bool BlockOnSecond { get; init; }
+        public bool PrepareFailed { get; init; }
         public int Scans, Preflights;
+        public Task<IReadOnlyList<VcRedistEntry>> PrepareUninstallBatchAsync(IReadOnlyList<VcRedistEntry> entries, CancellationToken token)
+        { token.ThrowIfCancellationRequested(); if (PrepareFailed) throw new IOException("fixture late item invalid"); return Task.FromResult(entries); }
         public Task<string?> PreflightAsync(CancellationToken token) => Task.FromResult(BlockOnSecond && ++Preflights > 1 ? "fixture changed" : Blocker);
         public Task<List<VcRedistEntry>> ScanAsync(CancellationToken token) { Scans++; return Task.FromResult(new List<VcRedistEntry>(Entries)); }
         public Task<RuntimeStepResult> ExecuteAsync(VcRedistEntry entry, IProgress<string>? progress, CancellationToken token)

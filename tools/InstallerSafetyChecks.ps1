@@ -10,6 +10,7 @@ function Assert-Safety([bool]$Condition, [string]$Message) {
 }
 $pre = [regex]::Match($source, 'if CurUninstallStep = usUninstall then[\s\S]+?if CurUninstallStep <> usPostUninstall').Value
 Assert-Safety ($source.Contains('CloseApplications=no')) 'Restart Manager cannot force-kill restoration workers'
+Assert-Safety ($source.Contains('VersionInfoVersion={#MyAppVersion}') -and $source.Contains('VersionInfoTextVersion={#MyAppDisplayVersion}')) 'Setup file version resources match the product version'
 $runEntries = @([regex]::Match($source, '(?s)\[Run\](.*?)\[Code\]').Groups[1].Value.Split([char]10) | Where-Object { $_.TrimStart().StartsWith('Filename:') })
 Assert-Safety (@($runEntries).Count -eq 1 -and $runEntries[0].Contains('postinstall nowait skipifsilent unchecked')) 'Application launch is only an unchecked opt-in after interactive setup completes'
 Assert-Safety (-not $source.Contains('Check: WizardSilent')) 'Silent installation cannot automatically launch the GUI'

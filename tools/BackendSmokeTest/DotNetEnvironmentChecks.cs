@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using DeltaNFD.Services;
 
 internal static class DotNetEnvironmentChecks
@@ -40,6 +41,30 @@ internal static class DotNetEnvironmentChecks
             WriteConfig(true, v: version);
             var good = await Probe();
             Check(good.Level == DotNetCheckLevel.Complete && good.Components.Single().Bundled, "自带运行时完整时，无系统 .NET 仍通过");
+            var systemDeps = File.ReadAllText(deps);
+            void WritePublishedDeps(string package = "runtimepack.Microsoft.NETCore.App.Runtime.win-x64", string? runtimeVersion = null)
+            {
+                var document = JsonNode.Parse(systemDeps)!;
+                var target = document["targets"]![document["runtimeTarget"]!["name"]!.GetValue<string>()]!.AsObject();
+                var entry = target.First(p => p.Key.StartsWith("Microsoft.NETCore.App.Runtime.win-x64/", StringComparison.Ordinal));
+                var renamed = package + "/" + (runtimeVersion ?? version);
+                target[renamed] = entry.Value!.DeepClone(); target.Remove(entry.Key);
+                if (document["libraries"] is JsonObject libraries && libraries[entry.Key] is { } definition)
+                { libraries[renamed] = definition.DeepClone(); libraries.Remove(entry.Key); }
+                File.WriteAllText(deps, document.ToJsonString());
+            }
+            WritePublishedDeps();
+            Check((await Probe()).Level == DotNetCheckLevel.Complete, "正式自包含 runtimepack 清单无系统 .NET 也通过");
+            File.WriteAllBytes(Path.Combine(bundled, "coreclr.dll"), []);
+            Check((await Probe(sourceRoot)).NeedsAppRepair, "正式布局 coreclr 缺损仍拒绝，系统 .NET 不掩盖缺损");
+            File.Copy(Path.Combine(runtimeSource, "coreclr.dll"), Path.Combine(bundled, "coreclr.dll"), true);
+            WritePublishedDeps("runtimepack.Microsoft.NETCore.App.Runtime.win-x86");
+            Check((await Probe()).NeedsAppRepair, "runtimepack x86 清单不能冒充 x64");
+            WritePublishedDeps(runtimeVersion: "8.0.0");
+            Check((await Probe()).NeedsAppRepair, "runtimepack 版本必须匹配 runtimeconfig 声明");
+            WritePublishedDeps("fake.Microsoft.NETCore.App.Runtime.win-x64");
+            Check((await Probe()).NeedsAppRepair, "未知清单前缀不被宽泛匹配放行");
+            File.WriteAllText(deps, systemDeps);
             File.WriteAllBytes(Path.Combine(bundled, "System.Runtime.dll"), []);
             var damaged = await Probe(sourceRoot);
             Check(damaged.NeedsAppRepair && !damaged.NeedsSystemRuntime, "系统 .NET 不能掩盖工具自带文件缺损");
@@ -105,6 +130,15 @@ internal static class DotNetEnvironmentChecks
             var snapshot = Path.Combine(Directory.GetCurrentDirectory(), "_buildcheck", "dotnet8-official-metadata.json");
             if (File.Exists(snapshot))
                 Check(DotNetRepairService.SelectInstaller(File.ReadAllText(snapshot)).Version.Major == 8, "实际微软元数据快照可解析（不下载/执行安装器）");
+            var published = Path.Combine(Directory.GetCurrentDirectory(), "_buildcheck", "alpha0914-release", "final-publish");
+            if (File.Exists(Path.Combine(published, "DeltaNFD.runtimeconfig.json")))
+            {
+                var apps = Directory.EnumerateFiles(published, "*.runtimeconfig.json", SearchOption.AllDirectories)
+                    .Select(path => new DotNetApp(Path.GetFileName(path), path)).ToArray();
+                var actualPublication = await DotNetEnvironmentProbe.CheckAsync(apps, []);
+                Check(apps.Length == 8 && actualPublication.Level == DotNetCheckLevel.Complete,
+                    "实际 Alpha0.914 自包含发布目录的 8 个组件通过；不借用开发机系统运行时：" + actualPublication.Details);
+            }
             Console.WriteLine($".NET environment checks: {count} passed. Read-only system lookup; all writes isolated; no installer executed.");
         }
         finally

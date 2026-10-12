@@ -11,7 +11,7 @@ namespace DeltaNFD.Execution.Procman;
 /// 写入铁律：身份复核（PID+启动时间+路径）→ 控制权获取 → 写前记录落盘 → 执行 → 回读确认；
 /// 无法回读确认的能力按「已请求待核对」呈现，绝不显示成功。
 /// </summary>
-public sealed class ProcmanEngine : IDisposable
+public sealed partial class ProcmanEngine : IDisposable
 {
     public const string CapabilityPriority = "priority";
     public const string CapabilityAffinity = "affinity";
@@ -44,14 +44,19 @@ public sealed class ProcmanEngine : IDisposable
     private string _lastAction = "";
     private string _lastError = "";
 
-    public ProcmanEngine() : this(LogPath, RulesPath) { }
+    public ProcmanEngine() : this(LogPath, RulesPath, Path.Combine(AppDataPaths.Root, "procman-background.json")) { }
 
     internal ProcmanEngine(string logPath) : this(logPath, logPath + ".rules.json") { }
 
-    internal ProcmanEngine(string logPath, string rulesPath)
+    internal ProcmanEngine(string logPath, string rulesPath) : this(logPath, rulesPath, logPath + ".background.json") { }
+
+    private ProcmanEngine(string logPath, string rulesPath, string backgroundPath)
     {
         _changeLog = new ProcmanChangeLog(logPath);
         _rules = new ProcmanRuleStore(rulesPath);
+        _backgroundStore = new ProcmanBackgroundStore(backgroundPath);
+        try { _backgroundConfig = _backgroundStore.Load(); }
+        catch (InvalidDataException ex) { _backgroundLoadError = ex.Message; }
         _properties = new ProcessPropertyGate(Path.Combine(Path.GetDirectoryName(logPath)!, "procman-owners.json"));
     }
 
@@ -78,6 +83,8 @@ public sealed class ProcmanEngine : IDisposable
     /// <summary>分页枚举进程。只读：读取失败只计数跳过，不产生任何修改记录。</summary>
     public ProcmanListResult List(ProcmanListArgs args)
     {
+        if (args.Scope is not ("all" or "general" or "delta") || args.SortOrder is not ("name" or "memory"))
+            throw new ArgumentException("未知的进程范围或排序方式。");
         var offset = Math.Max(0, args.Offset);
         var limit = Math.Clamp(args.Limit <= 0 ? 200 : args.Limit, 1, 500);
         var filter = args.NameFilter?.Trim();
@@ -102,6 +109,8 @@ public sealed class ProcmanEngine : IDisposable
                 }
                 catch { skipped++; continue; }
 
+                var isDelta = Path.GetFileNameWithoutExtension(identity.ExecutablePath).Equals(DeltaForceLocator.GameProcessName, StringComparison.OrdinalIgnoreCase);
+                if ((args.Scope == "delta" && !isDelta) || (args.Scope == "general" && isDelta)) continue;
                 if (filter is { Length: > 0 } &&
                     !Path.GetFileNameWithoutExtension(identity.ExecutablePath).Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
                 total++;
@@ -118,7 +127,9 @@ public sealed class ProcmanEngine : IDisposable
             }
         }
 
-        var page = entries.OrderByDescending(e => e.WorkingSetMb ?? 0).ThenBy(e => e.Pid).Skip(offset).Take(limit).ToList();
+        var ordered = args.SortOrder == "name" ? entries.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ThenBy(e => e.Pid)
+            : entries.OrderByDescending(e => e.WorkingSetMb ?? 0).ThenBy(e => e.Pid);
+        var page = ordered.Skip(offset).Take(limit).ToList();
         return new ProcmanListResult
         {
             Processes = page,
@@ -583,6 +594,7 @@ public sealed class ProcmanEngine : IDisposable
     public async Task<OperationResult> RestoreAllAsync()
     {
         await StopRulesEngineAsync();
+        _automaticMemoryActive = false;
         if (_responsiveness is not null) _responsiveness.Enabled = false;
         var records = _changeLog.Records.ToArray();
         var restored = 0; var missing = 0; var failed = 0; var conflict = 0;
@@ -681,6 +693,7 @@ public sealed class ProcmanEngine : IDisposable
     {
         lock (_gate)
         {
+            if (BackgroundLoopDisabledForTests) { _frozen = false; return OperationResult.Ok("隔离测试手动驱动循环。"); }
             if (_rulesEngineRunning) return OperationResult.Ok("规则引擎已在运行。");
             _frozen = false;
             _rulesCts = new CancellationTokenSource();
@@ -723,6 +736,7 @@ public sealed class ProcmanEngine : IDisposable
             {
                 await RulesTickAsync(token).ConfigureAwait(false);
                 await ResponsivenessTickAsync().ConfigureAwait(false);
+                AutomaticMemoryTick(token);
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
@@ -930,7 +944,8 @@ public sealed class ProcmanEngine : IDisposable
         try { _rules.Save(rule); }
         catch (Exception ex) { return OperationResult.Fail("规则保存失败：" + ex.Message); }
         // 有启用规则时保证引擎在跑（关窗驻留/最小化时规则仍在后台执行）。
-        if (_rules.EnabledRules().Count > 0 || ResponsivenessEnabled) _ = StartRulesEngine();
+        if (_rules.EnabledRules().Count > 0 || ResponsivenessEnabled || _automaticMemoryActive) _ = StartRulesEngine();
+        else lock (_gate) _frozen = false;
         SetAction($"规则已保存：{rule.ExecutablePath} {rule.Capability}={rule.Value}" + (rule.Enabled ? "（启用）" : "（停用）"));
         return OperationResult.Ok("规则已保存。");
     }
@@ -952,7 +967,8 @@ public sealed class ProcmanEngine : IDisposable
         if (!_rules.Delete(executablePath, capability))
             return OperationResult.Fail("规则删除失败：未找到或文件被占用。");
         SetAction($"规则已删除并恢复其修改：{executablePath} {capability}");
-        if (_rules.EnabledRules().Count > 0 || ResponsivenessEnabled) _ = StartRulesEngine();
+        if (_rules.EnabledRules().Count > 0 || ResponsivenessEnabled || _automaticMemoryActive) _ = StartRulesEngine();
+        else lock (_gate) _frozen = false;
         await Task.CompletedTask;
         return OperationResult.Ok("规则已删除，其拥有的修改已还原。");
     }
@@ -1057,7 +1073,8 @@ public sealed class ProcmanEngine : IDisposable
                 if (restored.Status != "restored") return OperationResult.Fail("已停用，恢复尚未完成：" + restored.Message);
             }
         }
-        if (args.Enabled || _rules.EnabledRules().Count > 0) _ = StartRulesEngine();
+        if (args.Enabled || _rules.EnabledRules().Count > 0 || _automaticMemoryActive) _ = StartRulesEngine();
+        else lock (_gate) _frozen = false;
         return OperationResult.Ok(args.Enabled ? "后台抑制已启用。" : "后台抑制已停用并恢复调整。");
     }
 
@@ -1118,6 +1135,9 @@ public sealed class ProcmanEngine : IDisposable
         {
             if (adjusted >= state.MaxAdjustPerRound || !ReferenceEquals(state, _responsiveness) || !state.Enabled || _frozen) break;
             if (identity.Pid == foreground || identity.Pid == Environment.ProcessId || cpu < state.CandidateCpuFloorPercent
+                || IsBackgroundExcluded(identity.ExecutablePath)
+                || ProcmanResponsivenessFilter.IsToolProcess(identity.ExecutablePath)
+                || Path.GetFileNameWithoutExtension(identity.ExecutablePath).Equals(DeltaForceLocator.GameProcessName, StringComparison.OrdinalIgnoreCase)
                 || (ResponsivenessExcludedForTests?.Invoke(identity) ?? ProcmanResponsivenessFilter.IsExcluded(identity))
                 || explicitRules.Any(r => r.ExecutablePath.Equals(identity.ExecutablePath, StringComparison.OrdinalIgnoreCase))
                 || _changeLog.ForProcess(identity.Pid, identity.StartTimeUtcTicks, identity.ExecutablePath).Count != 0) continue;
@@ -1145,10 +1165,10 @@ public sealed class ProcmanEngine : IDisposable
         }
     }
 
-    private int RestoreResponsivenessAdjustments()
+    private int RestoreResponsivenessAdjustments(Func<ProcmanChangeLog.ChangeRecord, bool>? filter = null)
     {
         var restored = 0;
-        foreach (var record in _changeLog.Records.Where(r => r.Owner == ProcmanControlCoordinator.OwnerResponsiveness).ToList())
+        foreach (var record in _changeLog.Records.Where(r => r.Owner == ProcmanControlCoordinator.OwnerResponsiveness && (filter is null || filter(r))).ToList())
         {
             var identity = new ProcmanProcessIdentity(record.Pid, new DateTime(record.StartTimeUtcTicks, DateTimeKind.Utc), record.ExecutablePath);
             var state = ProcmanIdentity.State(identity);

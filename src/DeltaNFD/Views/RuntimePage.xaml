@@ -42,6 +42,24 @@
                 </StackPanel>
             </Border>
 
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="修复前环境检查" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="两种修复都会在卸载前检查基础环境；检查不会修改服务、权限或关闭安全软件。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button x:Name="EnvironmentCheckButton" Grid.Column="1" Content="检查环境" Click="CheckRepairEnvironment_Click" VerticalAlignment="Center" />
+                    </Grid>
+                    <ProgressRing x:Name="EnvironmentCheckProgress" IsActive="False" Width="22" Height="22" HorizontalAlignment="Left" />
+                    <TextBlock x:Name="EnvironmentStatusText" Text="尚未检查。开始修复时会自动检查，环境不适合时不会卸载当前运行库。" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                    <Expander Header="检查详情与处理建议" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                        <TextBlock x:Name="EnvironmentDetailsText" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                    </Expander>
+                </StackPanel>
+            </Border>
+
             <!-- 高帧性修复：保留原 C++ AIO 流程 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <Grid ColumnSpacing="16">

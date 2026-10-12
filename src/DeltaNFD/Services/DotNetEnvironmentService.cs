@@ -21,9 +21,6 @@ internal static class DotNetEnvironmentService
             catch { exe = Path.Combine(directory, "Backends", spec.ExecutableName); }
             apps.Add(new(spec.DisplayName, Path.ChangeExtension(exe, ".runtimeconfig.json")));
         }
-        var helper = Path.Combine(directory, "Backends", "DeltaNFD.OfflineHelper.runtimeconfig.json");
-        if (!File.Exists(helper)) helper = Path.Combine(directory, "OfflineHelper", "DeltaNFD.OfflineHelper.runtimeconfig.json");
-        apps.Add(new("脱机助手", helper));
         return DotNetEnvironmentProbe.CheckAsync(apps, SystemRoots(), token);
     }
 

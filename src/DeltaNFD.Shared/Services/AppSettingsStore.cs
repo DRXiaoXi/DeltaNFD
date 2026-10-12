@@ -128,8 +128,8 @@ public sealed class AppSettings
     /// <summary>自定义背景图的完整路径；空 = 使用内置 Assets\background.*。</summary>
     public string BackgroundPath { get; set; } = "";
 
-    /// <summary>背景图上的暗色遮罩不透明度（0~1，默认 70%）。</summary>
-    public double BackgroundDimOpacity { get; set; } = 0.7;
+    /// <summary>背景图上的暗色遮罩不透明度（0~1，默认 55%）。</summary>
+    public double BackgroundDimOpacity { get; set; } = 0.55;
 
     // ---- 外观：主题 ----
     /// <summary>应用明暗主题索引：0 浅色 / 1 深色 / 2 跟随系统。</summary>

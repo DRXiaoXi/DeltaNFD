@@ -1,5 +1,7 @@
 <Page x:Class="DeltaNFD.Views.ProcessPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:vm="using:DeltaNFD.ViewModels">
   <Page.Resources>
+    <SolidColorBrush x:Key="TabViewBackground" Color="Transparent" />
+    <SolidColorBrush x:Key="TabViewItemHeaderBackground" Color="Transparent" />
     <!-- 进程行模板：名称/PID/内存/持有数；选中后右侧加载详情 -->
     <DataTemplate x:Key="ProcessRowTemplate" x:DataType="vm:ProcessRowVm">
       <Grid ColumnSpacing="8" Padding="14,9">
@@ -11,12 +13,12 @@
         </Grid.ColumnDefinitions>
         <StackPanel Spacing="1">
           <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind ExecutablePath}" />
-          <TextBlock Text="{x:Bind PidText}" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis" />
+          <TextBlock Text="{x:Bind PidText, Mode=OneWay}" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis" />
         </StackPanel>
-        <TextBlock Grid.Column="1" Text="{x:Bind CpuText}" FontSize="12" Opacity="0.75" VerticalAlignment="Center" TextAlignment="Right" />
-        <TextBlock Grid.Column="2" Text="{x:Bind WorkingSetText}" FontSize="12" Opacity="0.75" VerticalAlignment="Center" TextAlignment="Right" ToolTipService.ToolTip="进程工作集内存" />
-        <Border Grid.Column="3" Style="{StaticResource ChipBorderStyle}" Background="{ThemeResource ControlFillColorDefaultBrush}" VerticalAlignment="Center" Visibility="{x:Bind ProtectedVisibility}">
-          <TextBlock Text="受保护" FontSize="10" Opacity="0.75" />
+        <TextBlock Grid.Column="1" Text="{x:Bind CpuText, Mode=OneWay}" FontSize="12" Opacity="0.75" VerticalAlignment="Center" TextAlignment="Right" />
+        <TextBlock Grid.Column="2" Text="{x:Bind WorkingSetText, Mode=OneWay}" FontSize="12" Opacity="0.75" VerticalAlignment="Center" TextAlignment="Right" ToolTipService.ToolTip="进程工作集内存" />
+        <Border Grid.Column="3" Style="{StaticResource ChipBorderStyle}" Background="{ThemeResource ControlFillColorDefaultBrush}" VerticalAlignment="Center" Visibility="{x:Bind ProtectedVisibility, Mode=OneWay}">
+          <TextBlock Text="{x:Bind ProtectionText, Mode=OneWay}" FontSize="10" Opacity="0.75" />
         </Border>
       </Grid>
     </DataTemplate>
@@ -32,8 +34,9 @@
       <TextBlock Text="查看运行状态、调整进程属性，管理自动应用的规则。" Style="{StaticResource PageSubtitleStyle}" TextWrapping="Wrap" />
     </StackPanel>
     <!-- 按任务拆分页签，避免规则与保护设置挤占进程列表高度。 -->
-    <TabView Grid.Row="1" IsAddTabButtonVisible="False" CanDragTabs="False" CanReorderTabs="False" TabWidthMode="SizeToContent" x:Name="ProcessTabs">
-      <TabViewItem Header="进程与属性" IsClosable="False">
+    <TabView Grid.Row="1" IsAddTabButtonVisible="False" CanDragTabs="False" CanReorderTabs="False" TabWidthMode="SizeToContent" x:Name="ProcessTabs" Background="Transparent" SelectionChanged="ProcessTabs_SelectionChanged">
+      <TabViewItem x:Name="GeneralTab" Header="进程与属性" IsClosable="False">
+        <ContentControl x:Name="GeneralWorkspaceHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <Grid ColumnSpacing="16" RowSpacing="12" Margin="0,12,0,0" SizeChanged="ProcessWorkspace_SizeChanged" x:Name="ProcessWorkspace">
           <Grid.RowDefinitions>
             <RowDefinition Height="*" x:Name="ListRow" />
@@ -44,7 +47,7 @@
             <ColumnDefinition Width="1.2*" x:Name="DetailColumn" />
           </Grid.ColumnDefinitions>
           <!-- 左：进程列表 -->
-          <Border Style="{StaticResource CardBorderStyle}" Padding="0" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+          <Border Style="{StaticResource CardBorderStyle}" Padding="0">
             <Grid>
               <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -66,7 +69,7 @@
                   <Button Content="刷新" Click="RefreshButton_Click" />
                   <ToggleButton x:Name="AutoRefreshToggle" Content="自动刷新" IsChecked="True" />
                 </StackPanel>
-                <TextBlock Text="运行中的进程" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock x:Name="ProcessListTitle" Text="其他运行中的进程" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
               </Grid>
               <Grid Grid.Row="1" ColumnSpacing="8" Padding="14,2,14,4" Opacity="0.65">
                 <Grid.ColumnDefinitions>
@@ -79,7 +82,8 @@
                 <TextBlock Grid.Column="1" Text="CPU" FontSize="11" TextAlignment="Right" />
                 <TextBlock Grid.Column="2" Text="内存" FontSize="11" TextAlignment="Right" />
               </Grid>
-              <ListView Grid.Row="2" x:Name="ProcessList" ItemTemplate="{StaticResource ProcessRowTemplate}" SelectionMode="Single" SelectionChanged="ProcessList_SelectionChanged" VirtualizingStackPanel.VirtualizationMode="Recycling" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+              <ListView Grid.Row="2" x:Name="ProcessList" Background="Transparent" ItemTemplate="{StaticResource ProcessRowTemplate}" SelectionMode="Single" SelectionChanged="ProcessList_SelectionChanged" VirtualizingStackPanel.VirtualizationMode="Recycling" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListView.ItemContainerTransitions><TransitionCollection /></ListView.ItemContainerTransitions>
                 <ListView.ItemContainerStyle>
                   <Style TargetType="ListViewItem">
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -89,6 +93,7 @@
                 </ListView.ItemContainerStyle>
               </ListView>
               <StackPanel Grid.Row="3" Padding="14,6,14,10" Spacing="6">
+                <TextBlock x:Name="ScopeNoteText" Text="按名称稳定排列，只更新变化的数值。三角洲主进程在独立页签管理。" FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
                 <TextBlock x:Name="ListNoteText" FontSize="11" Opacity="0.7" TextWrapping="Wrap" MaxLines="2" />
                 <TextBlock x:Name="ListSummaryText" FontSize="11" Opacity="0.65" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -99,7 +104,7 @@
             </Grid>
           </Border>
           <!-- 右：详情 + 控制 -->
-          <Border x:Name="DetailCard" Grid.Column="1" Style="{StaticResource CardBorderStyle}" Padding="0" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+          <Border x:Name="DetailCard" Grid.Column="1" Style="{StaticResource CardBorderStyle}" Padding="0">
             <ContentControl HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" IsTabStop="False" x:Name="DetailControlsHost">
               <ScrollViewer HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
                 <StackPanel Spacing="12" Padding="16,14,16,16">
@@ -118,6 +123,12 @@
                       <TextBlock x:Name="DetailMetaText" FontSize="12" Opacity="0.8" TextWrapping="Wrap" />
                     </StackPanel>
                     <InfoBar x:Name="DetailIdentityWarning" IsOpen="False" Severity="Warning" IsClosable="False" />
+                    <Border Background="{ThemeResource ControlFillColorDefaultBrush}" CornerRadius="8" Padding="12">
+                      <StackPanel Spacing="8">
+                        <TextBlock x:Name="SelectedExclusionStatusText" Text="正在读取排除状态…" FontSize="12" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                        <Button x:Name="ExcludeSelectedButton" Content="排除后台抑制与内存回收" Click="ExcludeSelected_Click" HorizontalAlignment="Stretch" />
+                      </StackPanel>
+                    </Border>
                     <!-- 能力面板 -->
                     <Expander Header="当前属性与控制方" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                       <ItemsControl x:Name="CapabilityList">
@@ -150,6 +161,7 @@
                       <CheckBox x:Name="AlwaysTakeoverCheck" Visibility="Collapsed">
                         <TextBlock Text="允许总是规则接管游戏模式控制的同一属性" TextWrapping="Wrap" />
                       </CheckBox>
+                      <Button Content="管理此应用的总是规则" Click="OpenSelectedRules_Click" HorizontalAlignment="Left" />
                       <TextBlock x:Name="SelectedAlwaysSummary" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource AppAccentBrush}" />
                       <!-- CPU 优先级 -->
                       <StackPanel Spacing="4">
@@ -279,8 +291,24 @@
                       <TextBlock x:Name="ReconcileText" FontSize="11" Opacity="0.75" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                     </StackPanel>
                   </StackPanel>
-                  <Expander Header="管理所有“总是”规则" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" x:Name="AlwaysRulesExpander">
+
+                </StackPanel>
+              </ScrollViewer>
+            </ContentControl>
+          </Border>
+        </Grid>
+        </ContentControl>
+      </TabViewItem>
+      <TabViewItem x:Name="GameTab" Header="三角洲进程" IsClosable="False">
+        <ContentControl x:Name="GameWorkspaceHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+      </TabViewItem>
+      <TabViewItem x:Name="RulesTab" Header="总是规则" IsClosable="False">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <Border Style="{StaticResource CardBorderStyle}" Margin="0,12,0,0">
                     <StackPanel Spacing="16">
+                      <TextBlock Text="总是规则" Style="{StaticResource SectionTitleStyle}" />
+                      <TextBox x:Name="StandaloneRulePathBox" Header="应用完整 EXE 路径" PlaceholderText="可粘贴当前未运行的应用路径" MaxLength="32760" />
+                      <Button Content="创建此应用的规则" Click="SetStandaloneRuleTarget_Click" HorizontalAlignment="Left" />
                       <StackPanel Spacing="12" Visibility="Collapsed" x:Name="SavedRuleEditor">
                         <Border Background="{ThemeResource ControlFillColorDefaultBrush}" CornerRadius="8" Padding="12">
                           <StackPanel Spacing="4">
@@ -314,29 +342,25 @@
                         <Button Content="保存总是设置" Click="SaveRule_Click" Style="{StaticResource AccentButtonStyle}" />
                       </StackPanel>
                       <StackPanel Orientation="Vertical" Spacing="10">
-                        <TextBlock Text="总是规则" Style="{StaticResource SectionTitleStyle}" VerticalAlignment="Center" FontSize="20" />
+                        <TextBlock Text="已保存规则" Style="{StaticResource SectionTitleStyle}" VerticalAlignment="Center" FontSize="18" />
                       </StackPanel>
-                      <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="在属性设置中选择“总是”即可保存。下方可管理已有规则，包括当前未运行的应用。" />
+                      <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="在此独立创建、编辑和删除持久规则，支持当前未运行的应用。进程属性中的“总是”仍可作为快捷设置。" />
                       <TextBlock FontWeight="SemiBold" Text="尚未读取规则" x:Name="RuleCountText" />
                       <Button Content="刷新" Click="LoadRules_Click" />
                       <StackPanel x:Name="RuleListPanel" Spacing="3" />
                       <TextBlock x:Name="RuleNoteText" FontSize="12" Opacity="0.7" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
                     </StackPanel>
-                  </Expander>
-                </StackPanel>
-              </ScrollViewer>
-            </ContentControl>
           </Border>
-        </Grid>
+        </ScrollViewer>
       </TabViewItem>
-      <TabViewItem Header="后台抑制" IsClosable="False">
-        <Border Style="{StaticResource CardBorderStyle}" Margin="0,12,0,0" Padding="0" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+      <TabViewItem Header="后台管理" IsClosable="False">
+        <Border Style="{StaticResource CardBorderStyle}" Margin="0,12,0,0" Padding="0">
           <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="16" Padding="24" MaxWidth="760" HorizontalAlignment="Left">
               <StackPanel Orientation="Vertical" Spacing="10">
                 <TextBlock Text="保持前台应用响应" Style="{StaticResource SectionTitleStyle}" VerticalAlignment="Center" FontSize="20" />
               </StackPanel>
-              <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="CPU 持续繁忙时，暂时降低合适的后台应用优先级；负载回落后恢复。排除三角洲主进程、所有系统进程、前台应用，以及已有属性设置或持久规则的进程。" />
+              <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="CPU 持续繁忙时，暂时降低合适的后台应用优先级；负载回落后恢复。排除三角洲、三角帧全部进程、系统进程、前台应用，以及已有属性设置或持久规则的进程。" />
               <ToggleSwitch x:Name="ResponsivenessToggle" Header="启用后台抑制" OnContent="启用" OffContent="关闭（默认）" />
               <Grid ColumnSpacing="12" RowSpacing="16">
                 <Grid.RowDefinitions>
@@ -353,10 +377,34 @@
                 <NumberBox x:Name="CooldownBox" Grid.Column="1" Header="冷却秒（默认10）" Value="10" Minimum="0" Maximum="600" SpinButtonPlacementMode="Compact" Grid.Row="1" />
               </Grid>
               <Button Content="保存设置" Click="SaveResponsiveness_Click" Style="{StaticResource AccentButtonStyle}" />
-              <TextBlock FontSize="12" Opacity="0.75" TextWrapping="Wrap" Text="系统进程按系统目录、服务会话、系统账户及关键进程状态核对；身份或权限无法确认时跳过。前台应用不参与；任何属性已有手动设置或已启用规则的进程均跳过。采样失败时不新增调整，关闭后恢复。" />
+              <TextBlock FontSize="12" Opacity="0.75" TextWrapping="Wrap" Text="保护三角洲、三角帧全部进程和系统进程。身份或权限无法确认时跳过；前台应用及已有手动设置或启用规则的进程不参与。采样失败时不新增调整，关闭后恢复。" />
               <TextBlock x:Name="ResponsivenessNoteText" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
               <Button Content="查看事件" Click="LoadResponsivenessEvents_Click" />
               <TextBlock FontSize="12" TextWrapping="Wrap" IsTextSelectionEnabled="True" x:Name="ResponsivenessEventsText" />
+              <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,18,0,0">
+                <StackPanel Spacing="12">
+                  <TextBlock Text="后台内存回收" FontSize="18" FontWeight="SemiBold" />
+                  <TextBlock Text="自动或手动回收后台应用的工作集，不限制 CPU 占用。沿用上方保护范围和下方排除名单，不结束进程；内存可能回涨或引起换页，不能保证提升帧率。" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}" />
+                  <ToggleSwitch x:Name="AutomaticMemoryToggle" Header="自动内存回收" OnContent="启用" OffContent="关闭（默认）" />
+                  <NumberBox x:Name="MemoryPressureBox" Header="系统内存占用达到此百分比时回收" Value="85" Minimum="30" Maximum="95" SpinButtonPlacementMode="Compact" />
+                  <Button x:Name="SaveBackgroundButton" Content="保存自动回收设置" Click="SaveBackground_Click" Style="{StaticResource AccentButtonStyle}" />
+                  <TextBlock Text="开启并保存后，每 30 秒检查内存压力，持续高压至少 30 秒才回收。每轮最多 3 个工作集至少 256 MiB 的进程，两轮至少间隔 10 分钟；效果不明显或快速回涨会延长冷却。设置会保留，退出工具即停止。" TextWrapping="Wrap" FontSize="12" Opacity="0.75" />
+                  <Button Content="刷新自动回收状态" Click="RefreshBackground_Click" />
+                  <TextBlock x:Name="AutomaticMemoryStatusText" Text="正在读取设置…" TextWrapping="Wrap" FontSize="12" AutomationProperties.LiveSetting="Polite" />
+                  <Button x:Name="MemoryPreviewButton" Content="预览可回收进程" Click="PreviewMemory_Click" />
+                  <TextBlock x:Name="MemoryTrimStatusText" Text="默认不自动清理。每次最多 3 个进程；同一进程 10 分钟内不重复回收。" FontSize="12" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite" />
+                </StackPanel>
+              </Border>
+              <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,18,0,0">
+                <StackPanel Spacing="12">
+                  <TextBlock Text="共用排除名单" FontSize="18" FontWeight="SemiBold" />
+                  <TextBlock Text="名单内的应用同时免于后台抑制和内存回收，按完整程序路径匹配，重启后保留。在“进程与属性”中选择应用即可加入；也可粘贴完整 EXE 路径，排除当前未运行的应用。" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}" />
+                  <TextBox x:Name="BackgroundExcludePathBox" Header="程序完整路径" PlaceholderText="C:\Apps\Example.exe" MaxLength="32760" />
+                  <Button Content="添加排除" Click="AddExclusion_Click" />
+                  <StackPanel x:Name="BackgroundExclusionsPanel" Spacing="8" />
+                  <TextBlock x:Name="BackgroundConfigNoteText" TextWrapping="Wrap" FontSize="12" AutomationProperties.LiveSetting="Polite" />
+                </StackPanel>
+              </Border>
             </StackPanel>
           </ScrollViewer>
         </Border>

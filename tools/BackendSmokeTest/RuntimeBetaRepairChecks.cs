@@ -7,7 +7,7 @@ internal static class RuntimeBetaRepairChecks
         async Task<OperationResult> Run(Fake fake, CancellationToken token = default, TimeSpan? budget = null) =>
             await new RuntimeBetaRepair(fake, new RuntimeRepairDiagnostics(root), budget).RunAsync(null, token);
         var normal = new Fake();
-        check((await Run(normal)).Success && normal.Trace.SequenceEqual(new[] { "verify", "scan-before", "uninstall", "aio", "baseline-x64", "baseline-x86", "scan-after" }),
+        check((await Run(normal)).Success && normal.Trace.SequenceEqual(new[] { "verify", "scan-before", "prepare", "uninstall", "scan-removed", "aio", "baseline-x64", "baseline-x86", "scan-after" }),
             "Beta0.9 主流程：完整校验→卸载条目→完整 AIO→两个官方基线→全量复检");
         var strong = new Fake();
         check((await RuntimeStrongRepairChecks.WithSystemPhaseAsync(root, strong.VerifyAsync,
@@ -18,6 +18,15 @@ internal static class RuntimeBetaRepairChecks
         check(!(await Run(badResource)).Success && badResource.Trace.SequenceEqual(new[] { "verify" }), "资源损坏时先拒绝，不卸载任何运行库");
         var failedUninstall = new Fake { Uninstall = new(1603, "fixture") };
         check(!(await Run(failedUninstall)).Success && !failedUninstall.Trace.Contains("aio"), "统一卸载未完成时停止安装，不绕过失败继续 AIO");
+        var badBatch = new Fake { PrepareFailed = true };
+        check(!(await Run(badBatch)).Success && !badBatch.Trace.Contains("uninstall") && !badBatch.Trace.Contains("aio"),
+            "高帧性整批关系或缓存预检失败时不卸载、不安装");
+        var residue = new Fake { KeepInstalled = true };
+        check(!(await Run(residue)).Success && residue.Trace.Contains("scan-removed") && !residue.Trace.Contains("aio"),
+            "高帧性卸载复检有残留时禁止 AIO 和官方基线安装");
+        var failedRemovalScan = new Fake { RemovalScanFailed = true };
+        check(!(await Run(failedRemovalScan)).Success && !failedRemovalScan.Trace.Contains("aio"),
+            "高帧性卸载复检读取失败不能当成已卸载");
         var unknownUninstall = new Fake { Uninstall = new(null, "pending", OutcomeUnknown: true) };
         check((await Run(unknownUninstall)).OutcomeUnknown && !unknownUninstall.Trace.Contains("aio"), "未知卸载执行者未结束时不启动 AIO，不强杀");
         var unknownAio = new Fake { Aio = new(null, "pending", OutcomeUnknown: true) };
@@ -71,17 +80,20 @@ internal static class RuntimeBetaRepairChecks
     private sealed class Fake : IRuntimeBetaRepairEnvironment
     {
         internal List<string> Trace = [];
-        internal bool Verified = true, MissingCompletion;
+        internal bool Verified = true, MissingCompletion, PrepareFailed, KeepInstalled, RemovalScanFailed;
         internal RuntimeStepResult Uninstall = new(0), Aio = new(0), Baseline = new(0);
         internal List<RuntimePackageResult> Packages = [new("fixture.msi", 0, "fixture.log", "")];
         internal VcRedistScanReport After = new() { All = [], Abnormal = [], Suboptimal = [], Advice = "" };
         private int _scans;
+        public Task<IReadOnlyList<VcRedistEntry>> PrepareUninstallBatchAsync(IReadOnlyList<VcRedistEntry> entries, CancellationToken token)
+        { token.ThrowIfCancellationRequested(); Trace.Add("prepare"); if (PrepareFailed) throw new IOException("fixture bad batch"); return Task.FromResult(entries); }
         public Task<OperationResult> VerifyAsync(IProgress<string>? progress, CancellationToken token)
         { token.ThrowIfCancellationRequested(); Trace.Add("verify"); return Task.FromResult(Verified ? OperationResult.Ok("verified") : OperationResult.Fail("invalid")); }
         public Task<VcRedistScanReport> ScanAsync(CancellationToken token)
         {
-            token.ThrowIfCancellationRequested(); Trace.Add(_scans == 0 ? "scan-before" : "scan-after");
-            return Task.FromResult(_scans++ == 0 ? new VcRedistScanReport { Advice = "", Abnormal = [], Suboptimal = [], All =
+            token.ThrowIfCancellationRequested(); Trace.Add(_scans == 0 ? "scan-before" : _scans == 1 ? "scan-removed" : "scan-after");
+            if (_scans == 1 && RemovalScanFailed) throw new IOException("fixture scan denied");
+            return Task.FromResult(_scans++ == 0 || KeepInstalled && _scans == 2 ? new VcRedistScanReport { Advice = "", Abnormal = [], Suboptimal = [], All =
                 [new() { DisplayName = "Microsoft Visual C++ 2005 Redistributable", DisplayVersion = "8.0.61187", Architecture = "x86", KeyName = "fixture", UninstallKind = "Msi" }] } : After);
         }
         public Task<RuntimeStepResult> UninstallAsync(VcRedistEntry entry, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)

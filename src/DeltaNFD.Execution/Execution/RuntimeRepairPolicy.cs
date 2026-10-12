@@ -4,15 +4,16 @@ namespace DeltaNFD.Services;
 
 internal sealed record RuntimeServiceState(string Name, int StartType, int State, string Error = "");
 internal sealed record RuntimePreflightSnapshot(IReadOnlyList<RuntimeServiceState> Services, bool InstallerBusy,
-    bool RebootPending, string Error = "", string WinSxSWarning = "")
+    bool RebootPending, string Error = "", string WinSxSWarning = "", bool ServicingRebootPending = false)
 {
     internal string? Blocker => Error.Length > 0 ? "环境状态无法确认：" + Error
         : Services.Count != 2 ? "安装服务查询不完整，尚未卸载运行库。"
-        : Services.FirstOrDefault(s => s.Error.Length > 0 || s.StartType == 4 || s.StartType is not (2 or 3) || s.State is < 1 or > 7) is { } service
+        : Services.FirstOrDefault(s => s.Error.Length > 0 || s.StartType == 4 || s.StartType is not (2 or 3) || s.State is not (1 or 4)) is { } service
             ? service.Error.Length > 0 ? $"服务 {service.Name} 无法查询：{service.Error}" : service.StartType == 4
                 ? $"服务 {service.Name} 已禁用；请先确认并恢复服务启动配置，尚未卸载运行库。"
                 : $"服务 {service.Name} 的配置/状态无效，未执行运行库操作。"
         : InstallerBusy ? "Windows Installer 正在处理其他事务（可能返回 1618）；等待其结束，不要强杀所有 msiexec。"
+        : ServicingRebootPending ? "Windows 系统组件或更新要求重启，请先保存工作并重启后重新检查，尚未卸载运行库。"
         : null; // RebootPending 不再阻塞修复，改为警告
     
     internal string? Warning => (WinSxSWarning.Length > 0 ? "WinSxS 权限警告：" + WinSxSWarning : null)
@@ -51,13 +52,9 @@ internal static class RuntimeRepairPlanner
     {
         var targets = Targets(scan, mode);
         var steps = new List<RuntimeRepairStep>();
-        if (mode == RuntimeRepairMode.FullReinstall)
-        {
-            // INF wrappers run first; scan snapshots can also contain their now-removed MSI products.
-            foreach (var entry in scan.All.Where(e => !e.DisplayName.Contains("Debug", StringComparison.OrdinalIgnoreCase))
-                .OrderBy(e => e.UninstallKind == "Inf" ? 0 : e.UninstallKind == "Bundle" ? 1 : 2))
-                steps.Add(new("uninstall-" + steps.Count, entry.DisplayName, "", "uninstall", "", entry));
-        }
+        if (targets.Length == 0) return steps;
+        foreach (var entry in UninstallTargets(scan, targets, mode))
+            steps.Add(new("uninstall-" + steps.Count, entry.DisplayName, "", "uninstall", "", entry));
         foreach (var target in targets)
         {
             var split = target.Split(' ', 2);
@@ -80,6 +77,11 @@ internal static class RuntimeRepairPlanner
         return steps;
     }
 
+    internal static IReadOnlyList<VcRedistEntry> UninstallTargets(VcRedistScanReport scan, string[] targets, RuntimeRepairMode mode)
+        => RuntimeBulkUninstall.Preview(scan.All).Entries.Where(e => mode == RuntimeRepairMode.FullReinstall ||
+            targets.Contains((new[] { "2005", "2008", "2010", "2012", "2013" }.FirstOrDefault(e.DisplayName.Contains) ?? "2026")
+                + " (" + e.Architecture + ")", StringComparer.Ordinal)).ToArray();
+
     internal static VcRedistScanReport Scope(VcRedistScanReport after, string[] targets, RuntimeRepairMode mode) => new()
     {
         All = after.All, Advice = after.Advice,
@@ -90,7 +92,7 @@ internal static class RuntimeRepairPlanner
 
 internal interface IRuntimeRepairEnvironment
 {
-    Task PrepareStepsAsync(IReadOnlyList<RuntimeRepairStep> steps, CancellationToken token) => Task.CompletedTask;
+    Task<IReadOnlyList<RuntimeRepairStep>> PrepareStepsAsync(IReadOnlyList<RuntimeRepairStep> steps, CancellationToken token);
     Task<RuntimePreflightSnapshot> PreflightAsync(CancellationToken token);
     Task<VcRedistScanReport> ScanAsync(CancellationToken token);
     Task<OperationResult> VerifyAsync(IProgress<string>? progress, CancellationToken token);
@@ -156,13 +158,22 @@ internal sealed class RuntimeRepairCoordinator(IRuntimeRepairEnvironment environ
                 diagnostics.Save("legacy-compat-warning.txt", legacyWarning);
             }
             
-            var steps = RuntimeRepairPlanner.Build(before, mode);
+            IReadOnlyList<RuntimeRepairStep> steps = RuntimeRepairPlanner.Build(before, mode);
             diagnostics.Save("plan.json", new { Mode = mode, Targets = targets, Steps = steps, LegacyCompatWarning = legacyWarning });
-            await environment.PrepareStepsAsync(steps, deadline.Token);
+            steps = await environment.PrepareStepsAsync(steps, deadline.Token);
             if (steps.Count == 0) return OperationResult.Skip("没有需要修复的缺失/过旧分支，未卸载或安装任何运行库。");
+            var removalVerified = false;
             for (var i = 0; i < steps.Count; i++)
             {
                 deadline.Token.ThrowIfCancellationRequested();
+                if (steps[i].Kind != "uninstall" && !removalVerified)
+                {
+                    var removedScan = await environment.ScanAsync(deadline.Token);
+                    diagnostics.Save("after-uninstall-scan.json", removedScan);
+                    if (RuntimeRepairPlanner.UninstallTargets(removedScan, targets, mode).Count != 0)
+                        return Finish(false, "卸载复检仍发现修复范围内的 C++ 运行库，未启动安装。");
+                    removalVerified = true;
+                }
                 var status = await environment.PreflightAsync(deadline.Token);
                 if (status.Blocker is { } reason) return Finish(false, "后续步骤已停止：" + reason);
                 
@@ -180,7 +191,7 @@ internal sealed class RuntimeRepairCoordinator(IRuntimeRepairEnvironment environ
                 }
                 
                 var step = steps[i];
-                var max = step.Kind == "uninstall" ? TimeSpan.FromMinutes(3) : TimeSpan.FromMinutes(5);
+                var max = step.Kind == "uninstall" ? RuntimeUnifiedUninstaller.MaximumEntryBudget : TimeSpan.FromMinutes(5);
                 var remaining = (budget ?? TotalBudget) - watch.Elapsed;
                 if (remaining <= TimeSpan.Zero) return Finish(false, "修复总预算已耗尽，未启动后续步骤。");
                 var timeout = remaining < max ? remaining : max;
@@ -205,6 +216,8 @@ internal sealed class RuntimeRepairCoordinator(IRuntimeRepairEnvironment environ
                 }
                 if (!result.Skipped && !baselineConflict) changed++;
                 if (result.ExitCode == 1641) return Finish(false, "安装器已发起重启，未继续启动后续步骤。");
+                if (step.Kind == "uninstall" && result.RequiresReboot)
+                    return Finish(false, "卸载组件要求重启，未继续卸载或安装；重启后请按保存计划重新检测。");
                 // MSI 3010 is aggregated; a newly reported system reboot blocker is checked before the next step.
             }
             var after = await environment.ScanAsync(deadline.Token);

@@ -209,47 +209,12 @@
                 </StackPanel>
             </Border>
 
-            <!-- 脱机模式：一次性助手；不常驻、不替代游戏平台启动游戏 -->
-            <Border Style="{StaticResource CardBorderStyle}">
+            <!-- Recovery only: shown solely for existing records from retired versions. -->
+            <Border x:Name="LegacyRecoveryCard" Style="{StaticResource CardBorderStyle}" Visibility="Collapsed">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="脱机模式" Style="{StaticResource SectionTitleStyle}"
-                               AutomationProperties.HeadingLevel="Level2" />
-                    <Grid ColumnSpacing="16" Padding="0,4">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Text="启动后零进程脱机模式" FontWeight="SemiBold" />
-                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                       Text="启用前会停用并还原普通帧格、锁核与调度，并关闭本工具自启动和托盘驻留；原偏好会保存。准备时由临时助手等待目标游戏（最多 180 秒），本工具不会启动游戏、绕过游戏平台或反作弊。助手只操作本轮，完成或超时后退出。" />
-                        </StackPanel>
-                        <ToggleSwitch x:Name="OfflineModeToggle" Grid.Column="1"
-                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
-                                      HorizontalAlignment="Right" VerticalAlignment="Center"
-                                      Toggled="OfflineModeToggle_Toggled" />
-                    </Grid>
-                    <Grid ColumnSpacing="16" Padding="0,4">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Text="允许插件在脱机模式下运行" FontWeight="SemiBold" />
-                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                       Text="默认关闭。开启后，已单独授权脱机自主运行的插件会在移交后继续驻留（非零进程，不适用零进程验收）；主程序与官方助手仍全部退出。关闭此开关会先重连并停止所有已移交插件，再走零进程脱机。" />
-                        </StackPanel>
-                        <ToggleSwitch x:Name="AllowPluginsOfflineToggle" Grid.Column="1"
-                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
-                                      HorizontalAlignment="Right" VerticalAlignment="Center"
-                                      Toggled="AllowPluginsOfflineToggle_Toggled" />
-                    </Grid>
-                    <Button x:Name="OfflineModeStartButton" Content="准备脱机启动 / 应用当前游戏"
-                            Style="{StaticResource AccentButtonStyle}"
-                            HorizontalAlignment="Left" IsEnabled="False"
-                            Click="OfflineModeStartButton_Click" />
-                    <TextBlock x:Name="OfflineModeStatusText" Style="{StaticResource CardDescStyle}"
-                               TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                    <TextBlock Text="旧版设置待恢复" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock x:Name="LegacyRecoveryStatusText" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                    <Button x:Name="LegacyRecoveryButton" Content="恢复旧版遗留设置" Click="LegacyRecoveryButton_Click" />
                 </StackPanel>
             </Border>
 
@@ -527,7 +492,7 @@
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="本工具的大部分优化功能已真实生效（详见 README），关闭 Defender/更新禁用等高危项会降低系统安全性，使用时请自行权衡并遵守游戏用户协议。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                               Text="本版本采用源码可用非商业许可证：禁止收费转售、闭源二次开发、用于收费产品、商业使用及删除作者署名。完整条款见安装目录 DELTA-NFD-LICENSE.txt；第三方及历史版本保留各自授权。" />
+                               Text="本版本采用 GNU GPL 第 3 版（GPL-3.0-only），允许商业使用与收费分发；分发本程序或受 GPL 覆盖的修改版时，须保留版权和许可证声明，并按 GPLv3 提供完整对应源代码。完整条款见安装目录 DELTA-NFD-LICENSE.txt；第三方资源保留各自授权。" />
                     <TextBlock FontSize="11" Opacity="0.5" TextWrapping="Wrap"
                                Text="显卡驱动级设置（低延迟 / 数字振动等）尚未实现，当前为演示数据。" />
                 </StackPanel>
@@ -538,6 +503,9 @@
                 <StackPanel Spacing="14">
                     <TextBlock Text="致谢名单" Style="{StaticResource SectionTitleStyle}"
                                AutomationProperties.HeadingLevel="Level2" />
+
+                    <TextBlock Text="感谢 Henry++ / Mem Reduct 提供内存回收设计参考。本项目独立实现逐进程保护、压力触发和冷却，未集成其 GPL 源码或程序。" TextWrapping="Wrap" FontSize="12" />
+                    <HyperlinkButton Content="Mem Reduct · Henry++" NavigateUri="https://github.com/henrypp/memreduct" HorizontalAlignment="Left" Padding="0" />
 
                     <TextBlock Text="重大贡献者" FontSize="14" FontWeight="SemiBold"
                                AutomationProperties.HeadingLevel="Level3" />

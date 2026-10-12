@@ -20,7 +20,8 @@ internal sealed class BackendProcmanService
     internal async Task ActivateSavedRulesAsync()
     {
         if (OfflineModeGuard.BlocksNormalAutomation) return;
-        if (!File.Exists(Path.Combine(AppDataPaths.Root, "procman-rules.json")) && !File.Exists(Path.Combine(AppDataPaths.Root, "procman-changes.json"))) return;
+        if (!File.Exists(Path.Combine(AppDataPaths.Root, "procman-rules.json")) && !File.Exists(Path.Combine(AppDataPaths.Root, "procman-changes.json"))
+            && !File.Exists(Path.Combine(AppDataPaths.Root, "procman-background.json"))) return;
         try
         {
             var result = await InvokeAsync(BackendCommands.ProcmanActivate, new { });
@@ -29,13 +30,11 @@ internal sealed class BackendProcmanService
         catch (Exception ex) { Log.Error("进程规则启动未完成，证据保留", ex); }
     }
 
-    internal async Task<ProcmanListResult> ListAsync(int offset, int limit, string? nameFilter, CancellationToken ct = default)
+    internal async Task<ProcmanListResult> ListAsync(int offset, int limit, string? nameFilter, CancellationToken ct = default, string scope = "all")
     {
         var result = await _caller.InvokeAsync(BackendCommands.ProcmanList,
-            new ProcmanListArgs { Offset = offset, Limit = limit, NameFilter = nameFilter }, null, ct);
-        return result.Status == BackendResultStatuses.Ok && result.Data is { } data
-            ? BackendJson.Deserialize<ProcmanListResult>(data)
-            : new ProcmanListResult { Processes = [], TotalCount = 0, Note = "枚举未完成：" + result.Message };
+            new ProcmanListArgs { Offset = offset, Limit = limit, NameFilter = nameFilter, Scope = scope, SortOrder = "name" }, null, ct);
+        return BackendResults.RequireData<ProcmanListResult>(result, "进程列表");
     }
 
     internal async Task<ProcmanDetailResult?> DetailAsync(ProcessIdentityArgs identity, CancellationToken ct = default)

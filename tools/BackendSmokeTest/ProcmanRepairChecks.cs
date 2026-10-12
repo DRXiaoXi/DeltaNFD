@@ -61,7 +61,9 @@ internal static class ProcmanRepairChecks
                 ProcmanResponsivenessFilter.ExcludedByIdentity(path, session, sid, critical, @"C:\Windows");
             Check(!Excluded(), "普通用户应用参与响应性保护");
             Check(!Excluded(@"C:\Apps\AnotherGame.exe"), "其他游戏不按名称整体排除");
-            Check(!Excluded(@"C:\Apps\DeltaNFD-extra.exe"), "非系统普通应用不因工具名称前缀整体排除");
+            Check(Excluded(@"C:\Apps\DeltaNFD-extra.exe"), "三角帧工具命名前缀统一排除");
+            Check(Excluded(@"D:\Delta NFD\DeltaNFD.exe") && Excluded(@"D:\Delta NFD\Backends\DeltaNFD.Backend.Runtime.exe")
+                && Excluded(@"D:\Delta NFD\Backends\DeltaNFD.OfflineHelper.exe"), "工具主程序、官方后端、脱机助手全部排除");
             Check(Excluded(@"D:\Games\DeltaForceClient-Win64-Shipping.exe"), "三角洲主进程在任何目录均排除");
             Check(Excluded(@"D:\Games\DELTAFORCECLIENT-WIN64-SHIPPING.EXE"), "游戏主进程名称判断忽略大小写");
             Check(Excluded(@"C:\Windows\System32\svchost.exe"), "系统目录中的所有进程排除");
@@ -197,6 +199,49 @@ internal static class ProcmanRepairChecks
                 Check(Priority() == "BelowNormal", "普通应用离开前台后才参与响应性调整");
                 await engine.RestoreAllAsync();
             }
+            using (var engine = Engine("resp-tool-exclusion"))
+            {
+                var now = DateTime.UtcNow; var classified = 0;
+                engine.ClockForTests = () => now;
+                engine.ResponsivenessExcludedForTests = _ => { classified++; return false; };
+                engine.ConfigureResponsiveness(new() { Enabled = true });
+                foreach (var path in new[] { @"D:\Delta NFD\DeltaNFD.exe", @"D:\Delta NFD\Backends\DeltaNFD.Backend.Runtime.exe",
+                    @"D:\Delta NFD\Backends\DeltaNFD.OfflineHelper.exe", Path.Combine(BackendEnvironment.AppRoot, "plugins", "OtherName.exe") })
+                {
+                    engine.SampleForTests = () => new(90, [(identity with { ExecutablePath = path }, 20)]);
+                    await engine.ResponsivenessOnceForTests(); now = now.AddSeconds(7); await engine.ResponsivenessOnceForTests();
+                    Check(classified == 0 && engine.ResponsivenessEvents().Count == 0,
+                        "后台抑制在任何属性操作前明确保护工具进程：" + Path.GetFileName(path));
+                }
+                await engine.RestoreAllAsync();
+            }
+            using (var engine = Engine("resp-shared-exclusion-restore"))
+            {
+                engine.BackgroundLoopDisabledForTests = true;
+                var now = DateTime.UtcNow;
+                engine.ClockForTests = () => now;
+                engine.SampleForTests = () => new(95, [(identity, 90)]);
+                engine.ConfigureResponsiveness(new() { Enabled = true, CpuBusySeconds = 1 });
+                await engine.ResponsivenessOnceForTests(); now = now.AddSeconds(2); await engine.ResponsivenessOnceForTests();
+                Check(Priority() == "BelowNormal", "共用排除测试：专用夹具先受后台抑制");
+                engine.MemoryReadForTests = _ => 600L * 1024 * 1024;
+                engine.MemorySampleDelayForTests = TimeSpan.Zero;
+                var preview = await engine.PreviewMemoryAsync();
+                Check(preview.Candidates.Count == 1, "本工具临时后台抑制不冒充用户手动属性排除");
+                var trimmed = false;
+                engine.MemoryTrimForTests = (target, guard) =>
+                {
+                    trimmed = guard(); return new(target.Pid, "fixture", trimmed ? "completed" : "skipped", "simulated");
+                };
+                engine.TrimMemory(new() { PreviewId = preview.Id, Processes = preview.Candidates.Select(c => c.Identity).ToList() });
+                Check(trimmed && Priority() == "BelowNormal", "已有本工具抑制优先级时仍可回收，不改动优先级控制权");
+                Check(engine.SaveBackgroundConfig(new() { ExcludedExecutablePaths = [identity.ExecutablePath] }).Success
+                    && Priority() == "Normal" && engine.Detail(new() { Identity = request }).HeldChanges.Count == 0,
+                    "新增排除项立即恢复已抑制的专用夹具，记录及所有权正确释放");
+                now = now.AddSeconds(10); await engine.ResponsivenessOnceForTests();
+                Check(Priority() == "Normal", "加入共用名单后持续高 CPU 也不会重新抑制");
+                await engine.RestoreAllAsync();
+            }
             using (var engine = Engine("resp-other-rule"))
             {
                 var now = DateTime.UtcNow;
@@ -236,6 +281,10 @@ internal static class ProcmanRepairChecks
             ProcmanCapabilities.SetPriority(child.Id, ProcessPriorityClass.BelowNormal);
             await using (var readonlyBackend = await DeltaNFD.Services.Backends.BackendClient.StartAsync(DeltaNFD.Backends.BackendModules.Procman, CancellationToken.None))
             {
+                var background = await readonlyBackend.InvokeAsync(DeltaNFD.Backends.BackendCommands.ProcmanBackgroundGet, new { }, null, CancellationToken.None);
+                Check(background.Status == DeltaNFD.Backends.BackendResultStatuses.Ok
+                    && !DeltaNFD.Backends.BackendJson.Deserialize<ProcmanBackgroundStatus>(background.Data!.Value).Config.AutomaticMemoryEnabled,
+                    "真实 IPC 后台配置只读查询，默认关闭自动回收");
                 await readonlyBackend.InvokeAsync(DeltaNFD.Backends.BackendCommands.ProcmanReconcile, new { }, null, CancellationToken.None);
                 await readonlyBackend.DrainAsync(TimeSpan.FromSeconds(15));
                 Check(Priority() == "BelowNormal" && new ProcmanChangeLog(Path.Combine(root, "procman-changes.json")).Records.Count == 1,
@@ -254,6 +303,11 @@ internal static class ProcmanRepairChecks
                 var set = await backend.InvokeAsync(DeltaNFD.Backends.BackendCommands.ProcmanSet,
                     new ProcmanSetArgs { Identity = request, CpuPriority = "BelowNormal" }, null, CancellationToken.None);
                 Check(set.Status == DeltaNFD.Backends.BackendResultStatuses.Ok && Priority() == "BelowNormal", "真实官方后端 IPC 设置（仅唯一夹具）");
+                var backgroundSave = await backend.InvokeAsync(DeltaNFD.Backends.BackendCommands.ProcmanBackgroundSave,
+                    new ProcmanBackgroundConfig { ExcludedExecutablePaths = [identity.ExecutablePath] }, null, CancellationToken.None);
+                var backgroundSaved = DeltaNFD.Backends.BackendJson.Deserialize<ProcmanBackgroundStatus>(backgroundSave.Data!.Value);
+                Check(backgroundSave.Status == DeltaNFD.Backends.BackendResultStatuses.Ok && backgroundSaved.Config.ExcludedExecutablePaths.Contains(identity.ExecutablePath)
+                    && Priority() == "BelowNormal", "真实 IPC 保存共用排除名单，不撤销手动属性");
                 var snapshot = await backend.InvokeAsync(DeltaNFD.Backends.BackendCommands.ProcmanReconcile, new { }, null, CancellationToken.None);
                 var generic = DeltaNFD.Backends.BackendJson.Deserialize<ReconcileSnapshot>(snapshot.Data!.Value);
                 Check(generic.Module == "procman" && generic.RecoveryScopes.Any(s => s.Id == "all" && s.Available), "核对兼容统一恢复合同");
@@ -261,6 +315,14 @@ internal static class ProcmanRepairChecks
                 Check(restore.Status == DeltaNFD.Backends.BackendResultStatuses.Ok && Priority() == "Normal", "真实 IPC 全量还原");
                 await backend.DrainAsync(TimeSpan.FromSeconds(15));
                 Check(backend.ExitConfirmed, "真实后端正常停止并确认退出");
+            }
+            await using (var retiredFrame = await DeltaNFD.Services.Backends.BackendClient.StartAsync(DeltaNFD.Backends.BackendModules.CpuFrame, CancellationToken.None))
+            {
+                var retired = await retiredFrame.InvokeAsync(DeltaNFD.Backends.BackendCommands.CpuFrameMemoryClean, new { }, null, CancellationToken.None);
+                Check(retired.Status == DeltaNFD.Backends.BackendResultStatuses.Failed && retired.Message.Contains("已下线"),
+                    "真实旧帧格 IPC 清理命令明确拒绝，不再执行全机清理");
+                await retiredFrame.DrainAsync(TimeSpan.FromSeconds(15));
+                Check(retiredFrame.ExitConfirmed, "旧帧格命令拒绝后仍正常停止后端");
             }
             const string gpuKey = @"SOFTWARE\Microsoft\DirectX\UserGpuPreferences";
             using (var key = Registry.CurrentUser.OpenSubKey(gpuKey)) Check(key?.GetValue(identity.ExecutablePath) is null, "GPU 测试路径没有用户原值");

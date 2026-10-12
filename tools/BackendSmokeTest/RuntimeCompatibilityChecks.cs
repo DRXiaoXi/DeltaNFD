@@ -39,6 +39,12 @@ internal static class RuntimeCompatibilityChecks
         Check(!(await Run(corruptResource)).Success && corruptResource.UninstallCalls == 0 && corruptResource.DxCalls == 0 && corruptResource.CppCalls == 0, "资源损坏时在任何卸载或安装前停止");
         var failedRemoval = new Fake { UninstallResult = new(1603) };
         Check(!(await Run(failedRemoval)).Success && failedRemoval.DxCalls == 0 && failedRemoval.CppCalls == 0, "卸载失败不继续 DirectX/C++ 安装");
+        var badBatch = new Fake { PrepareFailed = true };
+        Check(!(await Run(badBatch)).Success && badBatch.UninstallCalls == 0 && badBatch.DxCalls == 0 && badBatch.CppCalls == 0,
+            "兼容性整批预检失败必须先于任何卸载和安装");
+        var residue = new Fake { KeepInstalled = true };
+        Check(!(await Run(residue)).Success && residue.UninstallCalls == 1 && residue.DxCalls == 0 && residue.CppCalls == 0,
+            "兼容性卸载复检残留时禁止 DirectX 和 C++ 安装");
         var unknownRemoval = new Fake { UninstallResult = new(null, OutcomeUnknown: true) };
         Check((await Run(unknownRemoval)).OutcomeUnknown && unknownRemoval.DxCalls == 0, "卸载事务未知保留证据并停止后续");
         var rebootRemoval = new Fake { UninstallResult = new(3010) };
@@ -114,7 +120,7 @@ internal static class RuntimeCompatibilityChecks
     }
     private sealed class Fake : IRuntimeCompatibilityEnvironment
     {
-        internal bool Verified = true;
+        internal bool Verified = true, PrepareFailed, KeepInstalled;
         internal int DxCalls, CppCalls, ProbeCalls;
         internal int UninstallCalls;
         internal List<string> Trace = [];
@@ -122,6 +128,8 @@ internal static class RuntimeCompatibilityChecks
         internal IReadOnlyList<DirectXProbeResult> Before = [new("d3dx9_43.dll", "x64", false, "missing")];
         internal IReadOnlyList<DirectXProbeResult> After = [new("d3dx9_43.dll", "x64", true, "healthy")];
         internal RuntimeStepResult DirectXResult = new(0), CppResult = new(0);
+        public Task<IReadOnlyList<VcRedistEntry>> PrepareUninstallBatchAsync(IReadOnlyList<VcRedistEntry> entries, CancellationToken token)
+        { token.ThrowIfCancellationRequested(); Trace.Add("prepare"); if (PrepareFailed) throw new IOException("fixture bad batch"); return Task.FromResult(entries); }
         public Task<OperationResult> VerifyAsync(IProgress<string>? progress, CancellationToken token)
         { token.ThrowIfCancellationRequested(); return Task.FromResult(Verified ? OperationResult.Ok("verified") : OperationResult.Fail("bad resource")); }
         public Task<IReadOnlyList<DirectXProbeResult>> ProbeAsync(CancellationToken token)
@@ -131,7 +139,7 @@ internal static class RuntimeCompatibilityChecks
         public Task<RuntimeStepResult> RepairCppAsync(RuntimeRepairStep step, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
         { CppCalls++; return Task.FromResult(CppResult); }
         public Task<VcRedistScanReport> ScanCppAsync(CancellationToken token) => Task.FromResult(new VcRedistScanReport
-        { All = [new() { DisplayName = "Microsoft Visual C++ 2005 Redistributable", Architecture = "x86", KeyName = "fixture", UninstallKind = "Msi" }], Abnormal = [], Suboptimal = [], Advice = "" });
+        { All = UninstallCalls == 0 || KeepInstalled ? [new() { DisplayName = "Microsoft Visual C++ 2005 Redistributable", Architecture = "x86", KeyName = "fixture", UninstallKind = "Msi" }] : [], Abnormal = [], Suboptimal = [], Advice = "" });
         public Task<RuntimeStepResult> UninstallCppAsync(VcRedistEntry entry, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
         { Trace.Add("uninstall"); UninstallCalls++; return Task.FromResult(UninstallResult); }
     }

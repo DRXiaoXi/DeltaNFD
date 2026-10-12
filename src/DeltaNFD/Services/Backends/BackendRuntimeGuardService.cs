@@ -81,6 +81,12 @@ internal sealed class BackendRuntimeGuardService : IRuntimeGuardService
         return RequireData<VcRedistScanReport>(result, "扫描 VC++ 运行库");
     }
 
+    public async Task<RuntimeRepairEnvironmentReport> CheckRepairEnvironmentAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await InvokeAsync(BackendCommands.RuntimeRepairEnvironment, new { }, null, cancellationToken);
+        return RequireData<RuntimeRepairEnvironmentReport>(result, "修复前环境检查");
+    }
+
     public async Task<OperationResult> RepairVcRedistAsync(IProgress<string>? progress = null,
         RuntimeRepairMode mode = RuntimeRepairMode.FullReinstall, CancellationToken cancellationToken = default, bool strongRepairMode = false)
     {
@@ -137,6 +143,7 @@ internal sealed class BackendRuntimeGuardService : IRuntimeGuardService
                 RequiresReboot = operation.RequiresReboot, RequiresLogoff = operation.RequiresLogoff,
                 RequiresDisplayConfirm = operation.RequiresDisplayConfirm,
                 IsPartial = operation.IsPartial,
+                DiagnosticsDirectory = operation.DiagnosticsDirectory,
             };
         }
         if (result.PendingRestore || result.Code is "backend.timeout" or "backend.cancel-unconfirmed"

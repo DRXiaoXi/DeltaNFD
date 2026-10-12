@@ -35,7 +35,7 @@ public static class BackgroundManager
             .FirstOrDefault(File.Exists);
     }
 
-    /// <summary>暗色遮罩不透明度（0~1，默认 0.5）。</summary>
+    /// <summary>暗色遮罩不透明度（0~1，默认 0.55）。</summary>
     public static double DimOpacity =>
         Math.Clamp(AppSettingsStore.Read().BackgroundDimOpacity, 0, 1);
 

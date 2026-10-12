@@ -68,10 +68,10 @@ public partial class AceViewModel : ObservableObject
     public string VirtCheckButtonText => VirtCheckBusy ? "检测中…" : "检测虚拟化环境";
 
     /// <summary>虚拟化检测不触碰 ACE 组件，游戏运行中也可进行——只与自身忙态互斥。</summary>
-    public bool CanCheckVirt => !VirtCheckBusy;
+    public bool CanCheckVirt => !VirtCheckBusy && !VirtFixBusy;
 
     /// <summary>一键修复按钮：存在系统层 Fail 项且不在修复中。</summary>
-    public bool CanFixVirt => HasFixableConflict && !VirtFixBusy;
+    public bool CanFixVirt => HasFixableConflict && !VirtFixBusy && !VirtCheckBusy;
 
     public string VirtFixButtonText => VirtFixBusy ? "修复中…" : "一键修复系统层冲突";
 
@@ -79,6 +79,7 @@ public partial class AceViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(VirtCheckButtonText));
         OnPropertyChanged(nameof(CanCheckVirt));
+        OnPropertyChanged(nameof(CanFixVirt));
     }
 
     partial void OnHasFixableConflictChanged(bool value) => OnPropertyChanged(nameof(CanFixVirt));
@@ -86,6 +87,7 @@ public partial class AceViewModel : ObservableObject
     partial void OnVirtFixBusyChanged(bool value)
     {
         OnPropertyChanged(nameof(VirtFixButtonText));
+        OnPropertyChanged(nameof(CanCheckVirt));
         OnPropertyChanged(nameof(CanFixVirt));
     }
 
@@ -329,14 +331,14 @@ public partial class AceViewModel : ObservableObject
 
             VirtSummaryText = result.HasFailure
                 ? "⛔ " + result.OverallSummary
-                : result.HasUnknown
+                : result.HasUnknown || result.HasWarnings
                     ? "⚠ " + result.OverallSummary
                     : "✓ " + result.OverallSummary;
 
             HardwareCheckText = FormatItems(result.Hardware, result.BoardInfo);
             SystemCheckText = FormatItems(result.System, "");
             // 系统层存在 Fail 项才允许一键修复（Hyper-V/VBS/HVCI/沙盒等冲突）。
-            HasFixableConflict = result.System.Any(i => i.Status == AceVirtStatus.Fail);
+            HasFixableConflict = result.HasFixableConflict;
         }
         catch (Exception ex)
         {
@@ -359,7 +361,7 @@ public partial class AceViewModel : ObservableObject
     /// </summary>
     public async Task<OperationResult?> FixVirtualizationConflictsAsync()
     {
-        if (VirtFixBusy)
+        if (VirtFixBusy || VirtCheckBusy)
         {
             return null;
         }
@@ -368,6 +370,14 @@ public partial class AceViewModel : ObservableObject
         VirtFixText = "";
         try
         {
+            var current = await _ace.CheckVirtualizationAsync();
+            if (!current.HasFixableConflict)
+            {
+                VirtFixText = "当前未确认有可修复的系统运行冲突，未修改系统设置。请重新检测并核对详情。";
+                HasFixableConflict = false;
+                await CheckVirtualizationAsync();
+                return OperationResult.Skip(VirtFixText);
+            }
             var result = await _tweaks.DisableAsync(SystemTweak.HyperVAndVbs);
             VirtFixText = (result.Success ? "✓ " : "⛔ ") + result.Message
                           + (result.RequiresReboot ? "\n请先重启电脑，重启后再点「检测虚拟化环境」复核。" : "");

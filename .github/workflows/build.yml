@@ -36,17 +36,35 @@ jobs:
 
       - name: Tool .NET dependency and installer validation checks (isolated, offline)
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --dotnet-environment-checks
+
+      - name: Actual SDK self-contained .NET manifest check
+        run: |
+          dotnet publish tools/DotNetLayoutCheck/DotNetLayoutCheck.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o _buildcheck/dotnet-layout-selfcontained
+          & _buildcheck/dotnet-layout-selfcontained/DotNetLayoutCheck.exe --single _buildcheck/dotnet-layout-selfcontained/DotNetLayoutCheck.runtimeconfig.json
+
       - name: Backend error recovery notification checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --backend-attention-checks
 
       - name: Process management repair checks (unique process and isolated state)
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --procman-core-checks
 
+      - name: Automatic memory reclaim and shared exclusion checks (isolated fixtures)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --procman-memory-checks
+
+      - name: Stable process list and separate game scope checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --procman-list-checks
+
+      - name: Virtualization evidence classification checks (simulated observations)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --ace-virtualization-checks
+
       - name: Frame power recovery checks (all power operations simulated)
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-power-safety-checks
 
       - name: Confirmed C++ bulk uninstall checks (simulated removal)
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-bulk-uninstall-checks
+
+      - name: Runtime repair environment preflight checks (simulated snapshots)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-environment-checks
 
       - name: Frame feature state checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-feature-checks
@@ -63,8 +81,11 @@ jobs:
       - name: Frame power backup and lifecycle safety checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-power-safety-checks
 
-      - name: Offline handoff and isolated CPU restore audit
-        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --offline-audit-checks
+      - name: Retired offline mode and legacy recovery checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --offline-retirement-checks
+
+      - name: Legacy CPU restore boundary checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --offline-recovery-boundary-checks
 
       # 拓展插件规范 1.0 合同：manifest/ui/IPC 解析器验证用例 + 示例包文件与信任提示检查（纯逻辑，不装插件）
       - name: Plugin contract checks
@@ -110,10 +131,6 @@ jobs:
       - name: Plugin continuous runtime checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-continuous-checks
 
-      # 拓展插件脱机移交：prepare/commit、自主存活、排空重连、身份不符保留记录（真实子进程）
-      - name: Plugin offline handoff checks
-        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-offline-checks
-
       # 拓展插件只读示例后端真实端到端：构建独立示例工程后走 hello/ready 握手 + report + stop
       - name: Plugin example backend end-to-end
         run: |
@@ -127,14 +144,20 @@ jobs:
           dotnet build src/Plugin.WeakNetBoost/Plugin.WeakNetBoost.csproj -c Release -p:Platform=x64
           dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-weaknet-checks
 
-      # 真实脱机助手端到端：真实进程握手/取消/单实例/180 秒超时；只对临时测试子进程写 CPU Sets
-      - name: Real offline helper end-to-end checks
-        run: |
-          $helper = (Resolve-Path 'src/DeltaNFD/bin/x64/Release/net8.0-windows10.0.19041.0/win-x64/OfflineHelper/DeltaNFD.OfflineHelper.exe').Path
-          dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --offline-helper-e2e-checks --offline-helper-exe "$helper"
-
       - name: Runtime repair result and diagnostics checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-repair-checks
+
+      - name: Runtime unified uninstall and scoped dependency checks (simulated removal)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-unified-uninstall-checks
+
+      - name: C++ repair uninstall-first flow checks (isolated fixtures)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-flow-checks
+
+      - name: Compatibility repair uninstall-first checks (simulated installation)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --compatibility-repair-checks
+
+      - name: Strong runtime repair ordering checks (simulated system operations)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-strong-repair-checks
 
       # 自动更新的离线逻辑校验（清单解析 / 哈希护栏 / 版本比较）：纯逻辑 + 临时目录，不联网、不改系统
       - name: Auto-update logic checks

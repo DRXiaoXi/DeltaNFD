@@ -21,6 +21,7 @@ internal static class RuntimeCommands
             [BackendCommands.RuntimeGuardCleanupLegacy] = GuardCleanupLegacyAsync,
             [BackendCommands.RuntimeUe4RepairAcl] = Ue4RepairAclAsync,
             [BackendCommands.RuntimeRedistScan] = RedistScanAsync,
+            [BackendCommands.RuntimeRepairEnvironment] = RepairEnvironmentAsync,
             [BackendCommands.RuntimeRedistListV14] = RedistListV14Async,
             [BackendCommands.RuntimeRepair] = RepairAsync,
             [BackendCommands.RuntimeCompatibilityRepair] = CompatibilityRepairAsync,
@@ -106,6 +107,13 @@ internal static class RuntimeCommands
         context.ReportProgress("正在扫描 VC++ 运行库…", null, "redist-scan");
         var report = await new RuntimeGuardService().ScanVcRedistsAsync();
         return BackendResult.Ok("runtime.redist.scan", report.Advice, report);
+    }
+
+    private static async Task<BackendResult> RepairEnvironmentAsync(BackendCommandContext context)
+    {
+        context.ReportProgress("正在检查修复前环境，不执行卸载或安装…", null, "environment");
+        var report = await new RuntimeGuardService().CheckRepairEnvironmentAsync(context.CancellationToken);
+        return BackendResult.Ok(context.Command, report.Summary, report);
     }
 
     private static async Task<BackendResult> RedistListV14Async(BackendCommandContext context)

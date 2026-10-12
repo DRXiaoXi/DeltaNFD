@@ -32,6 +32,11 @@ public static class BackendCommands
     public const string RuntimeGuardCleanupLegacy = "runtime.guard.cleanup-legacy";
     public const string RuntimeUe4RepairAcl = "runtime.ue4.repair-acl";
     public const string RuntimeRedistScan = "runtime.redist.scan";
+    public const string RuntimeRepairEnvironment = "runtime.repair.environment";
+    public const string ProcmanMemoryPreview = "procman.memory.preview";
+    public const string ProcmanMemoryTrim = "procman.memory.trim";
+    public const string ProcmanBackgroundGet = "procman.background.get";
+    public const string ProcmanBackgroundSave = "procman.background.save";
     public const string RuntimeRedistListV14 = "runtime.redist.list-v14";
     public const string RuntimeRepair = "runtime.repair";
     public const string RuntimeCompatibilityRepair = "runtime.compatibility.repair";
@@ -223,6 +228,7 @@ public static class BackendModules
                     [BackendCommands.RuntimeGuardCleanupLegacy] = FiveMinutes,
                     [BackendCommands.RuntimeUe4RepairAcl] = FiveMinutes,
                     [BackendCommands.RuntimeRedistScan] = TwoMinutes,
+                    [BackendCommands.RuntimeRepairEnvironment] = TwoMinutes,
                     [BackendCommands.RuntimeRedistListV14] = TwoMinutes,
                     // 强力系统阶段最多 60 分钟；高帧性后续 26 分钟，含全量卸载的兼容性后续 80 分钟。
                     [BackendCommands.RuntimeRepair] = TimeSpan.FromMinutes(90),
@@ -288,6 +294,10 @@ public static class BackendModules
                     [BackendCommands.ProcmanRulesDelete] = TwoMinutes,
                     [BackendCommands.ProcmanResponsivenessConfig] = TwoMinutes,
                     [BackendCommands.ProcmanResponsivenessEvents] = TwoMinutes,
+                    [BackendCommands.ProcmanMemoryPreview] = TwoMinutes,
+                    [BackendCommands.ProcmanMemoryTrim] = TwoMinutes,
+                    [BackendCommands.ProcmanBackgroundGet] = TwoMinutes,
+                    [BackendCommands.ProcmanBackgroundSave] = TwoMinutes,
                     [BackendCommands.ProcmanNativeProbe] = TwoMinutes,
                 }, TwoMinutes),
 
@@ -362,11 +372,13 @@ public static class BackendModules
     /// </summary>
     private static readonly HashSet<string> ReadOnlyCommands = new(StringComparer.Ordinal)
     {
+        BackendCommands.ProcmanMemoryPreview,
+        BackendCommands.ProcmanBackgroundGet,
         BackendCommands.AceScan, BackendCommands.AceCoreCheck, BackendCommands.AceReconcile,
         BackendCommands.AceVirtCheck,
         BackendCommands.GpuSpoofStatus, BackendCommands.GpuWatchEvaluate,
         BackendCommands.GpuDriverStatus, BackendCommands.GpuDriverRead, BackendCommands.GpuReconcile,
-        BackendCommands.RuntimeStatus, BackendCommands.RuntimeRedistScan,
+        BackendCommands.RuntimeStatus, BackendCommands.RuntimeRedistScan, BackendCommands.RuntimeRepairEnvironment,
         BackendCommands.RuntimeRedistListV14, BackendCommands.RuntimeReconcile,
         BackendCommands.RuntimeRedistPreviewAll,
         BackendCommands.CpuFrameStatus, BackendCommands.CpuFrameReconcile,

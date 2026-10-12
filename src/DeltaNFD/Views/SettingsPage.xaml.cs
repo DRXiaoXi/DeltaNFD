@@ -57,14 +57,12 @@ public sealed partial class SettingsPage : Page
 
     /// <summary>程序化回写滑条时置 true，避免触发遮罩重复写设置。</summary>
     private bool _suppressDimSlider;
-    private readonly OfflineModeCoordinator _offlineMode = new();
-    private bool _suppressOfflineModeToggle;
-    private bool _offlineModeBusy;
+    private bool _legacyRecoveryBusy;
 
     public SettingsPage()
     {
         InitializeComponent();
-        RefreshOfflineModeControls();
+        RefreshLegacyRecoveryControls();
 
         // 关于卡 logo：ms-appx 资源加载失败时回退到绝对路径文件
         AboutLogoImage.ImageFailed += (_, _) =>
@@ -112,7 +110,7 @@ public sealed partial class SettingsPage : Page
             BackgroundManager.Changed += OnBackgroundChanged;
             OnBackgroundChanged();
             Update.Attach();
-            RefreshOfflineModeControls();
+            RefreshLegacyRecoveryControls();
             RefreshFsoStatus();
             if (DotNet.CanAct) _ = DotNet.RefreshAsync();
         };
@@ -131,43 +129,15 @@ public sealed partial class SettingsPage : Page
         RefreshGameRootsList();
     }
 
-    private void RefreshOfflineModeControls()
+    private void RefreshLegacyRecoveryControls()
     {
-        if (!_offlineMode.TryReadState(out var state, out var error))
-        {
-            _suppressOfflineModeToggle = true;
-            OfflineModeToggle.IsOn = true;
-            OfflineModeToggle.IsEnabled = false;
-            _suppressOfflineModeToggle = false;
-            OfflineModeStartButton.IsEnabled = false;
-            OfflineModeStatusText.Text = error;
-            ViewModel.RefreshOfflineModeControls();
-            SetTargetControlsEnabled(false);
-            return;
-        }
-
-        _suppressOfflineModeToggle = true;
-        OfflineModeToggle.IsOn = state.OfflineModeEnabled ||
-            state.Status is OfflineModeStatus.Preparing or OfflineModeStatus.RestorePending or OfflineModeStatus.Failed;
-        OfflineModeToggle.IsEnabled = !_offlineModeBusy;
-        _suppressOfflineModeToggle = false;
-        OfflineModeStartButton.IsEnabled = !_offlineModeBusy && state.OfflineModeEnabled &&
-            state.SavedPreferences is not null &&
-            (state.Status is OfflineModeStatus.Ready or OfflineModeStatus.Kept or OfflineModeStatus.Failed);
-        // 插件脱机开关状态与脱机就绪文案（规范第 8 节：开启即“非零进程”）。
-        if (AllowPluginsOfflineToggle is not null)
-        {
-            _suppressOfflineModeToggle = true;
-            AllowPluginsOfflineToggle.IsOn = AppSettingsStore.Read().AllowPluginsInOfflineMode;
-            _suppressOfflineModeToggle = false;
-        }
-        if (AppSettingsStore.Read().AllowPluginsInOfflineMode && !state.OfflineModeEnabled)
-            OfflineModeStatusText.Text = state.Message +
-                Environment.NewLine + "注意：已允许插件在脱机模式下运行——移交后为“非零进程”，不适用零进程验收。";
-        else
-            OfflineModeStatusText.Text = state.Message;
-        ViewModel.RefreshOfflineModeControls();
-        SetTargetControlsEnabled(!_offlineModeBusy && !state.BlocksNormalAutomation);
+        var pending = OfflineModeRetirement.NeedsRecovery;
+        LegacyRecoveryCard.Visibility = pending ? Visibility.Visible : Visibility.Collapsed;
+        LegacyRecoveryStatusText.Text = OfflineModeRetirement.LastError.Length > 0 ? OfflineModeRetirement.LastError
+            : "旧版本仍有助手或 CPU 集合恢复记录。恢复完成前暂停自动功能，原始记录会保留。";
+        LegacyRecoveryButton.IsEnabled = !_legacyRecoveryBusy;
+        ViewModel.RefreshAutomationControls();
+        SetTargetControlsEnabled(!pending && !_legacyRecoveryBusy);
     }
 
     private void SetTargetControlsEnabled(bool enabled)
@@ -185,148 +155,15 @@ public sealed partial class SettingsPage : Page
         ScopedScanGameFoldersButton.IsEnabled = enabled && !target.IsCustom && !_targetSelectionBusy;
     }
 
-    private async void OfflineModeToggle_Toggled(object sender, RoutedEventArgs e)
+    private async void LegacyRecoveryButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_suppressOfflineModeToggle || _offlineModeBusy) return;
-        var enable = OfflineModeToggle.IsOn;
-        if (!await ConfirmOfflineModeChangeAsync(enable))
-        {
-            RefreshOfflineModeControls();
-            return;
-        }
-
-        _offlineModeBusy = true;
-        OperationResult result;
-        try
-        {
-            using var backendGate = Services.Backends.BackendOperationGate.BlockNewOperations();
-            RefreshOfflineModeControls();
-            var pluginBlocker = await PluginLifecycleGuard.PrepareHandoverAsync(
-                ServiceLocator.Plugins, ServiceLocator.PluginRuntime, "脱机模式切换");
-            if (pluginBlocker.Length > 0)
-            {
-                result = OperationResult.Fail(pluginBlocker);
-            }
-            else
-            {
-                var backendFailures = await Services.Backends.BackendLifecycle.PrepareHandoverAsync("脱机模式切换");
-                result = backendFailures.Count > 0
-                    ? OperationResult.Fail(Services.Backends.BackendLifecycle.DescribeBlocker(backendFailures, "脱机模式切换"))
-                    : enable ? await _offlineMode.EnableAsync() : await _offlineMode.DisableAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            result = OperationResult.Fail("脱机模式切换异常：" + ex.Message);
-            Services.Log.Error("脱机模式切换异常", ex);
-        }
-        finally
-        {
-            _offlineModeBusy = false;
-            RefreshOfflineModeControls();
-        }
-        OfflineModeStatusText.Text = result.Message;
-    }
-
-    private async Task<bool> ConfirmOfflineModeChangeAsync(bool enable)
-    {
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = enable ? "启用脱机模式" : "关闭脱机模式",
-            Content = new TextBlock
-            {
-                Text = enable
-                    ? "启用前会尝试还原普通帧格、锁核与调度，并关闭本工具的自启动和托盘驻留。原偏好会保存；恢复不完整时会拒绝进入。助手只处理原游戏平台启动的目标进程，不启动、不注入游戏。"
-                    : "将先还原脱机 CPU Sets，再恢复普通参数；不会自动开启帧格、锁核、自启动或托盘，原启用偏好会另存。进程已退出或 PID 已复用时不会触碰新进程；身份无法确认或还原失败时保留记录。",
-                TextWrapping = TextWrapping.Wrap,
-            },
-            PrimaryButtonText = enable ? "启用" : "关闭并恢复",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Close,
-        };
-        return await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
-    }
-
-    private async void AllowPluginsOfflineToggle_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (AllowPluginsOfflineToggle is null) return;
-        var desired = AllowPluginsOfflineToggle.IsOn;
-        var current = AppSettingsStore.Read().AllowPluginsInOfflineMode;
-        if (desired == current) return;
-
-        if (desired)
-        {
-            // 开启：只保存偏好（不自动启动/移交任何插件）；移交发生在准备脱机启动时。
-            AppSettingsStore.Update(s => s.AllowPluginsInOfflineMode = true);
-            OfflineModeStatusText.Text = "已允许插件在脱机模式下运行。准备脱机启动时会先移交已单独授权的插件（标记为非零进程）。";
-            return;
-        }
-
-        // 关闭：立即排空所有已移交插件（重连→身份复核→stop→确认退出）；失败不宣称零进程。
-        AllowPluginsOfflineToggle.IsEnabled = false;
-        try
-        {
-            var failures = await ServiceLocator.PluginRuntime.DrainOfflinePluginsAsync();
-            AppSettingsStore.Update(s => s.AllowPluginsInOfflineMode = false);
-            OfflineModeStatusText.Text = failures.Count == 0
-                ? "已停止所有已移交插件，恢复默认零进程脱机。"
-                : "部分插件未能确认停止（记录保留）：" + Environment.NewLine +
-                  string.Join(Environment.NewLine, failures) + Environment.NewLine +
-                  "不宣称零进程就绪，请人工处理。";
-        }
-        finally
-        {
-            AllowPluginsOfflineToggle.IsEnabled = true;
-            RefreshOfflineModeControls();
-        }
-    }
-
-    private async void OfflineModeStartButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_offlineModeBusy) return;
-        _offlineModeBusy = true;
-        RefreshOfflineModeControls();
-        OperationResult result;
-        try
-        {
-            // 插件脱机移交（规范第 8 节）：总开关开启时，先移交已单独授权的插件，再启动官方脱机助手。
-            if (AppSettingsStore.Read().AllowPluginsInOfflineMode)
-            {
-                var manager = ServiceLocator.Plugins;
-                var candidates = manager.ListOfflineHandoffCandidates(true, out var listError);
-                if (listError.Length > 0)
-                {
-                    result = OperationResult.Fail("读取插件列表失败，未开始脱机准备：" + listError);
-                    OfflineModeStatusText.Text = result.Message;
-                    RefreshOfflineModeControls();
-                    return;
-                }
-                foreach (var candidate in candidates)
-                {
-                    var handoffError = await ServiceLocator.PluginRuntime.HandoffToOfflineAsync(candidate);
-                    if (handoffError.Length > 0)
-                    {
-                        result = OperationResult.Fail($"插件“{candidate.Id}”移交失败，未开始脱机准备：{handoffError}");
-                        OfflineModeStatusText.Text = result.Message;
-                        RefreshOfflineModeControls();
-                        return;
-                    }
-                }
-            }
-            result = await _offlineMode.StartHelperAsync();
-        }
-        catch (Exception ex)
-        {
-            result = OperationResult.Fail("启动脱机助手异常：" + ex.Message);
-            Services.Log.Error("启动脱机助手异常", ex);
-        }
-        finally { _offlineModeBusy = false; }
-
-        OfflineModeStatusText.Text = result.Message;
-        RefreshOfflineModeControls();
-        if (result.Success)
-            App.MainWindow?.ExitAfterOfflineHelper();
+        if (_legacyRecoveryBusy) return;
+        _legacyRecoveryBusy = true;
+        RefreshLegacyRecoveryControls();
+        var result = await OfflineModeRetirement.RecoverAsync();
+        _legacyRecoveryBusy = false;
+        RefreshLegacyRecoveryControls();
+        if (result.Success) await Services.Backends.BackendProcmanService.Instance.ActivateSavedRulesAsync();
     }
 
     private void OnBackgroundChanged() =>
@@ -376,7 +213,7 @@ public sealed partial class SettingsPage : Page
     {
         if (OfflineModeGuard.BlocksNormalAutomation)
         {
-            TargetModeStatusText.Text = "脱机模式或恢复流程中，暂不能切换游戏目标。";
+            TargetModeStatusText.Text = "旧版设置恢复完成前，暂不能切换游戏目标。";
             RefreshTargetControls();
             return;
         }
@@ -555,7 +392,7 @@ public sealed partial class SettingsPage : Page
 
     private void PickGameFolderButton_Click(object sender, RoutedEventArgs e)
     {
-        if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "脱机模式或恢复流程中，游戏目录不可更改。"; return; }
+        if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "旧版设置恢复完成前，游戏目录不可更改。"; return; }
         if (ServiceLocator.GameTarget.IsCustom) { GamePathStatusText.Text = GameTargetService.DeltaOnlyMessage; return; }
         if (App.MainWindow is null)
         {
@@ -584,7 +421,7 @@ public sealed partial class SettingsPage : Page
 
     private void AddGamePathButton_Click(object sender, RoutedEventArgs e)
     {
-        if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "脱机模式或恢复流程中，游戏目录不可更改。"; return; }
+        if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "旧版设置恢复完成前，游戏目录不可更改。"; return; }
         if (ServiceLocator.GameTarget.IsCustom) { GamePathStatusText.Text = GameTargetService.DeltaOnlyMessage; return; }
         var path = GamePathBox.Text?.Trim() ?? "";
         if (path.Length == 0) { GamePathStatusText.Text = "请先输入或浏览选择游戏目录。"; return; }
@@ -604,7 +441,7 @@ public sealed partial class SettingsPage : Page
 
     private void ClearGamePathButton_Click(object sender, RoutedEventArgs e)
     {
-        if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "脱机模式或恢复流程中，游戏目录不可更改。"; return; }
+        if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "旧版设置恢复完成前，游戏目录不可更改。"; return; }
         if (ServiceLocator.GameTarget.IsCustom) { GamePathStatusText.Text = GameTargetService.DeltaOnlyMessage; return; }
         GamePathBox.Text = "";
         AppSettingsStore.Update(s => s.GameRootOverride = "");
@@ -613,7 +450,7 @@ public sealed partial class SettingsPage : Page
 
     private void RemoveGameRoot_Click(object sender, RoutedEventArgs e)
     {
-        if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "脱机模式或恢复流程中，游戏目录不可更改。"; return; }
+        if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "旧版设置恢复完成前，游戏目录不可更改。"; return; }
         if (ServiceLocator.GameTarget.IsCustom) { GamePathStatusText.Text = GameTargetService.DeltaOnlyMessage; return; }
         if (sender is not Button { Tag: string path }) return;
         DeltaForceLocator.RemoveRegisteredRoot(path);
@@ -625,7 +462,7 @@ public sealed partial class SettingsPage : Page
 
     private void ScopedScanGameFoldersButton_Click(object sender, RoutedEventArgs e)
     {
-        if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "脱机模式或恢复流程中，游戏目录不可更改。"; return; }
+        if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "旧版设置恢复完成前，游戏目录不可更改。"; return; }
         if (ServiceLocator.GameTarget.IsCustom) { GamePathStatusText.Text = GameTargetService.DeltaOnlyMessage; return; }
         if (App.MainWindow is null) return;
         try
@@ -645,7 +482,7 @@ public sealed partial class SettingsPage : Page
 
     private async Task RunGameFolderSearchAsync(string? scopedRoot)
     {
-        if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "脱机模式或恢复流程中，游戏目录不可更改。"; return; }
+        if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "旧版设置恢复完成前，游戏目录不可更改。"; return; }
         if (ServiceLocator.GameTarget.IsCustom) { GamePathStatusText.Text = GameTargetService.DeltaOnlyMessage; return; }
 
         var cts = new CancellationTokenSource();

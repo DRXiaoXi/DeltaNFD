@@ -9,8 +9,15 @@ internal sealed class RuntimeRepairProcessRunner(string root, Func<bool>? busyPr
         int OwnerPid, long OwnerStartTicks, DateTimeOffset CreatedUtc);
     private string RecordPath => Path.Combine(root, "runtime-repair-active.json");
 
-    internal string? CheckPending(bool installerBusy)
+    internal string? CheckPending(bool installerBusy) => ReadPending(installerBusy, archiveEnded: true, out _);
+
+    internal string? InspectPending(bool installerBusy, out bool endedUnknown)
+        => ReadPending(installerBusy, archiveEnded: false, out endedUnknown);
+
+    private string? ReadPending(bool installerBusy, bool archiveEnded, out bool endedUnknown)
     {
+        endedUnknown = false;
+        if (Directory.Exists(RecordPath)) return "安装记录路径被目录占用，状态无法确认。";
         if (!File.Exists(RecordPath)) return null;
         try
         {
@@ -25,6 +32,8 @@ internal sealed class RuntimeRepairProcessRunner(string root, Func<bool>? busyPr
             if (process is not null && !process.HasExited && process.StartTime.ToUniversalTime().Ticks == record.StartTicks)
                 return $"上次安装器仍运行（PID {record.Pid}），禁止重复修复。";
             if (installerBusy) return "旧安装器进程已退出，但 Windows Installer 事务仍忙，禁止重复修复。";
+            endedUnknown = true;
+            if (!archiveEnded) return null;
             // Confirmation of exit is not confirmation of a successful operation. Archive as unknown.
             var archive = Path.Combine(root, "runtime-repair-history");
             Directory.CreateDirectory(archive);

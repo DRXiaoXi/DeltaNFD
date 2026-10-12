@@ -5,6 +5,7 @@ namespace DeltaNFD.Services;
 
 internal interface IRuntimeBetaRepairEnvironment
 {
+    Task<IReadOnlyList<VcRedistEntry>> PrepareUninstallBatchAsync(IReadOnlyList<VcRedistEntry> entries, CancellationToken token);
     Task<OperationResult> VerifyAsync(IProgress<string>? progress, CancellationToken token);
     Task<VcRedistScanReport> ScanAsync(CancellationToken token);
     Task<RuntimeStepResult> UninstallAsync(VcRedistEntry entry, TimeSpan timeout, IProgress<string>? progress, CancellationToken token);
@@ -43,7 +44,8 @@ internal sealed class RuntimeBetaRepair(IRuntimeBetaRepairEnvironment environmen
             var verified = await environment.VerifyAsync(progress, deadline.Token);
             if (!verified.Success) return verified;
             var before = await environment.ScanAsync(deadline.Token);
-            var removal = await RuntimePreUninstall.RunAsync(before, environment.UninstallAsync, Remaining, diagnostics, progress, deadline.Token);
+            var removal = await RuntimePreUninstall.RunAsync(before, environment.PrepareUninstallBatchAsync,
+                environment.UninstallAsync, environment.ScanAsync, Remaining, diagnostics, progress, deadline.Token);
             reboot |= removal.Reboot;
             if (removal.Stopped is { } stopped) return Stop(stopped, "运行库卸载");
             progress?.Report("正在运行完整 AIO 安装器，静默重装 2005–2026 全系列…");
@@ -88,16 +90,22 @@ internal sealed class RuntimeBetaRepair(IRuntimeBetaRepairEnvironment environmen
 internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, RuntimeRepairDiagnostics diagnostics)
     : IRuntimeBetaRepairEnvironment
 {
+    public Task<IReadOnlyList<VcRedistEntry>> PrepareUninstallBatchAsync(IReadOnlyList<VcRedistEntry> entries, CancellationToken token)
+        => new RuntimeRepairEnvironment(service, diagnostics).PrepareUninstallBatchAsync(entries, token);
     private readonly RuntimeRepairProcessRunner _runner = new(AppDataPaths.Root);
     private string Assets => BackendEnvironment.AssetsRoot;
     private string Payload => Path.Combine(Assets, "VCRedistRepair");
 
-    public Task<OperationResult> VerifyAsync(IProgress<string>? progress, CancellationToken token)
+    public async Task<OperationResult> VerifyAsync(IProgress<string>? progress, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        var readiness = await service.CheckRepairEnvironmentAsync(token);
+        diagnostics.Save("environment-before-uninstall.json", readiness);
+        progress?.Report(readiness.Summary);
+        if (!readiness.CanProceed) return OperationResult.Fail(readiness.Summary + "\n\n" + readiness.Details);
         var pending = _runner.CheckPending(RuntimeRepairPreflight.InstallerBusy());
-        if (pending is not null) return Task.FromResult(OperationResult.Fail(pending));
-        return Task.FromResult(RuntimeGuardService.VerifyRepairPackage(Assets, Payload, progress));
+        if (pending is not null) return OperationResult.Fail(pending);
+        return RuntimeGuardService.VerifyRepairPackage(Assets, Payload, progress);
     }
     public Task<VcRedistScanReport> ScanAsync(CancellationToken token) => service.ScanVcRedistsAsync().WaitAsync(token);
     public List<RuntimePackageResult> ReadAioResults() => diagnostics.ReadPackageResults();

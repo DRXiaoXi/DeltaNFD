@@ -242,6 +242,13 @@ public sealed partial class MainWindow : Window
         _startupInitializationStarted = true;
         Services.Backends.BackendAttention.RefreshPersisted();
 
+        var retiredRecovery = await OfflineModeRetirement.RecoverAsync();
+        if (!retiredRecovery.Success)
+        {
+            NavigateByTag("settings");
+            Log.Warn("旧版恢复待处理：" + retiredRecovery.Message);
+        }
+
         try
         {
             await EnsureGameDirectoryOnStartupAsync();
@@ -254,7 +261,7 @@ public sealed partial class MainWindow : Window
         {
             StartupGameDirectoryCheckCompleted = true;
         }
-        _ = Services.Backends.BackendProcmanService.Instance.ActivateSavedRulesAsync();
+        if (retiredRecovery.Success) _ = Services.Backends.BackendProcmanService.Instance.ActivateSavedRulesAsync();
 
         // 启动时主页可能在目录提示之前已创建；路径设置完成后立即使用真实游戏目录重扫。
         if (ContentFrame.Content is DashboardPage dashboard)
@@ -1025,9 +1032,8 @@ public sealed partial class MainWindow : Window
             pluginBlock = ServiceLocator.PluginRuntime.BlockNewOperations();
             backendBlock = Services.Backends.BackendOperationGate.BlockNewOperations();
 
-            var allowAutonomous = OfflineModeGuard.BlocksNormalAutomation && AppSettingsStore.Read().AllowPluginsInOfflineMode;
             var blocker = await PluginLifecycleGuard.PrepareHandoverAsync(ServiceLocator.Plugins, ServiceLocator.PluginRuntime,
-                "退出", restoreChanges: false, allowAutonomous: allowAutonomous);
+                "退出", restoreChanges: false, allowAutonomous: false);
             if (blocker.Length > 0)
             {
                 // 优化：排空失败时显式释放阻止，恢复正常操作
@@ -1086,7 +1092,6 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>脱机助手已完成启动握手后，主界面直接退出，不进入托盘驻留。</summary>
-    public void ExitAfterOfflineHelper() => ExitApplication();
 
     private TrayIconWindow? GetOrCreateTrayIcon()
     {

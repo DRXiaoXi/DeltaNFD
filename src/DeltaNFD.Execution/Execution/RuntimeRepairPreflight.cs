@@ -18,7 +18,8 @@ internal static class RuntimeRepairPreflight
             using var session = registry.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager");
             var pendingFiles = session?.GetValue("PendingFileRenameOperations") as string[];
             var winsxsWarning = CheckWinSxSPermissions();
-            return new(services, busy, cbs is not null || update is not null || pendingFiles?.Any(s => s.Length != 0) == true, "", winsxsWarning);
+            return new(services, busy, cbs is not null || update is not null || pendingFiles?.Any(s => s.Length != 0) == true,
+                "", winsxsWarning, ServicingRebootPending: cbs is not null || update is not null);
         }
         catch (Exception ex) { return new([], false, false, ex.Message); }
     }

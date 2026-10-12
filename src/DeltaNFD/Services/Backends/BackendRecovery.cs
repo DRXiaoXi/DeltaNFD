@@ -26,6 +26,7 @@ internal static class BackendRecovery
     internal static IReadOnlyList<RecoveryScope> RecoveryChoices(BackendUnconfirmedStore.Review review, ReconcileSnapshot? snapshot)
     {
         var module = review.Module;
+        if (module == BackendModules.Procman && review.Command == BackendCommands.ProcmanMemoryTrim) return [];
         if (snapshot is null || !snapshot.Complete || snapshot.Module != module) return [];
         if (module == BackendModules.CpuFrame)
             return CanRestoreCpuRecord(review.Command) && snapshot.RecoveryScopes.Any(s => s.Available)

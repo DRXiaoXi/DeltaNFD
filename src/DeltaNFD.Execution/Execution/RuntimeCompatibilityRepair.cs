@@ -12,6 +12,7 @@ internal sealed record DirectXProbeResult(string Name, string Architecture, bool
 
 internal interface IRuntimeCompatibilityEnvironment
 {
+    Task<IReadOnlyList<VcRedistEntry>> PrepareUninstallBatchAsync(IReadOnlyList<VcRedistEntry> entries, CancellationToken token);
     Task<OperationResult> VerifyAsync(IProgress<string>? progress, CancellationToken token);
     Task<IReadOnlyList<DirectXProbeResult>> ProbeAsync(CancellationToken token);
     Task<RuntimeStepResult> InstallDirectXAsync(TimeSpan timeout, IProgress<string>? progress, CancellationToken token);
@@ -68,7 +69,8 @@ internal sealed class RuntimeCompatibilityRepair(IRuntimeCompatibilityEnvironmen
             diagnostics.Save("directx-before.json", before);
             if (before.Count == 0) { issues.Add("DirectX 检测清单为空，未开始安装。"); return Finish(); }
             var cppBefore = await environment.ScanCppAsync(deadline.Token);
-            var removal = await RuntimePreUninstall.RunAsync(cppBefore, environment.UninstallCppAsync, Remaining, diagnostics, progress, deadline.Token);
+            var removal = await RuntimePreUninstall.RunAsync(cppBefore, environment.PrepareUninstallBatchAsync,
+                environment.UninstallCppAsync, environment.ScanCppAsync, Remaining, diagnostics, progress, deadline.Token);
             removed = removal.Completed; reboot |= removal.Reboot;
             if (removal.Stopped is { } stopped)
             { issues.Add("修复前运行库卸载未全部完成，未启动 DirectX/C++ 安装：" + stopped.Details); return Finish(stopped.OutcomeUnknown); }
@@ -111,6 +113,8 @@ internal sealed class RuntimeCompatibilityRepair(IRuntimeCompatibilityEnvironmen
 
 internal sealed class RuntimeCompatibilityEnvironment(RuntimeRepairDiagnostics diagnostics, bool strongRepairMode = false) : IRuntimeCompatibilityEnvironment
 {
+    public Task<IReadOnlyList<VcRedistEntry>> PrepareUninstallBatchAsync(IReadOnlyList<VcRedistEntry> entries, CancellationToken token)
+        => new RuntimeRepairEnvironment(new RuntimeGuardService(), diagnostics).PrepareUninstallBatchAsync(entries, token);
     private const string ManifestHash = "4F47FEC83E08A38738CC8C72D020BB0CF3749223A5E95279BD246E2259CAB301";
     private readonly RuntimeRepairProcessRunner _runner = new(AppDataPaths.Root);
     private DirectXPayload? _payload;
@@ -125,16 +129,19 @@ internal sealed class RuntimeCompatibilityEnvironment(RuntimeRepairDiagnostics d
         return await environment.ExecuteAsync(new("compat-uninstall-" + Guid.NewGuid().ToString("N"), entry.DisplayName, "", "uninstall", "", entry), timeout, progress, token);
     }
 
-    public Task<OperationResult> VerifyAsync(IProgress<string>? progress, CancellationToken token)
+    public async Task<OperationResult> VerifyAsync(IProgress<string>? progress, CancellationToken token)
     {
         try
         {
             token.ThrowIfCancellationRequested();
-            if (RuntimeRepairPreflight.Read().Blocker is { } blocker) return Task.FromResult(OperationResult.Fail(blocker));
+            var readiness = await new RuntimeGuardService().CheckRepairEnvironmentAsync(token);
+            diagnostics.Save("environment-before-uninstall.json", readiness);
+            progress?.Report(readiness.Summary);
+            if (!readiness.CanProceed) return OperationResult.Fail(readiness.Summary + "\n\n" + readiness.Details);
             var pending = _runner.CheckPending(RuntimeRepairPreflight.InstallerBusy());
-            if (pending is not null) return Task.FromResult(OperationResult.Fail(pending));
+            if (pending is not null) return OperationResult.Fail(pending);
             var cpp = RuntimeGuardService.VerifyRepairPackage(BackendEnvironment.AssetsRoot, CppRoot, progress);
-            if (!cpp.Success) return Task.FromResult(cpp);
+            if (!cpp.Success) return cpp;
             foreach (var step in RuntimeCompatibilityRepair.CppPlan())
             {
                 token.ThrowIfCancellationRequested();
@@ -146,10 +153,10 @@ internal sealed class RuntimeCompatibilityEnvironment(RuntimeRepairDiagnostics d
             }
             _payload = ReadVerifiedPayload(DirectXRoot, token);
             progress?.Report("DirectX 与 C++ 安装资源 SHA256 校验通过。");
-            return Task.FromResult(OperationResult.Ok("资源校验通过。"));
+            return OperationResult.Ok("资源校验通过。");
         }
         catch (OperationCanceledException) { throw; }
-        catch (Exception ex) { return Task.FromResult(OperationResult.Fail("兼容性修复预检失败：" + ex.Message)); }
+        catch (Exception ex) { return OperationResult.Fail("兼容性修复预检失败：" + ex.Message); }
     }
     internal static DirectXPayload ReadVerifiedPayload(string root, CancellationToken token)
     {

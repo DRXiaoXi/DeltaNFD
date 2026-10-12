@@ -420,7 +420,7 @@ public sealed partial class PluginPage : Page
             {
                 Text = "该插件声明支持持续运行。驻留期间宿主每 5 秒心跳，15 秒无响应标记失联" +
                        "（提示人工处理，不自动强杀）；插件崩溃不会自动重启。" + Environment.NewLine +
-                       "关闭本工具前会先停止插件；脱机自主运行需另行授权（当前未实现）。",
+                       "关闭本工具前会先停止插件。",
                 TextWrapping = TextWrapping.Wrap,
             },
             PrimaryButtonText = "开始持续运行",

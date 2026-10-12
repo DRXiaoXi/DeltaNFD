@@ -19,6 +19,7 @@ internal sealed class RuntimeRepairDiagnostics
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly ConcurrentQueue<string> _issues = new();
+    private readonly object _eventGate = new();
     public string DirectoryPath { get; }
     public DateTime StartedUtc { get; } = DateTime.UtcNow;
 
@@ -30,6 +31,46 @@ internal sealed class RuntimeRepairDiagnostics
         // 必须在卸载前确认诊断文件可写。
         foreach (var name in new[] { "install-results.txt", "aio-stdout.log", "aio-stderr.log" })
             File.WriteAllText(Path.Combine(DirectoryPath, name), "", new UTF8Encoding(false));
+        Save("session.json", new { SchemaVersion = 2, StartedUtc, OperationId = Guid.NewGuid(),
+            Version = typeof(RuntimeRepairDiagnostics).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion,
+            OS = Environment.OSVersion.VersionString, Runtime = Environment.Version.ToString(), Pid = Environment.ProcessId,
+            ExecutionSha256 = ExecutionFingerprint() });
+        File.WriteAllText(Path.Combine(DirectoryPath, "请发送整个诊断文件夹.txt"),
+            "请将本次 runtime-repair-* 文件夹整体压缩后反馈，不要只发送 settings.json 或单个恢复计划。\r\n" +
+            "events.jsonl 是执行时间线；operation-result.json 是最终结果；unified-plan 是计划，不能证明已执行成功。\r\n" +
+            "MSI 日志、依赖快照、command 参数和 result 复检共同用于定位原因。尚未启动的阶段可能没有日志。\r\n" +
+            "若事务尚未确认结束，请先按工具提示核对，不要强杀安装器或立即重复修复。", new UTF8Encoding(false));
+    }
+
+    private static string? ExecutionFingerprint()
+    {
+        try
+        {
+            var path = typeof(RuntimeRepairDiagnostics).Assembly.Location;
+            if (string.IsNullOrEmpty(path)) return null;
+            using var file = File.OpenRead(path);
+            return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(file));
+        }
+        catch { return null; }
+    }
+
+    public void Event(string stage, object data)
+    {
+        try
+        {
+            lock (_eventGate) File.AppendAllText(Path.Combine(DirectoryPath, "events.jsonl"),
+                JsonSerializer.Serialize(new { Utc = DateTimeOffset.UtcNow, Stage = stage, Data = data }) + "\n", new UTF8Encoding(false));
+        }
+        catch (Exception ex) { AddIssue("执行时间线写入失败：" + ex.Message); }
+    }
+
+    public OperationResult Complete(OperationResult result)
+    {
+        var attached = result.WithDiagnostics(DirectoryPath);
+        Event("operation-completed", attached);
+        Save("operation-result.json", attached);
+        return attached;
     }
 
     public void Save(string name, object value)
@@ -116,7 +157,8 @@ internal sealed class RuntimeRepairDiagnostics
         var causes = new List<string>();
         foreach (var line in File.ReadLines(path))
         {
-            if (!Regex.IsMatch(line, @"1935|0x[0-9A-F]{8}|Error\s+(?:1603|1618|1612|1706)|Return value 3|MainEngineThread.*returning", RegexOptions.IgnoreCase)) continue;
+            if (!Regex.IsMatch(line, @"1935|0x[0-9A-F]{8}|Error\s+(?:1603|1618|1612|1706)|Return value [35]|WixDependencyCheck|Found dependent|MainEngineThread.*returning", RegexOptions.IgnoreCase)) continue;
+            if (causes.Count < 8 && line.Contains("WixDependencyCheck", StringComparison.OrdinalIgnoreCase)) causes.Add(line);
             if (causes.Count < 8 && Regex.IsMatch(line, @"1935|0x8[0-9A-F]{7}", RegexOptions.IgnoreCase)) causes.Add(line);
             lines.Enqueue(line);
             if (lines.Count > 12) lines.Dequeue();

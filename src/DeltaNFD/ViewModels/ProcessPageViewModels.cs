@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace DeltaNFD.ViewModels;
 
@@ -11,23 +12,36 @@ internal static class ProcessPriorityDisplay
 }
 
 /// <summary>进程列表行（只读快照 + 身份三元组，供选中后详情加载复核）。</summary>
-public sealed class ProcessRowVm
+public sealed class ProcessRowVm : ObservableObject
 {
     public required string Name { get; init; }
     public required int Pid { get; init; }
     public required long StartTimeUtcTicks { get; init; }
     public required string ExecutablePath { get; init; }
-    public double? WorkingSetMb { get; init; }
-    public double? CpuPercent { get; init; }
-    public int OwnedPropertyCount { get; init; }
+    private double? _workingSetMb, _cpuPercent;
+    private int _ownedPropertyCount;
+    private bool _backgroundExcluded;
+    public double? WorkingSetMb { get => _workingSetMb; set { if (SetProperty(ref _workingSetMb, value)) { OnPropertyChanged(nameof(WorkingSetText)); OnPropertyChanged(nameof(MemoryText)); } } }
+    public double? CpuPercent { get => _cpuPercent; set { if (SetProperty(ref _cpuPercent, value)) { OnPropertyChanged(nameof(CpuText)); OnPropertyChanged(nameof(MemoryText)); } } }
+    public int OwnedPropertyCount { get => _ownedPropertyCount; set { if (SetProperty(ref _ownedPropertyCount, value)) { OnPropertyChanged(nameof(PidText)); OnPropertyChanged(nameof(HeldText)); } } }
+    public bool BackgroundExcluded { get => _backgroundExcluded; set { if (SetProperty(ref _backgroundExcluded, value)) { OnPropertyChanged(nameof(ProtectedVisibility)); OnPropertyChanged(nameof(ProtectionText)); } } }
     public bool Protected { get; init; }
+    public bool FixedBackgroundProtection { get; init; }
+    public string IdentityKey => $"{Pid}:{StartTimeUtcTicks}:{ExecutablePath.ToUpperInvariant()}";
+    public string ProtectionText => BackgroundExcluded ? "已排除" : Protected ? "只读" : "已保护";
+
+    public void UpdateFrom(ProcessRowVm snapshot)
+    {
+        WorkingSetMb = snapshot.WorkingSetMb; CpuPercent = snapshot.CpuPercent;
+        OwnedPropertyCount = snapshot.OwnedPropertyCount; BackgroundExcluded = snapshot.BackgroundExcluded;
+    }
 
     public string PidText => $"PID {Pid}" + (OwnedPropertyCount > 0 ? $" · 已调整 {OwnedPropertyCount} 项" : "");
     public string CpuText => CpuPercent is { } cpu ? $"{cpu:0.#}%" : "—";
     public string WorkingSetText => WorkingSetMb is { } mb ? $"{mb:0.#} MB" : "—";
     public string MemoryText => (CpuPercent is { } cpu ? $"CPU {cpu:0.#}% · " : "CPU — · ") + (WorkingSetMb is { } mb ? $"{mb:0.#} MB" : "—");
     public string HeldText => OwnedPropertyCount > 0 ? $"持有 {OwnedPropertyCount}" : "";
-    public Visibility ProtectedVisibility => Protected ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ProtectedVisibility => Protected || FixedBackgroundProtection || BackgroundExcluded ? Visibility.Visible : Visibility.Collapsed;
 }
 
 /// <summary>能力条目（详情面板）。</summary>

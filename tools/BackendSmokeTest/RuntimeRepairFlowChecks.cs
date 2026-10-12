@@ -36,18 +36,21 @@ internal static class RuntimeRepairFlowChecks
         Check(!(await Run(badPayload)).Success && badPayload.Calls.Count == 0, "损坏安装资源不卸载");
         var badUninstallPlan = new Fake { PrepareFailed = true };
         Check(!(await Run(badUninstallPlan)).Success && badUninstallPlan.Calls.Count == 0, "关联产品预检失败先于任何卸载");
+        var residue = new Fake { KeepInstalled = true };
+        Check(!(await Run(residue)).Success && residue.Calls.Count == 1 && residue.Calls[0].Kind == "uninstall",
+            "内部受控修复也必须通过卸载复检才能启动安装");
         var scan = Fake.Missing();
         await RuntimeBetaRepairChecks.RunAsync(root, Check);
         var full = RuntimeRepairPlanner.Build(scan, RuntimeRepairMode.FullReinstall);
         Check(full[0].Kind == "uninstall" && full.Any(s => s.Kind == "msi"), "全量模式保留卸载与全系列安装");
         var legacy = RuntimeRepairPlanner.Build(scan, RuntimeRepairMode.Legacy2005And2008);
-        Check(legacy.All(s => s.Kind != "uninstall" && (s.Branch.StartsWith("2005") || s.Branch.StartsWith("2008"))) && legacy.Count(s => s.Kind == "msi") == 4, "旧分支模式只处理四个 2005/2008 包");
+        Check(legacy[0].Kind == "uninstall" && legacy.Where(s => s.Kind != "uninstall").All(s => s.Branch.StartsWith("2005") || s.Branch.StartsWith("2008")) && legacy.Count(s => s.Kind == "msi") == 4, "旧分支内部流程也先卸载选定分支，再安装四个包");
         await RuntimeMsiInstallerChecks.RunAsync(root, Check);
         var preexistingReboot = new Fake { Status = stopped with { RebootPending = true } };
         var preexistingResult = await Run(preexistingReboot);
         Check(preexistingResult.Success && !preexistingResult.RequiresReboot, "既有系统待重启记录不冒充本次组件安装重启请求");
         var missing = RuntimeRepairPlanner.Build(scan, RuntimeRepairMode.MissingOrOutdated);
-        Check(missing.All(s => s.Kind != "uninstall" && s.Branch == "2005 (x86)"), "缺失模式不触碰其他分支");
+        Check(missing[0].Kind == "uninstall" && missing.Where(s => s.Kind != "uninstall").All(s => s.Branch == "2005 (x86)"), "缺失模式先卸载目标分支，不触碰其他分支");
         var none = new Fake { Before = Fake.Clean() };
         Check((await Run(none, RuntimeRepairMode.MissingOrOutdated)).IsSkipped && none.Calls.Count == 0, "无缺失不执行");
         foreach (var code in new[] { 1618, 1603, 1612, 1638 })
@@ -156,19 +159,19 @@ internal static class RuntimeRepairFlowChecks
     {
         internal static RuntimePreflightSnapshot Healthy() => new([new("msiserver",3,1),new("TrustedInstaller",3,1)],false,false);
         internal static VcRedistScanReport Clean() => new() { All = [], Abnormal = [], Suboptimal = [], Advice = "" };
-        internal static VcRedistScanReport Missing() => new() { All = [new() { DisplayName = "old", Architecture="x64", KeyName="key", UninstallKind="Msi" }],
+        internal static VcRedistScanReport Missing() => new() { All = [new() { DisplayName = "Microsoft Visual C++ 2005 Redistributable", Architecture="x86", KeyName="key", UninstallKind="Msi" }],
             Abnormal=[], Suboptimal=[new() { Branch="2005 (x86)", RecommendedVersion="8.0.61187", InstalledVersion="" }], Advice="" };
         internal RuntimePreflightSnapshot Status = Healthy();
         internal VcRedistScanReport Before = Missing(), After = Clean();
-        internal bool Verified = true, Wait, ChangeStatusAfterStep, PrepareFailed;
+        internal bool Verified = true, Wait, ChangeStatusAfterStep, PrepareFailed, KeepInstalled;
         internal int Verifications, Scans;
         internal RuntimeStepResult? Next;
         internal RuntimeStepResult? BaselineResult;
         internal List<RuntimeRepairStep> Calls = [];
         public Task<RuntimePreflightSnapshot> PreflightAsync(CancellationToken token) { token.ThrowIfCancellationRequested(); return Task.FromResult(Status); }
-        public Task PrepareStepsAsync(IReadOnlyList<RuntimeRepairStep> steps, CancellationToken token)
-        { if (PrepareFailed) throw new InvalidDataException("关联无法确认"); return Task.CompletedTask; }
-        public Task<VcRedistScanReport> ScanAsync(CancellationToken token) { token.ThrowIfCancellationRequested(); return Task.FromResult(Scans++ == 0 ? Before : After); }
+        public Task<IReadOnlyList<RuntimeRepairStep>> PrepareStepsAsync(IReadOnlyList<RuntimeRepairStep> steps, CancellationToken token)
+        { if (PrepareFailed) throw new InvalidDataException("关联无法确认"); return Task.FromResult(steps); }
+        public Task<VcRedistScanReport> ScanAsync(CancellationToken token) { token.ThrowIfCancellationRequested(); return Task.FromResult(Scans++ switch { 0 => Before, 1 => KeepInstalled ? Before : Clean(), _ => After }); }
         public Task<OperationResult> VerifyAsync(IProgress<string>? progress, CancellationToken token) { Verifications++; return Task.FromResult(Verified ? OperationResult.Ok("verified") : OperationResult.Fail("bad payload")); }
         public async Task<RuntimeStepResult> ExecuteAsync(RuntimeRepairStep step, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
         { Calls.Add(step); if (Wait) await Task.Delay(Timeout.Infinite, token); if (ChangeStatusAfterStep) Status = Status with { InstallerBusy = true }; var result = Next ?? (step.Kind == "exe" ? BaselineResult : null) ?? new(0); Next = null; return result; }

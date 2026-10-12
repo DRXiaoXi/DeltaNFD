@@ -688,22 +688,29 @@ internal sealed class BackendClient : IAsyncDisposable
 
     private Task PromoteUnknownAsync(Guid requestId, string command, string reason)
     {
-        if (!NeedsEvidence(command))
+        lock (_pendingLock)
         {
-            Log.Warn($"只读后端请求失败，不建立系统恢复义务：module={ModuleId}；command={command}；reason={reason}");
+            // Serialize evidence promotion with late-result archival. A WMI child-process query can
+            // finish after the restore reply; it must not recreate evidence after that reply was verified.
+            if (ModuleId == BackendModules.CpuFrame && _cpuRestoreConfirmed && !_cpuMayNeedRestore && !_unconfirmedOperation)
+                return Task.CompletedTask;
+            if (!NeedsEvidence(command))
+            {
+                Log.Warn($"只读后端请求失败，不建立系统恢复义务：module={ModuleId}；command={command}；reason={reason}");
+                return Task.CompletedTask;
+            }
+            _unconfirmedOperation = true;
+            try
+            {
+                // 在进程仍存活时枚举它启动的子进程（安装器等），供核对/解除阻塞前确认它们也已结束。
+                var (children, ok) = BackendUnconfirmedStore.CaptureDescendants(_process.Id);
+                BackendUnconfirmedStore.PromoteIntent(_spec.Id, requestId, reason, _process.Id, _processStartTicks,
+                    _processImagePath, command, children, childrenUnknown: !ok, sessionId: _sessionId);
+                BackendAttention.Report(ModuleId);
+            }
+            catch (Exception ex) { Log.Error("后端未知记录保存失败，仍阻止本轮交接", ex); }
             return Task.CompletedTask;
         }
-        _unconfirmedOperation = true;
-        try
-        {
-            // 在进程仍存活时枚举它启动的子进程（安装器等），供核对/解除阻塞前确认它们也已结束。
-            var (children, ok) = BackendUnconfirmedStore.CaptureDescendants(_process.Id);
-            BackendUnconfirmedStore.PromoteIntent(_spec.Id, requestId, reason, _process.Id, _processStartTicks,
-                _processImagePath, command, children, childrenUnknown: !ok, sessionId: _sessionId);
-            BackendAttention.Report(ModuleId);
-        }
-        catch (Exception ex) { Log.Error("后端未知记录保存失败，仍阻止本轮交接", ex); }
-        return Task.CompletedTask;
     }
 
     private bool NeedsEvidence(string command) => BackendModules.IsMutating(ModuleId, command)

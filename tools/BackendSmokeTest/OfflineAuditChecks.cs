@@ -132,11 +132,10 @@ internal static class OfflineAuditChecks
         var path = Path.Combine(Directory.GetCurrentDirectory(), "src", "DeltaNFD", "Services", "OfflineModeCoordinator.cs");
         var code = File.ReadAllText(path);
         var disable = code[code.IndexOf("public async Task<OperationResult> DisableAsync", StringComparison.Ordinal)..
-            code.IndexOf("public async Task<OperationResult> StartHelperAsync", StringComparison.Ordinal)];
+                code.IndexOf("public Task<OperationResult> StartHelperAsync", StringComparison.Ordinal)];
         Require(!disable.Contains("ActivateFrameModeAsync") && !disable.Contains("EnsureOwnedTaskAsync"), "disable cannot reactivate frame/login tasks");
         Require(disable.Contains("s.GameAffinityRuleEnabled = false") && disable.Contains("s.GamePriorityEnabled = false") &&
             disable.Contains("s.CloseToTrayEnabled = false"), "disable does not silently resume automation");
-        Require(code.Contains("GetNamedPipeClientProcessId") && code.Contains("\"START\""), "two-phase authenticated process handshake");
     }
 
     private sealed class SyntheticTopology(ulong allMask) : ICpuTopologyService

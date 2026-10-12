@@ -32,8 +32,8 @@ internal static class OfflineModeTransitionChecks
                 catch (InvalidOperationException) { denied = true; }
                 check(denied, "复现旧门禁：切换外层封锁时普通亲和性查询被拒绝");
                 var enabled = await coordinator.EnableAsync();
-                check(enabled.Success && store.Read() is { OfflineModeEnabled: true, Status: OfflineModeStatus.Ready, SavedPreferences: not null },
-                    "启用流程自己的核对请求可穿过外层门禁并完成就绪");
+                check(!enabled.Success && enabled.Message.Contains("已移除"), "已移除的启用入口拒绝执行，不穿透外层门禁");
+                Seed(OfflineModeStatus.Ready, enabled: true); // Existing-version fixture, not a new activation.
                 check(IsBlocked(), "内部控制调用返回后不把权限泄漏给页面");
             }
             check(!IsBlocked(), "启用结束释放门禁");
@@ -102,9 +102,9 @@ internal static class OfflineModeTransitionChecks
 
             var savedRunner = OfflineTaskOwnership.ProcessRunnerForTests;
             OfflineTaskOwnership.ProcessRunnerForTests = (_, _) => Task.FromException<(int, string, string)>(new IOException("模拟计划任务查询故障"));
-            var thrown = false;
-            try { await coordinator.EnableAsync(); } catch (IOException) { thrown = true; }
-            check(thrown && !IsBlocked() && !store.Read().BlocksNormalAutomation, "准备阶段异常释放权限且不伪造启用状态");
+            var removed = await coordinator.EnableAsync();
+            check(!removed.Success && removed.Message.Contains("已移除") && !IsBlocked() && !store.Read().BlocksNormalAutomation,
+                "移除后的启用入口不会查询计划任务或伪造状态，也不泄漏门禁");
             OfflineTaskOwnership.ProcessRunnerForTests = savedRunner;
             var intact = File.ReadAllBytes(store.PathName);
             File.WriteAllText(store.PathName, "{broken");

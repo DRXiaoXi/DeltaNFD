@@ -1,5 +1,49 @@
 using DeltaNFD.Services;
 
+if (args.Contains("--ace-virtualization-checks"))
+{
+    AceVirtualizationChecks.Run();
+    return;
+}
+
+if (args.Contains("--ace-virtualization-readonly"))
+{
+    var id = Guid.NewGuid();
+    var root = Path.GetFullPath(Path.Combine("_buildcheck", "virtualization-readonly-" + id.ToString("N")));
+    Directory.CreateDirectory(root);
+    File.WriteAllText(Path.Combine(root, "isolated-test.marker"), id.ToString("D"));
+    AppDataPaths.ConfigureIsolatedDataRoot(root, id);
+    var result = await AceVirtualizationCheck.RunAsync();
+    Console.WriteLine(result.OverallSummary);
+    foreach (var item in result.Hardware.Concat(result.System)) Console.WriteLine($"{item.Id}: {item.Status}: {item.Detail}");
+    Console.WriteLine("Read-only diagnostics: " + root);
+    return;
+}
+
+if (args.Contains("--procman-list-checks"))
+{
+    ProcmanListChecks.Run();
+    return;
+}
+
+if (args.Contains("--offline-retirement-checks"))
+{
+    await OfflineModeRetirementChecks.RunAsync();
+    return;
+}
+
+if (args.Contains("--procman-memory-checks"))
+{
+    await ProcmanMemoryChecks.RunAsync();
+    return;
+}
+
+if (args.Contains("--runtime-environment-checks"))
+{
+    RuntimeEnvironmentChecks.Run();
+    return;
+}
+
 if (args.Contains("--backend-attention-checks"))
 {
     BackendAttentionChecks.Run();

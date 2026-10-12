@@ -5,6 +5,17 @@ public enum RuntimeGuardMode { BasicV14, Full }
 public sealed record RuntimeUninstallPreview(List<VcRedistEntry> Entries, string Fingerprint);
 public sealed class RuntimeUninstallAllArgs { public string Fingerprint { get; set; } = ""; }
 public enum RuntimeRepairMode { MissingOrOutdated, Legacy2005And2008, FullReinstall }
+public sealed record RuntimeRepairEnvironmentItem(string Name, string Status, string Detail, string Suggestion = "");
+public sealed record RuntimeRepairEnvironmentReport(IReadOnlyList<RuntimeRepairEnvironmentItem> Items)
+{
+    public bool CanProceed => Items.Count > 0 && Items.All(i => i.Status is "passed" or "warning");
+    public bool HasWarnings => Items.Any(i => i.Status == "warning");
+    public string Summary => !CanProceed ? "当前环境不适合开始修复，请先处理未通过或无法确认的项目。"
+        : HasWarnings ? "基础环境检查通过，但有提醒；请阅读后再确认修复。" : "基础环境检查通过，可以继续确认修复。";
+    public string Details => string.Join("\n\n", Items.Select(i => $"{i.Name}：{(i.Status switch { "passed" => "通过", "warning" => "提醒", "blocked" => "未通过", _ => "无法确认" })}\n{i.Detail}"
+        + (i.Suggestion.Length > 0 ? "\n处理建议：" + i.Suggestion : "")))
+        + "\n\n预检不能保证安装一定成功，不会为了通过检查自动修改服务、系统权限或关闭安全软件。";
+}
 public sealed record RuntimeGuardLegacyEntry(string Name, string Fingerprint);
 
 /// <summary>已安装的 VC++ 2015-2022 运行库信息。</summary>
@@ -117,6 +128,8 @@ public sealed class RuntimeGuardStatus
 /// </summary>
 public interface IRuntimeGuardService
 {
+    Task<RuntimeRepairEnvironmentReport> CheckRepairEnvironmentAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new RuntimeRepairEnvironmentReport([new("环境检查", "unknown", "后端尚未提供环境检查，请更新工具。") ]));
     /// <summary>读取拦截状态与已安装运行库版本（纯只读；含一次计划任务式的进程调用，约 1 秒）。</summary>
     Task<RuntimeGuardStatus> GetStatusAsync();
 

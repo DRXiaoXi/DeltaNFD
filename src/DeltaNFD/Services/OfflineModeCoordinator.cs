@@ -1,18 +1,11 @@
 using System.Diagnostics;
 using RestoreLocks = DeltaNFD.Services.OfflineRestoreHandover.Leases;
-using System.IO.Pipes;
-using System.Text;
-using System.Runtime.InteropServices;
 
 namespace DeltaNFD.Services;
 
-/// <summary>脱机模式切换、恢复和短时助手交接。</summary>
+/// <summary>已移除功能的旧数据恢复；启用和启动入口仅拒绝执行。</summary>
 public sealed class OfflineModeCoordinator
 {
-    private const string AutoStartTaskName = "DeltaNFD_AutoStart";
-    private const string LegacyAutoStartTaskName = "DeltaOptimizer_AutoStart";
-    private const string FrameTaskName = "DeltaNFD_FrameMode";
-    private const string LegacyFrameTaskName = "DeltaOptimizer_FrameMode";
     private readonly OfflineModeStateStore _store;
 
     public OfflineModeCoordinator() : this(OfflineModeStateStore.Default) { }
@@ -25,65 +18,8 @@ public sealed class OfflineModeCoordinator
         return _store.TryRead(out state, out error);
     }
 
-    public async Task<OperationResult> EnableAsync(CancellationToken cancellationToken = default)
-    {
-        using var backendGate = Backends.BackendOperationGate.BlockNewOperations();
-        using var backendControl = Backends.BackendOperationGate.AllowControlOperations();
-        using var control = await OfflineModeExecutionLock.WaitControlAsync(_store, TimeSpan.FromSeconds(10), cancellationToken);
-        if (control is null) return OperationResult.Fail("另一个脱机切换操作尚未完成。");
-        using var lease = await OfflineModeExecutionLock.WaitAcquireAsync(_store, TimeSpan.FromSeconds(10), cancellationToken);
-        if (lease is null) return OperationResult.Fail("有其他脱机操作正在运行，请稍后重试。");
-        if (!_store.TryRead(out var state, out var error)) return OperationResult.Fail(error);
-        if (state.OfflineModeEnabled) return OperationResult.Ok("脱机模式已经启用。");
-        if (state.SavedPreferences is not null || state.Status is not OfflineModeStatus.Off)
-            return OperationResult.Fail("上次脱机模式切换尚未恢复；请先关闭脱机模式并完成恢复。");
-        if (state.CpuSetChanges.Count != 0)
-            return OperationResult.Fail("仍有脱机 CPU Sets 恢复记录；请先处理恢复记录。");
-
-        var captured = await CapturePreferencesAsync();
-        if (!captured.Success || captured.Preferences is null) return OperationResult.Fail(captured.Message);
-        var preferences = captured.Preferences;
-        var settings = AppSettingsStore.Read();
-        if (settings.TempSpoofRestorePending)
-            return OperationResult.Fail("临时显卡伪装仍待登录还原；为避免移除还原任务，暂不能启用脱机模式。");
-        if (settings.FramePowerRestorePending || File.Exists(Path.Combine(AppDataPaths.Root, "frame_power_scheme_snapshot.json")))
-            return OperationResult.Fail("帧格电源计划仍待恢复；完成恢复后再启用脱机模式。");
-
-        if (!_store.TryUpdate(s =>
-            {
-                s.OfflineModeEnabled = false;
-                s.Status = OfflineModeStatus.Preparing;
-                s.CancelRequested = false;
-                s.SavedPreferences = preferences.Copy();
-                s.HelperProcessId = null;
-                s.HelperStartTimeUtcTicks = null;
-                s.HelperOperationCompleted = false;
-                s.Message = "正在停用普通帧格、CPU 调度、自启动与托盘驻留。";
-            }, out error))
-            return OperationResult.Fail(error);
-
-        var result = await PrepareForOfflineAsync(preferences, cancellationToken);
-        if (!result.Success)
-        {
-            SetState(OfflineModeStatus.Failed, result.Message, enabled: false);
-            return result;
-        }
-
-        if (!_store.TryUpdate(s =>
-            {
-                s.OfflineModeEnabled = true;
-                s.Status = OfflineModeStatus.Ready;
-                s.CancelRequested = false;
-                s.Message = "脱机模式就绪。启动游戏后点击“准备脱机启动 / 应用当前游戏”；工具不代替游戏平台启动游戏。";
-            }, out error))
-        {
-            SetState(OfflineModeStatus.Failed, "普通功能已停用，但脱机就绪状态无法保存：" + error, enabled: false);
-            return OperationResult.Fail("普通功能已停用，但脱机就绪状态无法保存：" + error);
-        }
-
-        Log.Info("脱机模式已启用；普通帧格、亲和性/调度、自启动和托盘偏好已保存并停用。");
-        return OperationResult.Ok("脱机模式已启用；普通帧格与 CPU 调度已还原，自启动和托盘已关闭。原偏好已保存。");
-    }
+    public Task<OperationResult> EnableAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(OperationResult.Fail("脱机模式已移除，不能启用。"));
 
     public async Task<OperationResult> DisableAsync(CancellationToken cancellationToken = default)
     {
@@ -253,125 +189,8 @@ public sealed class OfflineModeCoordinator
         return OperationResult.Ok("脱机模式已关闭；普通模式偏好已恢复。CPU Sets 仅还原到脱机前原值，没有自动补应用普通锁核规则。");
     }
 
-    public async Task<OperationResult> StartHelperAsync(CancellationToken cancellationToken = default)
-    {
-        using var control = await OfflineModeExecutionLock.WaitControlAsync(_store, TimeSpan.FromSeconds(10), cancellationToken);
-        if (control is null) return OperationResult.Fail("另一个脱机控制操作尚未完成。");
-        using var operation = await OfflineModeExecutionLock.WaitAcquireAsync(_store, TimeSpan.FromSeconds(5), cancellationToken);
-        if (operation is null) return OperationResult.Fail("脱机应用或恢复仍在进行。");
-        if (!_store.TryRead(out var state, out var error)) return OperationResult.Fail(error);
-        if (!state.OfflineModeEnabled || state.CancelRequested || state.SavedPreferences is null ||
-            state.Status is OfflineModeStatus.Preparing or OfflineModeStatus.RestorePending)
-            return OperationResult.Fail("请先启用脱机模式并完成恢复检查。");
-        if (state.CpuSetChanges.Any(x => x.Status != OfflineCpuSetRecordStatus.Applied))
-            return OperationResult.Fail("存在待人工处理的 CPU Sets 恢复冲突；完成恢复前不能重复应用。");
-        var helperPath = OfficialHelperPaths.ExecutablePath;
-        if (state.HelperProcessId is int helperPid && state.HelperStartTimeUtcTicks is long helperTicks &&
-            IsSameLiveProcess(helperPid, helperTicks, helperPath))
-            return OperationResult.Fail("脱机助手仍在运行；请等待本轮完成。");
-
-        if (!File.Exists(helperPath)) return OperationResult.Fail("未找到脱机助手；请先完成 x64 构建或重新安装包含助手的版本。");
-        using (var available = OfflineModeHelperInstanceLease.TryAcquire(_store, out var instanceError))
-            if (available is null) return OperationResult.Fail(instanceError);
-
-        var runId = Guid.NewGuid();
-        if (!_store.TryUpdate(s =>
-        {
-            if (!s.OfflineModeEnabled || s.CancelRequested || s.SavedPreferences is null)
-                throw new InvalidOperationException("模式已变化，未启动助手。");
-            s.HelperRunId = runId;
-            s.HelperProcessId = null;
-            s.HelperStartTimeUtcTicks = null;
-            s.HelperOperationCompleted = false;
-            s.HelperCompletionStatus = OfflineModeStatus.Ready;
-            s.Status = OfflineModeStatus.WaitingForGame;
-            s.Message = "正在启动本轮脱机助手。";
-        }, out error)) return OperationResult.Fail(error);
-
-        var pipeName = "DeltaNFD_Offline_" + Guid.NewGuid().ToString("N");
-        Process? process = null;
-        var handedOff = false;
-        try
-        {
-            using var server = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
-                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-            var start = new ProcessStartInfo
-            {
-                FileName = helperPath,
-                WorkingDirectory = AppContext.BaseDirectory,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            start.ArgumentList.Add("--offline-helper");
-            start.ArgumentList.Add("--pipe");
-            start.ArgumentList.Add(pipeName);
-            start.ArgumentList.Add("--operation-id");
-            start.ArgumentList.Add(runId.ToString("N"));
-            process = Process.Start(start);
-            if (process is null) return OperationResult.Fail("无法启动脱机助手。");
-
-            try { await server.WaitForConnectionAsync(cancellationToken).WaitAsync(TimeSpan.FromSeconds(10), cancellationToken); }
-            catch (Exception ex)
-            {
-                TryStopHelper(process);
-                return OperationResult.Fail("等待脱机助手启动确认超时：" + ex.Message);
-            }
-            if (!GetNamedPipeClientProcessId(server.SafePipeHandle, out var clientPid) || clientPid != process.Id)
-            {
-                TryStopHelper(process);
-                return OperationResult.Fail("管道客户端不是本次启动的助手，拒绝交接。");
-            }
-
-            using var reader = new StreamReader(server, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false,
-                bufferSize: 1024, leaveOpen: true);
-            string? response;
-            try { response = await reader.ReadLineAsync(cancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(3), cancellationToken); }
-            catch (Exception ex)
-            {
-                TryStopHelper(process);
-                return OperationResult.Fail("无法读取脱机助手启动状态：" + ex.Message);
-            }
-
-            if (response != "READY")
-            {
-                TryStopHelper(process);
-                return OperationResult.Fail(response is { } text && text.StartsWith("ERROR|", StringComparison.Ordinal)
-                    ? text[6..]
-                    : "脱机助手未确认就绪。");
-            }
-
-            if (!_store.TryRead(out var registered, out error) || !OfflineHelperSession.CanExecute(registered, runId) ||
-                registered.HelperProcessId != process.Id || registered.HelperStartTimeUtcTicks != process.StartTime.ToUniversalTime().Ticks)
-            {
-                TryStopHelper(process);
-                return OperationResult.Fail("助手登记未持久化或交接已取消：" + error);
-            }
-            await using var writer = new StreamWriter(server, new UTF8Encoding(false), 1024, leaveOpen: true) { AutoFlush = true };
-            await writer.WriteLineAsync("START");
-            handedOff = true;
-            return OperationResult.Ok("脱机助手已确认启动。请用原游戏平台启动游戏；本工具不会绕过启动器或反作弊。主界面可以退出，助手完成本轮后会自行结束。");
-        }
-        catch (Exception ex)
-        {
-            if (process is not null) TryStopHelper(process);
-            return OperationResult.Fail("启动脱机助手失败：" + ex.Message);
-        }
-        finally
-        {
-            if (!handedOff)
-                _store.TryUpdate(s =>
-                {
-                    if (s.HelperRunId != runId || s.CancelRequested) return;
-                    s.Status = OfflineModeStatus.Failed;
-                    s.Message = "助手交接未完成，主程序未退出，恢复记录已保留。";
-                }, out _);
-            process?.Dispose();
-        }
-    }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetNamedPipeClientProcessId(Microsoft.Win32.SafeHandles.SafePipeHandle pipe, out uint pid);
+    public Task<OperationResult> StartHelperAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(OperationResult.Fail("脱机模式已移除，不再启动助手。"));
 
     private static async Task<OfflineModeHelperInstanceLease?> WaitForHelperLeaseAsync(
         OfflineModeStateStore store, TimeSpan timeout, CancellationToken token)
@@ -445,139 +264,6 @@ public sealed class OfflineModeCoordinator
             ct => Backends.BackendCpuFrameService.Instance.RestoreOfflineCpuSetsAsync(ct), TimeSpan.FromSeconds(5), token);
     }
 
-    private async Task<(bool Success, OfflineModePreferences? Preferences, string Message)> CapturePreferencesAsync()
-    {
-        var settings = AppSettingsStore.Read();
-        var tasks = new[]
-        {
-            await OfflineTaskOwnership.InspectAsync(AutoStartTaskName),
-            await OfflineTaskOwnership.InspectAsync(LegacyAutoStartTaskName),
-            await OfflineTaskOwnership.InspectAsync(FrameTaskName),
-            await OfflineTaskOwnership.InspectAsync(LegacyFrameTaskName),
-        };
-        if (tasks.Any(t => t.State == OfflineScheduledTaskState.ForeignOrUnknown))
-            return (false, null, "存在同名但无法确认归属的计划任务；为避免删除他人任务，未启用脱机模式。 " +
-                string.Join("；", tasks.Where(t => t.State == OfflineScheduledTaskState.ForeignOrUnknown).Select(t => t.Message)));
-
-        var auto = tasks[0..2];
-        var frame = tasks[2..4];
-        return (true, new OfflineModePreferences
-        {
-            FrameModeWasActive = settings.FrameModeActive || ServiceLocator.Frame.FrameModeActive,
-            DwmRestartOnGameStart = settings.DwmRestartOnGameStart,
-            FramePowerLockEnabled = settings.FramePowerLockEnabled,
-            FramePowerLockTargetGuid = settings.FramePowerLockTargetGuid,
-            GamePriorityEnabled = settings.GamePriorityEnabled,
-            GameAffinityRuleEnabled = settings.GameAffinityRuleEnabled,
-            GameAffinityRuleMask = settings.GameAffinityRuleMask,
-            SingleCcdExcludeCpu0Enabled = settings.SingleCcdExcludeCpu0Enabled,
-            DualCcdImmediateEnabled = settings.DualCcdImmediateEnabled,
-            DualCcdArmed = settings.DualCcdArmed,
-            DualCcdFrameEnabled = settings.DualCcdFrameEnabled,
-            DualCcdGameCcdIndex = settings.DualCcdGameCcdIndex,
-            AutoStartTaskWasPresent = auto.Any(t => t.State == OfflineScheduledTaskState.Owned),
-            AutoStartEnabled = auto.Any(t => t.State == OfflineScheduledTaskState.Owned && t.Enabled),
-            FrameAutostartTaskWasPresent = frame.Any(t => t.State == OfflineScheduledTaskState.Owned),
-            FrameAutostartEnabled = frame.Any(t => t.State == OfflineScheduledTaskState.Owned && t.Enabled),
-            CloseToTrayEnabled = settings.CloseToTrayEnabled,
-        }, "");
-    }
-
-    private async Task<OperationResult> PrepareForOfflineAsync(OfflineModePreferences preferences, CancellationToken cancellationToken)
-    {
-        var target = ServiceLocator.GameTarget;
-        if (!await target.WaitForIdleAsync(TimeSpan.FromSeconds(10), cancellationToken))
-            return OperationResult.Fail("目标进程操作尚未排空，拒绝切换脱机模式。");
-        using var targetLease = target.BeginOperation();
-
-        var frame = ServiceLocator.Frame;
-        if (frame.FrameModeActive || AppSettingsStore.Read().FrameModeActive)
-        {
-            var result = await frame.DeactivateFrameModeAsync();
-            if (!result.Success || frame.FrameModeActive || AppSettingsStore.Read().FrameModeActive)
-                return OperationResult.Fail("停用并还原普通帧格失败：" + result.Message);
-        }
-
-        var cpuFrame = Backends.BackendCpuFrameService.Instance;
-        if (preferences.DualCcdImmediateEnabled
-            && !(CpuFrameStatusState.DualCcdSchedulingActive))
-            return OperationResult.Fail("双 CCD 偏好仍开启，但当前无法确认其运行时调度归属；请先在 CPU 实验室手动恢复。");
-        if (preferences.SingleCcdExcludeCpu0Enabled
-            && !(CpuFrameStatusState.SingleCcdExcludeActive))
-            return OperationResult.Fail("单 CCD 偏好仍开启，但当前无法确认其运行时锁核归属；请先在 CPU 实验室手动恢复。");
-        if (preferences.GameAffinityRuleEnabled)
-        {
-            var (affinityOk, affinityReason) = await cpuFrame.CanRestoreAffinityAsync(preferences.GameAffinityRuleMask);
-            if (!affinityOk) return OperationResult.Fail("无法确认 CPU 亲和性规则原值：" + affinityReason);
-        }
-
-        if (CpuFrameStatusState.DualCcdSchedulingActive)
-        {
-            var restoreDual = await ServiceLocator.Cpu.RevertDualCcdSchedulingAsync();
-            if (!restoreDual.Success || CpuFrameStatusState.DualCcdSchedulingActive)
-                return OperationResult.Fail("双 CCD 调度未能确认还原：" + restoreDual.Message);
-        }
-        if (CpuFrameStatusState.SingleCcdExcludeActive)
-        {
-            var restoreSingle = await ServiceLocator.Cpu.RestoreGameFullCoresAsync();
-            if (!restoreSingle.Success || CpuFrameStatusState.SingleCcdExcludeActive)
-                return OperationResult.Fail("单 CCD CPU0 排除未能确认还原：" + restoreSingle.Message);
-        }
-        if (preferences.GameAffinityRuleEnabled || await cpuFrame.HasAffinityRestorePendingAsync())
-        {
-            await cpuFrame.ApplyAffinityAsync(0);
-            if (await cpuFrame.HasAffinityRestorePendingAsync())
-                return OperationResult.Fail("CPU 亲和性原值还原失败；恢复记录已保留。");
-        }
-
-        if (preferences.GamePriorityEnabled)
-        {
-            var priorityRestore = await ServiceLocator.GameProcess.DisableGamePriorityForOfflineAsync();
-            if (!priorityRestore.Success) return OperationResult.Fail("自动游戏优先级未能安全停用：" + priorityRestore.Message);
-        }
-        var frameService = ServiceLocator.Frame;
-        frameService.DwmRestartOnGameStart = false;
-        AppSettingsStore.Update(s =>
-        {
-            s.GameAffinityRuleEnabled = false;
-            s.SingleCcdExcludeCpu0Enabled = false;
-            s.DualCcdImmediateEnabled = false;
-            s.DualCcdArmed = false;
-            s.DwmRestartOnGameStart = false;
-            s.GamePriorityEnabled = false;
-        });
-        frameService.RefreshDualCcdArmState();
-
-        var taskNames = new[] { AutoStartTaskName, LegacyAutoStartTaskName, FrameTaskName, LegacyFrameTaskName };
-        foreach (var taskName in taskNames)
-        {
-            var remove = await OfflineTaskOwnership.RemoveOwnedTaskAsync(taskName);
-            if (!remove.Success) return OperationResult.Fail("脱机模式拒绝进入：" + remove.Message);
-        }
-
-        ServiceLocator.AppControl.SetCloseToTray(false);
-        var finalSettings = AppSettingsStore.Read();
-        if (frameService.FrameModeActive || finalSettings.FrameModeActive || finalSettings.DwmRestartOnGameStart ||
-            finalSettings.GamePriorityEnabled || finalSettings.GameAffinityRuleEnabled ||
-            finalSettings.SingleCcdExcludeCpu0Enabled || finalSettings.DualCcdImmediateEnabled ||
-            CpuFrameStatusState.DualCcdSchedulingActive || CpuFrameStatusState.SingleCcdExcludeActive ||
-            CpuFrameStatusState.DualCcdSchedulingActive || CpuFrameStatusState.SingleCcdExcludeActive ||
-            await cpuFrame.HasAffinityRestorePendingAsync() || ServiceLocator.AppControl.CloseToTrayEnabled)
-            return OperationResult.Fail("停用后的状态复核未通过，脱机模式未就绪。");
-
-        var blockers = target.GetSwitchBlocker();
-        if (!string.IsNullOrWhiteSpace(blockers)) return OperationResult.Fail("仍有系统还原义务：" + blockers);
-
-        foreach (var taskName in taskNames)
-        {
-            var task = await OfflineTaskOwnership.InspectAsync(taskName);
-            if (task.State != OfflineScheduledTaskState.Missing)
-                return OperationResult.Fail($"计划任务 {taskName} 仍存在或归属未知：{task.Message}");
-        }
-
-        return OperationResult.Ok("已停用并复核普通帧格、锁核/调度、自启动和托盘。");
-    }
-
     private OperationResult FailRestore(string message)
     {
         SetState(OfflineModeStatus.Failed, message, enabled: false);
@@ -625,9 +311,4 @@ public sealed class OfflineModeCoordinator
         return !IsSameLiveProcess(pid, startTicks, expectedPath);
     }
 
-    private static void TryStopHelper(Process process)
-    {
-        try { if (!process.HasExited) process.Kill(entireProcessTree: false); }
-        catch (Exception ex) { Log.Warn("无法结束未确认就绪的脱机助手：" + ex.Message); }
-    }
 }

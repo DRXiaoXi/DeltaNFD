@@ -39,6 +39,59 @@ public sealed partial class ProcessPage : Page
     private string _ruleTargetPath = "";
     private bool? _wideWorkspace;
     private bool _propertyBusy;
+    private bool _memoryBusy;
+
+    private async void PreviewMemory_Click(object sender, RoutedEventArgs e)
+    {
+        if (_memoryBusy || _propertyBusy) return;
+        _memoryBusy = true;
+        MemoryPreviewButton.IsEnabled = false;
+        MemoryTrimStatusText.Text = "正在采样并核对后台进程…";
+        try
+        {
+            var response = await BackendProcmanService.Instance.InvokeAsync(BackendCommands.ProcmanMemoryPreview, new { });
+            var preview = BackendResults.RequireData<ProcmanMemoryPreview>(response, "后台内存预览");
+            MemoryTrimStatusText.Text = preview.Message;
+            if (preview.Candidates.Count == 0) { MemoryTrimStatusText.Text += "\n当前没有符合条件的进程。"; return; }
+            if (_detachedFromWindow || XamlRoot is null) return;
+            var content = new StackPanel { Spacing = 12 };
+            content.Children.Add(new TextBlock { Text = preview.Message + "\n\n回收后应用可能重新调入页面而短暂卡顿。此操作无法手动撤销，Windows 会按需重建工作集。", TextWrapping = TextWrapping.Wrap });
+            var choices = new List<(CheckBox Check, ProcmanMemoryCandidate Candidate)>();
+            foreach (var candidate in preview.Candidates)
+            {
+                var check = new CheckBox { IsChecked = true, Content = new TextBlock
+                { Text = $"{candidate.Name} · PID {candidate.Identity.Pid}\n工作集 {candidate.WorkingSetBytes / 1048576d:0.#} MiB · CPU {candidate.CpuPercent:0.#}%", TextWrapping = TextWrapping.Wrap } };
+                ToolTipService.SetToolTip(check, candidate.Identity.ExecutablePath);
+                choices.Add((check, candidate)); content.Children.Add(check);
+            }
+            var confirm = new ContentDialog
+            {
+                XamlRoot = XamlRoot, Title = "回收所选后台应用的工作集？",
+                Content = new ScrollViewer { Content = content, MaxHeight = 420 },
+                PrimaryButtonText = "回收已勾选进程", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
+            };
+            if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
+            var selected = choices.Where(c => c.Check.IsChecked == true).Select(c => c.Candidate.Identity).ToList();
+            if (selected.Count == 0) { MemoryTrimStatusText.Text = "未选择进程，未执行回收。"; return; }
+            var result = await BackendProcmanService.Instance.InvokeAsync(BackendCommands.ProcmanMemoryTrim,
+                new ProcmanMemoryTrimArgs { PreviewId = preview.Id, Processes = selected });
+            var report = BackendResults.RequireData<ProcmanMemoryTrimReport>(result, "后台内存回收");
+            MemoryTrimStatusText.Text = report.Message + MemoryTelemetryText(report) + "\n\n" + string.Join("\n", report.Items.Select(item =>
+                $"{item.Name} · PID {item.Pid}：{item.Message}"
+                + (item.BeforeBytes is { } before && item.AfterBytes is { } after
+                    ? $" 工作集 {before / 1048576d:0.#} → {after / 1048576d:0.#} MiB。" : "")));
+            _ = RefreshListAsync(preserveSelection: true);
+        }
+        catch (Exception ex)
+        {
+            MemoryTrimStatusText.Text = "回收未完成：" + ex.Message;
+            if (!_detachedFromWindow && XamlRoot is not null)
+                try { await new ContentDialog { XamlRoot = XamlRoot, Title = "后台内存回收未完成", Content = ex.Message,
+                    CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync(); }
+                catch (Exception dialogError) { Log.Error("后台内存回收提示未能显示", dialogError); }
+        }
+        finally { _memoryBusy = false; MemoryPreviewButton.IsEnabled = true; }
+    }
     private List<ProcmanRuleEntry> _savedRules = [];
     private bool IsAlways => ApplyScopePicker.SelectedIndex == 1;
 
@@ -86,7 +139,7 @@ public sealed partial class ProcessPage : Page
         _wideWorkspace = wide;
         ListColumn.Width = new GridLength(wide ? 0.8 : 1, GridUnitType.Star);
         DetailColumn.Width = wide ? new GridLength(1.2, GridUnitType.Star) : new GridLength(0);
-        ListRow.Height = wide ? new GridLength(1, GridUnitType.Star) : new GridLength(260);
+        ListRow.Height = wide ? new GridLength(1, GridUnitType.Star) : new GridLength(320);
         DetailRow.Height = wide ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
         Grid.SetColumn(DetailCard, wide ? 1 : 0);
         Grid.SetRow(DetailCard, wide ? 0 : 1);
@@ -99,7 +152,7 @@ public sealed partial class ProcessPage : Page
         ProcessList.ItemsSource = _rows;
         CapabilityList.ItemsSource = _capabilities;
         HeldList.ItemsSource = _held;
-        _timer.Tick += (_, _) => { if (AutoRefreshToggle.IsChecked == true) _ = RefreshListAsync(preserveSelection: true); };
+        _timer.Tick += (_, _) => { if (AutoRefreshToggle.IsChecked == true && IsProcessTab) _ = RefreshListAsync(preserveSelection: true); };
         Loaded += (_, _) =>
         {
             _detachedFromWindow = false;
@@ -107,8 +160,10 @@ public sealed partial class ProcessPage : Page
             _ = RefreshListAsync(preserveSelection: false);
             _ = LoadTopologyAsync();
             _ = LoadRulesAsync();
+            _ = LoadBackgroundAsync(syncControls: true);
         };
         Unloaded += (_, _) => StopPolling();
+        _workspaceReady = true;
     }
 
     private void StopPolling()
@@ -132,7 +187,7 @@ public sealed partial class ProcessPage : Page
 
     private async Task RefreshListAsync(bool preserveSelection)
     {
-        if (_detachedFromWindow) return;
+        if (_detachedFromWindow || !IsProcessTab) return;
         if (_listBusy) { _listQueued = true; return; }
         _listBusy = true;
         var generation = _listGeneration;
@@ -142,7 +197,7 @@ public sealed partial class ProcessPage : Page
         try
         {
             result = await BackendProcmanService.Instance.ListAsync(_offset, PageSize,
-                _search.Length == 0 ? null : _search);
+                _search.Length == 0 ? null : _search, scope: _gameScope ? "delta" : "general");
         }
         catch (Exception ex) { ListNoteText.Text = "本次读取失败：" + ex.Message; return; }
         if (_detachedFromWindow || generation != _listGeneration) { _listQueued = true; return; }
@@ -157,6 +212,8 @@ public sealed partial class ProcessPage : Page
             CpuPercent = p.CpuPercent,
             OwnedPropertyCount = p.OwnedPropertyCount,
             Protected = IsProtectedPath(p.ExecutablePath),
+            FixedBackgroundProtection = IsFixedBackgroundProtection(p.ExecutablePath),
+            BackgroundExcluded = _backgroundExcludedPaths.Contains(p.ExecutablePath),
         }).ToList();
 
         _suppressSelection = true;
@@ -164,10 +221,7 @@ public sealed partial class ProcessPage : Page
         {
             if (preserveSelection)
             {
-                // Replace snapshots in place instead of resetting the entire list and scroll position.
-                for (var i = 0; i < rows.Count; i++)
-                    if (i < _rows.Count) _rows[i] = rows[i]; else _rows.Add(rows[i]);
-                while (_rows.Count > rows.Count) _rows.RemoveAt(_rows.Count - 1);
+                StableList.Apply(_rows, rows, r => r.IdentityKey, (row, snapshot) => row.UpdateFrom(snapshot));
             }
             else
             {
@@ -179,7 +233,7 @@ public sealed partial class ProcessPage : Page
             ProcessRowVm? restored = null;
             if (preserveSelection && _selected is { } previous)
             {
-                restored = rows.FirstOrDefault(r => r.Pid == previous.Pid
+                restored = _rows.FirstOrDefault(r => r.Pid == previous.Pid
                     && r.StartTimeUtcTicks == previous.StartTimeUtcTicks
                     && string.Equals(r.ExecutablePath, previous.ExecutablePath, StringComparison.OrdinalIgnoreCase));
                 if (restored is null && previous is not null)
@@ -190,7 +244,7 @@ public sealed partial class ProcessPage : Page
                 }
             }
             _selected = restored;
-            ProcessList.SelectedItem = restored;
+            if (!ReferenceEquals(ProcessList.SelectedItem, restored)) ProcessList.SelectedItem = restored;
             if (restored is null) ShowEmptyDetail();
         }
         finally { _suppressSelection = false; }
@@ -292,6 +346,7 @@ public sealed partial class ProcessPage : Page
     {
         if (_suppressSelection) return;
         _selected = ProcessList.SelectedItem as ProcessRowVm;
+        UpdateSelectedExclusion();
         if (_selected is null) { ShowEmptyDetail(); return; }
         _lastAffinityValue = "";
         AlwaysTakeoverCheck.IsChecked = false;
@@ -329,28 +384,27 @@ public sealed partial class ProcessPage : Page
         DetailMetaText.Text = $"PID {detail.Process.Pid} · 内存 {(detail.Process.WorkingSetMb is { } mb ? $"{mb:0.#} MB" : "未知")}"
             + (IsProtectedPath(detail.Process.ExecutablePath) ? " · 受保护（只读）" : "");
 
-        _capabilities.Clear();
-        foreach (var capability in detail.Capabilities)
-            _capabilities.Add(new CapabilityVm
+        var capabilityRows = detail.Capabilities.Select(capability => new CapabilityVm
             {
                 Title = CapabilityTitle(capability.Capability),
                 Support = capability.Support,
                 CurrentValue = capability.CurrentValue,
                 Owner = capability.Owner,
                 Error = capability.Error,
-            });
+            }).ToArray();
+        StableList.Apply(_capabilities, capabilityRows, c => (c.Title, c.Support, c.CurrentValue, c.Owner, c.Error), (_, _) => { });
 
-        _held.Clear();
-        foreach (var held in detail.HeldChanges)
-            _held.Add(new HeldChangeVm
+        var heldRows = detail.HeldChanges.Select(held => new HeldChangeVm
             {
                 Capability = CapabilityTitle(held.Capability),
                 OriginalValue = held.OriginalValue,
                 AppliedValue = held.AppliedValue,
                 Owner = held.Owner,
                 AppliedUtc = held.AppliedUtc,
-            });
+            }).ToArray();
+        StableList.Apply(_held, heldRows, h => (h.Capability, h.OriginalValue, h.AppliedValue, h.Owner, h.AppliedUtc), (_, _) => { });
         HeldPanel.Visibility = _held.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateSelectedExclusion();
 
         var protectedProcess = IsProtectedPath(detail.Process.ExecutablePath);
         ControlPanel.Visibility = protectedProcess ? Visibility.Collapsed : Visibility.Visible;
@@ -737,7 +791,13 @@ public sealed partial class ProcessPage : Page
 
     private void SetRuleTarget(string path)
     {
+        if (!_ruleTargetPath.Equals(path, StringComparison.OrdinalIgnoreCase))
+        {
+            RuleAutoTakeoverCheck.IsChecked = false;
+            RuleEnabledToggle.IsOn = true;
+        }
         _ruleTargetPath = path;
+        StandaloneRulePathBox.Text = path;
         RuleTargetNameText.Text = path.Length == 0 ? "尚未选择目标进程" : Path.GetFileName(path);
         RuleTargetPathText.Text = path.Length == 0 ? "选择进程后即可创建规则。" : path;
     }
@@ -781,7 +841,8 @@ public sealed partial class ProcessPage : Page
 
     private void GoToCpuSelection_Click(object sender, RoutedEventArgs e)
     {
-        ProcessTabs.SelectedIndex = 0;
+        ProcessTabs.SelectedItem = Path.GetFileNameWithoutExtension(_ruleTargetPath).Equals(DeltaForceLocator.GameProcessName, StringComparison.OrdinalIgnoreCase)
+            ? GameTab : GeneralTab;
         AffinityExpander.IsExpanded = true;
     }
 
@@ -815,7 +876,7 @@ public sealed partial class ProcessPage : Page
                 var edit = new Button { Content = "编辑", Tag = rule, MinWidth = 56 };
                 edit.Click += (_, _) =>
                 {
-                    AlwaysRulesExpander.IsExpanded = true;
+                    ProcessTabs.SelectedItem = RulesTab;
                     SavedRuleEditor.Visibility = Visibility.Visible;
                     SetRuleTarget(rule.ExecutablePath);
                     RuleCapabilityCombo.SelectedIndex = rule.Capability switch

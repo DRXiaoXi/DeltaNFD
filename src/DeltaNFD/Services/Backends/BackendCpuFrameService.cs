@@ -144,7 +144,7 @@ internal sealed class BackendCpuFrameService : IAsyncDisposable
             new CpuFrameBoostArgs { CoreParking = coreParking, EcoQos = ecoQos, Timer = timer }, ct);
 
     internal Task<OperationResult> CleanMemoryNowAsync(CancellationToken ct = default) =>
-        InvokeAsync(BackendCommands.CpuFrameMemoryClean, new { }, ct);
+        Task.FromResult(OperationResult.Fail("旧帧格内存清理已下线；请使用进程管理中的后台内存回收。"));
 
     internal async Task<IReadOnlyList<FrameIncompletePowerBackup>> GetIncompletePowerBackupsAsync(CancellationToken ct = default)
     {

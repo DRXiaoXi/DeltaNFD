@@ -293,35 +293,6 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
     private static SolidColorBrush MakeBrush(byte r, byte g, byte b) =>
         new(Windows.UI.Color.FromArgb(255, r, g, b));
 
-    private async void MemoryCleanButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button button)
-        {
-            return;
-        }
-
-        button.IsEnabled = false;
-        try
-        {
-            var result = await FrameSrv.CleanMemoryNowAsync();
-            if (!result.Success)
-            {
-                await new ContentDialog
-                {
-                    XamlRoot = XamlRoot,
-                    Title = "内存清理失败",
-                    Content = result.Message,
-                    CloseButtonText = "知道了",
-                    DefaultButton = ContentDialogButton.Close,
-                }.ShowWithBackendRecoveryAsync();
-            }
-        }
-        finally
-        {
-            button.IsEnabled = true;
-        }
-    }
-
     private async void RestartDwmButton_Click(object sender, RoutedEventArgs e)
     {
         var confirm = new ContentDialog

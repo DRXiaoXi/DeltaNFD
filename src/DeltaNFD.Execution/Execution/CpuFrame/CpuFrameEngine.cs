@@ -7,7 +7,7 @@ namespace DeltaNFD.Execution.CpuFrame;
 /// <summary>
 /// CPU/帧格后端执行引擎（T4）：持有唯一的「两秒共享游戏监控」，并在每个 tick 按当前偏好维护
 /// 实际生效的优先级 / 硬亲和性 / CPU Sets / 双单 CCD / 计时器 / EcoQoS / 核心常驻 / DWM /
-/// 电源守护 / 临时优化 / 内存清理。前端不再执行这些写入，只通过状态快照读取「实际生效状态」，
+/// 电源守护 / 临时优化。前端不再执行这些写入，只通过状态快照读取「实际生效状态」，
 /// 并在需要立即生效时调用本引擎的命令。
 ///
 /// 每次操作前都用 <see cref="GameTargetService"/> 重新复核目标代次、PID、启动时间与可执行文件路径；
@@ -19,7 +19,6 @@ public sealed class CpuFrameEngine : IDisposable
     private const string DwmProcessName = "dwm";
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan PowerGuardInterval = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan MemoryCleanCheckInterval = TimeSpan.FromSeconds(30);
 
     private readonly object _gate = new();
     private readonly SemaphoreSlim _powerGate = new(1, 1);
@@ -53,9 +52,6 @@ public sealed class CpuFrameEngine : IDisposable
     private string _powerLockedGuid = "";
     private bool _powerLockReady;
     private int _powerGuardCount;
-    private DateTime _lastMemoryCleanCheck = DateTime.MinValue;
-    private DateTime _lastMemoryClean = DateTime.MinValue;
-    private string _memoryCleanStatus = "尚未清理";
 
     // 显式由前端命令设定的临时优化/加速响应期望（机箱形态等编排由前端决定）。
     private bool _boostCoreParking;
@@ -68,7 +64,6 @@ public sealed class CpuFrameEngine : IDisposable
     private readonly Dictionary<int, (GameProcessIdentity Identity, string Original)> _ecoQosOriginals = [];
     private CoreParkingLoop? _parkingLoop;
     private int? _parkedCores;
-    private int _memoryCleanRunning;
 
     public CpuFrameEngine() : this(new PowerService(), new FrameTweaksService()) { }
 
@@ -234,8 +229,6 @@ public sealed class CpuFrameEngine : IDisposable
             await RevertTweaksCoreAsync().ConfigureAwait(false);
 
         // ⑧ 内存清理（实验性；帧格激活 + 游戏运行 + 达到阈值 + 冷却已过）
-        if (frameActive && gameRunning && settings.FrameMemoryCleanEnabled && settings.FrameMemoryCleanGameAutoEnabled)
-            MemoryCleanTick(settings);
     }
 
     /// <summary>
@@ -798,48 +791,9 @@ public sealed class CpuFrameEngine : IDisposable
         catch (Exception ex) { SetError("电源锁定守护失败：" + ex.Message); }
     }
 
-    // ---------------- 内存清理 ----------------
-
-    public (bool Success, string Message) CleanMemoryNow()
-    {
-        if (EmergencyPolicies.BlockReason(DeltaNFD.Backends.BackendCommands.CpuFrameMemoryClean) is { } emergencyReason)
-            return (false, emergencyReason);
-        if (Interlocked.CompareExchange(ref _memoryCleanRunning, 1, 0) != 0)
-            return (false, "内存清理正在执行中，请稍候。");
-        try
-        {
-            var result = MemoryPurge.PurgeStandbyList();
-            _lastMemoryClean = DateTime.Now;
-            _memoryCleanStatus = result.Success
-                ? (result.FreedBytes > 0
-                    ? $"上次清理（{DateTime.Now:HH:mm}）：释放 {MemoryPurge.FormatBytes((ulong)result.FreedBytes)} 可用内存"
-                    : $"上次清理（{DateTime.Now:HH:mm}）：已优化到最佳状态")
-                : $"上次清理（{DateTime.Now:HH:mm}）失败 —— {result.Message}";
-            return (result.Success, result.Message);
-        }
-        catch (Exception ex)
-        {
-            _memoryCleanStatus = $"上次清理（{DateTime.Now:HH:mm}）异常 —— {ex.Message}";
-            return (false, "内存清理异常：" + ex.Message);
-        }
-        finally { Interlocked.Exchange(ref _memoryCleanRunning, 0); }
-    }
-
-    private void MemoryCleanTick(AppSettings settings)
-    {
-        var emergency = EmergencyPolicies.Current;
-        if (emergency.ManualMemoryCleanOnly
-            || emergency.BlockReason(DeltaNFD.Backends.BackendCommands.CpuFrameMemoryClean) is not null) return;
-        var now = DateTime.Now;
-        if (now - _lastMemoryCleanCheck < MemoryCleanCheckInterval) return;
-        _lastMemoryCleanCheck = now;
-        if (now - _lastMemoryClean < TimeSpan.FromSeconds(emergency.MemoryCooldownSeconds)) return;
-        var memory = MemoryPurge.QueryMemory();
-        if (memory.TotalPhys == 0) return;
-        var threshold = emergency.MemoryThreshold(Math.Clamp(settings.FrameMemoryCleanThresholdPercent, 30, 95));
-        if (memory.LoadPercent < threshold) return;
-        _ = Task.Run(() => CleanMemoryNow());
-    }
+    // Compatibility tombstone: old clients/settings must never trigger a global purge.
+    public (bool Success, string Message) CleanMemoryNow() =>
+        (false, "旧帧格内存清理已下线；请使用进程管理中的后台内存回收。");
 
     // ---------------- 全量还原（供退出/恢复） ----------------
 
@@ -1027,7 +981,7 @@ public sealed class CpuFrameEngine : IDisposable
             PowerLockedSchemeGuid = _powerLockedGuid,
             CoreParkingActive = _parkingLoop is { IsRunning: true },
             ParkedCoreCount = _parkedCores,
-            MemoryCleanStatus = _memoryCleanStatus,
+            MemoryCleanStatus = "旧帧格内存清理已下线。",
             LastAction = _lastAction,
             LastError = _lastError,
             UpdatedUtc = DateTimeOffset.UtcNow,

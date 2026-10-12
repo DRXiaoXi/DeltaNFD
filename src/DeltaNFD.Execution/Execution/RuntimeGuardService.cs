@@ -16,6 +16,9 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
     public RuntimeGuardService(TweakBackupStore backups) => _protection = new RuntimeGuardProtection(backups);
     internal RuntimeGuardService(RuntimeGuardProtection protection) => _protection = protection;
 
+    public Task<RuntimeRepairEnvironmentReport> CheckRepairEnvironmentAsync(CancellationToken cancellationToken = default)
+        => RuntimeRepairReadiness.ReadAsync(this, cancellationToken);
+
     public async Task<RuntimeGuardStatus> GetStatusAsync()
     {
         var redists = await Task.Run(GetInstalledRedists);
@@ -382,6 +385,9 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         if (!Enum.IsDefined(mode)) return OperationResult.Fail("修复模式无效，未操作运行库。");
         if (mode != RuntimeRepairMode.FullReinstall) return OperationResult.Fail("运行库修复已恢复 Beta0.9 全量 AIO 机制；请在新版界面确认完整修复范围，未执行局部分支请求。");
         token.ThrowIfCancellationRequested();
+        var readiness = await CheckRepairEnvironmentAsync(token);
+        progress?.Report(readiness.Summary);
+        if (!readiness.CanProceed) return OperationResult.Fail(readiness.Summary + "\n\n" + readiness.Details);
         var blocker = _protection.RepairBlocker(await FindUe4PrereqAsync());
         if (blocker is not null) return OperationResult.Fail(blocker);
         RuntimeRepairDiagnostics diagnostics;
@@ -391,10 +397,11 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         var environment = new RuntimeBetaRepairEnvironment(this, diagnostics);
         var repair = new RuntimeBetaRepair(environment, diagnostics);
         diagnostics.Save("repair-options.json", new { StrongRepairMode = strongRepairMode, Repair = "high-fps" });
-        return strongRepairMode
+        var result = strongRepairMode
             ? await new RuntimeStrongRepair(new RuntimeStrongRepairEnvironment(diagnostics), diagnostics)
                 .RunAsync(environment.VerifyAsync, repair.RunAsync, progress, token)
             : await repair.RunAsync(progress, token);
+        return diagnostics.Complete(result);
     }
 
     internal static OperationResult VerifyRepairPackage(
@@ -516,6 +523,9 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
 
     private async Task<OperationResult> RepairCompatibilityCoreAsync(IProgress<string>? progress, CancellationToken token, bool strongRepairMode)
     {
+        var readiness = await CheckRepairEnvironmentAsync(token);
+        progress?.Report(readiness.Summary);
+        if (!readiness.CanProceed) return OperationResult.Fail(readiness.Summary + "\n\n" + readiness.Details);
         if (!ElevationHelper.IsElevated) return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
         token.ThrowIfCancellationRequested();
         var blocker = _protection.RepairBlocker(await FindUe4PrereqAsync());
@@ -524,10 +534,11 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         var environment = new RuntimeCompatibilityEnvironment(diagnostics, strongRepairMode);
         var repair = new RuntimeCompatibilityRepair(environment, diagnostics);
         diagnostics.Save("repair-options.json", new { StrongRepairMode = strongRepairMode, Repair = "compatibility" });
-        return strongRepairMode
+        var result = strongRepairMode
             ? await new RuntimeStrongRepair(new RuntimeStrongRepairEnvironment(diagnostics), diagnostics, RuntimeCompatibilityRepair.TotalBudget)
                 .RunAsync(environment.VerifyAsync, repair.RunAsync, progress, token)
             : await repair.RunAsync(progress, token);
+        return diagnostics.Complete(result);
     }
 
     private static string ComputeSha256(string path)
@@ -543,7 +554,7 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         var preflight = await environment.PreflightAsync(default);
         if (preflight.Blocker is { } blocker) return OperationResult.Fail(blocker);
         var result = await environment.ExecuteAsync(new RuntimeRepairStep("uninstall-one", entry.DisplayName, "", "uninstall", "", entry),
-            TimeSpan.FromMinutes(3), null, default);
+            RuntimeUnifiedUninstaller.MaximumEntryBudget, null, default);
         return new OperationResult { Success = result.Success, IsSkipped = result.Skipped,
             OutcomeUnknown = result.OutcomeUnknown, RequiresReboot = result.RequiresReboot,
             Message = result.Success ? result.Skipped ? result.Details : "静默卸载及复核通过。"
@@ -594,9 +605,9 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
             if (!ElevationHelper.IsElevated) return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
             var diagnostics = new RuntimeRepairDiagnostics(Log.LogDirectory);
             var environment = new RuntimeRepairEnvironment(this, diagnostics, repairInstallerServices: false);
-            return new RuntimeBulkUninstall(new RuntimeBulkUninstallEnvironment(environment,
+            return diagnostics.Complete(new RuntimeBulkUninstall(new RuntimeBulkUninstallEnvironment(environment,
                 async () => _protection.RepairBlocker(await FindUe4PrereqAsync())), diagnostics)
-                .RunAsync(fingerprint, progress, cancellationToken).GetAwaiter().GetResult();
+                .RunAsync(fingerprint, progress, cancellationToken).GetAwaiter().GetResult());
         }));
 
     private async Task<OperationResult> UninstallV14CoreAsync(IProgress<string>? progress)
@@ -616,34 +627,57 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
             return OperationResult.Ok("未检测到名字带「v14」的运行库条目，无需卸载。");
         }
 
+        IReadOnlyList<VcRedistEntry> prepared;
+        var v14Diagnostics = new RuntimeRepairDiagnostics(Log.LogDirectory);
+        var v14Environment = new RuntimeRepairEnvironment(this, v14Diagnostics);
+        try
+        {
+            prepared = await v14Environment.PrepareUninstallBatchAsync(targets, default);
+        }
+        catch (Exception ex) { v14Diagnostics.Event("v14-prepare-failed", new { Error = ex.ToString() }); return v14Diagnostics.Complete(OperationResult.Fail("v14 整批卸载预检未通过，尚未卸载：" + ex.Message)); }
         var uninstalled = 0;
         var reboot = false;
-        foreach (var entry in targets)
+        try
+        {
+        foreach (var entry in prepared)
         {
             progress?.Report($"正在卸载：{entry.DisplayName}");
-            var result = await UninstallVcRedistEntryAsync(entry);
+            var step = await v14Environment.ExecuteAsync(new("v14-" + uninstalled, entry.DisplayName, "", "uninstall", "", entry),
+                RuntimeUnifiedUninstaller.MaximumEntryBudget, progress, default);
+            var result = new OperationResult { Success = step.Success, IsSkipped = step.Skipped, OutcomeUnknown = step.OutcomeUnknown,
+                RequiresReboot = step.RequiresReboot, Message = step.Details };
             reboot |= result.RequiresReboot;
             if (result.Success)
             {
                 if (!result.IsSkipped) uninstalled++;
                 Log.Info($"运行库：已卸载 {entry.DisplayName}");
                 if (result.RequiresReboot)
-                    return new OperationResult { Success = false, RequiresReboot = true,
-                        Message = $"已卸载 {uninstalled}/{targets.Count} 个 v14 条目；安装器要求重启，后续卸载已停止。" };
+                    return v14Diagnostics.Complete(new OperationResult { Success = false, RequiresReboot = true,
+                        Message = $"已卸载 {uninstalled}/{targets.Count} 个 v14 条目；安装器要求重启，后续卸载已停止。" });
             }
             else
             {
                 Log.Warn($"运行库：卸载 {entry.DisplayName} 失败 —— {result.Message}");
-                return new OperationResult { Success = false, RequiresReboot = reboot, OutcomeUnknown = result.OutcomeUnknown,
-                    Message = $"已卸载 {uninstalled}/{targets.Count} 个 v14 条目。后续卸载已停止：{entry.DisplayName}：{result.Message}" };
+                return v14Diagnostics.Complete(new OperationResult { Success = false, RequiresReboot = reboot, OutcomeUnknown = result.OutcomeUnknown,
+                    Message = $"已卸载 {uninstalled}/{targets.Count} 个 v14 条目。后续卸载已停止：{entry.DisplayName}：{result.Message}" });
             }
         }
 
         progress?.Report("正在重新检测运行库状态…");
-        return OperationResult.Ok(
+        if ((await GetV14EntriesAsync()).Count != 0)
+            return v14Diagnostics.Complete(new OperationResult { Success = false, IsPartial = uninstalled > 0, RequiresReboot = reboot,
+                Message = "v14 卸载复检仍有登记，未报告全部完成；请核对共享依赖和日志。" });
+        return v14Diagnostics.Complete(OperationResult.Ok(
             $"已单独卸载 {uninstalled} 个名字带「v14」的运行库条目（其它分支 / 年份命名条目未动）。"
             + "注意：Steam 启动游戏时可能自动重装 VC++ 运行库（Steamworks 共享运行库机制）；"
-            + "游戏 / 启动器侧的重装可用「运行库防护模式」拦截。", requiresReboot: reboot);
+            + "游戏 / 启动器侧的重装可用「运行库防护模式」拦截。", requiresReboot: reboot));
+        }
+        catch (Exception ex)
+        {
+            v14Diagnostics.Event("v14-uninstall-failed", new { Error = ex.ToString(), Completed = uninstalled });
+            return v14Diagnostics.Complete(new OperationResult { Success = false, IsPartial = uninstalled > 0,
+                RequiresReboot = reboot, Message = "v14 卸载或复检未完成：" + ex.Message });
+        }
     }
 
     // ---------------- 三角洲 UE4 前置包定位 ----------------

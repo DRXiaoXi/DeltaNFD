@@ -206,11 +206,11 @@ public partial class RuntimeViewModel : ObservableObject
                 Log.Error("运行库修复：页面刷新检测失败", ex);
                 CheckText = "页面检测刷新失败：" + ex.Message;
                 return new OperationResult { Success = false, RequiresReboot = result.RequiresReboot,
-                    Message = result.Message + "\n页面检测刷新失败：" + ex.Message };
+                    DiagnosticsDirectory = result.DiagnosticsDirectory, Message = result.Message + "\n页面检测刷新失败：" + ex.Message };
             }
             if (_detectionFailed)
                 return new OperationResult { Success = false, RequiresReboot = result.RequiresReboot,
-                    Message = result.Message + "\n" + CheckText };
+                    DiagnosticsDirectory = result.DiagnosticsDirectory, Message = result.Message + "\n" + CheckText };
             return result;
         }
         catch (Exception ex)
@@ -268,6 +268,9 @@ public partial class RuntimeViewModel : ObservableObject
             var progress = new Progress<string>(s => UninstallV14StatusText = s);
             var result = await _guard.UninstallV14Async(progress);
             if (!result.OutcomeUnknown) await LoadAsync();
+            if (!result.OutcomeUnknown && _detectionFailed)
+                return new OperationResult { Success = false, RequiresReboot = result.RequiresReboot, IsPartial = result.IsPartial,
+                    DiagnosticsDirectory = result.DiagnosticsDirectory, Message = result.Message + "\n页面复检失败：" + CheckText };
             return result;
         }
         finally
@@ -312,6 +315,9 @@ public partial class RuntimeViewModel : ObservableObject
             operationEnded = true;
             UninstallAllStatusText = result.Success ? "全部卸载及复检通过。" : result.OutcomeUnknown ? "卸载事务未确认，请核对诊断记录。" : "卸载未全部完成，详见结果。";
             if (!result.OutcomeUnknown && !UninstallAllCancelRequested) await LoadAsync();
+            if (!result.OutcomeUnknown && !UninstallAllCancelRequested && _detectionFailed)
+                return new OperationResult { Success = false, RequiresReboot = result.RequiresReboot, IsPartial = result.IsPartial,
+                    DiagnosticsDirectory = result.DiagnosticsDirectory, Message = result.Message + "\n页面复检失败：" + CheckText };
             return result;
         }
         catch (Exception ex)

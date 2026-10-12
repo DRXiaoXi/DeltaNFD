@@ -18,23 +18,9 @@ public sealed class PurgeResult
     public long FreedBytes { get; init; }
 }
 
-/// <summary>
-/// 待备内存列表清理（standby list purge）：
-/// 启用 SeProfileSingleProcessPrivilege 特权后，经 NtSetSystemInformation(SystemMemoryListInformation)
-/// 依次执行「清空待备列表 / 清空低优先级待备页 / 清空优先级 0 待备页」，
-/// 把文件缓存占用的待备物理内存立即释放为可用内存——与 RAMMap / EmptyStandbyList 同源的公开 NTAPI 机制。
-/// 纯运行时行为：不写任何系统配置，待备缓存由系统按需自动重建。
-/// </summary>
+/// <summary>只读内存统计；旧全机清理保留拒绝执行的兼容入口。</summary>
 public static class MemoryPurge
 {
-    private const int SystemMemoryListInformation = 80;
-
-    /// <summary>SystemMemoryListInformation 命令：清空待备列表 / 低优先级待备页 / 优先级 0 待备页。</summary>
-    private static readonly uint[] PurgeCommands = [2, 3, 4];
-
-    [DllImport("ntdll.dll")]
-    private static extern int NtSetSystemInformation(int infoClass, ref uint info, int length);
-
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);
 
@@ -65,63 +51,12 @@ public static class MemoryPurge
         return default;
     }
 
-    /// <summary>
-    /// 清空待备内存列表。需管理员运行（特权在管理员令牌中但默认禁用，先启用）。
-    /// 命令 2 为主清理（清空全部待备页），3/4 为细分清理；部分系统可能不支持后两者，任一成功即视为成功。
-    /// </summary>
-    public static PurgeResult PurgeStandbyList()
+    /// <summary>旧协议兼容入口：禁止执行全机回收，以免绕过进程保护名单。</summary>
+    public static PurgeResult PurgeStandbyList() => new()
     {
-        try
-        {
-            Privilege.Enable("SeProfileSingleProcessPrivilege");
-        }
-        catch (Exception ex)
-        {
-            return new PurgeResult
-            {
-                Success = false,
-                Message = "启用内存清理特权失败：" + ex.Message + "。请以管理员身份运行本程序。",
-            };
-        }
-
-        var before = QueryMemory();
-        var errors = new List<string>();
-        var okCommands = 0;
-        foreach (var command in PurgeCommands)
-        {
-            var value = command;
-            var status = NtSetSystemInformation(SystemMemoryListInformation, ref value, sizeof(uint));
-            if (status == 0)
-            {
-                okCommands++;
-            }
-            else
-            {
-                errors.Add($"操作 {command} 失败（NTSTATUS 0x{status:X8}）");
-            }
-        }
-
-        if (okCommands == 0)
-        {
-            return new PurgeResult
-            {
-                Success = false,
-                Message = "清空待备内存列表失败：" + string.Join("；", errors) + "。",
-            };
-        }
-
-        var after = QueryMemory();
-        var freed = (long)after.AvailPhys - (long)before.AvailPhys;
-        var note = okCommands < PurgeCommands.Length
-            ? "（" + okCommands + "/" + PurgeCommands.Length + " 项操作成功：" + string.Join("；", errors) + "）"
-            : "";
-        return new PurgeResult
-        {
-            Success = true,
-            Message = "已清空待备内存列表" + note + "，可用内存 " + FormatBytes(after.AvailPhys) + "。",
-            FreedBytes = freed,
-        };
-    }
+        Success = false,
+        Message = "旧版全机内存清理已下线；请使用进程管理中的后台内存回收，遵守进程保护与排除名单。",
+    };
 
     /// <summary>字节数格式化（GB/MB 自适应，两位小数）。</summary>
     public static string FormatBytes(ulong bytes) => bytes switch

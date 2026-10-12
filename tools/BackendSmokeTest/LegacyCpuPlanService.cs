@@ -4,7 +4,7 @@ using System.Text;
 namespace DeltaNFD.Services;
 
 /// <summary>
-/// CPU实验室「优化方案」的保存 / 导入（OpenAlphaV0.83 新增）。
+/// 已移除的 CPU 实验室方案格式，仅保留在测试工具中用于历史格式验证；不编入产品。
 ///
 /// 设计要点：
 /// 1. **纯文本 txt**（UTF-8 无 BOM），人可以打开看、可以改、可以贴到群里分享——

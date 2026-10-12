@@ -6,6 +6,7 @@ namespace DeltaNFD.Services;
 
 internal interface IRuntimeBulkUninstallEnvironment
 {
+    Task<IReadOnlyList<VcRedistEntry>> PrepareUninstallBatchAsync(IReadOnlyList<VcRedistEntry> entries, CancellationToken token);
     Task<string?> PreflightAsync(CancellationToken token);
     Task<List<VcRedistEntry>> ScanAsync(CancellationToken token);
     Task<RuntimeStepResult> ExecuteAsync(VcRedistEntry entry, IProgress<string>? progress, CancellationToken token);
@@ -21,7 +22,8 @@ internal sealed class RuntimeBulkUninstall(IRuntimeBulkUninstallEnvironment envi
 
     internal static RuntimeUninstallPreview Preview(IEnumerable<VcRedistEntry> entries)
     {
-        var targets = entries.Where(IsCandidate).OrderBy(e => e.KeyName, StringComparer.OrdinalIgnoreCase)
+        var targets = entries.Where(IsCandidate).OrderBy(e => e.UninstallKind == "Bundle" ? 0 : e.UninstallKind == "Inf" ? 1 : 2)
+            .ThenBy(e => e.KeyName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(e => e.Architecture, StringComparer.OrdinalIgnoreCase).ToList();
         if (targets.Count > 200 || targets.Select(e => e.KeyName.ToUpperInvariant()).Distinct().Count() != targets.Count)
             throw new InvalidDataException("运行库登记数量异常或重复，未创建卸载清单。");
@@ -47,11 +49,12 @@ internal sealed class RuntimeBulkUninstall(IRuntimeBulkUninstallEnvironment envi
                 return Fail("安装清单已变化或没有明确确认，请重新预览。未卸载任何条目。");
             diagnostics.Save("uninstall-all-preview.json", preview);
             if (preview.Entries.Count == 0) return OperationResult.Ok("未检测到可确认的 C++ 可再发行运行库，无需卸载。");
-            foreach (var entry in preview.Entries)
+            var targets = await environment.PrepareUninstallBatchAsync(preview.Entries, token);
+            foreach (var entry in targets)
             {
                 token.ThrowIfCancellationRequested();
                 if (await environment.PreflightAsync(token) is { } changedBlocker) return Fail(changedBlocker);
-                progress?.Report($"全量卸载进度 {completed}/{preview.Entries.Count}：{entry.DisplayName}");
+                progress?.Report($"全量卸载进度 {completed}/{targets.Count}：{entry.DisplayName}");
                 var result = await environment.ExecuteAsync(entry, progress, token);
                 reboot |= result.RequiresReboot;
                 results.Add(new { Entry = entry, Result = result });
@@ -73,10 +76,12 @@ internal sealed class RuntimeBulkUninstall(IRuntimeBulkUninstallEnvironment envi
 
 internal sealed class RuntimeBulkUninstallEnvironment(RuntimeRepairEnvironment environment, Func<Task<string?>> protectionBlocker) : IRuntimeBulkUninstallEnvironment
 {
+    public Task<IReadOnlyList<VcRedistEntry>> PrepareUninstallBatchAsync(IReadOnlyList<VcRedistEntry> entries, CancellationToken token)
+        => environment.PrepareUninstallBatchAsync(entries, token);
     public async Task<string?> PreflightAsync(CancellationToken token) => await protectionBlocker().WaitAsync(token)
         ?? (await environment.PreflightAsync(token)).Blocker;
     public async Task<List<VcRedistEntry>> ScanAsync(CancellationToken token) => (await environment.ScanAsync(token)).All;
     public Task<RuntimeStepResult> ExecuteAsync(VcRedistEntry entry, IProgress<string>? progress, CancellationToken token) =>
         environment.ExecuteAsync(new("uninstall-all-" + Guid.NewGuid().ToString("N"), entry.DisplayName, "", "uninstall", "", entry),
-            TimeSpan.FromMinutes(3), progress, token);
+            RuntimeUnifiedUninstaller.MaximumEntryBudget, progress, token);
 }

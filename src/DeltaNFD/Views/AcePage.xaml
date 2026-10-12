@@ -96,7 +96,7 @@
                         <StackPanel Spacing="4">
                             <TextBlock Text="虚拟化环境检测" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                       Text="对应腾讯游戏安全「未开启或有其他软件占用CPU虚拟化功能」弹框：需在 BIOS 开启 VT-x/SVM 与 VT-d/IOMMU（内核 DMA 保护），同时关闭 VBS / 内核隔离 / Hyper-V 等占用虚拟化的系统组件。" />
+                                       Text="检查固件 CPU 虚拟化、Windows 当前内核 DMA 保护和 Hypervisor / VBS 运行状态。组件安装与引导配置单独提醒，无法查询的项目标为未知；检测结果不代表 ACE 通过保证。" />
                         </StackPanel>
 
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">

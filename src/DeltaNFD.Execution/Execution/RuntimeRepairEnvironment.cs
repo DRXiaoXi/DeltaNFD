@@ -2,7 +2,7 @@
 
 namespace DeltaNFD.Services;
 
-internal sealed class RuntimeRepairEnvironment(RuntimeGuardService service, RuntimeRepairDiagnostics diagnostics, bool repairInstallerServices = true) : IRuntimeRepairEnvironment
+internal sealed class RuntimeRepairEnvironment(RuntimeGuardService service, RuntimeRepairDiagnostics diagnostics, bool repairInstallerServices = false) : IRuntimeRepairEnvironment
 {
     private readonly RuntimeRepairProcessRunner _runner = new(AppDataPaths.Root);
     private readonly HashSet<string> _retainedBranches = [];
@@ -17,26 +17,8 @@ internal sealed class RuntimeRepairEnvironment(RuntimeGuardService service, Runt
             var pending = _runner.CheckPending(snapshot.InstallerBusy);
             if (pending is not null) snapshot = snapshot with { Error = pending };
         }
-        // 自动尝试修复安装服务状态问题
-        if (repairInstallerServices && snapshot.Blocker is not null && snapshot.Services.Any(s => s.StartType == 4 || (s.State is < 1 or > 4)))
-        {
-            Log.Info("检测到安装服务状态异常，尝试自动修复。");
-            var repairResult = RuntimeRepairPreflight.TryRepairInstallerService();
-            if (repairResult.Success)
-            {
-                snapshot = RuntimeRepairPreflight.Read();
-                if (snapshot.Error.Length == 0)
-                {
-                    var pending = _runner.CheckPending(snapshot.InstallerBusy);
-                    if (pending is not null) snapshot = snapshot with { Error = pending };
-                }
-                Log.Info("安装服务状态已自动修复，重新预检：" + System.Text.Json.JsonSerializer.Serialize(snapshot));
-            }
-            else
-            {
-                Log.Warn("安装服务状态自动修复失败：" + repairResult.Message);
-            }
-        }
+        // Preserve the constructor shape for existing callers, but preflight never changes service state.
+        _ = repairInstallerServices;
         Log.Info("运行库环境预检：" + System.Text.Json.JsonSerializer.Serialize(snapshot));
         return Task.FromResult(snapshot);
     }
@@ -47,17 +29,19 @@ internal sealed class RuntimeRepairEnvironment(RuntimeGuardService service, Runt
     public async Task<OperationResult> VerifyAsync(IProgress<string>? progress, CancellationToken token)
         => await Task.Run(() => RuntimeGuardService.VerifyRepairPackage(BackendEnvironment.AssetsRoot, PackageRoot, progress), token).WaitAsync(token);
 
-    public Task PrepareStepsAsync(IReadOnlyList<RuntimeRepairStep> steps, CancellationToken token)
+    public Task<IReadOnlyList<VcRedistEntry>> PrepareUninstallBatchAsync(IReadOnlyList<VcRedistEntry> entries, CancellationToken token)
     {
         var uninstaller = new RuntimeUnifiedUninstaller(new RuntimeUnifiedUninstallBackend(diagnostics), diagnostics,
             Path.Combine(AppDataPaths.Root, "runtime-unified-uninstall-pending"));
-        foreach (var step in steps.Where(s => s.Kind == "uninstall"))
-        {
-            token.ThrowIfCancellationRequested();
-            var plan = uninstaller.Prepare(step.UninstallEntry ?? throw new InvalidDataException("缺少卸载条目。"));
-            diagnostics.Save(step.Id + "-unified-plan.json", plan);
-        }
-        return Task.CompletedTask;
+        return Task.FromResult(uninstaller.PrepareBatch(entries, token));
+    }
+
+    public async Task<IReadOnlyList<RuntimeRepairStep>> PrepareStepsAsync(IReadOnlyList<RuntimeRepairStep> steps, CancellationToken token)
+    {
+        var entries = await PrepareUninstallBatchAsync(steps.Where(s => s.Kind == "uninstall")
+            .Select(s => s.UninstallEntry ?? throw new InvalidDataException("缺少卸载条目。")).ToArray(), token);
+        return entries.Select((e, i) => new RuntimeRepairStep("uninstall-" + i, e.DisplayName, "", "uninstall", "", e))
+            .Concat(steps.Where(s => s.Kind != "uninstall")).ToArray();
     }
 
     public async Task<RuntimeStepResult> ExecuteAsync(RuntimeRepairStep step, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)

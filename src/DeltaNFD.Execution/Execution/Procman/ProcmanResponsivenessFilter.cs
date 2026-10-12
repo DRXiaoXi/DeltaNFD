@@ -8,9 +8,23 @@ namespace DeltaNFD.Execution.Procman;
 /// <summary>后台抑制只按三角洲主进程/系统进程分类；写入权限与属性所有权另行复核。</summary>
 internal static class ProcmanResponsivenessFilter
 {
+    internal static bool IsToolProcess(string path)
+    {
+        var name = Path.GetFileNameWithoutExtension(path);
+        if (name.StartsWith("DeltaNFD", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("DeltaOptimizer", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("三角帧不掉洲", StringComparison.OrdinalIgnoreCase)) return true;
+        try
+        {
+            var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(BackendEnvironment.AppRoot)) + Path.DirectorySeparatorChar;
+            return Path.GetFullPath(path).StartsWith(root, StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
     internal static bool ExcludedByIdentity(string path, int session, string userSid, bool critical, string windowsDirectory)
     {
         if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(userSid) || session < 0) return true;
+        if (IsToolProcess(path)) return true;
         if (Path.GetFileNameWithoutExtension(path).Equals(DeltaForceLocator.GameProcessName, StringComparison.OrdinalIgnoreCase)) return true;
         var windows = Path.TrimEndingDirectorySeparator(Path.GetFullPath(windowsDirectory)) + Path.DirectorySeparatorChar;
         return session == 0 || critical || path.StartsWith(windows, StringComparison.OrdinalIgnoreCase)
@@ -23,7 +37,8 @@ internal static class ProcmanResponsivenessFilter
         try
         {
             // Exclusion of the game does not depend on whether it is currently foreground.
-            if (Path.GetFileNameWithoutExtension(identity.ExecutablePath).Equals(DeltaForceLocator.GameProcessName, StringComparison.OrdinalIgnoreCase)) return true;
+            if (IsToolProcess(identity.ExecutablePath)
+                || Path.GetFileNameWithoutExtension(identity.ExecutablePath).Equals(DeltaForceLocator.GameProcessName, StringComparison.OrdinalIgnoreCase)) return true;
             using var handle = ProcmanIdentity.TryOpenQuery(identity.Pid);
             if (handle is null || !ProcmanIdentity.Matches(handle, identity)
                 || !ProcessIdToSessionId(identity.Pid, out var session) || session > int.MaxValue
