@@ -385,11 +385,11 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         if (!Enum.IsDefined(mode)) return OperationResult.Fail("修复模式无效，未操作运行库。");
         if (mode != RuntimeRepairMode.FullReinstall) return OperationResult.Fail("运行库修复已恢复 Beta0.9 全量 AIO 机制；请在新版界面确认完整修复范围，未执行局部分支请求。");
         token.ThrowIfCancellationRequested();
+        var blocker = _protection.RepairBlocker(await FindUe4PrereqAsync());
+        if (blocker is not null) return OperationResult.Fail(blocker);
         var readiness = await CheckRepairEnvironmentAsync(token);
         progress?.Report(readiness.Summary);
         if (!readiness.CanProceed) return OperationResult.Fail(readiness.Summary + "\n\n" + readiness.Details);
-        var blocker = _protection.RepairBlocker(await FindUe4PrereqAsync());
-        if (blocker is not null) return OperationResult.Fail(blocker);
         RuntimeRepairDiagnostics diagnostics;
         try { diagnostics = new RuntimeRepairDiagnostics(Log.LogDirectory); }
         catch (Exception ex) { return OperationResult.Fail("无法创建诊断目录，未更改运行库：" + ex.Message); }
@@ -523,13 +523,13 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
 
     private async Task<OperationResult> RepairCompatibilityCoreAsync(IProgress<string>? progress, CancellationToken token, bool strongRepairMode)
     {
-        var readiness = await CheckRepairEnvironmentAsync(token);
-        progress?.Report(readiness.Summary);
-        if (!readiness.CanProceed) return OperationResult.Fail(readiness.Summary + "\n\n" + readiness.Details);
         if (!ElevationHelper.IsElevated) return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
         token.ThrowIfCancellationRequested();
         var blocker = _protection.RepairBlocker(await FindUe4PrereqAsync());
         if (blocker is not null) return OperationResult.Fail(blocker);
+        var readiness = await CheckRepairEnvironmentAsync(token);
+        progress?.Report(readiness.Summary);
+        if (!readiness.CanProceed) return OperationResult.Fail(readiness.Summary + "\n\n" + readiness.Details);
         var diagnostics = new RuntimeRepairDiagnostics(Log.LogDirectory);
         var environment = new RuntimeCompatibilityEnvironment(diagnostics, strongRepairMode);
         var repair = new RuntimeCompatibilityRepair(environment, diagnostics);

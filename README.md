@@ -74,12 +74,17 @@ Alpha 预发布仅向内测通道提供；公测通道仍筛选 Beta/Release。�
 ## 系统要求
 
 - Windows 10 1809+ 或 Windows 11（x64）
-- .NET 8 SDK（仅构建需要）
+- .NET 8 SDK、PowerShell 7（仅构建与准备资源需要；安装后运行不需要）
 - 以管理员身份运行（程序清单已声明 `requireAdministrator`，启动时会弹 UAC）
 
 ## 构建与运行
 
-生成完整安装包还需要大型运行库资源与默认背景。仓库不直接保存这些构建输入；可从 [Alpha0.915 发布附件](https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.915) 获取包含构建输入的对应源码包 `DeltaNFD_Source_0.915.zip`。第三方安装资源保留原许可证，不改为 GPLv3。
+生成完整安装包还需要大型运行库资源与默认背景。可从 [Alpha0.915 发布附件](https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.915) 获取完整原创源码、默认背景和构建脚本 `DeltaNFD_Source_0.915.zip`；第三方运行库输入通过 `tools/PrepareCiRuntimeResources.ps1` 从固定发布附件获取并校验 SHA256，提取资源时不执行旧源码或安装器。也可继续使用本机已校验的相同资源。第三方安装资源保留原许可证，不改为 GPLv3。
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File tools/PrepareCiRuntimeResources.ps1
+installer\make-installer.cmd
+```
 
 ```bash
 dotnet build src/DeltaNFD/DeltaNFD.csproj -c Debug -p:Platform=x64

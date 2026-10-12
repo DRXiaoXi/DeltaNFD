@@ -139,14 +139,21 @@ public static class GameCompatibilityService
 
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(LayersKeyPath, writable: true);
-            if (key is null)
-            {
-                return OperationResult.Fail("无法打开注册表 Layers 键。");
-            }
-
             var backups = TweakBackupStore.Default;
             var backup = backups.Get("HKCU", LayersKeyPath, exePath);
+            using var key = backup is not null && backup.ValueKind != RegistryValueKind.None
+                ? Registry.CurrentUser.CreateSubKey(LayersKeyPath, writable: true)
+                : Registry.CurrentUser.OpenSubKey(LayersKeyPath, writable: true);
+            if (key is null)
+            {
+                if (backup is null) return OperationResult.Skip("当前没有全屏优化设置或备份，无需恢复。");
+                if (backup.ValueKind == RegistryValueKind.None)
+                {
+                    backups.Remove("HKCU", LayersKeyPath, exePath);
+                    return OperationResult.Ok("全屏优化设置已保持原先不存在的状态。");
+                }
+                return OperationResult.Fail("无法恢复注册表 Layers 键，原始备份已保留。");
+            }
 
             if (backup is not null)
             {
