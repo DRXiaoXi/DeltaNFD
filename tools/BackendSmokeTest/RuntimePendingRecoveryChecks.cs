@@ -16,8 +16,8 @@ internal static class RuntimePendingRecoveryChecks
         void Check(bool ok, string message) { if (!ok) throw new Exception(message); checks++; }
         var guard = new ReconcileSnapshot { Module = BackendModules.Runtime, Complete = true, Summary = "guard read-only verified",
             RecoveryScopes = [new() { Id = "guard", Description = "guard restore", Available = true }] };
-        var scan = new VcRedistScanReport { All = [], Abnormal = [], Suboptimal = [], Advice = "" };
-        var runner = new RuntimeRepairProcessRunner(root, () => false);
+        IReadOnlyList<VcRedistInfo> scan = [];
+        var runner = new RuntimeInstallationReview(root);
         var record = Path.Combine(root, "runtime-repair-active.json");
         void WriteActive(string stage, int pid, long ticks) => File.WriteAllText(record, JsonSerializer.Serialize(new
         {
@@ -25,12 +25,12 @@ internal static class RuntimePendingRecoveryChecks
             Executable = Environment.ProcessPath!, OwnerPid = Environment.ProcessId,
             OwnerStartTicks = Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks, CreatedUtc = DateTimeOffset.UtcNow,
         }));
-        Task<VcRedistScanReport> Scan() => Task.FromResult(scan);
+        Task<IReadOnlyList<VcRedistInfo>> Scan() => Task.FromResult(scan);
         Task<ReconcileSnapshot> Guard() => Task.FromResult(guard);
-        Task<RecoverOutcome> Review(Func<bool>? busy = null, Func<Task<VcRedistScanReport>>? scanner = null)
-            => RuntimeRepairRecovery.ReviewAsync(runner, busy ?? (() => false), scanner ?? Scan, Guard);
+        Task<RecoverOutcome> Review(Func<bool>? busy = null, Func<Task<IReadOnlyList<VcRedistInfo>>>? scanner = null)
+            => RuntimeLegacyInstallationReview.ReviewAsync(runner, busy ?? (() => false), scanner ?? Scan, Guard);
 
-        Check((await RuntimeRepairRecovery.InspectAsync(guard, runner, () => true, Scan)).RecoveryScopes.Single(s => s.Id == "repair-review").Available == false,
+        Check((await RuntimeLegacyInstallationReview.InspectAsync(guard, runner, () => true, Scan)).RecoveryScopes.Single(s => s.Id == "repair-review").Available == false,
             "MSI busy blocks review even without active record");
         WriteActive("prepared", 0, 0);
         var original = File.ReadAllBytes(record);
@@ -71,7 +71,7 @@ internal static class RuntimePendingRecoveryChecks
         finally { if (!child.HasExited) { child.Kill(); await child.WaitForExitAsync(); } }
         WriteEvidence([]);
         var review = BackendUnconfirmedStore.ReviewAll().Single();
-        var snapshot = await RuntimeRepairRecovery.InspectAsync(guard, runner, () => false, Scan);
+        var snapshot = await RuntimeLegacyInstallationReview.InspectAsync(guard, runner, () => false, Scan);
         Check(BackendRecovery.RecoveryChoices(review, snapshot).Select(s => s.Id).SequenceEqual(new[] { "repair-review" }), "installation record offers transaction review instead of guard rollback");
         Check(!BackendRecovery.CanKeepCurrentState(review, snapshot), "installation cannot bypass transaction scan by generic keep-current button");
         Check(BackendRecovery.RecoveryChoices(review with { Command = BackendCommands.RuntimeGuardEnable }, snapshot).Select(s => s.Id).SequenceEqual(new[] { "guard" }),

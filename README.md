@@ -52,20 +52,21 @@
 - 只有通过安装包安装的版本支持自动更新；从压缩包手动解压运行会提示前往发布页下载
 - 支持配置多下载地址回退；自动检查开启时每次启动检查，只有新版才弹窗，「稍后再更新」不屏蔽下次启动提醒
 
-## 运行库修复方式
+## 运行库检测与定向修复（当前本地开发版）
 
-- **高帧性修复**：保留原有 Beta0.9 C++ AIO 流程，校验资源后卸载检测到的运行库条目，再完整重装并复检。
-- **兼容性修复**：先校验资源并共用高帧性修复的受控 C++ 卸载阶段，再修复微软 DirectX 旧版组件、安装 C++ 并复检。卸载未完成时停止后续安装。不会调用第三方 DirectX Repair 程序，也不替换 Windows 自带的 DirectX 11/12 核心。
-- **运行库防护**：继续使用新版实现，修复前应先关闭防护。
+- **兼容性检测**：14.51.x 或显示名含 Visual C++ v14 为红色；其他 14.x 非 14.42.x 为黄色，14.42.x 无版本提醒。主页同步结果；颜色不代表 DLL 损坏或已验证游戏掉帧。
+- **14.x 定向修复**：预览确认后，仅卸载可核验的 x86/x64 14.x release CRT，再安装工具原有的 2015–2022 14.42.34433 双架构原包。失败、身份变化、未知事务或重启要求时停止；复检实际 DLL 版本。
+- **旧版包装残留**：修复末尾会备份并处理核验过的 2026/v14 INF 包装；已有正常 14.42 时可“仅处理旧版残留”，不必再次卸载重装。处理前展示清单并确认，未知身份保留并说明原因，备份路径展示在结果中。
+- **运行库防护**：保留基础 V14 / 完全防护与清理入口，修复前由玩家手动关闭。未知共享依赖阻止卸载，不强杀安装器；仅按上述确认清理已核验的旧 INF 包装，不清理依赖登记。
+- 旧高帧、兼容、强力、AIO、全量/强制卸载与 DirectX 安装已下线。本地新代码尚未发布，已发布 Alpha0.916 附件保持原样。详见 [实现记录](notes/C++14定向修复与红黄规则-20261014.md)。
 
-## Alpha0.915 内测功能
+## 其他功能与历史入口调整
 
 - **进程管理**：属性操作分为“当前”和“总是”，分别调整本次进程或按完整应用路径保存持续规则；支持 CPU 优先级、亲和性、CPU 集合、效率模式、动态提升、I/O、内存及受支持的 GPU 调度设置。
 - **后台抑制与自动内存回收**：保护工具自身、三角洲、系统进程、前台应用及已有手动设置或启用规则的进程，支持用户排除。内存回收按压力触发并设置冷却，不直接排除高 CPU 进程。进程管理按普通进程、三角洲、总是规则和后台管理分开显示，刷新保留当前行与选择。
-- **工具 .NET 检测与离线修复**：检查工具实际依赖，优先使用随包携带的官方 .NET 8 x64 安装器；主程序无法启动时可使用开始菜单独立入口。
-- **运行库进度与全量卸载**：修复显示当前步骤；全量卸载先确认候选清单，通过身份核验后执行，不自动重装。
+- **工具 .NET**：继续自包含分发；产品检测、修复、离线安装器及开始菜单修复入口已移除，布局验收只在构建工具中进行。
 - **后端异常即时处理**：报错弹窗直接提供核对与可信恢复入口，处理失败可原地重试，保留真实未确认证据。
-- **运行库诊断**：C++ 修复必须先整批预检、关联去重卸载与卸载复检；支持 INF 和旧包装升级引用核验。错误弹窗可直接打开本次完整诊断目录。
+- **运行库事务核对**：定向修复保留逐步日志与活动记录，未完成操作可核对退出状态并归档；这不代表修复成功或已经回滚。
 - **虚拟化环境核验**：读取当前内核 DMA 保护状态，区分实际运行冲突、配置提醒与未知信息，保留硬件安全标准并避免读取失败误报。
 - **旧入口移除**：下线脱机模式、旧帧格全局内存清理、CPU 实验室旧锁核器与方案分享。
 
@@ -79,10 +80,9 @@ Alpha 预发布仅向内测通道提供；公测通道仍筛选 Beta/Release。�
 
 ## 构建与运行
 
-生成完整安装包还需要大型运行库资源与默认背景。可从 [Alpha0.915 发布附件](https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.915) 获取完整原创源码、默认背景和构建脚本 `DeltaNFD_Source_0.915.zip`；第三方运行库输入通过 `tools/PrepareCiRuntimeResources.ps1` 从固定发布附件获取并校验 SHA256，提取资源时不执行旧源码或安装器。也可继续使用本机已校验的相同资源。第三方安装资源保留原许可证，不改为 GPLv3。
+完整本地构建需要默认背景及 `Assets/Vc14Baseline14.42` 内两个 14.42.34433 原包，版本与 SHA256 见上文实现记录。旧 AIO、DirectX 与 .NET 修复资源和对应准备脚本已下线；不要从历史源码恢复这些功能。微软安装资源保留原条款，不改为 GPLv3。
 
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File tools/PrepareCiRuntimeResources.ps1
 installer\make-installer.cmd
 ```
 
@@ -96,13 +96,13 @@ dotnet build src/DeltaNFD/DeltaNFD.csproj -c Debug -p:Platform=x64
 src\DeltaNFD\bin\x64\Debug\net8.0-windows10.0.19041.0\win-x64\DeltaNFD.exe
 ```
 
-> **VC++ 运行库**：AIO 修复安装器使用完整解包目录 `src\DeltaNFD\Assets\VCRedistRepair\`（保留原有目录结构及 `payload_manifest_sha256.csv`），另需 `VCRedist2015-2022-x64.exe` 和 `VCRedist2015-2022-x86.exe`。这些文件只作为安装器的构建输入，不单独发布；运行 `installer\make-installer.cmd` 会将应用与运行库一起封装为单个 `三角帧不掉洲_DeltaNFD_安装包_<版本>_x64.exe`。x86/x64 包可从[微软官方页面](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170)获取，AIO 修复包按其[上游项目](https://github.com/abbodi1406/vcredist)说明获取。
+> **VC++ 原包**：新版仅使用 `src\DeltaNFD\Assets\Vc14Baseline14.42\vc_redist.x64.exe` 与 `vc_redist.x86.exe`。请使用已核验的工具原有包；不能把最新下载包改名后冒充 14.42 基线，安装前会校验固定哈希。
 
-> **.NET 离线修复**：安装包携带微软 .NET Runtime 8.0.31 x64 原版安装器。设置页优先校验并使用离线包；主程序无法启动时，可从开始菜单的“.NET 环境修复”打开独立入口。系统运行时安装器不能替换工具自带的缺损文件，这种情况需重新安装工具。发布脚本自动获取并核验固定 SHA512 的构建输入；也可先运行 `powershell -File installer/prepare-dotnet-repair.ps1` 准备资源。
+> **.NET**：工具自带 .NET 8 x64，产品不提供检测或修复安装器；部署不完整时重新安装完整工具。构建脚本继续核对实际自包含布局。
 
 生成安装包需要 Windows、.NET 8 SDK 和 Inno Setup 6：
 
-兼容性修复另需 `Assets\DirectXRepair\` 微软官方离线资源。运行 `installer\prepare-directx-resources.ps1` 可下载并只解包，不执行安装；脚本核对固定 SHA256 和逐文件清单。`make-installer.cmd` 会自动调用该准备步骤。资源来源：[微软 DirectX End-User Runtimes（June 2010）](https://www.microsoft.com/en-us/download/details.aspx?id=8109)。
+当前构建不需要 AIO 或 DirectX 修复资源。生成安装包不代表已获得上传或推送版本的授权。
 
 ```cmd
 installer\make-installer.cmd
@@ -190,7 +190,7 @@ src/DeltaNFD/
 
 感谢 [Henry++ / Mem Reduct](https://github.com/henrypp/memreduct) 对 Windows 内存回收工具的持续维护。新版后台内存回收参考其按内存压力触发、冷却和分类清理的设计思路；本项目以 Windows 接口独立实现逐进程回收与排除保护，未复制、移植或集成 Mem Reduct / routine 的 GPL 源码或二进制。Mem Reduct 的原始内容继续适用其 GPLv3 授权。
 
-感谢 [abbodi1406 / VisualCppRedist AIO](https://github.com/abbodi1406/vcredist) 及其上游贡献者。本项目的运行库修复功能使用了该项目提供的 AIO 运行库整合资源和 `Installer.cmd` 安装脚本，并在此基础上集成资源校验、调用和诊断记录。
+感谢 [abbodi1406 / VisualCppRedist AIO](https://github.com/abbodi1406/vcredist) 及其上游贡献者。历史版本曾集成其 AIO 资源与 `Installer.cmd`，原授权和署名继续保留；当前新版不再集成这些资源或执行脚本。
 
 Microsoft Visual C++ 运行库由微软提供；感谢上游项目对运行库整合、安装脚本和兼容性的持续维护。
 

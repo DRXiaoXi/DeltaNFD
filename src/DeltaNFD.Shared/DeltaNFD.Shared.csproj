@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <!--
     共享基础设施库（T6）：
@@ -17,8 +17,8 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>0.916</Version>
-    <InformationalVersion>Alpha0.916</InformationalVersion>
+    <Version>0.917</Version>
+    <InformationalVersion>Beta0.917</InformationalVersion>
     <WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
 

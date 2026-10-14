@@ -15,7 +15,7 @@ internal static class BackendRecovery
             || snapshot is { Complete: true } && snapshot.Module == BackendModules.Ace);
     internal static bool IsRuntimeInstallation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.Runtime
         && review.Command is BackendCommands.RuntimeRepair or BackendCommands.RuntimeCompatibilityRepair
-            or BackendCommands.RuntimeRedistUninstall or BackendCommands.RuntimeRedistUninstallAll;
+            or BackendCommands.RuntimeRedistUninstall or BackendCommands.RuntimeRedistUninstallAll or BackendCommands.Vc14Repair or BackendCommands.Vc14LegacyClean;
     private static bool CanRestoreCpuRecord(string command) => BackendModules.IsReadOnly(BackendModules.CpuFrame, command)
         || command is BackendCommands.CpuFrameMonitorStart or BackendCommands.CpuFrameMonitorStop
         or BackendCommands.CpuFramePriorityApply or BackendCommands.CpuFrameAffinityApply

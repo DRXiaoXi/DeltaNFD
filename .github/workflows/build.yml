@@ -19,15 +19,6 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Cache pinned runtime test inputs
-        uses: actions/cache@v4
-        with:
-          path: _buildcheck/ci-runtime-inputs/source.zip
-          key: runtime-inputs-0.914-fd8ace56405aebaee
-
-      - name: Prepare verified redistributable test inputs
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tools/PrepareCiRuntimeResources.ps1
-
       - name: Build main app (x64)
         run: dotnet build src/DeltaNFD/DeltaNFD.csproj -c Release -p:Platform=x64
 
@@ -40,7 +31,18 @@ jobs:
       - name: Update channels and installation policy checks (isolated, offline)
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --update-channel-checks
 
-      - name: Alpha0.916 feature regression checks (isolated fixtures)
+      - name: Runtime repair retirement and retained protection checks
+        run: |
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-repair-retirement-checks
+          if ($LASTEXITCODE -ne 0) { throw "Retired runtime capabilities detected" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --vc14-checks
+          if ($LASTEXITCODE -ne 0) { throw "VC14 policy or transaction regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --vc14-legacy-checks
+          if ($LASTEXITCODE -ne 0) { throw "Legacy wrapper regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-guard-recovery-scope-checks
+          if ($LASTEXITCODE -ne 0) { throw "Protection recovery regression" }
+
+      - name: Beta0.917 feature regression checks (isolated fixtures)
         run: |
           $checks = @('--memory-mode-checks', '--procman-topology-checks', '--delta-rules-offline-checks', '--frame-background-checks', '--factory-reset-checks', '--ace-core-cleanup-checks', '--runtime-pending-recovery-checks', '--nv-shader-cache-checks', '--shader-recovery-checks', '--dashboard-shader-health-checks')
           foreach ($check in $checks) {
@@ -76,12 +78,6 @@ jobs:
 
       - name: Frame power recovery checks (all power operations simulated)
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-power-safety-checks
-
-      - name: Confirmed C++ bulk uninstall checks (simulated removal)
-        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-bulk-uninstall-checks
-
-      - name: Runtime repair environment preflight checks (simulated snapshots)
-        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-environment-checks
 
       - name: Frame feature state checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-feature-checks
@@ -161,22 +157,6 @@ jobs:
           dotnet build src/Plugin.WeakNetBoost/Plugin.WeakNetBoost.csproj -c Release -p:Platform=x64
           dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-weaknet-checks
 
-      - name: Runtime repair result and diagnostics checks
-        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-repair-checks
-
-      - name: Runtime unified uninstall and scoped dependency checks (simulated removal)
-        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-unified-uninstall-checks
-
-      - name: C++ repair uninstall-first flow checks (isolated fixtures)
-        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-flow-checks
-
-      - name: Compatibility repair uninstall-first checks (simulated installation)
-        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --compatibility-repair-checks
-
-      - name: Strong runtime repair ordering checks (simulated system operations)
-        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-strong-repair-checks
-
-      # 自动更新的离线逻辑校验（清单解析 / 哈希护栏 / 版本比较）：纯逻辑 + 临时目录，不联网、不改系统
       - name: Auto-update logic checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --update-checks
 

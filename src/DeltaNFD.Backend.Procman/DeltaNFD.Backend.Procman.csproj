@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <!--
     进程管理后端（procman）：持久驻留，通用进程枚举/详情/能力读取与手动属性控制。
@@ -19,8 +19,8 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseAppHost>true</UseAppHost>
-    <Version>0.916</Version>
-    <InformationalVersion>Alpha0.916</InformationalVersion>
+    <Version>0.917</Version>
+    <InformationalVersion>Beta0.917</InformationalVersion>
     <WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
 

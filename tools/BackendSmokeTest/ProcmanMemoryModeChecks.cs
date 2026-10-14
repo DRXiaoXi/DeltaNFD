@@ -106,7 +106,7 @@ internal static class ProcmanMemoryModeChecks
         Check(ProcmanGlobalMemoryReclaimer.Trim(() => false).Items.Count == 0, "native global entry guard false never adjusts privileges or calls system purge");
         var commands = new List<int>();
         var nativePlan = ProcmanGlobalMemoryReclaimer.ExecuteCommands(() => true, command => { commands.Add(command); return 0; });
-        Check(commands.SequenceEqual(new[] { 2, 4 }) && nativePlan.All(i => i.Status == "completed"), "native global command dispatch uses system working sets then standby list without process enumeration");
+        Check(commands.SequenceEqual(new[] { 2, 5 }) && nativePlan.All(i => i.Status == "completed"), "native global dispatch uses working sets then priority-0 standby, never all standby or modified-list writeback");
         commands.Clear();
         var nativeFailed = ProcmanGlobalMemoryReclaimer.ExecuteCommands(() => true, command => { commands.Add(command); return unchecked((int)0xC0000061); });
         Check(commands.Count == 2 && nativeFailed.All(i => i.Status == "failed" && i.Message.Contains("C0000061")), "native NTSTATUS privilege failure not reported as success");

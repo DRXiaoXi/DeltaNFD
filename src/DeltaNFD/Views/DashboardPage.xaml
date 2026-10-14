@@ -107,7 +107,7 @@
                     <Grid ColumnSpacing="10" Padding="0,6">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{x:Bind StatusBrush(ViewModel.RuntimeHealthState), Mode=OneWay}"/>
-                        <TextBlock Grid.Column="1" Text="运行库" Width="64" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Text="运行库" Width="80" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.RuntimeStatusText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                    Foreground="{x:Bind StatusBrush(ViewModel.RuntimeHealthState), Mode=OneWay}"
                                    FontWeight="{x:Bind WeightFor(ViewModel.RuntimeHealthState), Mode=OneWay}" VerticalAlignment="Center"/>

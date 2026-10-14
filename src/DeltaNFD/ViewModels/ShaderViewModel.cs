@@ -23,11 +23,6 @@ public partial class ShaderViewModel : ObservableObject
     [ObservableProperty] private bool shaderCacheCheckFailed;
     [ObservableProperty] private string shaderCacheAdvice = "";
 
-    // ---- 运行库提醒已于 2026-09-30 按用户要求从着色器页移除 ----
-    // 这两个属性保留（无 XAML 消费者），供将来需要时复用；为避免每次进页白跑一次
-    // 全量 VC++ 扫描（ScanVcRedistsAsync 会枚举注册表 + 文件系统），LoadAsync 不再调用。
-    [ObservableProperty] private bool runtimeSuboptimal;
-    [ObservableProperty] private string runtimeWarnText = "";
 
     public bool ClearEnabled => !IsBusy && !IsClearing && !IsGameRunning && CanClear;
 
@@ -131,7 +126,6 @@ public partial class ShaderViewModel : ObservableObject
             // 进页自动做一次健康检测
             await DiagnoseAsync();
 
-            // 运行库提醒已移除（见上方属性注释），此处不再触发全量运行库扫描。
         }
         finally
         {
@@ -139,39 +133,6 @@ public partial class ShaderViewModel : ObservableObject
         }
     }
 
-    /// <summary>运行库分支版本核对（保留备用：着色器页的提醒 UI 已移除，当前无调用方）。</summary>
-    private async Task LoadRuntimeWarnAsync()
-    {
-        try
-        {
-            var report = await ServiceLocator.Guard.ScanVcRedistsAsync();
-            if (report.HasAbnormal)
-            {
-                // v14 问题包为主时交给主页/运行库页处理，避免双重提醒
-                RuntimeSuboptimal = false;
-                RuntimeWarnText = "";
-                return;
-            }
-
-            RuntimeSuboptimal = report.HasSuboptimal;
-            if (!report.HasSuboptimal)
-            {
-                RuntimeWarnText = "";
-                return;
-            }
-
-            var detail = string.Join("；", report.Suboptimal.Select(s =>
-                string.IsNullOrEmpty(s.InstalledVersion)
-                    ? $"{s.Branch} 未安装（推荐 {s.RecommendedVersion}）"
-                    : $"{s.Branch} 当前 {s.InstalledVersion}（推荐 ≥ {s.RecommendedVersion}）"));
-            RuntimeWarnText = $"检测到 {report.Suboptimal.Count} 项运行库非最适版本——着色器编译与游戏稳定性可能受影响。{detail}";
-        }
-        catch
-        {
-            RuntimeSuboptimal = false;
-            RuntimeWarnText = "";
-        }
-    }
 
     /// <summary>清除 PSOCache。返回后端结果供页面弹窗；完成后自动重扫。</summary>
     public async Task<OperationResult?> ClearAsync()

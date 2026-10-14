@@ -1,5 +1,26 @@
 using DeltaNFD.Services;
 
+if (args.Contains("--vc14-legacy-checks") || args.Contains("--vc14-legacy-readonly"))
+{
+    try { if (args.Contains("--vc14-legacy-readonly")) Vc14LegacyChecks.ReadOnly(); else Vc14LegacyChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--vc14-checks") || args.Contains("--vc14-readonly"))
+{
+    try { if (args.Contains("--vc14-readonly")) Vc14Checks.ReadOnly(); else await Vc14Checks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Length is 1 or 2 && args[0] == "--runtime-repair-retirement-checks")
+{
+    try { RuntimeRepairRetirementChecks.Run(args.Length == 2 ? args[1] : null); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args.Contains("--shader-recovery-checks"))
 {
     try { ShaderRecoveryChecks.Run(); }
@@ -148,37 +169,9 @@ if (args.Contains("--procman-memory-checks"))
     return;
 }
 
-if (args.Contains("--runtime-environment-checks"))
-{
-    RuntimeEnvironmentChecks.Run();
-    return;
-}
-
 if (args.Contains("--backend-attention-checks"))
 {
     BackendAttentionChecks.Run();
-    return;
-}
-
-if (args.Contains("--runtime-sxs-readonly"))
-{
-    var root = Path.Combine(Path.GetTempPath(), "DeltaNFD-sxs-readonly-" + Guid.NewGuid().ToString("N"));
-    Directory.CreateDirectory(root); var id = Guid.NewGuid(); File.WriteAllText(Path.Combine(root, "isolated-test.marker"), id.ToString("D"));
-    AppDataPaths.ConfigureIsolatedDataRoot(root, id);
-    foreach (var step in RuntimeCompatibilityRepair.CppPlan().Where(s => s.Branch.StartsWith("2005") || s.Branch.StartsWith("2008")))
-    {
-        var path = Path.GetFullPath(Path.Combine("src/DeltaNFD/Assets/VCRedistRepair", step.RelativeFile));
-        var package = RuntimeMsiMetadata.ReadPackage(path);
-        var files = new RuntimeMsiInstallBackend(new RuntimeRepairProcessRunner(root)).VerifyFiles(package);
-        Console.WriteLine($"READONLY {step.Branch}: SxS={package.Files.Count(f => f.Assembly is not null)}/{package.Files.Count}, Verified={files.Success}, {files.Message}");
-    }
-    return;
-}
-
-if (args.Contains("--runtime-bulk-uninstall-checks"))
-{
-    try { await RuntimeBulkUninstallChecks.RunAsync(); }
-    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
 
@@ -252,26 +245,6 @@ if (args.Contains("--update-channel-checks"))
     return;
 }
 
-if (args.Length > 0 && args[0] == "--runtime-system-probe")
-{
-    Environment.ExitCode = RuntimeSystemProbeProcess.Run(args);
-    return;
-}
-
-if (args.Contains("--runtime-strong-repair-checks"))
-{
-    try { await RuntimeStrongRepairChecks.RunAsync(); }
-    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
-    return;
-}
-
-if (args.Contains("--compatibility-repair-checks"))
-{
-    try { await RuntimeCompatibilityChecks.RunAsync(); }
-    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
-    return;
-}
-
 if (args.Contains("--application-prelaunch-checks"))
 {
     try { await ApplicationPreLaunchChecks.RunAsync(); }
@@ -286,33 +259,6 @@ if (args.Contains("--runtime-guard-recovery-scope-checks"))
     return;
 }
 
-if (args.Contains("--runtime-unified-uninstall-checks") || args.Contains("--runtime-unified-uninstall-readonly")
-    || args.Contains("--runtime-unified-uninstall-force-readonly"))
-{
-    try { await RuntimeUnifiedUninstallChecks.RunAsync(args.Contains("--runtime-unified-uninstall-readonly")
-        || args.Contains("--runtime-unified-uninstall-force-readonly"), args.Contains("--runtime-unified-uninstall-force-readonly")); }
-    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
-    return;
-}
-
-if (args.Contains("--runtime-preflight-readonly", StringComparer.Ordinal))
-{
-    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(RuntimeRepairPreflight.Read()));
-    return;
-}
-
-if (args.Contains("--runtime-flow-child", StringComparer.Ordinal))
-{
-    await Task.Delay(1500);
-    return;
-}
-if (args.Contains("--runtime-flow-checks", StringComparer.Ordinal))
-{
-    try { await RuntimeRepairFlowChecks.RunAsync(); }
-    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
-    return;
-}
-
 if (args.Contains("--plugin-import-picker-checks", StringComparer.OrdinalIgnoreCase))
 {
     try { PluginImportPickerChecks.Run(); }
@@ -320,14 +266,6 @@ if (args.Contains("--plugin-import-picker-checks", StringComparer.OrdinalIgnoreC
     return;
 }
 
-if (args.Contains("--runtime-silent-uninstall-checks", StringComparer.OrdinalIgnoreCase))
-{
-    try { RuntimeSilentUninstallChecks.Run(); }
-    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
-    return;
-}
-
-// Owned child for the late-restore regression; it only waits and exits naturally.
 if (args.Length == 2 && args[0] == "--deployment-test-child" && int.TryParse(args[1], out var childDelay)
     && childDelay is > 0 and <= 15000)
 {
@@ -706,13 +644,6 @@ if (args.Contains("--runtime-installer-fixture", StringComparer.OrdinalIgnoreCas
     return;
 }
 
-if (args.Contains("--runtime-repair-checks", StringComparer.OrdinalIgnoreCase))
-{
-    try { await RuntimeRepairChecks.RunAsync(); }
-    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
-    return;
-}
-
 if (args.Contains("--frame-feature-checks", StringComparer.OrdinalIgnoreCase))
 {
     try { FrameFeatureChecks.Run(); }
@@ -978,17 +909,6 @@ Console.WriteLine($"ACE 扫描：{(aceScan.CanClean ? "无阻止进程" : $"被�
 var aceCore = await ace.CheckCoreFilesAsync();
 Console.WriteLine($"  ACE-CORE 检测[{aceCore.Level}]：{aceCore.Summary}（{aceCore.SysCount} 个）");
 foreach (var f in aceCore.Files) { Console.WriteLine("      " + f); }
-var vcScan = await guard.ScanVcRedistsAsync();
-Console.WriteLine($"v14 伪装运行库：{vcScan.Abnormal.Count} 个");
-foreach (var e in vcScan.Abnormal) { Console.WriteLine($"      [异常] {e.Architecture} {e.DisplayVersion} {e.DisplayName}"); }
-Console.WriteLine($"非最适版本运行库：{vcScan.Suboptimal.Count} 项");
-foreach (var s in vcScan.Suboptimal) { Console.WriteLine($"      [非最适] {s.Branch}：{(string.IsNullOrEmpty(s.InstalledVersion) ? "未安装" : s.InstalledVersion)}（推荐 ≥ {s.RecommendedVersion}）"); }
-Console.WriteLine($"      建议：{vcScan.Advice}");
-var v14Entries = await guard.GetV14EntriesAsync();
-Console.WriteLine($"V14 分支条目（单独卸载目标）：{v14Entries.Count} 个");
-foreach (var e in v14Entries) { Console.WriteLine($"      [V14] {e.Architecture} {e.DisplayVersion} [{e.UninstallKind}] {e.DisplayName}"); }
-
-Console.WriteLine();
 // CPU 拓扑检测（只读）
 var cpu = new CpuTopologyService();
 var topology = await cpu.GetTopologyAsync();

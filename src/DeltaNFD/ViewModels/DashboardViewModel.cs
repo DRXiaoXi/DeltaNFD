@@ -247,18 +247,17 @@ public partial class DashboardViewModel : ObservableObject
 
     private async Task LoadRuntimeHealthAsync()
     {
-        // 与运行库页共用同一检测结果：问题 v14 包为异常，缺失/低于推荐版本为提醒。
-        var report = await ServiceLocator.Guard.ScanVcRedistsAsync();
-        RuntimeHealthState = report.HasAbnormal
-            ? DashboardHealthState.Abnormal
-            : report.HasSuboptimal
-                ? DashboardHealthState.Warning
-                : DashboardHealthState.Normal;
-        RuntimeStatusText = report.HasAbnormal
-            ? $"检测到 {report.Abnormal.Count} 个 v14 问题运行库"
-            : report.HasSuboptimal
-                ? $"{report.Suboptimal.Count} 项运行库非最适版本（低于推荐版本或未安装）"
-                : "各分支运行库均为最适版本";
+        var status = await ServiceLocator.Guard.GetStatusAsync();
+        var scan = await ServiceLocator.Guard.Scan14Async();
+        RuntimeHealthState = scan.HasAbnormal ? DashboardHealthState.Abnormal : scan.HasWarning || status.GuardIssue.Length > 0 || status.IfeoRestorePending || status.Ue4RestorePending || status.Ue4PrereqDenied || status.IfeoManagedCount > 0 && !status.IfeoApplied
+            ? DashboardHealthState.Warning : DashboardHealthState.Normal;
+        RuntimeStatusText = scan.HasAbnormal ? "14.x 兼容性异常：检测到 14.51 或 Visual C++ v14，请进入运行库页核对"
+            : scan.HasWarning ? "14.x 版本非 14.42 或状态待核对，请进入运行库页查看"
+            : status.GuardIssue.Length > 0 ? "防护状态待核对：" + status.GuardIssue
+            : status.IfeoRestorePending || status.Ue4RestorePending ? "旧防护有待恢复记录"
+            : status.IfeoApplied ? $"防护已开启，拦截 {status.ScopeManagedCount}/{status.IfeoTotal} 个安装器"
+            : status.IfeoManagedCount > 0 || status.Ue4PrereqDenied ? "防护部分生效或有残留，可进入防护页核对"
+            : "14.x 未发现版本异常；防护未开启";
     }
 
     [RelayCommand]

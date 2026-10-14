@@ -66,10 +66,9 @@ $required = @(
     "Backends/DeltaNFD.Backend.CpuFrame.exe",
     "Backends/DeltaNFD.Backend.Procman.exe",
     "Assets/UpdateConfig.json",
+    "Assets/Vc14Baseline14.42/vc_redist.x64.exe",
+    "Assets/Vc14Baseline14.42/vc_redist.x86.exe",
     "Assets/TweakDb/RegistryTweaks.json"
-    "Assets/VCRedistRepair/Installer.cmd"
-    "Assets/DirectXRepair/DXSETUP.exe"
-    "Assets/DirectXRepair/payload-manifest.json"
 )
 $missing = @()
 foreach ($relative in $required) {
@@ -77,7 +76,9 @@ foreach ($relative in $required) {
 }
 if ($missing.Count -gt 0) { throw ("publish layout missing: " + ($missing -join ", ")) }
 
-if (Test-Path -LiteralPath (Join-Path $out 'Assets/DotNetRepair')) { throw 'Retired .NET repair payload found; rebuild from current source.' }
+foreach ($retired in @('Assets/DotNetRepair', 'Assets/VCRedistRepair', 'Assets/DirectXRepair', 'Assets/VCRedist2015-2022-x64.exe', 'Assets/VCRedist2015-2022-x86.exe', 'Assets/VCRedistRepair.exe')) {
+    if (Test-Path -LiteralPath (Join-Path $out $retired)) { throw ('Retired repair payload found: ' + $retired) }
+}
 Write-Host "Validate actual .NET runtime files and dependency manifests in the final shared layout..."
 dotnet build (Join-Path $repo 'tools/DotNetLayoutCheck/DotNetLayoutCheck.csproj') -c Release -m:1 -nr:false `
     -p:Platform=x64 -p:UseSharedCompilation=false -p:NuGetAudit=false -p:UseArtifactsOutput=true "-p:ArtifactsPath=$artifacts/layout-check"

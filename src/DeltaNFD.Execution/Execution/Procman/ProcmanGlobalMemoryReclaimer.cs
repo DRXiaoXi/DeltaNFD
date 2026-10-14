@@ -46,12 +46,14 @@ internal static class ProcmanGlobalMemoryReclaimer
             }
         }
         catch (Exception ex) { items.Add(new(0, "全局回收", "failed", ex.Message)); }
-        return new(items, "激进回收：未枚举进程，直接请求系统全局工作集与待备列表回收。范围包括三角洲、前台和系统，可能导致重新调页及短暂卡顿。", before, ProcmanMemoryTelemetryReader.Read());
+        return new(items, "激进回收：请求系统全局工作集与低优先级待备列表回收；保留其他待备缓存，不强制写回修改页列表。范围包括三角洲、前台和系统，仍可能导致重新调页及短暂卡顿。", before, ProcmanMemoryTelemetryReader.Read());
     }
     internal static IReadOnlyList<ProcmanMemoryTrimItem> ExecuteCommands(Func<bool> allowed, Func<int, int> request)
     {
         var items = new List<ProcmanMemoryTrimItem>();
-        foreach (var (command, name) in new[] { (2, "系统全局工作集回收"), (4, "系统待备列表回收") })
+        // Native commands: 2 = working sets, 5 = priority-0 standby only.
+        // Never issue 3 (modified list writeback) or 4 (all standby) in this path.
+        foreach (var (command, name) in new[] { (2, "系统全局工作集回收"), (5, "低优先级待备列表回收") })
         {
             if (!allowed()) { items.Add(new(0, name, "skipped", "条件变化，停止后续全局步骤。")); break; }
             var status = request(command);

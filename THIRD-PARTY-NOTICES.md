@@ -6,10 +6,10 @@
 
 - **历史 Delta NFD 发布版**：历史版本已授予的 GPL 或其他授权继续适用，不追溯收回既有权利。当前 GPLv3 全文见 `LICENSE` 与 `licenses/GPL-3.0.txt`。
 - **AtlasOS 电源计划**：`Assets/NoPowerSave-Scheme.pow` 基于 AtlasOS 导出的电源计划，使用时改名。该独立资源保留上游授权与署名。上游：https://github.com/Atlas-OS/Atlas 。相关 GPL-3.0 全文随附，感谢 AtlasOS 及其贡献者。
-- **abbodi1406 / VisualCppRedist AIO**：运行库整合资源与 `Installer.cmd` 来自 https://github.com/abbodi1406/vcredist ，保留原作者及上游贡献者声明。项目许可证不重新授权该脚本或资源。
-- **Microsoft Visual C++ / DirectX**：安装包、MSI、CAB、DLL 和相关材料按微软或相应权利人的原始条款提供，不改为 GPLv3 授权。DirectX 资源来自微软 June 2010 redistributable。
+- **abbodi1406 / VisualCppRedist AIO（历史版本）**：历史运行库整合资源与 `Installer.cmd` 来自 https://github.com/abbodi1406/vcredist ，保留原作者及上游贡献者声明。当前定向修复不再集成 AIO；项目许可证不重新授权历史脚本或资源。
+- **Microsoft Visual C++ / DirectX**：当前定向修复使用微软原版 2015–2022 14.42.34433 x64/x86 安装包；安装包、MSI、CAB、DLL 与相关材料按原始条款提供，不改为 GPLv3 授权。历史 DirectX 资源来自微软 June 2010 redistributable，当前不再随修复功能分发。
 - **.NET、Windows App SDK、Windows SDK、CommunityToolkit.Mvvm**：保留各自上游许可证及自包含运行时附带的声明。为避免覆盖运行时文件，项目许可证在安装目录命名为 `DELTA-NFD-LICENSE.txt`。
-- **Microsoft .NET 8 x64 离线修复安装器**：随工具携带微软原版 .NET Runtime 8.0.31 x64 安装器（未修改），来源为微软正式版发布元数据及 `builds.dotnet.microsoft.com`；核验官方 SHA512 和微软数字签名。安装器及其内容沿用微软原始条款，不改为 GPLv3 授权；不包含 .NET SDK、ASP.NET 或 WindowsDesktop Runtime。
+- **Microsoft .NET 8 x64 离线修复安装器（历史版本）**：历史版本曾携带微软原版 Runtime 8.0.31 安装器，其内容沿用微软原始条款。当前已移除离线修复安装器，自包含 .NET 运行时及其声明继续保留。
 - **Intel / PresentMon 2.6.0（本地稳帧研究工具）**：可选的只读帧事件采集器来自 https://github.com/GameTechDev/PresentMon ，按 MIT 许可证使用，声明保留于 `tools/FramePacingResearch/PresentMon-LICENSE.txt`。当前仅下载到忽略的本地研究目录，不纳入主程序或安装包；保留其 MIT 授权。
 - **第三方名称、商标和独立素材**：不因被本项目使用而转移权利；已有独立声明优先适用。
 

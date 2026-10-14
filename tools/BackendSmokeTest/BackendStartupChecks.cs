@@ -44,7 +44,7 @@ internal static class BackendStartupChecks
                 {
                     BackendModules.Ace => [BackendCommands.AceScan, BackendCommands.AceCoreCheck],
                     BackendModules.Gpu => [BackendCommands.GpuDriverStatus],
-                    BackendModules.Runtime => [BackendCommands.RuntimeStatus, BackendCommands.RuntimeRedistScan],
+                    BackendModules.Runtime => [BackendCommands.RuntimeStatus, BackendCommands.Vc14Scan, BackendCommands.Vc14Preview],
                     BackendModules.CpuFrame => [BackendCommands.CpuFrameStatus],
                     BackendModules.Procman => [BackendCommands.ProcmanStatus],
                     BackendModules.System => [BackendCommands.SystemShaderStatus, BackendCommands.SystemShaderDiagnose],
@@ -60,16 +60,14 @@ internal static class BackendStartupChecks
                 }
                 if (spec.Id == BackendModules.Runtime)
                 {
-                    string? normalFingerprint = null;
-                    foreach (var mode in new[] { false, true })
+                    foreach (var retired in new[] { BackendCommands.RuntimeRepair, BackendCommands.RuntimeCompatibilityRepair,
+                        BackendCommands.RuntimeRedistUninstall, BackendCommands.RuntimeRedistUninstallAll })
                     {
-                        var response = await client.InvokeAsync(BackendCommands.RuntimeRedistPreviewAll,
-                            new RuntimeUninstallAllArgs { AllowNonstandard = mode }, null, CancellationToken.None);
-                        Check(response.Status == BackendResultStatuses.Ok && response.Data is not null, "runtime mode preview read-only response");
-                        var preview = BackendJson.Deserialize<RuntimeUninstallPreview>(response.Data!.Value);
-                        Check(preview.AllowNonstandard == mode, "runtime preview returns requested mode");
-                        if (!mode) normalFingerprint = preview.Fingerprint;
-                        else Check(preview.Fingerprint != normalFingerprint, "runtime backend binds force choice to confirmed fingerprint");
+                        Check(!spec.Commands.Contains(retired), "retired runtime command absent: " + retired);
+                        var refused = false;
+                        try { await client.InvokeAsync(retired, new { }, null, CancellationToken.None); }
+                        catch (BackendContractException) { refused = true; }
+                        Check(refused, "retired runtime request rejected before sending: " + retired);
                     }
                 }
                 await client.DrainAsync(TimeSpan.FromSeconds(10));

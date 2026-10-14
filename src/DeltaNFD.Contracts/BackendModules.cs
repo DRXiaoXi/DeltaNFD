@@ -29,6 +29,10 @@ public static class BackendCommands
 
     // ---- 运行库（模块 runtime）----
     public const string RuntimeStatus = "runtime.status";
+    public const string Vc14Scan = "runtime.vc14.scan";
+    public const string Vc14Preview = "runtime.vc14.preview";
+    public const string Vc14Repair = "runtime.vc14.repair";
+    public const string Vc14LegacyClean = "runtime.vc14.legacy-clean";
     public const string RuntimeGuardEnable = "runtime.guard.enable";
     public const string RuntimeGuardDisable = "runtime.guard.disable";
     public const string RuntimeGuardSelectMode = "runtime.guard.select-mode";
@@ -42,6 +46,7 @@ public static class BackendCommands
     public const string ProcmanBackgroundSave = "procman.background.save";
     public const string ProcmanFrameBackgroundSync = "procman.background.frame.sync";
     public const string RuntimeRedistListV14 = "runtime.redist.list-v14";
+    // Historical command identifiers only: never registered or dispatched.
     public const string RuntimeRepair = "runtime.repair";
     public const string RuntimeCompatibilityRepair = "runtime.compatibility.repair";
     public const string RuntimeRedistUninstall = "runtime.redist.uninstall";
@@ -228,20 +233,15 @@ public static class BackendModules
                 new Dictionary<string, TimeSpan>(StringComparer.Ordinal)
                 {
                     [BackendCommands.RuntimeStatus] = TwoMinutes,
+                    [BackendCommands.Vc14Scan] = TwoMinutes,
+                    [BackendCommands.Vc14Preview] = TwoMinutes,
+                    [BackendCommands.Vc14Repair] = TimeSpan.FromMinutes(42),
+                    [BackendCommands.Vc14LegacyClean] = FiveMinutes,
                     [BackendCommands.RuntimeGuardEnable] = FiveMinutes,
                     [BackendCommands.RuntimeGuardDisable] = FiveMinutes,
                     [BackendCommands.RuntimeGuardSelectMode] = TwoMinutes,
                     [BackendCommands.RuntimeGuardCleanupLegacy] = FiveMinutes,
                     [BackendCommands.RuntimeUe4RepairAcl] = FiveMinutes,
-                    [BackendCommands.RuntimeRedistScan] = TwoMinutes,
-                    [BackendCommands.RuntimeRepairEnvironment] = TwoMinutes,
-                    [BackendCommands.RuntimeRedistListV14] = TwoMinutes,
-                    // 强力系统阶段最多 60 分钟；高帧性后续 26 分钟，含全量卸载的兼容性后续 80 分钟。
-                    [BackendCommands.RuntimeRepair] = TimeSpan.FromMinutes(90),
-                    [BackendCommands.RuntimeCompatibilityRepair] = TimeSpan.FromMinutes(145),
-                    [BackendCommands.RuntimeRedistUninstall] = ThirtyMinutes,
-                    [BackendCommands.RuntimeRedistPreviewAll] = TwoMinutes,
-                    [BackendCommands.RuntimeRedistUninstallAll] = TimeSpan.FromMinutes(90),
                     [BackendCommands.RuntimeReconcile] = FiveMinutes,
                     [BackendCommands.RuntimeRecover] = FifteenMinutes,
                 }, FiveMinutes),
@@ -386,10 +386,8 @@ public static class BackendModules
         BackendCommands.AceVirtCheck,
         BackendCommands.GpuSpoofStatus, BackendCommands.GpuWatchEvaluate,
         BackendCommands.GpuDriverStatus, BackendCommands.GpuDriverRead, BackendCommands.GpuReconcile,
-        BackendCommands.RuntimeStatus, BackendCommands.RuntimeRedistScan, BackendCommands.RuntimeRepairEnvironment,
-        BackendCommands.RuntimeRedistListV14, BackendCommands.RuntimeReconcile,
-        BackendCommands.RuntimeRedistPreviewAll,
-        BackendCommands.CpuFrameStatus, BackendCommands.CpuFrameReconcile,
+        BackendCommands.RuntimeStatus, BackendCommands.RuntimeReconcile, BackendCommands.Vc14Scan, BackendCommands.Vc14Preview,
+                BackendCommands.CpuFrameStatus, BackendCommands.CpuFrameReconcile,
         BackendCommands.CpuFrameTopology, BackendCommands.CpuFrameAffinityCheck,
         BackendCommands.CpuFrameAffinityPending, BackendCommands.CpuFrameMemoryLimitDetect,
         BackendCommands.CpuFramePowerIncomplete,

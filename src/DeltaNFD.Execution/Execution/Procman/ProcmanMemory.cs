@@ -87,8 +87,8 @@ public sealed partial class ProcmanEngine
             var candidates = mode == ProcmanMemoryModes.Aggressive ? [] : MemoryCandidates(ReadMemorySample());
             var note = mode switch
             {
-                ProcmanMemoryModes.Aggressive => "激进回收：不枚举进程，直接请求系统全局工作集及待备列表回收，范围包括游戏和系统。需要管理员权限，可能造成短暂卡顿。",
-                ProcmanMemoryModes.DeltaStable => "稳洲回收：跳过三角洲主进程、系统进程和有规则的进程（含停用规则）；其余进程包括前台和工具。不受普通模式数量或排除名单限制。权限不足、身份不明、冷却中的进程跳过。",
+                ProcmanMemoryModes.Aggressive => "激进回收：不枚举进程，请求全局工作集及低优先级待备列表回收，保留其他待备缓存，不强制写回修改页列表。范围包括游戏和系统，需要管理员权限，仍可能造成换页或卡顿。",
+                ProcmanMemoryModes.DeltaStable => "稳洲回收：跳过三角洲主进程、系统进程和有规则的进程（含停用规则）；其余进程包括前台和工具。不受普通模式数量或排除名单限制，不清空全局待备缓存、不强制写回修改页列表。权限不足、身份不明、冷却中的进程跳过。",
                 _ => $"普通回收：不设内存大小门槛、不检测 CPU 占用，每次最多 {MemoryBatchLimit} 个后台应用。保护游戏、工具、系统、前台、排除名单及已有设置/规则的进程。",
             };
             var now = ClockForTests?.Invoke() ?? DateTime.UtcNow;

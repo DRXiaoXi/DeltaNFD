@@ -1,5 +1,6 @@
-using DeltaNFD.ViewModels;
 using DeltaNFD.Services;
+using DeltaNFD.Services.Backends;
+using DeltaNFD.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -9,257 +10,79 @@ public sealed partial class RuntimePage : Page
 {
     public RuntimeViewModel ViewModel { get; } = RuntimeViewModel.Current;
     private bool _guardToggleHandling;
-    private bool _repairDialogHandling;
-    private bool _environmentChecking;
-    private RuntimeRepairEnvironmentReport? _environmentReport;
-    private string EnvironmentWarnings => _environmentReport is { HasWarnings: true } report
-        ? "\n\n环境提醒：\n" + string.Join("\n", report.Items.Where(i => i.Status == "warning").Select(i => i.Detail + " " + i.Suggestion)) : "";
-
-    private async Task<bool> CheckRepairEnvironmentAsync()
+    private CancellationTokenSource? _repairCancellation;
+    private async void ProcessLegacy_Click(object sender, RoutedEventArgs e)
     {
-        if (_environmentChecking) return false;
-        _environmentChecking = true;
-        EnvironmentCheckButton.IsEnabled = false;
-        EnvironmentCheckProgress.IsActive = true;
-        EnvironmentStatusText.Text = "正在检查修复前环境…";
+        if (!ViewModel.LegacyProcessingEnabled) return;
+        ViewModel.RepairIsBusy = true;
+        using var cancellation = new CancellationTokenSource(); _repairCancellation = cancellation;
         try
         {
-            _environmentReport = await DeltaNFD.Services.ServiceLocator.Guard.CheckRepairEnvironmentAsync();
-            EnvironmentStatusText.Text = _environmentReport.Summary;
-            EnvironmentDetailsText.Text = _environmentReport.Details;
-            return _environmentReport.CanProceed;
-        }
-        catch (Exception ex)
-        {
-            _environmentReport = null;
-            EnvironmentStatusText.Text = "环境检查未完成，暂不开始修复。";
-            EnvironmentDetailsText.Text = ex.Message;
-            return false;
-        }
-        finally
-        {
-            _environmentChecking = false;
-            EnvironmentCheckButton.IsEnabled = true;
-            EnvironmentCheckProgress.IsActive = false;
-        }
-    }
-
-    private async void CheckRepairEnvironment_Click(object sender, RoutedEventArgs e)
-    {
-        if (_repairDialogHandling || ViewModel.IsRepairing || ViewModel.UninstallAllBusy || ViewModel.UninstallAllPreviewBusy || ViewModel.UninstallV14Busy) return;
-        await CheckRepairEnvironmentAsync();
-    }
-
-    private async Task<bool> EnsureRepairEnvironmentAsync()
-    {
-        if (await CheckRepairEnvironmentAsync()) return true;
-        await new ContentDialog
-        {
-            XamlRoot = XamlRoot, Title = "暂不开始运行库修复",
-            Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock
-                { Text = EnvironmentStatusText.Text + "\n\n" + EnvironmentDetailsText.Text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } },
-            CloseButtonText = "知道了", DefaultButton = ContentDialogButton.Close,
-        }.ShowRuntimeResultAsync(OperationResult.Fail(EnvironmentStatusText.Text + "\n" + EnvironmentDetailsText.Text));
-        return false;
-    }
-
-    public RuntimePage()
-    {
-        InitializeComponent();
-
-        // 进页自动检测问题运行库 + 读取防护状态
-        if (!ViewModel.IsRepairing && !ViewModel.UninstallV14Busy && !ViewModel.UninstallAllBusy && !ViewModel.UninstallAllPreviewBusy)
-        { _ = ViewModel.LoadAsync(); _ = ViewModel.LoadGuardAsync(); }
-    }
-
-    public Visibility BusyVisibility(bool busy) => busy ? Visibility.Visible : Visibility.Collapsed;
-
-    private async void UninstallAllButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_repairDialogHandling || !ViewModel.UninstallAllEnabled) return;
-        _repairDialogHandling = true;
-        ViewModel.UninstallAllPreviewBusy = true;
-        try
-        {
-            var preview = await ViewModel.PreviewUninstallAllAsync();
-            if (preview.Entries.Count == 0)
-            {
-                await new ContentDialog { XamlRoot = XamlRoot, Title = "无需卸载", Content = "未检测到 C++ 可再发行运行库条目。", CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
-                return;
-            }
-            var list = string.Join("\n", preview.Entries.Select(e => $"· {e.DisplayName} · {e.Architecture} · {e.DisplayVersion}"
-                + (preview.AllowNonstandard ? $" · 登记ID：{e.KeyName}" : "")));
-            var modeNote = preview.AllowNonstandard
-                ? "本次已开启强制尝试：允许已核验的微软 C++ 未收录产品码或偏低版本。缓存 MSI 身份、架构、分支和共享依赖仍须通过校验；不能保证卸载成功。\n\n" : "";
-            var confirm = new ContentDialog { XamlRoot = XamlRoot, Title = "卸载全部 C++ 运行库？",
+            var report = await ViewModel.PreviewLegacyAsync();
+            if (report.Issues.Count > 0 || report.Entries.Any(e => !e.CanProcess))
+            { ViewModel.RepairStatusText = string.Join("\n", report.Issues.Concat(report.Entries.Select(e => e.Detail))); return; }
+            var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "确认仅处理旧版包装残留？",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
-                    Text = modeNote + $"将处理以下 {preview.Entries.Count} 个条目：\n{list}\n\n卸载后，依赖这些运行库的游戏及软件可能无法启动，直到重新安装。请先关闭游戏、开发工具和运行库防护。\n不会卸载 .NET、DirectX、SDK、调试组件或 VSTO。共享依赖或身份无法核验时会停止并保留证据。\n此入口只卸载，不自动重装。停止后续步骤不等于恢复已卸载的组件。" } },
-                PrimaryButtonText = preview.AllowNonstandard ? "确认强制尝试卸载" : "卸载全部", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close };
-            if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
-            ViewModel.UninstallAllPreviewBusy = false;
-            var result = await ViewModel.UninstallAllAsync(preview.Fingerprint, preview.AllowNonstandard);
-            if (result is null) return;
-            await new ContentDialog { XamlRoot = XamlRoot,
-                Title = result.OutcomeUnknown ? "卸载事务未确认结束" : result.RequiresReboot ? "需重启后重新检测" : result.Success ? "全部卸载完成" : "卸载未全部完成",
+                    Text = string.Join("\n", report.Entries.Select(e => e.Name + " · " + e.Version))
+                        + "\n\n已核验原 MSI 不再安装，当前 14.42 组件及核心 DLL 已确认。\n将备份后清理以上旧包装登记与对应 INF/PNF；不执行旧卸载命令，不卸载或重装当前 14.42，不清理共享依赖。\n状态变化或备份失败时停止，部分完成会保留证据供核对。" } },
+                PrimaryButtonText = "确认处理残留", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close };
+            if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary || cancellation.IsCancellationRequested) return;
+            var result = await ViewModel.ProcessLegacyAsync(report.Fingerprint, cancellation.Token);
+            ViewModel.RepairStatusText = result.Message;
+            await new ContentDialog { XamlRoot = XamlRoot, Title = result.Success ? "旧包装处理完成" : "旧包装未处理完",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = result.Message } },
-                CloseButtonText = "知道了" }.ShowRuntimeResultAsync(result);
+                CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
         }
-        catch (Exception ex)
-        {
-            DeltaNFD.Services.Log.Error("全量卸载界面未完成", ex);
-            await new ContentDialog { XamlRoot = XamlRoot, Title = "未开始或未完成卸载", Content = ex.Message, CloseButtonText = "知道了" }.ShowRuntimeResultAsync(OperationResult.Fail(ex.Message));
-        }
-        finally { ViewModel.UninstallAllPreviewBusy = false; _repairDialogHandling = false; }
+        catch (Exception ex) { ViewModel.RepairStatusText = "旧包装处理失败：" + ex.Message; await ShowRuntimeExceptionAsync(ex); }
+        finally { _repairCancellation = null; ViewModel.RepairIsBusy = false; await ViewModel.LoadGuardAsync(); }
     }
-    private void CancelUninstallAllButton_Click(object sender, RoutedEventArgs e) => ViewModel.CancelUninstallAll();
-
-    private async void CheckButton_Click(object sender, RoutedEventArgs e)
+    private void CancelRepair_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.LoadAsync();
+        _repairCancellation?.Cancel();
+        ViewModel.RepairStatusText = "已请求停止后续步骤；不会强杀正在运行的安装器，请等待事务结束后核对。";
     }
-
-    private async void RepairButton_Click(object sender, RoutedEventArgs e)
+    private async void Repair14_Click(object sender, RoutedEventArgs e)
     {
-        if (_repairDialogHandling || _environmentChecking || !ViewModel.RepairEnabled) return;
-        _repairDialogHandling = true;
+        if (!ViewModel.GuardCleanupEnabled) return;
+        ViewModel.RepairIsBusy = true;
+        using var cancellation = new CancellationTokenSource();
+        _repairCancellation = cancellation;
         try
         {
-            if (!await EnsureRepairEnvironmentAsync()) return;
-            var mode = ViewModel.RepairMode;
-            var strongMode = ViewModel.StrongRepairMode;
-            var confirm = new ContentDialog
+            ViewModel.RepairStatusText = "正在核对 14.x 清单、安装原包和事务状态…";
+            var preview = await ViewModel.PreviewRepairAsync();
+            if (!preview.CanRepair) { ViewModel.RepairStatusText = preview.Blocker; return; }
+            var list = string.Join("\n", preview.Scan.Products.Select(p => p.Name + " · " + p.Architecture + " · " + p.Version));
+            var legacy = string.Join("\n", preview.Scan.Legacy.Entries.Select(p => p.Name + " · " + p.Version));
+            var dialog = new ContentDialog
             {
-                XamlRoot = XamlRoot,
-                Title = "高帧性修复（原 C++ AIO 流程）？",
-                Content = (strongMode ? "将校验安装资源，跳过 C++ 卸载，直接覆盖安装／修复 x86/x64 C++ 组件并复检。\n\n"
-                    : "将先核验全部 C++ 卸载计划，通过后卸载并运行完整 AIO 和官方基线。若共享依赖在任何卸载开始前阻塞，将保留组件与登记，改为逐包覆盖安装并复检。\n\n")
-                    + "这会改变系统运行库环境；开发环境依赖特定版本时请谨慎。请先关闭运行库防护。\n\n"
-                    + (strongMode ? "已开启强力修复模式：\n" + RuntimeViewModel.StrongRepairConfirmation + "\n\n" : "")
-                    + "停止后续步骤不等于撤销当前安装事务。" + EnvironmentWarnings + "\n\n确定继续？",
-                PrimaryButtonText = "修复",
-                CloseButtonText = "取消",
-                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = XamlRoot, Title = "确认定向修复 C++ 14.x？",
+                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
+                    Text = "将卸载以下已核验的 14.x MSI 组件：\n" + (list.Length == 0 ? "未检测到可卸载组件，只安装原包。" : list)
+                        + "\n\n随后安装 2015–2022 x64/x86 14.42.34433。保留 2005–2013、SDK/Debug、ARM64 和 DirectX。"
+                        + (legacy.Length > 0 ? "\n\n在 14.42 复检通过且旧 MSI 已移除后，备份并处理以下旧 INF 包装登记与 INF/PNF：\n" + legacy : "")
+                        + (preview.Scan.Legacy.Issues.Count > 0 ? "\n旧包装待核对，无法自动清理：\n" + string.Join("\n", preview.Scan.Legacy.Issues) : "")
+                        + "\n请先关闭游戏与其他应用及运行库防护。共享运行库降级可能影响需要较新版本的软件。\n失败、身份变化、需要重启或结果未确认时停止；不会忽略其他软件共享依赖或强杀安装器。" } },
+                PrimaryButtonText = "确认修复", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
             };
-
-            if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
-
-            var result = await ViewModel.RepairAsync(mode, strongMode);
-            if (result is null) return;
-
-            await new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = result.Success ? (result.RequiresReboot ? "修复通过，需重启" : "修复完成")
-                    : result.OutcomeUnknown ? "安装事务未确认结束" : "修复未完成",
-                Content = new ScrollViewer
-                {
-                    MaxHeight = 420,
-                    Content = new TextBlock { Text = result.Message, TextWrapping = TextWrapping.Wrap },
-                },
-                CloseButtonText = "知道了",
-                DefaultButton = ContentDialogButton.Close,
-            }.ShowRuntimeResultAsync(result);
-        }
-        catch (Exception ex) { DeltaNFD.Services.Log.Error("运行库修复对话框失败", ex); await ShowRuntimeExceptionAsync(ex); }
-        finally { _repairDialogHandling = false; }
-    }
-
-    private async void CompatibilityRepairButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_repairDialogHandling || _environmentChecking || !ViewModel.RepairEnabled) return;
-        _repairDialogHandling = true;
-        try
-        {
-            if (!await EnsureRepairEnvironmentAsync()) return;
-            var strongMode = ViewModel.StrongRepairMode;
-            var confirm = new ContentDialog { XamlRoot = XamlRoot, Title = "兼容性修复？",
-                Content = (strongMode ? "将先校验安装资源，跳过 C++ 卸载，修复微软 DirectX 旧版组件，并逐包覆盖安装／修复 C++ 及复检。\n\n"
-                    : "将先校验资源和全部 C++ 卸载计划，再修复 DirectX 与 C++。若共享依赖在任何卸载开始前阻塞，将保留组件与登记，改为逐包覆盖安装 C++。\n\n实际卸载后，依赖这些组件的应用可能无法运行，直到安装完成；开发环境依赖特定版本时请谨慎。\n\n")
-                    + (strongMode ? "已开启强力修复模式：\n" + RuntimeViewModel.StrongRepairConfirmation + "\n\n" : "")
-                    + "请先关闭游戏和运行库防护。停止后续步骤不会强杀正在执行的安装事务。" + EnvironmentWarnings,
-                PrimaryButtonText = "修复", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close };
-            if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
-            var result = await ViewModel.RepairCompatibilityAsync(strongMode);
-            if (result is null) return;
-            await new ContentDialog { XamlRoot = XamlRoot,
-                Title = result.OutcomeUnknown ? "修复事务尚未确认结束" : result.RequiresReboot ? "修复需要重启后继续"
-                    : result.Success ? "兼容性修复完成" : "兼容性修复未全部完成",
+            if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary || cancellation.IsCancellationRequested)
+            { ViewModel.RepairStatusText = "已取消，未执行卸载或安装。"; return; }
+            var result = await ViewModel.RepairAsync(preview.Fingerprint, cancellation.Token);
+            ViewModel.RepairStatusText = result.Message;
+            await new ContentDialog { XamlRoot = XamlRoot, Title = result.Success ? "14.x 修复完成" : "14.x 修复未完成",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = result.Message, TextWrapping = TextWrapping.Wrap } },
-                CloseButtonText = "知道了" }.ShowRuntimeResultAsync(result);
+                CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
         }
-        catch (Exception ex) { DeltaNFD.Services.Log.Error("兼容性修复对话框失败", ex); await ShowRuntimeExceptionAsync(ex); }
-        finally { _repairDialogHandling = false; }
+        catch (Exception ex) { ViewModel.RepairStatusText = "操作未完成：" + ex.Message; await ShowRuntimeExceptionAsync(ex); }
+        finally { _repairCancellation = null; ViewModel.RepairIsBusy = false; await ViewModel.LoadGuardAsync(); }
     }
-
-    private void CancelRepairButton_Click(object sender, RoutedEventArgs e) => ViewModel.CancelRepair();
+    public RuntimePage() { InitializeComponent(); _ = ViewModel.LoadGuardAsync(); }
+    private async void RefreshGuard_Click(object sender, RoutedEventArgs e) => await ViewModel.LoadGuardAsync();
     private async void ReviewRuntimeOperation_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.IsRepairing || _repairDialogHandling) return;
         await BackendReviewFlow.RunAsync(XamlRoot, [DeltaNFD.Backends.BackendModules.Runtime]);
+        await ViewModel.LoadGuardAsync();
     }
-
-    private async void UninstallV14Button_Click(object sender, RoutedEventArgs e)
-    {
-        if (_repairDialogHandling || !ViewModel.UninstallV14Enabled) return;
-        _repairDialogHandling = true;
-        try { await UninstallV14CoreAsync(); }
-        catch (Exception ex) { DeltaNFD.Services.Log.Error("V14 卸载界面未完成", ex); await ShowRuntimeExceptionAsync(ex); }
-        finally { _repairDialogHandling = false; }
-    }
-    private async Task UninstallV14CoreAsync()
-    {
-        // 先枚举实际会卸载的条目，让用户看清清单再确认
-        var list = await ViewModel.BuildV14ListTextAsync();
-        if (list.Length == 0)
-        {
-            await new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = "无需卸载",
-                Content = "未检测到名字带「v14」的运行库条目，无需卸载。",
-                CloseButtonText = "知道了",
-                DefaultButton = ContentDialogButton.Close,
-            }.ShowWithBackendRecoveryAsync();
-            return;
-        }
-
-        var confirm = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = "单独卸载 V14 运行库？",
-            Content = "将只卸载以下名字带「v14」的条目（年份命名条目与 2005-2013 各分支一律不动）：\n"
-                      + list + "\n\n"
-                      + "· 逐条静默卸载，约 1 分钟\n"
-                      + "· 卸载后依赖该运行库的游戏 / 软件将无法启动，直到重装运行库\n"
-                      + "· Steam 启动游戏时可能自动重装（Steamworks 共享运行库机制）；游戏侧重装可用「运行库防护模式」拦截\n"
-                      + "· 若「运行库防护模式」当前开启，请先关闭（否则卸载器会被拦截）\n\n"
-                      + "确定继续？",
-            PrimaryButtonText = "卸载",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Close, // 高风险操作默认停在取消
-        };
-
-        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
-        {
-            return;
-        }
-
-        var result = await ViewModel.UninstallV14Async();
-        if (result is null)
-        {
-            return;
-        }
-
-        await new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = result.Success ? "卸载完成" : "卸载失败",
-            Content = result.Message,
-            CloseButtonText = "知道了",
-            DefaultButton = ContentDialogButton.Close,
-        }.ShowRuntimeResultAsync(result);
-    }
-
     private async void GuardToggle_Toggled(object sender, RoutedEventArgs e)
     {
         if (_guardToggleHandling || sender is not ToggleSwitch toggle || toggle.IsOn == ViewModel.GuardIsEnabled)
@@ -279,7 +102,7 @@ public sealed partial class RuntimePage : Page
                 {
                     XamlRoot = XamlRoot, Title = "操作失败", Content = result.Message,
                     CloseButtonText = "知道了", DefaultButton = ContentDialogButton.Close,
-                }.ShowRuntimeResultAsync(result);
+                }.ShowWithBackendRecoveryAsync();
             }
         }
         catch (Exception ex)
@@ -321,7 +144,7 @@ public sealed partial class RuntimePage : Page
                     MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = result.Message },
                 },
                 CloseButtonText = "知道了",
-            }.ShowRuntimeResultAsync(result);
+            }.ShowWithBackendRecoveryAsync();
         }
         catch (Exception ex)
         {
@@ -342,7 +165,7 @@ public sealed partial class RuntimePage : Page
             if (result is { Success: false }) await new ContentDialog
             {
                 XamlRoot = XamlRoot, Title = "范围切换失败", Content = result.Message, CloseButtonText = "知道了",
-            }.ShowRuntimeResultAsync(result);
+            }.ShowWithBackendRecoveryAsync();
         }
         catch (Exception ex)
         {
@@ -359,7 +182,7 @@ public sealed partial class RuntimePage : Page
         {
             await new ContentDialog { XamlRoot = XamlRoot, Title = "运行库操作未完成", Content = exception.Message,
                 CloseButtonText = "知道了", DefaultButton = ContentDialogButton.Close }
-                .ShowRuntimeResultAsync(OperationResult.Fail(exception.Message));
+                .ShowWithBackendRecoveryAsync();
         }
         catch (Exception dialogError) { DeltaNFD.Services.Log.Error("运行库错误及日志引导弹窗无法显示", dialogError); }
     }
