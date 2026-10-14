@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "version": "0.91",
-  "displayVersion": "Beta0.91",
+  "version": "0.917",
+  "displayVersion": "Beta0.917",
   "channel": "beta",
   "mandatory": false,
   "minimumSupportedVersion": "",
-  "publishedAtUtc": "2026-10-10T05:52:57Z",
-  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.91",
-  "notes": "Beta0.91（内部版本 0.91）\n\n- 运行库新增高帧性修复与兼容性修复，保留 Beta0.9 完整 C++ AIO 流程及新版防护；兼容性修复独立处理 DirectX 旧版组件和 C++ 依赖。\n- 两种修复共享强力模式，加入 Windows 系统组件修复和独立进程 API Sets/UCRT 抽查；修复中文 SFC 结果识别、同版本 C++ 文件覆盖/哈希复核及待重启状态处理。\n- 更新设置新增内测/公测通道：内测接收 Alpha、Beta、Release，公测接收 Beta、Release。首次 Beta 安装默认公测，Alpha 安装切回内测，Beta 重装保留已有选择。\n- 修复运行中安装的管道等待竞态、中文交接报告乱码和异常反馈；不误启动旧程序，不强杀未完成的恢复事务。\n- 安装、卸载及自动更新统一安全交接；改进后端停止、迟到还原、恢复记录核对、Defender 临时状态恢复、脱机模式关闭及 ACE 清理结果处理。\n- 自本版本起原创内容采用源码可用非商业许可证，禁止收费转售、闭源二次开发、用于收费产品、商业使用及删除作者署名。历史 GPL 授权与第三方内容的原授权不变。\n\n安装包包含主程序、五个官方后端、脱机助手、自包含运行时及运行库修复资源。旧版较高内部编号的本地测试安装不会自动降级，可按需手动安装本版本。",
+  "publishedAtUtc": "2026-10-14T15:53:13Z",
+  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.917",
+  "notes": "## Beta0.917 公测版\n\n- 调整激进内存回收：只清低优先级待备缓存，保留其他待备缓存，不强制写回修改页列表。稳洲模式保留游戏、系统和所有有规则进程保护，不增加磁盘活动监测或进程间隔。工作集回收仍可能造成换页，不能保证消除磁盘峰值或提高帧率。\n- 下线旧运行库高帧、兼容、强力及全量卸载/AIO/DirectX 修复，保留防护。新版只提供经过身份与共享依赖校验的 C++ 14.x 定向修复，安装固定 2015–2022 14.42.34433 双架构基线。\n- 增加旧版 2026/v14 INF 包装残留的检测、预览、备份与受控处理；已有正常基线时可仅处理核验过的旧包装。未知来源保留原因，修复前需手动关闭运行库防护。\n- 修复旧 14.42 包装仍登记导致安装器成功退出但组件未补回的问题，按维护状态选用固定原包的 /repair，并在每个架构完成后立即复检组件和真实 DLL。\n- 移除产品 .NET 检测与修复入口，软件继续自带 .NET 8 x64。主页同步 NVIDIA 全局/三角洲非默认着色器缓存大小提醒，并提供玩家确认后操作的隐藏处理页。\n\n### 安装与更新\n\nWindows 10/11 x64 安装包自带运行时和六个官方后端。公测与内测渠道均可接收 Beta0.917；Beta 重装保留已有渠道选择。较高旧内部编号或同号本地 Beta0.917 不会自动降级/同号覆盖，请手动安装。\n\n运行库红黄提示属于本项目三角洲兼容性策略，不代表已证明所有电脑存在文件损坏或掉帧。系统修改仍须在工具内预览确认；本次发布没有在用户电脑执行安装器或全局内存回收。\n\n### 验证与源码\n\n内存回收三模式、规则保护、帧格联动、持续时序仿真、C++ 定向修复与旧包装模拟均通过；自包含部署和六个后端实际握手/只读接口检查通过。未完成实际安装/卸载及游戏性能的全面端到端验证。\n\n源码采用 GPL-3.0-only，第三方内容保留各自许可。源码附件来自发布提交，包含固定 14.42 微软原包和背景构建输入，不含私人日志或本机研究目录。附件 SHA256 见 SHA256SUMS.txt。",
   "installers": [
     {
-      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.91/DeltaNFD_Setup_0.91_x64.exe",
-      "sizeBytes": 267717870,
-      "sha256": "01b149f1b40b11c8e7477bfed535bdac26173e4a5c6e09791c18c3ab5cbc2387"
+      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.917/DeltaNFD_Setup_0.917_x64.exe",
+      "sizeBytes": 125584455,
+      "sha256": "59e4509ea4bff114b4e8e761c3e472a1e9ad9532462490e572bbbcc2b1bca59c"
     }
   ]
 }
