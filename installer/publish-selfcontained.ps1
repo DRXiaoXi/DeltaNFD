@@ -79,8 +79,10 @@ if ($missing.Count -gt 0) { throw ("publish layout missing: " + ($missing -join 
 
 if (Test-Path -LiteralPath (Join-Path $out 'Assets/DotNetRepair')) { throw 'Retired .NET repair payload found; rebuild from current source.' }
 Write-Host "Validate actual .NET runtime files and dependency manifests in the final shared layout..."
-dotnet run --project (Join-Path $repo 'tools/DotNetLayoutCheck/DotNetLayoutCheck.csproj') -c Release `
-    -p:Platform=x64 -p:NuGetAudit=false -p:UseArtifactsOutput=true "-p:ArtifactsPath=$artifacts/layout-check" -- $out
+dotnet build (Join-Path $repo 'tools/DotNetLayoutCheck/DotNetLayoutCheck.csproj') -c Release -m:1 -nr:false `
+    -p:Platform=x64 -p:UseSharedCompilation=false -p:NuGetAudit=false -p:UseArtifactsOutput=true "-p:ArtifactsPath=$artifacts/layout-check"
+if ($LASTEXITCODE -ne 0) { throw 'Build-only runtime layout checker failed to build.' }
+& (Join-Path $artifacts 'layout-check/bin/DotNetLayoutCheck/release/DotNetLayoutCheck.exe') $out
 if ($LASTEXITCODE -ne 0) { throw "Published .NET dependency check failed; installer generation is blocked." }
 
 Write-Host "Publish layout complete: $out"
