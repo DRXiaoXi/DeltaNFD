@@ -11,36 +11,13 @@ public sealed partial class RuntimePage : Page
     public RuntimeViewModel ViewModel { get; } = RuntimeViewModel.Current;
     private bool _guardToggleHandling;
     private CancellationTokenSource? _repairCancellation;
-    private async void ProcessLegacy_Click(object sender, RoutedEventArgs e)
-    {
-        if (!ViewModel.LegacyProcessingEnabled) return;
-        ViewModel.RepairIsBusy = true;
-        using var cancellation = new CancellationTokenSource(); _repairCancellation = cancellation;
-        try
-        {
-            var report = await ViewModel.PreviewLegacyAsync();
-            if (report.Issues.Count > 0 || report.Entries.Any(e => !e.CanProcess))
-            { ViewModel.RepairStatusText = string.Join("\n", report.Issues.Concat(report.Entries.Select(e => e.Detail))); return; }
-            var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "确认仅处理旧版包装残留？",
-                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
-                    Text = string.Join("\n", report.Entries.Select(e => e.Name + " · " + e.Version))
-                        + "\n\n已核验原 MSI 不再安装，当前 14.42 组件及核心 DLL 已确认。\n将备份后清理以上旧包装登记与对应 INF/PNF；不执行旧卸载命令，不卸载或重装当前 14.42，不清理共享依赖。\n状态变化或备份失败时停止，部分完成会保留证据供核对。" } },
-                PrimaryButtonText = "确认处理残留", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close };
-            if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary || cancellation.IsCancellationRequested) return;
-            var result = await ViewModel.ProcessLegacyAsync(report.Fingerprint, cancellation.Token);
-            ViewModel.RepairStatusText = result.Message;
-            await new ContentDialog { XamlRoot = XamlRoot, Title = result.Success ? "旧包装处理完成" : "旧包装未处理完",
-                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = result.Message } },
-                CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
-        }
-        catch (Exception ex) { ViewModel.RepairStatusText = "旧包装处理失败：" + ex.Message; await ShowRuntimeExceptionAsync(ex); }
-        finally { _repairCancellation = null; ViewModel.RepairIsBusy = false; await ViewModel.LoadGuardAsync(); }
-    }
+
     private void CancelRepair_Click(object sender, RoutedEventArgs e)
     {
         _repairCancellation?.Cancel();
         ViewModel.RepairStatusText = "已请求停止后续步骤；不会强杀正在运行的安装器，请等待事务结束后核对。";
     }
+
     private async void Repair14_Click(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.GuardCleanupEnabled) return;
@@ -49,33 +26,36 @@ public sealed partial class RuntimePage : Page
         _repairCancellation = cancellation;
         try
         {
-            ViewModel.RepairStatusText = "正在核对 14.x 清单、安装原包和事务状态…";
+            ViewModel.RepairStatusText = "正在核对 14.x 登记、安装原包和事务状态…";
             var preview = await ViewModel.PreviewRepairAsync();
             if (!preview.CanRepair) { ViewModel.RepairStatusText = preview.Blocker; return; }
-            var list = string.Join("\n", preview.Scan.Products.Select(p => p.Name + " · " + p.Architecture + " · " + p.Version));
-            var legacy = string.Join("\n", preview.Scan.Legacy.Entries.Select(p => p.Name + " · " + p.Version));
+            var list = string.Join("\n", preview.RemovalPlan.Select(p =>
+                p.Name + " · " + p.Architecture + " · " + p.Version + "（" + (p.CanRemove ? p.Kind == "msi" ? "已核验 MSI" : p.Kind == "bundle" ? "已核验包装" : "登记卸载命令" : "保留不处理") + "）"));
+            var skipped = string.Join("\n", preview.RemovalPlan.Where(p => !p.CanRemove).Select(p => p.Name + "：" + p.Detail));
             var dialog = new ContentDialog
             {
-                XamlRoot = XamlRoot, Title = "确认定向修复 C++ 14.x？",
+                XamlRoot = XamlRoot, Title = "确认全量重装 C++ 14.x？",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
-                    Text = "将卸载以下已核验的 14.x MSI 组件：\n" + (list.Length == 0 ? "未检测到可卸载组件，只安装原包。" : list)
-                        + "\n\n随后安装 2015–2022 x64/x86 14.42.34433。保留 2005–2013、SDK/Debug、ARM64 和 DirectX。"
-                        + (legacy.Length > 0 ? "\n\n在 14.42 复检通过且旧 MSI 已移除后，备份并处理以下旧 INF 包装登记与 INF/PNF：\n" + legacy : "")
-                        + (preview.Scan.Legacy.Issues.Count > 0 ? "\n旧包装待核对，无法自动清理：\n" + string.Join("\n", preview.Scan.Legacy.Issues) : "")
-                        + "\n请先关闭游戏与其他应用及运行库防护。共享运行库降级可能影响需要较新版本的软件。\n失败、身份变化、需要重启或结果未确认时停止；不会忽略其他软件共享依赖或强杀安装器。" } },
-                PrimaryButtonText = "确认修复", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
+                    Text = "将卸载以下全部检测到的 x86/x64 C++ 14.x 登记（含未知包装，按其登记的卸载命令执行）：\n" + list
+                        + "\n\n随后安装 2015–2022 x64/x86 14.42.34433 原包并复检组件与 DLL。"
+                        + (skipped.Length > 0 ? "\n\n以下登记无法自动处理，将保留：\n" + skipped : "")
+                        + "\n保留 2005–2013、SDK/Debug、ARM64 和 DirectX。"
+                        + "\n请先关闭游戏与其他应用及运行库防护。共享运行库降级可能影响需要较新版本的软件。"
+                        + "\n失败、身份变化、需要重启或结果未确认时停止；不会强杀安装器。" } },
+                PrimaryButtonText = "确认全量重装", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
             };
             if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary || cancellation.IsCancellationRequested)
             { ViewModel.RepairStatusText = "已取消，未执行卸载或安装。"; return; }
             var result = await ViewModel.RepairAsync(preview.Fingerprint, cancellation.Token);
             ViewModel.RepairStatusText = result.Message;
-            await new ContentDialog { XamlRoot = XamlRoot, Title = result.Success ? "14.x 修复完成" : "14.x 修复未完成",
+            await new ContentDialog { XamlRoot = XamlRoot, Title = result.Success ? "14.x 全量重装完成" : "14.x 全量重装未完成",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = result.Message, TextWrapping = TextWrapping.Wrap } },
                 CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
         }
         catch (Exception ex) { ViewModel.RepairStatusText = "操作未完成：" + ex.Message; await ShowRuntimeExceptionAsync(ex); }
         finally { _repairCancellation = null; ViewModel.RepairIsBusy = false; await ViewModel.LoadGuardAsync(); }
     }
+
     public RuntimePage() { InitializeComponent(); _ = ViewModel.LoadGuardAsync(); }
     private async void RefreshGuard_Click(object sender, RoutedEventArgs e) => await ViewModel.LoadGuardAsync();
     private async void ReviewRuntimeOperation_Click(object sender, RoutedEventArgs e)

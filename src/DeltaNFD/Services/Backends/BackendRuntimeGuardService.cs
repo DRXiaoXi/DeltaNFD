@@ -45,12 +45,10 @@ internal sealed class BackendRuntimeGuardService : IRuntimeGuardService
 
     public async Task<Vc14Scan> Scan14Async() => RequireData<Vc14Scan>(
         await InvokeAsync(BackendCommands.Vc14Scan, new { }, null, CancellationToken.None), "14.x 检测");
-    public async Task<Vc14Preview> Preview14RepairAsync() => RequireData<Vc14Preview>(
-        await InvokeAsync(BackendCommands.Vc14Preview, new { }, null, CancellationToken.None), "14.x 修复预览");
+    public async Task<Vc14ReinstallPreview> Preview14RepairAsync() => RequireData<Vc14ReinstallPreview>(
+        await InvokeAsync(BackendCommands.Vc14Preview, new { }, null, CancellationToken.None), "14.x 全量重装预览");
     public async Task<OperationResult> Repair14Async(string fingerprint, IProgress<string>? progress, CancellationToken token)
-        => Map(await InvokeAsync(BackendCommands.Vc14Repair, new Vc14RepairArgs { Fingerprint = fingerprint }, progress, token), "14.x 修复");
-    public async Task<OperationResult> Clean14LegacyAsync(string fingerprint, IProgress<string>? progress, CancellationToken token)
-        => Map(await InvokeAsync(BackendCommands.Vc14LegacyClean, new Vc14RepairArgs { Fingerprint = fingerprint }, progress, token), "旧包装处理");
+        => Map(await InvokeAsync(BackendCommands.Vc14Repair, new Vc14RepairArgs { Fingerprint = fingerprint }, progress, token), "14.x 全量重装");
 
     public async Task<OperationResult> EnableAsync()
     {

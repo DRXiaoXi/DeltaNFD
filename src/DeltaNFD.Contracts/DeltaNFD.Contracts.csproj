@@ -16,8 +16,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Platforms>AnyCPU;x64</Platforms>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <Version>0.917</Version>
-    <InformationalVersion>Beta0.917</InformationalVersion>
+    <Version>0.919</Version>
+    <InformationalVersion>Beta0.919</InformationalVersion>
   </PropertyGroup>
 
 </Project>

@@ -1,0 +1,73 @@
+using System.Diagnostics;
+using System.Text.Json;
+using Microsoft.Win32;
+
+namespace DeltaNFD.Services;
+
+// Read-only evidence. Registration labels and uninstall strings are data, never commands to execute.
+internal static class Vc14Diagnostics
+{
+    internal static bool Relevant(string name, string version) => name.Contains("Visual C++", StringComparison.OrdinalIgnoreCase)
+        && !name.Contains("Debug", StringComparison.OrdinalIgnoreCase)
+        && (name.Contains("Visual C++ v14", StringComparison.OrdinalIgnoreCase)
+            || Version.TryParse(version, out var parsed) && parsed.Major == 14);
+    internal static string? Save(Vc14Scan scan)
+    {
+        try
+        {
+            var registrations = new List<object>(); var errors = new List<string>();
+            foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+            {
+                try
+                {
+                    using var hive = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+                    using var root = hive.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+                    foreach (var keyName in root?.GetSubKeyNames() ?? [])
+                    {
+                        using var key = root!.OpenSubKey(keyName);
+                        string Text(string valueName)
+                        {
+                            var text = key?.GetValue(valueName, "", RegistryValueOptions.DoNotExpandEnvironmentNames) as string ?? "";
+                            return text[..Math.Min(8192, text.Length)];
+                        }
+                        var name = Text("DisplayName"); var version = Text("DisplayVersion");
+                        if (!Relevant(name, version)) continue;
+                        registrations.Add(new { RegistryView = view.ToString(), Key = keyName, Name = name, Version = version,
+                            Publisher = Text("Publisher"), BundleVersion = Text("BundleVersion"), BundleCachePath = Text("BundleCachePath"),
+                            UninstallString = Text("UninstallString"), QuietUninstallString = Text("QuietUninstallString"),
+                            WindowsInstaller = key?.GetValue("WindowsInstaller"),
+                            VerifiedProductCode = scan.Products.FirstOrDefault(p => p.Code.Equals(keyName, StringComparison.OrdinalIgnoreCase))?.Code });
+                        if (registrations.Count >= 256) { errors.Add("登记证据达到 256 项上限，后续项未收集。"); break; }
+                    }
+                }
+                catch (Exception ex) { errors.Add(view + "：" + ex.Message); }
+            }
+            var dlls = new List<object>();
+            foreach (var arch in new[] { "x64", "x86" })
+            {
+                var folder = Environment.GetFolderPath(arch == "x64" ? Environment.SpecialFolder.System : Environment.SpecialFolder.SystemX86);
+                foreach (var name in arch == "x64" ? new[] { "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll" } : new[] { "msvcp140.dll", "vcruntime140.dll" })
+                {
+                    var path = Path.Combine(folder, name);
+                    try { dlls.Add(new { Architecture = arch, Path = path, Exists = File.Exists(path), Version = File.Exists(path) ? FileVersionInfo.GetVersionInfo(path).FileVersion : null }); }
+                    catch (Exception ex) { errors.Add(path + "：" + ex.Message); }
+                }
+            }
+            // One latest snapshot avoids creating a directory on every homepage refresh.
+            var report = Path.Combine(Log.LogDirectory, "vc14-detection-latest.json");
+            Write(report, new { CapturedUtc = DateTimeOffset.UtcNow, ProductVersion = FileVersionInfo.GetVersionInfo(typeof(Vc14Diagnostics).Assembly.Location).ProductVersion,
+                Scan = scan, Registrations = registrations, CoreDlls = dlls, EvidenceIssues = errors });
+            Log.Info($"14.x 检测：已核验组件 {scan.Products.Count}，登记提醒 {scan.Notices.Count}，待核对 {scan.Issues.Count}；报告：{report}");
+            foreach (var issue in scan.Issues) Log.Warn("14.x 组件待核对：" + issue);
+            return report;
+        }
+        catch (Exception ex) { Log.Warn("14.x 检测证据未能保存：" + ex.Message); return null; }
+    }
+    internal static void Write(string path, object value)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try { File.WriteAllText(temporary, JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true })); File.Move(temporary, path, true); }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+}

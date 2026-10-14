@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>BackendSmokeTest</RootNamespace>
     <!-- 与产品同版本：官方后端客户端（已链接进本测试）按 AppVersion 校验后端版本。 -->
-    <Version>0.917</Version>
-    <InformationalVersion>Beta0.917</InformationalVersion>
+    <Version>0.919</Version>
+    <InformationalVersion>Beta0.919</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

@@ -49,13 +49,12 @@ public sealed class RuntimeGuardStatus
     public required bool Ue4PrereqDenied { get; init; }
 }
 
-/// <summary>安装器防护、历史事务核对与独立的 14.x 定向修复。</summary>
+/// <summary>安装器防护、历史事务核对与 14.x 全量重装（卸载全部 14.x 后安装内置 14.42 基线）。</summary>
 public interface IRuntimeGuardService
 {
     Task<Vc14Scan> Scan14Async() => throw new NotSupportedException();
-    Task<Vc14Preview> Preview14RepairAsync() => throw new NotSupportedException();
+    Task<Vc14ReinstallPreview> Preview14RepairAsync() => throw new NotSupportedException();
     Task<OperationResult> Repair14Async(string fingerprint, IProgress<string>? progress, CancellationToken token) => throw new NotSupportedException();
-    Task<OperationResult> Clean14LegacyAsync(string fingerprint, IProgress<string>? progress, CancellationToken token) => throw new NotSupportedException();
     Task<RuntimeGuardStatus> GetStatusAsync();
     Task<OperationResult> EnableAsync();
     Task<OperationResult> DisableAsync();

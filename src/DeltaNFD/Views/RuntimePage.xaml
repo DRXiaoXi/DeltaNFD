@@ -5,7 +5,7 @@
         <StackPanel MaxWidth="1080" Padding="28,20,28,32" Spacing="16">
             <StackPanel Spacing="4">
                 <TextBlock Text="运行库" Style="{StaticResource PageTitleStyle}" />
-                <TextBlock Text="检测 C++ 14.x 兼容性、定向修复与管理安装器防护。" Style="{StaticResource PageSubtitleStyle}" TextWrapping="Wrap" />
+                <TextBlock Text="检测 C++ 14.x 兼容性、全量重装与管理安装器防护。" Style="{StaticResource PageSubtitleStyle}" TextWrapping="Wrap" />
             </StackPanel>
             <InfoBar IsOpen="{x:Bind ViewModel.HasAbnormal, Mode=OneWay}" IsClosable="False" Severity="Error"
                      Title="14.x 兼容性异常：14.51 或 Visual C++ v14" Message="{x:Bind ViewModel.AbnormalText, Mode=OneWay}" />
@@ -13,25 +13,15 @@
                      Title="版本提醒或状态待核对" Message="{x:Bind ViewModel.WarningText, Mode=OneWay}" />
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="C++ 14.x 定向修复" Style="{StaticResource SectionTitleStyle}" />
-                    <TextBlock Text="只卸载已核验的 x86/x64 C++ 14.x 可再发行组件，再安装工具原有的 2015–2022 14.42.34433。修复前请关闭游戏与其他应用，并手动关闭运行库防护。旧版高帧、兼容、强力及全量修复已下线。" TextWrapping="Wrap" />
-                    <TextBlock Text="14.x 是共享运行库；依赖较新版本的其他软件可能需要重新安装其要求的版本。修复末尾会备份并处理已核验的旧版 INF 包装残留。未知身份保留并说明原因；共享依赖不清理。颜色是项目兼容性规则，不代表文件损坏或已验证所有电脑掉帧。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <TextBlock Text="C++ 14.x 全量重装" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="卸载所有检测到的 x86/x64 C++ 14.x 登记（含未知包装，按其登记的卸载命令执行），随后安装工具内置的 2015–2022 14.42.34433 双架构原包并复检。修复前请关闭游戏与其他应用，并手动关闭运行库防护。" TextWrapping="Wrap" />
+                    <TextBlock Text="14.x 是共享运行库；依赖较新版本（如 14.5x）的其他软件在重装后可能需要自行重装其要求的版本。无法执行卸载命令的登记会保留并在结果中说明原因；ARM64、2005–2013、SDK/Debug 与 DirectX 不在范围内。颜色是项目兼容性规则，不代表文件损坏或已验证掉帧。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" Spacing="12">
-                        <Button Content="预览并修复 14.x" Click="Repair14_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" />
+                        <Button Content="预览并全量重装 14.x" Click="Repair14_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" />
                         <Button Content="停止后续步骤" Click="CancelRepair_Click" IsEnabled="{x:Bind ViewModel.RepairIsBusy, Mode=OneWay}" />
                         <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.RepairIsBusy, Mode=OneWay}" />
                     </StackPanel>
                     <TextBlock Text="{x:Bind ViewModel.RepairStatusText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-                </StackPanel>
-            </Border>
-            <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Spacing="10">
-                    <TextBlock Text="旧版 2026 / v14 包装残留" Style="{StaticResource SectionTitleStyle}" />
-                    <TextBlock Text="历史版本可能只剩安装列表中的 2026/v14 名称和 INF 文件。当前组件已是 14.42 时，可只处理旧包装；不需要反复卸载重装。" TextWrapping="Wrap" />
-                    <TextBlock Text="{x:Bind ViewModel.LegacyText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-                    <Button Content="预览并仅处理旧版残留" Click="ProcessLegacy_Click"
-                            IsEnabled="{x:Bind ViewModel.LegacyProcessingEnabled, Mode=OneWay}" HorizontalAlignment="Left" />
-                    <TextBlock Text="先备份并核验旧 INF、登记及产品码，仅处理固定范围的旧包装登记和 INF/PNF。旧 MSI 仍存在时先定向修复；文件被修改、来源无法核验或事务未结束时保留并说明原因。备份路径会显示在结果中。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
             <!-- 防护模式 -->

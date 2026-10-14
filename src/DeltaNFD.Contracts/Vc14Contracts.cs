@@ -5,11 +5,19 @@ public sealed record Vc14Entry(string Code, string Name, string Version, string 
 public sealed record Vc14Notice(string Name, string Version, string Architecture, Vc14Severity Severity, string Detail);
 public sealed record Vc14Scan(IReadOnlyList<Vc14Entry> Products, IReadOnlyList<Vc14Notice> Notices, IReadOnlyList<string> Issues)
 {
-    public Vc14LegacyReport Legacy { get; init; } = new("", [], []);
     public bool HasAbnormal => Notices.Any(n => n.Severity == Vc14Severity.Abnormal);
-    public bool HasWarning => Issues.Count > 0 || Legacy.Issues.Count > 0 || Notices.Any(n => n.Severity == Vc14Severity.Warning);
+    public bool HasWarning => Issues.Count > 0 || Notices.Any(n => n.Severity == Vc14Severity.Warning);
 }
-public sealed record Vc14LegacyEntry(string Architecture, string Name, string Version, bool CanProcess, string Detail);
-public sealed record Vc14LegacyReport(string Fingerprint, IReadOnlyList<Vc14LegacyEntry> Entries, IReadOnlyList<string> Issues);
-public sealed record Vc14Preview(Vc14Scan Scan, string Fingerprint, bool CanRepair, string Blocker);
 public sealed class Vc14RepairArgs { public string Fingerprint { get; set; } = ""; }
+
+/// <summary>单个待处理 14.x 登记项：MSI 产品、Burn 包装、登记卸载命令或无法处理项。</summary>
+public sealed record Vc14RemovalPlanItem(
+    string Key, string Architecture, string Name, string Version, string Kind, string Identity, string Method, string Detail,
+    string Role = "", string UpgradeCode = "")
+{
+    /// <summary>msi=已核验 MSI 产品；bundle=已核验签名缓存包装；registry=按登记卸载命令；其余保留不处理。</summary>
+    public bool CanRemove => Kind is "msi" or "bundle" or "registry";
+}
+
+/// <summary>全量重装预览：完整卸载计划、身份指纹与放行条件。</summary>
+public sealed record Vc14ReinstallPreview(Vc14Scan Scan, IReadOnlyList<Vc14RemovalPlanItem> RemovalPlan, string Fingerprint, bool CanRepair, string Blocker);

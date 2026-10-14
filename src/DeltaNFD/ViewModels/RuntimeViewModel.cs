@@ -3,23 +3,15 @@ using DeltaNFD.Services;
 
 namespace DeltaNFD.ViewModels;
 
-/// <summary>运行库防护与仅 14.x 的兼容性检测、定向修复。</summary>
+/// <summary>运行库防护、14.x 兼容性检测与全量重装（卸载全部 14.x 后安装内置 14.42 基线）。</summary>
 public partial class RuntimeViewModel : ObservableObject
 {
     public static RuntimeViewModel Current { get; } = new();
     private readonly IRuntimeGuardService _guard = ServiceLocator.Guard;
     [ObservableProperty] private bool repairIsBusy;
-    [ObservableProperty] private string repairStatusText = "修复前将预览清单；请先关闭运行库防护。";
+    [ObservableProperty] private string repairStatusText = "修复前将预览全部 14.x 卸载清单；请先关闭运行库防护。";
     [ObservableProperty] private string abnormalText = "";
     [ObservableProperty] private string warningText = "";
-    [ObservableProperty] private string legacyText = "尚未检测旧版包装。";
-    private Vc14LegacyReport _legacyReport = new("", [], []);
-    public bool LegacyProcessingEnabled => GuardCleanupEnabled && _legacyReport.Entries.Count > 0
-        && _legacyReport.Issues.Count == 0 && _legacyReport.Entries.All(e => e.CanProcess);
-    public Task<Vc14LegacyReport> PreviewLegacyAsync() => ReadLegacyAsync();
-    private async Task<Vc14LegacyReport> ReadLegacyAsync() => (await _guard.Scan14Async()).Legacy;
-    public Task<OperationResult> ProcessLegacyAsync(string fingerprint, CancellationToken token)
-        => _guard.Clean14LegacyAsync(fingerprint, new Progress<string>(s => RepairStatusText = s), token);
     public bool HasAbnormal => AbnormalText.Length > 0;
     public bool HasWarning => WarningText.Length > 0;
     partial void OnAbnormalTextChanged(string value) => OnPropertyChanged(nameof(HasAbnormal));
@@ -29,9 +21,8 @@ public partial class RuntimeViewModel : ObservableObject
         OnPropertyChanged(nameof(GuardToggleEnabled));
         OnPropertyChanged(nameof(GuardModeEnabled));
         OnPropertyChanged(nameof(GuardCleanupEnabled));
-        OnPropertyChanged(nameof(LegacyProcessingEnabled));
     }
-    public Task<Vc14Preview> PreviewRepairAsync() => _guard.Preview14RepairAsync();
+    public Task<Vc14ReinstallPreview> PreviewRepairAsync() => _guard.Preview14RepairAsync();
     public Task<OperationResult> RepairAsync(string fingerprint, CancellationToken token)
         => _guard.Repair14Async(fingerprint, new Progress<string>(s => RepairStatusText = s), token);
     [ObservableProperty] private string installedText = "尚未读取安装登记。";
@@ -60,7 +51,6 @@ public partial class RuntimeViewModel : ObservableObject
         OnPropertyChanged(nameof(GuardToggleEnabled));
         OnPropertyChanged(nameof(GuardModeEnabled));
         OnPropertyChanged(nameof(GuardCleanupEnabled));
-        OnPropertyChanged(nameof(LegacyProcessingEnabled));
         OnPropertyChanged(nameof(GuardToggleText));
     }
 
@@ -130,13 +120,9 @@ public partial class RuntimeViewModel : ObservableObject
         try
         {
             var scan = await _guard.Scan14Async();
-            _legacyReport = scan.Legacy;
-            LegacyText = string.Join("\n\n", scan.Legacy.Entries.Select(e => e.Name + " · " + e.Version + "\n" + e.Detail).Concat(scan.Legacy.Issues));
-            if (LegacyText.Length == 0) LegacyText = "未发现旧版 C++ 14.x INF 包装残留。";
-            OnPropertyChanged(nameof(LegacyProcessingEnabled));
             string Format(Vc14Notice n) => n.Name + " · " + n.Architecture + " · " + n.Version + "\n" + n.Detail;
             AbnormalText = string.Join("\n\n", scan.Notices.Where(n => n.Severity == Vc14Severity.Abnormal).Select(Format));
-            WarningText = string.Join("\n\n", scan.Notices.Where(n => n.Severity == Vc14Severity.Warning).Select(Format).Concat(scan.Issues).Concat(scan.Legacy.Issues));
+            WarningText = string.Join("\n\n", scan.Notices.Where(n => n.Severity == Vc14Severity.Warning).Select(Format).Concat(scan.Issues));
         }
         catch (Exception ex) { AbnormalText = ""; WarningText = "14.x 检测未完成，不能视为正常：" + ex.Message; }
     }

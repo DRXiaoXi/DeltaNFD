@@ -117,7 +117,7 @@ internal static class RuntimeCommands
         BackendResult.Ok(BackendCommands.Vc14Scan, "14.x 兼容性检测完成", await Vc14Maintenance.ScanAsync());
 
     private static async Task<BackendResult> VcPreviewAsync(BackendCommandContext context) =>
-        BackendResult.Ok(BackendCommands.Vc14Preview, "14.x 修复预览", await Vc14Maintenance.PreviewAsync());
+        BackendResult.Ok(BackendCommands.Vc14Preview, "14.x 全量重装预览", await Vc14Maintenance.PreviewAsync());
 
     private static async Task<BackendResult> VcRepairAsync(BackendCommandContext context)
     {
@@ -126,12 +126,8 @@ internal static class RuntimeCommands
         return Wrap(BackendCommands.Vc14Repair, await Vc14Maintenance.RepairAsync(args.Fingerprint, progress, context.CancellationToken));
     }
 
-    private static async Task<BackendResult> VcLegacyCleanAsync(BackendCommandContext context)
-    {
-        var args = context.ArgsAs<Vc14RepairArgs>();
-        var progress = new Progress<string>(s => context.ReportProgress(s, null, "vc14-legacy-clean"));
-        return Wrap(BackendCommands.Vc14LegacyClean, await Vc14Maintenance.CleanLegacyAsync(args.Fingerprint, progress, context.CancellationToken));
-    }
+    private static async Task<BackendResult> VcLegacyCleanAsync(BackendCommandContext context) =>
+        BackendResult.Failed(BackendCommands.Vc14LegacyClean, "旧包装单独处理已并入 14.x 全量重装，不再单独执行。");
 
     private static BackendResult Wrap(string code, OperationResult result) =>
         new(result.Success ? BackendResultStatuses.Ok : BackendResultStatuses.Failed, code, result.Message, [],

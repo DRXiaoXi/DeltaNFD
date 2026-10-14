@@ -1,17 +1,23 @@
 namespace DeltaNFD.Services;
 
-/// <summary>Only the newly authorized v14 CRT workflow. Legacy AIO/DirectX commands remain retired.</summary>
+/// <summary>全新 14.x 全量重装入口（2026-10-15 用户授权）；旧 AIO/DirectX 命令保持下线。</summary>
 public static class Vc14Maintenance
 {
-    public static Task<Vc14Scan> ScanAsync() => Task.Run(() => new Vc14Environment().Scan());
-    public static Task<OperationResult> CleanLegacyAsync(string fingerprint, IProgress<string>? progress, CancellationToken token)
-        => Task.Run(() => RuntimeGuardProtection.Exclusive(() => Vc14LegacyCleanup.Run(new Vc14LegacyEnvironment(), fingerprint, progress, token)), token);
-    public static Task<Vc14Preview> PreviewAsync() => Task.Run(() => Vc14Repair.Preview(new Vc14Environment()));
+    public static Task<Vc14Scan> ScanAsync() => Task.Run(() =>
+    {
+        var scan = Vc14Catalog.Scan();
+        Vc14Diagnostics.Save(scan);
+        return scan;
+    });
+
+    public static Task<Vc14ReinstallPreview> PreviewAsync() =>
+        Task.Run(() => Vc14Reinstall.Preview(new Vc14ReinstallEnvironment()));
+
     public static Task<OperationResult> RepairAsync(string fingerprint, IProgress<string>? progress, CancellationToken token)
         => Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
         {
             using var budget = CancellationTokenSource.CreateLinkedTokenSource(token);
             budget.CancelAfter(TimeSpan.FromMinutes(40));
-            return Vc14Repair.RunAsync(new Vc14Environment(), fingerprint, progress, budget.Token).GetAwaiter().GetResult();
+            return Vc14Reinstall.RunAsync(new Vc14ReinstallEnvironment(), fingerprint, progress, budget.Token).GetAwaiter().GetResult();
         }), token);
 }

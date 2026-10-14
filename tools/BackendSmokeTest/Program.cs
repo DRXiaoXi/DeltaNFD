@@ -1,15 +1,8 @@
 using DeltaNFD.Services;
 
-if (args.Contains("--vc14-legacy-checks") || args.Contains("--vc14-legacy-readonly"))
-{
-    try { if (args.Contains("--vc14-legacy-readonly")) Vc14LegacyChecks.ReadOnly(); else Vc14LegacyChecks.Run(); }
-    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
-    return;
-}
-
 if (args.Contains("--vc14-checks") || args.Contains("--vc14-readonly"))
 {
-    try { if (args.Contains("--vc14-readonly")) Vc14Checks.ReadOnly(); else await Vc14Checks.RunAsync(); }
+    try { if (args.Contains("--vc14-readonly")) Vc14DetectionChecks.ReadOnly(); else Vc14DetectionChecks.Run(); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }

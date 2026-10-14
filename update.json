@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "version": "0.91",
-  "displayVersion": "Beta0.91",
+  "version": "0.919",
+  "displayVersion": "Beta0.919",
   "channel": "beta",
   "mandatory": false,
   "minimumSupportedVersion": "",
-  "publishedAtUtc": "2026-10-10T05:52:57Z",
-  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.91",
-  "notes": "Beta0.91（内部版本 0.91）\n\n- 运行库新增高帧性修复与兼容性修复，保留 Beta0.9 完整 C++ AIO 流程及新版防护；兼容性修复独立处理 DirectX 旧版组件和 C++ 依赖。\n- 两种修复共享强力模式，加入 Windows 系统组件修复和独立进程 API Sets/UCRT 抽查；修复中文 SFC 结果识别、同版本 C++ 文件覆盖/哈希复核及待重启状态处理。\n- 更新设置新增内测/公测通道：内测接收 Alpha、Beta、Release，公测接收 Beta、Release。首次 Beta 安装默认公测，Alpha 安装切回内测，Beta 重装保留已有选择。\n- 修复运行中安装的管道等待竞态、中文交接报告乱码和异常反馈；不误启动旧程序，不强杀未完成的恢复事务。\n- 安装、卸载及自动更新统一安全交接；改进后端停止、迟到还原、恢复记录核对、Defender 临时状态恢复、脱机模式关闭及 ACE 清理结果处理。\n- 自本版本起原创内容采用源码可用非商业许可证，禁止收费转售、闭源二次开发、用于收费产品、商业使用及删除作者署名。历史 GPL 授权与第三方内容的原授权不变。\n\n安装包包含主程序、五个官方后端、脱机助手、自包含运行时及运行库修复资源。旧版较高内部编号的本地测试安装不会自动降级，可按需手动安装本版本。",
+  "publishedAtUtc": "2026-10-14T18:04:48Z",
+  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.919",
+  "notes": "## Beta0.919 公测版\n\n- 重做 C++ 14.x 修复流程：先展示完整卸载计划，确认后逐项处理，再安装内置 Microsoft Visual C++ 2015–2022 14.42.34433 x64/x86 原包并复检组件与实际 DLL。\n- 处理范围包括检测到的 x86/x64 14.x MSI、签名包装及有登记卸载命令的未知包装。缺少可执行命令或 ARM64 的条目保留并说明；不再提供旧版包装单独清理入口。\n- 保留管理员检查、手动关闭防护要求、安装事务忙与待核对检查、活动记录和日志；失败、需要重启或结果未知时停止。已登记 14.42 包装时使用固定原包 `/repair`，避免只返回成功却未补回组件。\n- 保留 14.51 或 Visual C++ v14 名称红色、其他非 14.42 的 14.x 黄色兼容性提醒，以及运行库防护和旧防护恢复入口。\n- 延续 Beta0.917 的内存回收缓存范围、进程规则保护、帧格联动及 NVIDIA 着色器缓存大小提醒。软件继续自带 .NET 8 x64，不提供产品 .NET 检测或修复。\n\n### 安装与使用\n\nWindows 10/11 x64 安装包自带运行时及六个官方后端。公测和内测通道均可接收 Beta0.919；同号本地版本请手动安装。\n\n运行库为系统共享组件。14.x 全量重装包括未知登记包装，执行前请检查确认清单；依赖更新版运行库的其他软件可能需要重新安装其要求的版本。兼容性颜色是本项目策略，不代表已验证所有电脑掉帧或文件损坏，也不保证重装能提高帧率。\n\n### 验证与源码\n\n新版 VC14 策略、内存回收、待核对恢复、更新通道及退休功能检查通过；自包含部署和六个后端的实际启动、握手及只读接口检查通过。未执行系统运行库重装、安装器安装/卸载或游戏性能的全面端到端验证。\n\n安装包使用此前已验收的本地 Beta0.919 原文件；其程序集信息版本带构建前的基准提交后缀，功能源码以本次 v0.919 标签与源码附件为准。源码附件补充默认背景与构建说明，排除本机私人日志、研究资料和退休归档。原创代码采用 GPL-3.0-only，微软原包及其他第三方内容保留各自条款。附件大小与 SHA256 见 update.json 和 SHA256SUMS.txt。",
   "installers": [
     {
-      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.91/DeltaNFD_Setup_0.91_x64.exe",
-      "sizeBytes": 267717870,
-      "sha256": "01b149f1b40b11c8e7477bfed535bdac26173e4a5c6e09791c18c3ab5cbc2387"
+      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.919/DeltaNFD_Setup_0.919_x64.exe",
+      "sizeBytes": 125585897,
+      "sha256": "71000c9f10a5a1613fa9754171871d572b297c996bf127980ba027a85ba40865"
     }
   ]
 }

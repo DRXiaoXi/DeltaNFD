@@ -7,13 +7,7 @@ public static class RuntimeLegacyInstallationReview
 {
     public const string Scope = "repair-review"; // persisted legacy scope, read-only review
     private static async Task<IReadOnlyList<VcRedistInfo>> ReadRegistrationsAsync()
-    {
-        var installed = (await new RuntimeGuardService().GetStatusAsync()).InstalledRedists;
-        var legacy = new Vc14LegacyEnvironment().Detect();
-        return [.. installed, .. legacy.Entries.Select(e => new VcRedistInfo { DisplayName = "旧包装核对：" + e.Name + "；" + e.Detail,
-            Architecture = e.Architecture, Version = e.Version }), .. legacy.Issues.Select(issue =>
-            new VcRedistInfo { DisplayName = "旧包装仍待核对：" + issue, Architecture = "未知", Version = "未知" })];
-    }
+        => (await new RuntimeGuardService().GetStatusAsync()).InstalledRedists;
     private static ReconcileSnapshot TransactionBasis() => new()
     {
         Module = BackendModules.Runtime, Complete = true,

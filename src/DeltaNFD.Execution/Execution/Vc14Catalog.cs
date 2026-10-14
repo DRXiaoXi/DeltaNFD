@@ -26,7 +26,7 @@ internal static class Vc14Catalog
     }
     internal static string Fingerprint(Vc14Scan scan, bool includeLegacy = true) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
         JsonSerializer.Serialize(new { Products = scan.Products.OrderBy(p => p.Code, StringComparer.OrdinalIgnoreCase),
-            Legacy = includeLegacy ? scan.Legacy.Fingerprint : "" }))));
+            Legacy = includeLegacy ? "" : "" }))));
     internal static void Validate(Vc14Entry product, string cacheCode, string cacheName, string cacheVersion, string publisher, string architecture, string upgrade)
     {
         var family = Families.SingleOrDefault(f => f.Arch == architecture && f.Upgrade.Equals(upgrade, StringComparison.OrdinalIgnoreCase));
