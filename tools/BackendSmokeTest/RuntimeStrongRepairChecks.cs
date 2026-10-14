@@ -17,6 +17,7 @@ internal static class RuntimeStrongRepairChecks
         AppDataPaths.ConfigureIsolatedDataRoot(root, id);
         var checks = 0;
         void Check(bool condition, string message) { if (!condition) throw new Exception(message); checks++; }
+        await RuntimeSystemProgressChecks.RunAsync(root, Check);
         async Task<OperationResult> Run(Fake fake, bool verified = true, CancellationToken token = default)
             => await new RuntimeStrongRepair(fake, new RuntimeRepairDiagnostics(root)).RunAsync(
                 (_, ct) => { ct.ThrowIfCancellationRequested(); fake.Events.Add("verify"); return Task.FromResult(verified ? OperationResult.Ok("verified") : OperationResult.Fail("bad resource")); },

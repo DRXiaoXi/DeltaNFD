@@ -25,20 +25,6 @@ public sealed partial class SettingsPage : Page
     public string[] ThemeOptions { get; } = ["浅色", "深色", "跟随系统"];
 
     public SettingsViewModel ViewModel { get; } = new();
-    public DotNetEnvironmentViewModel DotNet { get; } = DotNetEnvironmentViewModel.Current;
-
-    private async void RepairDotNetButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (!DotNet.CanAct) return;
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot, Title = "安装 / 修复工具所需 .NET",
-            Content = new TextBlock { Text = "将先检测实际依赖。仅在工具使用系统运行时时，优先校验并使用随工具携带的 .NET 8 x64 离线包，缺少离线包时才从微软下载，然后打开官方安装器。不会卸载其他 .NET 版本；安装器可能要求重启。工具自带运行时缺损需要重新安装工具；无法启动工具时也可使用开始菜单中的“.NET 环境修复”。", TextWrapping = TextWrapping.Wrap },
-            PrimaryButtonText = "检测并继续", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
-        };
-        if (await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary) await DotNet.RepairAsync();
-    }
-
     /// <summary>「软件更新」卡的 ViewModel（检查 / 下载 / 安装交接）。</summary>
     public UpdateViewModel Update { get; } = new();
 
@@ -112,7 +98,7 @@ public sealed partial class SettingsPage : Page
             Update.Attach();
             RefreshLegacyRecoveryControls();
             RefreshFsoStatus();
-            if (DotNet.CanAct) _ = DotNet.RefreshAsync();
+
         };
         Unloaded += (_, _) =>
         {

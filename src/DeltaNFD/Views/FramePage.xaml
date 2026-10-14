@@ -32,7 +32,7 @@
                             <TextBlock Text="一键帧格模式" FontWeight="SemiBold" FontSize="14" />
                         </StackPanel>
                         <TextBlock FontSize="12" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                   Text="开启后启用已配置的帧格功能（各功能开关独立控制），与主界面的「一键帧格模式」开关同步。" />
+                                   Text="开启后执行下方已选择的帧格功能，与主界面的「一键帧格模式」开关同步。" />
                         <TextBlock Text="{x:Bind FrameSrv.StatusText, Mode=OneWay}"
                                    FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
                     </StackPanel>
@@ -45,10 +45,54 @@
                 </Grid>
             </Border>
 
-            <!-- 帧格功能列表 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="帧格功能" Style="{StaticResource SectionTitleStyle}" />
+
+                <ContentControl x:Name="FrameBackgroundSettingsPanel" HorizontalContentAlignment="Stretch">
+                <StackPanel Spacing="8">
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="4" VerticalAlignment="Center">
+                            <TextBlock Text="后台抑制" FontWeight="SemiBold" />
+                            <TextBlock Text="帧格运行期间，CPU 持续繁忙时暂时降低合适后台应用的优先级；负载回落或退出帧格后恢复。保护游戏、前台应用、系统及排除名单中的进程。"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                            <TextBlock x:Name="ResponsivenessNoteText" Text="正在读取状态…" FontSize="11" Opacity="0.75"
+                                       TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                        <ToggleSwitch x:Name="FrameSuppressionToggle" Grid.Column="1" VerticalAlignment="Center"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0" HorizontalAlignment="Right"
+                                      AutomationProperties.Name="后台抑制"
+                                      IsEnabled="{x:Bind FrameSrv.FeaturesEditable, Mode=OneWay}" Toggled="FrameBackgroundChoice_Toggled" />
+                    </Grid>
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="4" VerticalAlignment="Center">
+                            <TextBlock Text="自动内存回收" FontWeight="SemiBold" />
+                            <TextBlock Text="帧格运行期间，内存持续高压时回收合适后台应用的工作集。保护范围与后台抑制共用；退出帧格后停止，工作集可能回涨或引起换页。"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                            <TextBlock x:Name="AutomaticMemoryStatusText" Text="正在读取状态…" FontSize="11" Opacity="0.75"
+                                       TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                        <ToggleSwitch x:Name="FrameAutomaticMemoryToggle" Grid.Column="1" VerticalAlignment="Center"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0" HorizontalAlignment="Right"
+                                      AutomationProperties.Name="自动内存回收"
+                                      IsEnabled="{x:Bind FrameSrv.FeaturesEditable, Mode=OneWay}" Toggled="FrameBackgroundChoice_Toggled" />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="调整后台参数与排除名单" Click="OpenProcessBackground_Click" />
+                        <Button Content="刷新状态" Click="RefreshFrameBackground_Click" />
+                    </StackPanel>
+                    <TextBlock x:Name="FrameBackgroundNoteText" FontSize="11" Opacity="0.75" Visibility="Collapsed"
+                               TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                </StackPanel>
+                </ContentControl>
 
                     <!-- 功能：目标游戏启动时重启 DWM -->
                     <Grid ColumnSpacing="16" Padding="0,10">

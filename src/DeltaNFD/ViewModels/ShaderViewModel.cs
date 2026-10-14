@@ -19,6 +19,9 @@ public partial class ShaderViewModel : ObservableObject
     [ObservableProperty] private bool diagBusy;
     [ObservableProperty] private string sysCacheText = "系统级着色器缓存（D3DSCache / NVIDIA DXCache / AMD DxCache）";
     [ObservableProperty] private bool isCleaningSystem;
+    [ObservableProperty] private bool shaderCacheNonDefault;
+    [ObservableProperty] private bool shaderCacheCheckFailed;
+    [ObservableProperty] private string shaderCacheAdvice = "";
 
     // ---- 运行库提醒已于 2026-09-30 按用户要求从着色器页移除 ----
     // 这两个属性保留（无 XAML 消费者），供将来需要时复用；为避免每次进页白跑一次
@@ -101,6 +104,23 @@ public partial class ShaderViewModel : ObservableObject
         {
             var status = await _shader.GetStatusAsync();
             DriverAdvice = status.DriverAdvice;
+            ShaderCacheNonDefault = ShaderCacheCheckFailed = false;
+            if (status.IsNvidia)
+            {
+                try
+                {
+                    var env = await ServiceLocator.NvProfile.GetEnvironmentAsync();
+                    ShaderCacheNonDefault = env.ShaderCache?.HasNonDefault == true;
+                    ShaderCacheCheckFailed = env.ShaderCache?.Complete != true && !ShaderCacheNonDefault;
+                    ShaderCacheAdvice = env.ShaderCache?.Advice ?? "后端未返回缓存大小检测结果，无法确认是否为默认。请更新后端后重新检测。";
+                }
+                catch (Exception ex)
+                {
+                    ShaderCacheCheckFailed = true;
+                    ShaderCacheAdvice = "无法确认全局及三角洲着色器缓存大小，请重新检测：" + ex.Message;
+                }
+            }
+            else ShaderCacheAdvice = "";
             IsGameRunning = status.IsGameRunning;
             CanClear = status.PsoCachePath.Length > 0 && status.PsoCacheSizeMb > 0;
 

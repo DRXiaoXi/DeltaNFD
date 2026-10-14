@@ -12,6 +12,7 @@ internal sealed record RuntimeUnifiedUninstallPlan(VcRedistEntry Entry, string[]
 {
     public string[] RetainedProducts { get; init; } = [];
     public RuntimeUnifiedUninstallPlan[] RelatedBundles { get; init; } = [];
+    public bool AllowNonstandard { get; init; }
 }
 
 internal interface IRuntimeUnifiedUninstallBackend
@@ -73,7 +74,7 @@ internal sealed class RuntimeUnifiedUninstaller(IRuntimeUnifiedUninstallBackend 
         if (!product.Publisher.Equals("Microsoft Corporation", StringComparison.OrdinalIgnoreCase)
             || !Regex.IsMatch(product.Name, @"^Microsoft Visual C\+\+ (?:2005|2008|2010|2012|2013|2015|2017|2019|2022|2026|v14)\b", RegexOptions.IgnoreCase)
             || !Regex.IsMatch(product.Name, @"\b(?:Redistributable|Minimum Runtime|Additional Runtime)\b", RegexOptions.IgnoreCase)
-            || product.Name.Contains("Debug", StringComparison.OrdinalIgnoreCase)
+            || Regex.IsMatch(product.Name, @"\b(?:Debug|SDK|VSTO|Tools)\b", RegexOptions.IgnoreCase)
             || !System.Version.TryParse(product.Version, out var version))
             throw new InvalidDataException("不是可确认的微软 C++ 可再发行产品：" + product.Code);
         if (entry.Architecture is not ("x64" or "x86") || product.Architecture != entry.Architecture)

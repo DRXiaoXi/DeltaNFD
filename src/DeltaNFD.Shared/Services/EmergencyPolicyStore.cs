@@ -105,6 +105,8 @@ public sealed class EmergencyPolicyDecision(IReadOnlyList<EmergencyPolicy> polic
     }
 
     public int MemoryCooldownSeconds => policies.Select(p => p.MemoryCleanCooldownSeconds ?? 600).DefaultIfEmpty(600).Max();
+    public int MemoryCooldown(int userSeconds) => Math.Max(userSeconds,
+        policies.Select(p => p.MemoryCleanCooldownSeconds ?? 0).DefaultIfEmpty(0).Max());
     public int MemoryThreshold(int userValue) => Math.Max(userValue,
         policies.Select(p => p.MemoryCleanThresholdPercent ?? 30).DefaultIfEmpty(30).Max());
     public int DwmDelaySeconds => policies.Select(p => p.DwmRestartDelaySeconds ?? 5).DefaultIfEmpty(5).Max();

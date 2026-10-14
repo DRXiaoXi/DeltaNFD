@@ -48,7 +48,7 @@
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <StackPanel Spacing="4">
                             <TextBlock Text="修复前环境检查" Style="{StaticResource SectionTitleStyle}" />
-                            <TextBlock Text="两种修复都会在卸载前检查基础环境；检查不会修改服务、权限或关闭安全软件。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                            <TextBlock Text="两种修复都会在执行前检查基础环境；检查不会修改服务、权限或关闭安全软件。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                         </StackPanel>
                         <Button x:Name="EnvironmentCheckButton" Grid.Column="1" Content="检查环境" Click="CheckRepairEnvironment_Click" VerticalAlignment="Center" />
                     </Grid>
@@ -71,7 +71,7 @@
                     <StackPanel Spacing="4">
                         <TextBlock Text="高帧性修复" FontWeight="SemiBold" />
                         <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                   Text="使用 Beta0.9 修复机制：校验完整资源，卸载检测到的 Visual C++ 运行库条目，运行完整 AIO 安装器，再安装官方 x86/x64 基线并复检。运行库防护继续使用新版实现。" />
+                                   Text="普通模式：校验完整资源，卸载 C++ 后运行完整 AIO 和官方基线并复检；卸载前检查发现共享依赖时保留登记并改为覆盖安装。强力模式：跳过 C++ 卸载，直接逐包覆盖安装／修复并复检。运行库防护继续使用新版实现。" />
                         <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                    Text="⚠ 注意：重装会改变系统运行库环境——如果你近期有用 C++ 写东西（开发环境依赖特定运行库版本），请谨慎修复。" />
                         <TextBlock Text="{x:Bind ViewModel.RepairStatusText, Mode=OneWay}"
@@ -89,7 +89,7 @@
                                 Content="{x:Bind ViewModel.RepairButtonText, Mode=OneWay}"
                                 IsEnabled="{x:Bind ViewModel.RepairEnabled, Mode=OneWay}"
                                 Click="RepairButton_Click" />
-                        <Button Content="停止后续步骤" Click="CancelRepairButton_Click"
+                        <Button Content="停止等待及后续步骤" Click="CancelRepairButton_Click"
                                 IsEnabled="{x:Bind ViewModel.CanCancelHighFpsRepair, Mode=OneWay}" />
                     </StackPanel>
                 </Grid>
@@ -102,7 +102,7 @@
                     <StackPanel Spacing="4">
                         <TextBlock Text="兼容性修复" FontWeight="SemiBold" />
                         <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                   Text="先校验全部资源，按高帧性修复的受控流程卸载当前 C++ 可再发行运行库，再修复 DirectX 旧版游戏组件、安装 C++ 并复检。适合排查启动及 DLL 依赖问题；此操作会改变已有 C++ 环境。" />
+                                   Text="先校验资源，再修复 DirectX 旧版游戏组件与 C++ 并复检。普通模式先卸载 C++，共享依赖在卸载前阻塞时改为覆盖安装；强力模式直接覆盖安装／修复 C++。适合排查启动及 DLL 依赖问题；此操作会改变已有 C++ 环境。" />
                         <TextBlock Text="{x:Bind ViewModel.CompatibilityRepairStatusText, Mode=OneWay}"
                                    FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
                         <ProgressBar IsIndeterminate="True" Margin="0,8,0,0"
@@ -115,7 +115,7 @@
                         <Button Style="{StaticResource AccentButtonStyle}"
                                 Content="{x:Bind ViewModel.CompatibilityRepairButtonText, Mode=OneWay}"
                                 IsEnabled="{x:Bind ViewModel.RepairEnabled, Mode=OneWay}" Click="CompatibilityRepairButton_Click" />
-                        <Button Content="停止后续步骤" Click="CancelRepairButton_Click"
+                        <Button Content="停止等待及后续步骤" Click="CancelRepairButton_Click"
                                 IsEnabled="{x:Bind ViewModel.CanCancelCompatibilityRepair, Mode=OneWay}" />
                     </StackPanel>
                 </Grid>
@@ -129,10 +129,11 @@
                               IsEnabled="{x:Bind ViewModel.RepairEnabled, Mode=OneWay}" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="{x:Bind ViewModel.StrongRepairDescription}" />
+                    <Button Content="核对上次运行库操作" Click="ReviewRuntimeOperation_Click" HorizontalAlignment="Left" />
                 </StackPanel>
             </Border>
 
-            <!-- 单独卸载 V14 运行库 -->
+            <!-- 整批卸载 C++ 运行库 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
                     <TextBlock Text="卸载全部 C++ 运行库" FontWeight="SemiBold" />
@@ -140,6 +141,11 @@
                                Text="列出并卸载微软 Visual C++ 可再发行运行库（2005–2026 及 v14），不自动重装。依赖这些组件的应用可能无法运行，直到重新安装；请先关闭运行库防护。共享依赖或身份无法确认时会停止并提示。" />
                     <TextBlock Text="{x:Bind ViewModel.UninstallAllStatusText, Mode=OneWay}" TextWrapping="Wrap"
                                AutomationProperties.LiveSetting="Polite" Style="{StaticResource CardDescStyle}" />
+                    <CheckBox Content="允许强制尝试卸载未收录产品码或偏低版本（默认关闭）"
+                              IsChecked="{x:Bind ViewModel.UninstallAllAllowNonstandard, Mode=TwoWay}"
+                              IsEnabled="{x:Bind ViewModel.UninstallAllEnabled, Mode=OneWay}" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="仅在确认属于微软 C++、缓存 MSI 身份一致时尝试卸载；仍核验架构、分支和共享依赖。无法核验、安装器失败或要求重启时停止，不直接删除登记或强杀安装事务。" />
                     <ProgressBar IsIndeterminate="True"
                                  Visibility="{x:Bind BusyVisibility(ViewModel.UninstallAllBusy), Mode=OneWay}"
                                  AutomationProperties.Name="全部 C++ 运行库卸载正在执行，当前步骤见上方状态" />
@@ -227,7 +233,7 @@
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="· 三角洲会静默强制安装「Microsoft Visual C++ v14 Redistributable」运行库（不完善版本），可能覆盖你已安装的官方运行库，导致其它游戏 / 软件崩溃或异常。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                               Text="· 修复原理 = 先卸载系统上全部 C++ 运行库，再用官方 MSI 安装包重装全系列（2005–2022），恢复干净状态。" />
+                               Text="· 普通模式先卸载 C++ 再重装；共享依赖在卸载前阻塞时自动改为覆盖安装并保留登记。强力模式跳过卸载，直接用安装包覆盖修复，同版本文件也重新写入，较新产品保留并验证。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="· 运行库拦截已按需求从「帧格」页移除，防护开关统一在本页管理。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"

@@ -830,6 +830,11 @@ public sealed partial class MainWindow : Window
         {
             return;
         }
+        if (_factoryResetInProgress)
+        {
+            args.Cancel = true;
+            return;
+        }
 
         if (OfflineModeGuard.BlocksNormalAutomation)
         {
@@ -978,10 +983,10 @@ public sealed partial class MainWindow : Window
     /// <summary>快捷方式再次启动时，恢复托盘中的主窗口并将其激活。</summary>
     public void ActivateFromSecondLaunch() => RestoreFromTray();
 
-    private bool _deploymentInProgress;
+    private bool _deploymentInProgress, _factoryResetInProgress;
     internal async Task<DeploymentHandover> PrepareDeploymentAsync(bool uninstall)
     {
-        if (_pluginExitInProgress || _deploymentInProgress) throw new InvalidOperationException("正在处理退出，请稍后重试安装/卸载。");
+        if (_pluginExitInProgress || _deploymentInProgress || _factoryResetInProgress) throw new InvalidOperationException("正在处理退出或配置重置，请稍后重试安装/卸载。");
         _deploymentInProgress = true;
         if (Content is UIElement root) root.IsHitTestVisible = false;
         try
@@ -1010,18 +1015,19 @@ public sealed partial class MainWindow : Window
         Application.Current.Exit();
     }
 
+    internal void SetFactoryResetInteraction(bool enabled)
+    {
+        _factoryResetInProgress = !enabled;
+        NavView.IsEnabled = enabled;
+        ContentFrame.IsEnabled = enabled;
+        if (Content is UIElement root) root.IsHitTestVisible = enabled;
+    }
+
     /// <summary>托盘菜单「退出」：先移除图标再退出应用（不留幽灵图标）。</summary>
     private bool _pluginExitInProgress;
     private async void ExitApplication()
     {
-        if (_pluginExitInProgress || _deploymentInProgress) return;
-        if (DotNetRepairService.IsBusy)
-        {
-            RestoreFromTray();
-            await new ContentDialog { XamlRoot = ContentFrame.XamlRoot, Title = ".NET 修复正在运行",
-                Content = "请先在设置中取消下载，或在微软安装器中完成/取消安装，再退出工具。", CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
-            return;
-        }
+        if (_pluginExitInProgress || _deploymentInProgress || _factoryResetInProgress) return;
         _pluginExitInProgress = true;
 
         IDisposable? pluginBlock = null;
@@ -1140,6 +1146,12 @@ public sealed partial class MainWindow : Window
         {
             NavView.SelectedItem = target; // SelectionChanged 里完成实际导航
         }
+    }
+
+    public void NavigateToProcessBackground()
+    {
+        NavigateByTag("process");
+        if (ContentFrame.Content is ProcessPage page) page.ShowBackgroundSettings();
     }
 
     private IEnumerable<NavigationViewItem> EnumerateNavItems() =>

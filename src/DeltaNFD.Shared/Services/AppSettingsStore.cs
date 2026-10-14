@@ -18,6 +18,9 @@ public sealed class AppSettings
     public string GpuSpoofRegistryPath { get; set; } = "";
     public string GpuSpoofFakeName { get; set; } = "";
     public bool FrameModeActive { get; set; }
+    /// <summary>帧格功能选项；只有此开关和 FrameModeActive 同时开启才执行。</summary>
+    public bool FrameBackgroundSuppressionEnabled { get; set; }
+    public bool FrameAutomaticMemoryEnabled { get; set; }
 
     // ---- 显卡伪装：临时重启生效的登录还原登记 ----
     /// <summary>true = 重启后登录时需要还原原显卡型号。</summary>
@@ -269,6 +272,7 @@ public static class AppSettingsStore
     public static readonly string DefaultPath = Path.Combine(AppDataPaths.Root, "settings.json");
 
     private static readonly object Gate = new();
+    private static readonly Dictionary<string, int> ResetWriteBlocks = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, (AppSettings Settings, (DateTime LastWriteUtc, long Length, bool Exists) Stamp)> Cache =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -311,6 +315,28 @@ public static class AppSettingsStore
     /// <summary>线程安全地读出 → 修改 → 原子写回。</summary>
     public static void Update(Action<AppSettings> mutate) => Update(DefaultPath, mutate);
 
+    /// <summary>恢复出厂设置期间阻止本进程旧服务回写配置；后端恢复完成后由重置事务写入，成功后持有至退出。</summary>
+    public static IDisposable BlockWritesForReset(string path)
+    {
+        path = Path.GetFullPath(path);
+        lock (Gate) ResetWriteBlocks[path] = ResetWriteBlocks.GetValueOrDefault(path) + 1;
+        return new ResetWriteLease(path);
+    }
+
+    private sealed class ResetWriteLease(string path) : IDisposable
+    {
+        private int _disposed;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            lock (Gate)
+            {
+                if (ResetWriteBlocks[path] == 1) ResetWriteBlocks.Remove(path);
+                else ResetWriteBlocks[path]--;
+            }
+        }
+    }
+
     public static void Update(string path, Action<AppSettings> mutate)
     {
         path = Path.GetFullPath(path);
@@ -323,6 +349,7 @@ public static class AppSettingsStore
             if (!acquired) throw new IOException("另一进程正在保存设置，请稍后重试。");
         lock (Gate)
         {
+            if (ResetWriteBlocks.ContainsKey(path)) throw new InvalidOperationException("恢复出厂设置期间暂停配置写入，请等待工具关闭后重新打开。");
             Cache.Remove(path); // Writers must reload under the cross-process lease, not modify an old snapshot.
             var settings = ReadCore(path);
             mutate(settings);

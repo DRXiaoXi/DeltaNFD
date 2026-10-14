@@ -869,6 +869,8 @@ public sealed class FrameService : IFrameService
         FrameModeActive = false;
         GpuSpoofEnabled = false;
 
+        var background = await Backends.BackendProcmanService.Instance.SyncFrameBackgroundAsync();
+
         var dualNote = await RevertArmedDualCcdAsync();
 
         // 退出帧格：后端撤销加速响应、临时优化与电源锁定；失败时如实报告并保留恢复记录。
@@ -876,9 +878,9 @@ public sealed class FrameService : IFrameService
         await cpuFrame.ApplyBoostAsync(false, false, false);
         var tweaksNote = await cpuFrame.RevertTweaksAsync();
         var powerNote = await cpuFrame.UnlockPowerAsync();
-        var notes = dualNote + " " + tweaksNote.Message + " " + powerNote.Message;
+        var notes = dualNote + " " + tweaksNote.Message + " " + powerNote.Message + " " + background.Message;
 
-        if (!powerNote.Success || !tweaksNote.Success)
+        if (!powerNote.Success || !tweaksNote.Success || !background.Success)
             return new OperationResult
             {
                 Success = false,
@@ -914,14 +916,15 @@ public sealed class FrameService : IFrameService
         {
             var settings = AppSettingsStore.Read();
             var active = _frameModeActive && !OfflineModeGuard.BlocksNormalAutomation;
+            var background = await Backends.BackendProcmanService.Instance.SyncFrameBackgroundAsync();
             var cpuFrame = Backends.BackendCpuFrameService.Instance;
             if (!active)
             {
                 var stopped = await cpuFrame.ApplyBoostAsync(false, false, false);
                 var restored = await cpuFrame.RevertTweaksAsync();
                 var unlocked = await cpuFrame.UnlockPowerAsync();
-                return stopped.Success && restored.Success && unlocked.Success ? OperationResult.Ok("")
-                    : OperationResult.Fail(stopped.Message + " " + restored.Message + " " + unlocked.Message);
+                return stopped.Success && restored.Success && unlocked.Success && background.Success ? OperationResult.Ok(background.Message)
+                    : OperationResult.Fail(stopped.Message + " " + restored.Message + " " + unlocked.Message + " " + background.Message);
             }
 
             var boost = settings.FrameResponseBoostEnabled;
@@ -931,7 +934,8 @@ public sealed class FrameService : IFrameService
                 boost && settings.FrameResponseBoostTimerEnabled);
 
             var notes = new List<string>();
-            var complete = boosted.Success;
+            notes.Add(background.Message);
+            var complete = boosted.Success && background.Success;
             if (!boosted.Success) notes.Add(boosted.Message);
             var laptop = await GetChassisKindAsync() == ChassisKind.Laptop;
             if (settings.FrameForegroundBoostEnabled || settings.FramePowerSaveLatencyEnabled)

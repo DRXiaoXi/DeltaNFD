@@ -85,18 +85,21 @@ internal sealed class RuntimeRepairDiagnostics
         Log.Warn("运行库修复：" + issue);
     }
 
-    public async Task CaptureOutputAsync(StreamReader reader, string name, CancellationToken token)
+    public async Task CaptureOutputAsync(StreamReader reader, string name, CancellationToken token, Action<string>? onLine = null)
     {
         StreamWriter? writer = null;
         try
         {
             try { writer = new StreamWriter(Path.Combine(DirectoryPath, name), false, new UTF8Encoding(false)) { AutoFlush = true }; }
             catch (Exception ex) { AddIssue($"{name} 创建失败：{ex.Message}"); }
-            while (await reader.ReadLineAsync(token) is { } line)
+            async Task ArchiveLine(string line)
             {
                 // 同时归档原始输出和会话日志，不只保留最后 4000 字符。
                 Log.Info($"运行库修复·{name}：{line}");
-                if (writer is null) continue;
+                // 进度回调不能中断完整日志归档，也不影响安装器结果判定。
+                try { onLine?.Invoke(line); }
+                catch (Exception ex) { Log.Warn("运行库进度显示未更新：" + ex.Message); }
+                if (writer is null) return;
                 try { await writer.WriteLineAsync(line); }
                 catch (Exception ex)
                 {
@@ -105,6 +108,26 @@ internal sealed class RuntimeRepairDiagnostics
                     writer = null;
                 }
             }
+            // DISM/SFC 用单独的 CR 刷新百分比。ReadLineAsync 在 CR 位于当前缓冲区末尾时
+            // 可能等待下一字符才返回，改用流式切分，收到 CR 就立刻发布。
+            var buffer = new char[2048];
+            var line = new StringBuilder();
+            var afterCr = false;
+            int read;
+            while ((read = await reader.ReadAsync(buffer.AsMemory(), token)) > 0)
+            {
+                for (var index = 0; index < read; index++)
+                {
+                    var ch = buffer[index];
+                    if (ch == '\n' && afterCr) { afterCr = false; continue; }
+                    if (ch is '\r' or '\n')
+                    {
+                        await ArchiveLine(line.ToString()); line.Clear(); afterCr = ch == '\r';
+                    }
+                    else { afterCr = false; line.Append(ch); }
+                }
+            }
+            if (line.Length > 0) await ArchiveLine(line.ToString());
         }
         catch (OperationCanceledException) { AddIssue($"{name} 输出采集被中止，可能不完整"); }
         catch (Exception ex) { AddIssue($"{name} 输出采集失败：{ex.Message}"); }
@@ -211,7 +234,9 @@ internal sealed class RuntimeRepairDiagnostics
         if (after is null) failures.Add("修复后复检失败，不能确认安装状态");
         else
         {
-            failures.AddRange(after.Suboptimal.Select(s => string.IsNullOrEmpty(s.InstalledVersion)
+            failures.AddRange(after.Suboptimal.Where(s => !s.IsRecommendationOnly).Select(s => s.Reason == "version-unknown"
+                ? $"{s.Branch}：已检测到登记，但版本无法核对"
+                : string.IsNullOrEmpty(s.InstalledVersion)
                 ? $"{s.Branch}：复检仍未检测到安装记录"
                 : $"{s.Branch}：复检版本 {s.InstalledVersion}，要求至少 {s.RecommendedVersion}"));
             if (after.HasAbnormal) failures.Add($"复检仍有 {after.Abnormal.Count} 项异常 v14 条目");
@@ -221,6 +246,10 @@ internal sealed class RuntimeRepairDiagnostics
         var message = success ? "运行库重装流程及分支版本复检通过。" : "运行库修复未完成，部分组件可能已安装，但不能确认全系列修复成功。\n"
             + string.Join("\n", failures.Distinct().Take(12));
         if (failures.Distinct().Count() > 12) message += "\n其余问题见诊断归档。";
+        var recommendations = after?.Suboptimal.Where(s => s.IsRecommendationOnly).ToArray() ?? [];
+        if (recommendations.Length > 0)
+            message += $"\n另有 {recommendations.Length} 项推荐版本提醒（不作为修复失败）："
+                + string.Join("；", recommendations.Select(s => $"{s.Branch} 当前 {s.InstalledVersion}，推荐 {s.RecommendedVersion}"));
         if (assemblyErrors.Contains("0x80070005", StringComparison.OrdinalIgnoreCase)
             || packages.Any(p => p.ErrorDetails.Contains("1935", StringComparison.OrdinalIgnoreCase)
                 && p.ErrorDetails.Contains("0x80070005", StringComparison.OrdinalIgnoreCase)))

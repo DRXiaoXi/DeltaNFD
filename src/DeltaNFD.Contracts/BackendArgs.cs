@@ -47,6 +47,18 @@ public sealed class NvDriverReadOnlyArgs
     public bool ReadOnly { get; set; }
 }
 
+public sealed class NvShaderCacheApplyArgs
+{
+    public string Scope { get; set; } = "";
+    public uint? Value { get; set; }
+}
+
+public sealed class ShaderRecoveryCleanArgs
+{
+    public bool GameCache { get; set; }
+    public bool NvidiaCache { get; set; }
+}
+
 public sealed class RuntimeSelectModeArgs
 {
     public Services.RuntimeGuardMode Mode { get; set; }

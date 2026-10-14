@@ -1,22 +1,24 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text;
 
 namespace DeltaNFD.Services;
 
 internal interface IRuntimeBetaRepairEnvironment
 {
+    Task VerifyOverwriteAsync(CancellationToken token) => Task.CompletedTask;
     Task<IReadOnlyList<VcRedistEntry>> PrepareUninstallBatchAsync(IReadOnlyList<VcRedistEntry> entries, CancellationToken token);
     Task<OperationResult> VerifyAsync(IProgress<string>? progress, CancellationToken token);
     Task<VcRedistScanReport> ScanAsync(CancellationToken token);
     Task<RuntimeStepResult> UninstallAsync(VcRedistEntry entry, TimeSpan timeout, IProgress<string>? progress, CancellationToken token);
     Task<RuntimeStepResult> InstallAioAsync(TimeSpan timeout, IProgress<string>? progress, CancellationToken token);
     Task<RuntimeStepResult> InstallBaselineAsync(string arch, TimeSpan timeout, IProgress<string>? progress, CancellationToken token);
+    Task<RuntimeStepResult> OverwriteCppAsync(RuntimeRepairStep step, TimeSpan timeout, IProgress<string>? progress, CancellationToken token);
     List<RuntimePackageResult> ReadAioResults();
 }
 
 /// <summary>Beta0.9 (72bfbc2): uninstall entries, complete AIO /quiet, official baselines, rescan.</summary>
 internal sealed class RuntimeBetaRepair(IRuntimeBetaRepairEnvironment environment, RuntimeRepairDiagnostics diagnostics,
-    TimeSpan? totalBudget = null)
+    TimeSpan? totalBudget = null, bool strongRepairMode = false)
 {
     internal async Task<OperationResult> RunAsync(IProgress<string>? progress, CancellationToken token)
     {
@@ -25,8 +27,8 @@ internal sealed class RuntimeBetaRepair(IRuntimeBetaRepairEnvironment environmen
         deadline.CancelAfter(budget);
         var clock = Stopwatch.StartNew();
         var issues = new List<string>();
-        var reboot = false;
-        diagnostics.Save("engine.json", new { Engine = "beta0.9-aio", SourceCommit = "72bfbc2", Budget = budget });
+        var reboot = false; var executionStarted = false; var dependencyFallback = false;
+        diagnostics.Save("engine.json", new { Engine = strongRepairMode ? "strong-cpp-overwrite" : "beta0.9-aio", SourceCommit = "72bfbc2", Budget = budget });
         TimeSpan Remaining(TimeSpan maximum)
         {
             deadline.Token.ThrowIfCancellationRequested();
@@ -37,19 +39,65 @@ internal sealed class RuntimeBetaRepair(IRuntimeBetaRepairEnvironment environmen
         OperationResult Stop(RuntimeStepResult result, string stage) => new()
         {
             Success = false, OutcomeUnknown = result.OutcomeUnknown, RequiresReboot = reboot,
-            Message = stage + "未完成，已停止后续步骤；已有步骤可能改变运行库。\n" + result.Details + "\n诊断目录：" + diagnostics.DirectoryPath,
+            Message = stage + (executionStarted ? "未完成，已停止后续步骤；已调用运行库操作，请核对结果。\n" : "前检查未完成；未执行 C++ 卸载和后续安装。\n") + result.Details + "\n诊断目录：" + diagnostics.DirectoryPath,
         };
+        async Task<OperationResult> OverwriteAsync(VcRedistScanReport before)
+        {
+            await environment.VerifyOverwriteAsync(deadline.Token);
+            if (dependencyFallback) diagnostics.Save("engine.json", new { Engine = "dependency-safe-cpp-overwrite",
+                StrongRepairMode = strongRepairMode, Budget = budget });
+            diagnostics.Save("before-scan.json", before);
+            diagnostics.Event("cpp-uninstall-skipped", new { Reason = dependencyFallback ? "shared-dependency-overwrite" : "strong-overwrite", Packages = 18 });
+            var results = new List<object>(); var completed = 0; var retained = 0;
+            foreach (var step in RuntimeCompatibilityRepair.CppPlan())
+            {
+                progress?.Report($"C++ 覆盖安装 [{results.Count + 1}/18]：{step.Label}");
+                var timeout = Remaining(TimeSpan.FromMinutes(5));
+                executionStarted = true;
+                var installed = await environment.OverwriteCppAsync(step, timeout, progress, deadline.Token);
+                results.Add(new { Step = step, Result = installed }); diagnostics.Save("cpp-overwrite-results.json", results);
+                reboot |= installed.RequiresReboot;
+                if (installed.Success) { completed++; if (installed.RetainedNewer) retained++; }
+                else issues.Add(step.Label + "：" + installed.Details + "；退出码=" + installed.ExitCode);
+                if (installed.OutcomeUnknown || installed.ExitCode is 1641 or 1618 || installed.RequiresReboot)
+                    return Stop(installed, "C++ 覆盖安装（未执行卸载）");
+            }
+            var afterOverwrite = await environment.ScanAsync(deadline.Token);
+            diagnostics.Save("after-scan.json", afterOverwrite);
+            var overwriteResult = new OperationResult
+            {
+                Success = issues.Count == 0, IsPartial = completed > 0 && issues.Count > 0, RequiresReboot = reboot,
+                Message = (issues.Count == 0 ? "C++ 覆盖安装及文件复检完成。" : "C++ 覆盖安装未全部完成。")
+                    + (dependencyFallback ? "\n共享依赖已保留；本次自动改为覆盖安装。" : "")
+                    + $"\n未执行 C++ 卸载；安装包复检通过：{completed}/18，其中保留并验证较新产品：{retained}。"
+                    + (issues.Count > 0 ? "\n" + string.Join("\n", issues.Distinct().Take(12)) : "")
+                    + "\n旧包装登记可能仍在列表中；本次结果依据 MSI 产品和关键文件复检。\n诊断目录：" + diagnostics.DirectoryPath,
+            };
+            diagnostics.Save("summary.json", overwriteResult);
+            return overwriteResult;
+        }
         try
         {
             var verified = await environment.VerifyAsync(progress, deadline.Token);
             if (!verified.Success) return verified;
             var before = await environment.ScanAsync(deadline.Token);
+            if (strongRepairMode) return await OverwriteAsync(before);
             var removal = await RuntimePreUninstall.RunAsync(before, environment.PrepareUninstallBatchAsync,
                 environment.UninstallAsync, environment.ScanAsync, Remaining, diagnostics, progress, deadline.Token);
             reboot |= removal.Reboot;
+            executionStarted |= removal.ExecutionStarted;
+            if (removal.DependencyBlocked && !removal.ExecutionStarted)
+            {
+                dependencyFallback = true;
+                diagnostics.Save("dependency-fallback.json", new { Reason = removal.Stopped!.Details, ExecutionStarted = false });
+                progress?.Report("检测到共享运行库依赖；未执行卸载，将保留登记并改为 C++ 覆盖安装…");
+                return await OverwriteAsync(before);
+            }
             if (removal.Stopped is { } stopped) return Stop(stopped, "运行库卸载");
             progress?.Report("正在运行完整 AIO 安装器，静默重装 2005–2026 全系列…");
-            var aio = await environment.InstallAioAsync(Remaining(TimeSpan.FromMinutes(20)), progress, deadline.Token);
+            var aioTimeout = Remaining(TimeSpan.FromMinutes(20));
+            executionStarted = true;
+            var aio = await environment.InstallAioAsync(aioTimeout, progress, deadline.Token);
             reboot |= aio.RequiresReboot;
             diagnostics.Save("aio-result.json", aio);
             if (aio.OutcomeUnknown || aio.ExitCode == 1641 || aio.ExitCode is null) return Stop(aio, "AIO 重装");
@@ -77,19 +125,24 @@ internal sealed class RuntimeBetaRepair(IRuntimeBetaRepairEnvironment environmen
         catch (OperationCanceledException)
         {
             return new() { Success = false, RequiresReboot = reboot,
-                Message = "已取消后续步骤或达到总预算，已有运行库可能被卸载；请核对当前状态。\n诊断目录：" + diagnostics.DirectoryPath };
+                Message = (executionStarted ? "已取消后续步骤或达到总预算；已调用运行库操作，请核对已执行步骤。" : "检查已取消或达到总预算；未执行 C++ 卸载和后续安装。") + "\n诊断目录：" + diagnostics.DirectoryPath };
         }
         catch (Exception ex)
         {
             diagnostics.Save("fatal-error.json", new { Error = ex.ToString() });
-            return OperationResult.Fail("Beta0.9 运行库修复未完成：" + ex.Message + "\n诊断目录：" + diagnostics.DirectoryPath);
+            return OperationResult.Fail((executionStarted ? "运行库修复未完成，已调用运行库操作：" : "修复前检查失败，未执行 C++ 卸载和后续安装：") + ex.Message + "\n诊断目录：" + diagnostics.DirectoryPath);
         }
     }
 }
 
-internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, RuntimeRepairDiagnostics diagnostics)
+internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, RuntimeRepairDiagnostics diagnostics, bool strongRepairMode = false)
     : IRuntimeBetaRepairEnvironment
 {
+    public Task VerifyOverwriteAsync(CancellationToken token)
+    {
+        RuntimeCompatibilityEnvironment.VerifyCppPayload(Payload, token, true);
+        return Task.CompletedTask;
+    }
     public Task<IReadOnlyList<VcRedistEntry>> PrepareUninstallBatchAsync(IReadOnlyList<VcRedistEntry> entries, CancellationToken token)
         => new RuntimeRepairEnvironment(service, diagnostics).PrepareUninstallBatchAsync(entries, token);
     private readonly RuntimeRepairProcessRunner _runner = new(AppDataPaths.Root);
@@ -105,10 +158,14 @@ internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, 
         if (!readiness.CanProceed) return OperationResult.Fail(readiness.Summary + "\n\n" + readiness.Details);
         var pending = _runner.CheckPending(RuntimeRepairPreflight.InstallerBusy());
         if (pending is not null) return OperationResult.Fail(pending);
-        return RuntimeGuardService.VerifyRepairPackage(Assets, Payload, progress);
+        var verified = RuntimeGuardService.VerifyRepairPackage(Assets, Payload, progress);
+        if (verified.Success && strongRepairMode) RuntimeCompatibilityEnvironment.VerifyCppPayload(Payload, token, true);
+        return verified;
     }
     public Task<VcRedistScanReport> ScanAsync(CancellationToken token) => service.ScanVcRedistsAsync().WaitAsync(token);
     public List<RuntimePackageResult> ReadAioResults() => diagnostics.ReadPackageResults();
+    public Task<RuntimeStepResult> OverwriteCppAsync(RuntimeRepairStep step, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
+        => new RuntimeCompatibilityEnvironment(diagnostics, strongRepairMode: true).RepairCppAsync(step, timeout, progress, token);
 
     internal static ProcessStartInfo BuildAioCommand(string payload, string diagnosticDirectory)
     {

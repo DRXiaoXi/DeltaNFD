@@ -13,21 +13,23 @@ internal interface IRuntimeBulkUninstallEnvironment
 }
 
 /// <summary>Confirmed, bounded bulk uninstall; all native execution stays behind the existing verified MSI uninstaller.</summary>
-internal sealed class RuntimeBulkUninstall(IRuntimeBulkUninstallEnvironment environment, RuntimeRepairDiagnostics diagnostics)
+internal sealed class RuntimeBulkUninstall(IRuntimeBulkUninstallEnvironment environment, RuntimeRepairDiagnostics diagnostics, bool allowNonstandard = false)
 {
     internal static bool IsCandidate(VcRedistEntry entry) => Regex.IsMatch(entry.DisplayName,
         @"^Microsoft Visual C\+\+ (?:2005|2008|2010|2012|2013|2015|2017|2019|2022|2026|v14)\b", RegexOptions.IgnoreCase)
         && Regex.IsMatch(entry.DisplayName, @"\b(?:Redistributable|Minimum Runtime|Additional Runtime)\b", RegexOptions.IgnoreCase)
         && !Regex.IsMatch(entry.DisplayName, @"\b(?:Debug|SDK|VSTO|Tools)\b", RegexOptions.IgnoreCase);
 
-    internal static RuntimeUninstallPreview Preview(IEnumerable<VcRedistEntry> entries)
+    internal static RuntimeUninstallPreview Preview(IEnumerable<VcRedistEntry> entries, bool allowNonstandard = false)
     {
         var targets = entries.Where(IsCandidate).OrderBy(e => e.UninstallKind == "Bundle" ? 0 : e.UninstallKind == "Inf" ? 1 : 2)
             .ThenBy(e => e.KeyName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(e => e.Architecture, StringComparer.OrdinalIgnoreCase).ToList();
         if (targets.Count > 200 || targets.Select(e => e.KeyName.ToUpperInvariant()).Distinct().Count() != targets.Count)
             throw new InvalidDataException("运行库登记数量异常或重复，未创建卸载清单。");
-        return new(targets, Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(targets))));
+        var content = allowNonstandard ? JsonSerializer.SerializeToUtf8Bytes(new { Entries = targets, AllowNonstandard = true })
+            : JsonSerializer.SerializeToUtf8Bytes(targets);
+        return new(targets, Convert.ToHexString(SHA256.HashData(content)), allowNonstandard);
     }
 
     internal async Task<OperationResult> RunAsync(string confirmedFingerprint, IProgress<string>? progress, CancellationToken token)
@@ -44,10 +46,12 @@ internal sealed class RuntimeBulkUninstall(IRuntimeBulkUninstallEnvironment envi
         {
             token.ThrowIfCancellationRequested();
             if (await environment.PreflightAsync(token) is { } blocker) return Fail(blocker);
-            var preview = Preview(await environment.ScanAsync(token));
+            var preview = Preview(await environment.ScanAsync(token), allowNonstandard);
             if (string.IsNullOrWhiteSpace(confirmedFingerprint) || preview.Fingerprint != confirmedFingerprint)
                 return Fail("安装清单已变化或没有明确确认，请重新预览。未卸载任何条目。");
             diagnostics.Save("uninstall-all-preview.json", preview);
+            diagnostics.Save("uninstall-all-options.json", new { AllowNonstandard = allowNonstandard });
+            if (allowNonstandard) progress?.Report("已确认强制尝试：仅放宽清单产品码和偏低版本，仍核验缓存 MSI 身份、架构和共享依赖。");
             if (preview.Entries.Count == 0) return OperationResult.Ok("未检测到可确认的 C++ 可再发行运行库，无需卸载。");
             var targets = await environment.PrepareUninstallBatchAsync(preview.Entries, token);
             foreach (var entry in targets)
@@ -64,7 +68,7 @@ internal sealed class RuntimeBulkUninstall(IRuntimeBulkUninstallEnvironment envi
                 if (result.RequiresReboot) return Fail("安装器要求重启；已停止后续卸载，请重启后重新检测。不会自动重启。");
             }
             progress?.Report("全量卸载复检中…");
-            var remaining = Preview(await environment.ScanAsync(token));
+            var remaining = Preview(await environment.ScanAsync(token), allowNonstandard);
             diagnostics.Save("uninstall-all-after.json", remaining);
             if (remaining.Entries.Count != 0) return Fail($"复检仍发现 {remaining.Entries.Count} 项（可能有保留的共享依赖或新登记），未报告全部完成。");
             return OperationResult.Ok($"全部 C++ 可再发行运行库卸载及复检通过，共处理 {completed} 项。\n依赖这些组件的应用需要重装运行库才能运行。\n诊断目录：" + diagnostics.DirectoryPath);

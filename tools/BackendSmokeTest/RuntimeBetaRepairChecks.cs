@@ -11,16 +11,54 @@ internal static class RuntimeBetaRepairChecks
             "Beta0.9 主流程：完整校验→卸载条目→完整 AIO→两个官方基线→全量复检");
         var strong = new Fake();
         check((await RuntimeStrongRepairChecks.WithSystemPhaseAsync(root, strong.VerifyAsync,
-            new RuntimeBetaRepair(strong, new RuntimeRepairDiagnostics(root)).RunAsync)).Success
-            && strong.Trace.Count(s => s == "aio") == 1 && strong.Trace.Contains("scan-after"),
-            "强力系统组件阶段与完整高帧性 AIO 流程集成后仍执行全量复检");
+            new RuntimeBetaRepair(strong, new RuntimeRepairDiagnostics(root), strongRepairMode: true).RunAsync)).Success
+            && strong.Trace.Count(s => s == "overwrite") == 18 && !strong.Trace.Contains("prepare")
+            && !strong.Trace.Contains("uninstall") && !strong.Trace.Contains("aio") && !strong.Trace.Any(s => s.StartsWith("baseline-")),
+            "强力高帧性完成 18 包覆盖复检，不进入卸载、AIO 内部卸载或旧基线");
+        var blockedStrong = new Fake { PrepareFailed = true, Uninstall = new(1603) };
+        check((await new RuntimeBetaRepair(blockedStrong, new RuntimeRepairDiagnostics(root), strongRepairMode: true).RunAsync(null, default)).Success
+            && blockedStrong.Trace.Count(s => s == "overwrite") == 18 && !blockedStrong.Trace.Contains("prepare"),
+            "强力模式不受旧包装卸载依赖错误阻塞");
+        foreach (var result in new[] { new RuntimeStepResult(null, OutcomeUnknown: true), new(1618), new(1641), new(3010) })
+        {
+            var stop = new Fake { Overwrite = result };
+            var outcome = await new RuntimeBetaRepair(stop, new RuntimeRepairDiagnostics(root), strongRepairMode: true).RunAsync(null, default);
+            check(!outcome.Success && stop.Trace.Count(s => s == "overwrite") == 1 && !stop.Trace.Contains("uninstall"),
+                "强力覆盖事务未知/忙/重启立即停止后续包：" + result.ExitCode);
+        }
+        var overwriteFiles = new Fake { Overwrite = new(0, "bad files", PostcheckPassed: false) };
+        check(!(await new RuntimeBetaRepair(overwriteFiles, new RuntimeRepairDiagnostics(root), strongRepairMode: true).RunAsync(null, default)).Success,
+            "强力覆盖退出码零但文件复检失败不能声称完成");
+        var badStrongResource = new Fake { Verified = false };
+        check(!(await new RuntimeBetaRepair(badStrongResource, new RuntimeRepairDiagnostics(root), strongRepairMode: true).RunAsync(null, default)).Success
+            && badStrongResource.Trace.SequenceEqual(new[] { "verify" }), "强力覆盖资源无效时不会执行任何包");
+        var strongExpired = new Fake();
+        check(!(await new RuntimeBetaRepair(strongExpired, new RuntimeRepairDiagnostics(root), TimeSpan.Zero, strongRepairMode: true).RunAsync(null, default)).Success
+            && !strongExpired.Trace.Contains("overwrite"), "强力覆盖共享预算耗尽不启动包");
+        var strongRetained = new Fake { Overwrite = new(0, "verified newer", RetainedNewer: true, Skipped: true) };
+        check((await new RuntimeBetaRepair(strongRetained, new RuntimeRepairDiagnostics(root), strongRepairMode: true).RunAsync(null, default)).Success
+            && strongRetained.Trace.Count(s => s == "overwrite") == 18, "较新产品复检通过可保留，强力流程仍检查全部包");
         var badResource = new Fake { Verified = false };
         check(!(await Run(badResource)).Success && badResource.Trace.SequenceEqual(new[] { "verify" }), "资源损坏时先拒绝，不卸载任何运行库");
         var failedUninstall = new Fake { Uninstall = new(1603, "fixture") };
         check(!(await Run(failedUninstall)).Success && !failedUninstall.Trace.Contains("aio"), "统一卸载未完成时停止安装，不绕过失败继续 AIO");
         var badBatch = new Fake { PrepareFailed = true };
-        check(!(await Run(badBatch)).Success && !badBatch.Trace.Contains("uninstall") && !badBatch.Trace.Contains("aio"),
+        var badBatchResult = await Run(badBatch);
+        check(!badBatchResult.Success && !badBatch.Trace.Contains("uninstall") && !badBatch.Trace.Contains("aio")
+            && badBatchResult.Message.Contains("未执行 C++ 卸载和后续安装") && !badBatchResult.Message.Contains("已有步骤可能"),
             "高帧性整批关系或缓存预检失败时不卸载、不安装");
+        var shared = new Fake { SharedDependency = true };
+        var sharedResult = await Run(shared);
+        check(sharedResult.Success && shared.Trace.Count(s => s == "overwrite") == 18
+            && !shared.Trace.Contains("uninstall") && !shared.Trace.Contains("aio") && sharedResult.Message.Contains("共享依赖已保留"),
+            "共享依赖仅在卸载前阻塞时自动转覆盖安装，保留登记而不运行 AIO");
+        var invalidOverwrite = new Fake { SharedDependency = true, OverwriteResourceFailed = true };
+        check(!(await Run(invalidOverwrite)).Success && !invalidOverwrite.Trace.Contains("overwrite")
+            && !invalidOverwrite.Trace.Contains("uninstall"), "依赖回退覆盖资源必须在任何操作前完整校验");
+        var lateDependency = new Fake { UninstallThrowsDependency = true };
+        var lateResult = await Run(lateDependency);
+        check(!lateResult.Success && lateDependency.Trace.Contains("uninstall") && !lateDependency.Trace.Contains("overwrite")
+            && lateResult.Message.Contains("已调用运行库操作"), "已调用卸载后遇到共享引用不能切换安装，首步失败不谎称未执行");
         var residue = new Fake { KeepInstalled = true };
         check(!(await Run(residue)).Success && residue.Trace.Contains("scan-removed") && !residue.Trace.Contains("aio"),
             "高帧性卸载复检有残留时禁止 AIO 和官方基线安装");
@@ -81,12 +119,15 @@ internal static class RuntimeBetaRepairChecks
     {
         internal List<string> Trace = [];
         internal bool Verified = true, MissingCompletion, PrepareFailed, KeepInstalled, RemovalScanFailed;
-        internal RuntimeStepResult Uninstall = new(0), Aio = new(0), Baseline = new(0);
+        internal bool SharedDependency, OverwriteResourceFailed, UninstallThrowsDependency;
+        public Task VerifyOverwriteAsync(CancellationToken token)
+        { token.ThrowIfCancellationRequested(); if (OverwriteResourceFailed) throw new IOException("fixture overwrite hashes invalid"); return Task.CompletedTask; }
+        internal RuntimeStepResult Uninstall = new(0), Aio = new(0), Baseline = new(0), Overwrite = new(0);
         internal List<RuntimePackageResult> Packages = [new("fixture.msi", 0, "fixture.log", "")];
         internal VcRedistScanReport After = new() { All = [], Abnormal = [], Suboptimal = [], Advice = "" };
         private int _scans;
         public Task<IReadOnlyList<VcRedistEntry>> PrepareUninstallBatchAsync(IReadOnlyList<VcRedistEntry> entries, CancellationToken token)
-        { token.ThrowIfCancellationRequested(); Trace.Add("prepare"); if (PrepareFailed) throw new IOException("fixture bad batch"); return Task.FromResult(entries); }
+        { token.ThrowIfCancellationRequested(); Trace.Add("prepare"); if (SharedDependency) throw new RuntimeDependencyConflictException("fixture shared 2013 MSI"); if (PrepareFailed) throw new IOException("fixture bad batch"); return Task.FromResult(entries); }
         public Task<OperationResult> VerifyAsync(IProgress<string>? progress, CancellationToken token)
         { token.ThrowIfCancellationRequested(); Trace.Add("verify"); return Task.FromResult(Verified ? OperationResult.Ok("verified") : OperationResult.Fail("invalid")); }
         public Task<VcRedistScanReport> ScanAsync(CancellationToken token)
@@ -97,11 +138,13 @@ internal static class RuntimeBetaRepairChecks
                 [new() { DisplayName = "Microsoft Visual C++ 2005 Redistributable", DisplayVersion = "8.0.61187", Architecture = "x86", KeyName = "fixture", UninstallKind = "Msi" }] } : After);
         }
         public Task<RuntimeStepResult> UninstallAsync(VcRedistEntry entry, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
-        { Trace.Add("uninstall"); return Task.FromResult(Uninstall); }
+        { Trace.Add("uninstall"); if (UninstallThrowsDependency) throw new RuntimeDependencyConflictException("fixture late dependent"); return Task.FromResult(Uninstall); }
         public Task<RuntimeStepResult> InstallAioAsync(TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
         { Trace.Add("aio"); return Task.FromResult(Aio); }
         public Task<RuntimeStepResult> InstallBaselineAsync(string arch, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
         { Trace.Add("baseline-" + arch); return Task.FromResult(Baseline); }
         public List<RuntimePackageResult> ReadAioResults() => MissingCompletion ? throw new InvalidDataException("missing completed marker") : Packages;
+        public Task<RuntimeStepResult> OverwriteCppAsync(RuntimeRepairStep step, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
+        { token.ThrowIfCancellationRequested(); Trace.Add("overwrite"); return Task.FromResult(Overwrite); }
     }
 }

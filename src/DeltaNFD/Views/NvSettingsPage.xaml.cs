@@ -52,6 +52,9 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
         ViewModel.OnRowSelectionChanged();
     }
 
+    private void OpenShaderRecovery_Click(object sender, RoutedEventArgs e)
+        => Frame.Navigate(typeof(ShaderRecoveryPage), "nvsettings");
+
     private void ScaleToggle_Toggled(object sender, RoutedEventArgs e)
     {
         // 缩放行覆盖开关变化 → 刷新待应用计数

@@ -46,6 +46,27 @@ internal static class RuntimeBulkUninstallChecks
         var duplicateRejected = false;
         try { _ = RuntimeBulkUninstall.Preview([good, good]); } catch (InvalidDataException) { duplicateRejected = true; }
         Check(duplicateRejected, "重复登记拒绝创建卸载清单");
+        var forcePreview = RuntimeBulkUninstall.Preview([good], true);
+        var normalPreview = RuntimeBulkUninstall.Preview([good]);
+        Check(forcePreview.AllowNonstandard && !normalPreview.AllowNonstandard
+            && forcePreview.Fingerprint != normalPreview.Fingerprint, "强制选项默认关闭并绑定预览指纹");
+        async Task<OperationResult> ForceRun(Fake environment, string fingerprint) =>
+            await new RuntimeBulkUninstall(environment, new RuntimeRepairDiagnostics(Path.Combine(root, Guid.NewGuid().ToString("N"))), true)
+                .RunAsync(fingerprint, null, CancellationToken.None);
+        fake = new([good]); result = await ForceRun(fake, normalPreview.Fingerprint);
+        Check(!result.Success && fake.Executed.Count == 0, "普通确认不能用于强制执行");
+        fake = new([good]); result = await Run(fake, forcePreview.Fingerprint);
+        Check(!result.Success && fake.Executed.Count == 0, "强制确认不能悄悄切为普通执行");
+        fake = new([good]); result = await ForceRun(fake, forcePreview.Fingerprint);
+        Check(result.Success && fake.Executed.Count == 1, "已确认强制选项进入受控卸载并复检");
+        fake = new([good]) { PrepareFailed = true }; result = await ForceRun(fake, forcePreview.Fingerprint);
+        Check(!result.Success && fake.Executed.Count == 0, "强制选项不绕过身份或依赖准备失败");
+        fake = new([good]) { Blocker = "shared dependency" }; result = await ForceRun(fake, forcePreview.Fingerprint);
+        Check(!result.Success && fake.Executed.Count == 0, "强制选项不绕过环境门禁");
+        fake = new([good]) { Response = new(1603, "fixture failure") }; result = await ForceRun(fake, forcePreview.Fingerprint);
+        Check(!result.Success && fake.Executed.Count == 1, "强制尝试不吞掉 MSI 失败");
+        fake = new([good]) { Response = new(null, "unknown", OutcomeUnknown: true) }; result = await ForceRun(fake, forcePreview.Fingerprint);
+        Check(!result.Success && result.OutcomeUnknown, "强制尝试仍保留未知事务");
         Console.WriteLine($"Runtime bulk uninstall checks: {passed} passed. All installation/removal simulated, state isolated.");
     }
     private sealed class Fake(List<VcRedistEntry> entries) : IRuntimeBulkUninstallEnvironment

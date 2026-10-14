@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -26,9 +26,9 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 
     <DefaultLanguage>zh-CN</DefaultLanguage>
-    <Version>0.915</Version>
+    <Version>0.916</Version>
     <!-- 日志头/程序集读取的显示版本（与关于卡 VersionText 保持一致） -->
-    <InformationalVersion>Alpha0.915</InformationalVersion>
+    <InformationalVersion>Alpha0.916</InformationalVersion>
     <!-- 应用图标（exe / 任务栏 / 托盘共用；托盘经 ExtractIconExW 从 exe 提取） -->
     <ApplicationIcon>Assets\DeltaNFD.ico</ApplicationIcon>
   </PropertyGroup>
@@ -125,18 +125,11 @@
           SkipUnchangedFiles="true" />
   </Target>
 
-  <!-- Offline .NET repair payload: copied as files, excluded from WinUI PRI indexing. -->
+  <!-- Retired repair assets must not leak from an old local checkout into a new build. -->
   <ItemGroup>
     <Content Remove="Assets\DotNetRepair\**\*" />
     <None Remove="Assets\DotNetRepair\**\*" />
-    <DotNetRepairPayload Include="Assets\DotNetRepair\**\*" />
   </ItemGroup>
-  <Target Name="CopyDotNetRepairToBuild" AfterTargets="Build" Condition="'$(IsDesignTimeBuild)' != 'true'">
-    <Copy SourceFiles="@(DotNetRepairPayload)" DestinationFiles="@(DotNetRepairPayload->'$(OutDir)Assets\DotNetRepair\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-  </Target>
-  <Target Name="CopyDotNetRepairToPublish" AfterTargets="Publish">
-    <Copy SourceFiles="@(DotNetRepairPayload)" DestinationFiles="@(DotNetRepairPayload->'$(PublishDir)Assets\DotNetRepair\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-  </Target>
 
   <!-- Microsoft legacy DirectX redistributable: data files, excluded from WinUI PRI indexing. -->
   <ItemGroup>
@@ -180,11 +173,11 @@
           Outputs="$(OutDir)Backends\%(OfficialBackend.ModuleFolder)\.build-stamp">
     <MSBuild Projects="%(OfficialBackend.Identity)"
              Targets="Restore;Build"
-             Properties="Configuration=$(Configuration);Platform=x64;NuGetAudit=$(NuGetAudit)"
+             Properties="Configuration=$(Configuration);Platform=x64;SelfContained=true;NuGetAudit=$(NuGetAudit)"
              RemoveProperties="TargetFramework;RuntimeIdentifier;TargetPlatformVersion;TargetPlatformMinVersion;BaseIntermediateOutputPath;BaseOutputPath;MSBuildProjectExtensionsPath;IntermediateOutputPath;OutputPath;OutDir" />
     <MSBuild Projects="%(OfficialBackend.Identity)"
              Targets="GetTargetPath"
-             Properties="Configuration=$(Configuration);Platform=x64"
+             Properties="Configuration=$(Configuration);Platform=x64;SelfContained=true"
              RemoveProperties="TargetFramework;RuntimeIdentifier;TargetPlatformVersion;TargetPlatformMinVersion;BaseIntermediateOutputPath;BaseOutputPath;MSBuildProjectExtensionsPath;IntermediateOutputPath;OutputPath;OutDir">
       <Output TaskParameter="TargetOutputs" ItemName="_OfficialBackendTargetPath" />
     </MSBuild>

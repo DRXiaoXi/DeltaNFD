@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!--
     CPU/帧格后端（T4）：持久驻留，持有唯一的游戏监控与状态通道。
@@ -18,8 +18,8 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseAppHost>true</UseAppHost>
-    <Version>0.915</Version>
-    <InformationalVersion>Alpha0.915</InformationalVersion>
+    <Version>0.916</Version>
+    <InformationalVersion>Alpha0.916</InformationalVersion>
     <WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
 

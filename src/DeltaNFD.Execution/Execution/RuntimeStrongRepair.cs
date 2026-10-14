@@ -39,7 +39,7 @@ internal sealed class RuntimeStrongRepair(IRuntimeStrongRepairEnvironment enviro
         OperationResult Stop(string message, bool unknown = false) => new()
         {
             Success = false, OutcomeUnknown = unknown, RequiresReboot = reboot,
-            Message = (originalStarted ? "强力修复未完成，已有运行库操作不会撤销。\n" : "强力修复未完成，未继续运行库卸载／安装。\n")
+            Message = (originalStarted ? "强力修复未完成，已有运行库操作不会撤销。\n" : "强力修复未完成，未继续运行库覆盖安装。\n")
                 + message + "\n诊断目录：" + diagnostics.DirectoryPath,
         };
         try
@@ -78,8 +78,8 @@ internal sealed class RuntimeStrongRepair(IRuntimeStrongRepairEnvironment enviro
                 if (left <= TimeSpan.Zero) return Stop("系统修复达到时间上限。");
                 var cap = step == RuntimeSystemRepairStep.ComponentStore ? TimeSpan.FromMinutes(35) : TimeSpan.FromMinutes(25);
                 progress?.Report(step == RuntimeSystemRepairStep.ComponentStore
-                    ? "强力修复 1/3：DISM 修复 Windows 组件存储，可能需要联网…"
-                    : "强力修复 2/3：SFC 检查并修复受保护的系统文件…");
+                    ? "强力修复 1/3：DISM 修复 Windows 组件存储，可能需要联网及等待数十分钟；下一步为 SFC，之后才覆盖安装 C++。"
+                    : "强力修复 2/3：SFC 检查并修复受保护的系统文件，完成后才覆盖安装 C++。百分比停留不代表卡死。");
                 var result = await environment.ExecuteAsync(step, left < cap ? left : cap, progress, system.Token);
                 diagnostics.Save("strong-" + step + ".json", result);
                 reboot |= result.RequiresReboot;
@@ -234,12 +234,14 @@ internal sealed class RuntimeStrongRepairEnvironment(RuntimeRepairDiagnostics di
         using var capture = new CancellationTokenSource();
         Task stdout = Task.CompletedTask, stderr = Task.CompletedTask;
         var name = "strong-" + step;
+        var display = new RuntimeSystemRepairProgress(step, progress);
+        progress?.Report(display.Status());
         var result = await _runner.RunAsync(Command(step, diagnostics.DirectoryPath), name, timeout, progress, token,
             process =>
             {
-                stdout = diagnostics.CaptureOutputAsync(process.StandardOutput, name + "-stdout.log", capture.Token);
+                stdout = diagnostics.CaptureOutputAsync(process.StandardOutput, name + "-stdout.log", capture.Token, display.Observe);
                 stderr = diagnostics.CaptureOutputAsync(process.StandardError, name + "-stderr.log", capture.Token);
-            });
+            }, waitStatus: display.Status);
         capture.CancelAfter(result.OutcomeUnknown ? TimeSpan.Zero : TimeSpan.FromSeconds(5));
         try { await Task.WhenAll(stdout, stderr).WaitAsync(TimeSpan.FromSeconds(6)); }
         catch (Exception ex) { diagnostics.Save(name + "-output-warning.json", new { Error = ex.Message }); }

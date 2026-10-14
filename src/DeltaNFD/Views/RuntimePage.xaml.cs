@@ -87,14 +87,17 @@ public sealed partial class RuntimePage : Page
                 await new ContentDialog { XamlRoot = XamlRoot, Title = "无需卸载", Content = "未检测到 C++ 可再发行运行库条目。", CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
                 return;
             }
-            var list = string.Join("\n", preview.Entries.Select(e => $"· {e.DisplayName} · {e.Architecture} · {e.DisplayVersion}"));
+            var list = string.Join("\n", preview.Entries.Select(e => $"· {e.DisplayName} · {e.Architecture} · {e.DisplayVersion}"
+                + (preview.AllowNonstandard ? $" · 登记ID：{e.KeyName}" : "")));
+            var modeNote = preview.AllowNonstandard
+                ? "本次已开启强制尝试：允许已核验的微软 C++ 未收录产品码或偏低版本。缓存 MSI 身份、架构、分支和共享依赖仍须通过校验；不能保证卸载成功。\n\n" : "";
             var confirm = new ContentDialog { XamlRoot = XamlRoot, Title = "卸载全部 C++ 运行库？",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
-                    Text = $"将处理以下 {preview.Entries.Count} 个条目：\n{list}\n\n卸载后，依赖这些运行库的游戏及软件可能无法启动，直到重新安装。请先关闭游戏、开发工具和运行库防护。\n不会卸载 .NET、DirectX、SDK、调试组件或 VSTO。共享依赖或身份无法核验时会停止并保留证据。\n此入口只卸载，不自动重装。停止后续步骤不等于恢复已卸载的组件。" } },
-                PrimaryButtonText = "卸载全部", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close };
+                    Text = modeNote + $"将处理以下 {preview.Entries.Count} 个条目：\n{list}\n\n卸载后，依赖这些运行库的游戏及软件可能无法启动，直到重新安装。请先关闭游戏、开发工具和运行库防护。\n不会卸载 .NET、DirectX、SDK、调试组件或 VSTO。共享依赖或身份无法核验时会停止并保留证据。\n此入口只卸载，不自动重装。停止后续步骤不等于恢复已卸载的组件。" } },
+                PrimaryButtonText = preview.AllowNonstandard ? "确认强制尝试卸载" : "卸载全部", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close };
             if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
             ViewModel.UninstallAllPreviewBusy = false;
-            var result = await ViewModel.UninstallAllAsync(preview.Fingerprint);
+            var result = await ViewModel.UninstallAllAsync(preview.Fingerprint, preview.AllowNonstandard);
             if (result is null) return;
             await new ContentDialog { XamlRoot = XamlRoot,
                 Title = result.OutcomeUnknown ? "卸载事务未确认结束" : result.RequiresReboot ? "需重启后重新检测" : result.Success ? "全部卸载完成" : "卸载未全部完成",
@@ -128,7 +131,8 @@ public sealed partial class RuntimePage : Page
             {
                 XamlRoot = XamlRoot,
                 Title = "高帧性修复（原 C++ AIO 流程）？",
-                Content = "将卸载检测到的全部 Visual C++ 运行库条目，再静默运行完整 AIO 安装器，安装官方 x86/x64 基线并复检。\n\n"
+                Content = (strongMode ? "将校验安装资源，跳过 C++ 卸载，直接覆盖安装／修复 x86/x64 C++ 组件并复检。\n\n"
+                    : "将先核验全部 C++ 卸载计划，通过后卸载并运行完整 AIO 和官方基线。若共享依赖在任何卸载开始前阻塞，将保留组件与登记，改为逐包覆盖安装并复检。\n\n")
                     + "这会改变系统运行库环境；开发环境依赖特定版本时请谨慎。请先关闭运行库防护。\n\n"
                     + (strongMode ? "已开启强力修复模式：\n" + RuntimeViewModel.StrongRepairConfirmation + "\n\n" : "")
                     + "停止后续步骤不等于撤销当前安装事务。" + EnvironmentWarnings + "\n\n确定继续？",
@@ -169,7 +173,8 @@ public sealed partial class RuntimePage : Page
             if (!await EnsureRepairEnvironmentAsync()) return;
             var strongMode = ViewModel.StrongRepairMode;
             var confirm = new ContentDialog { XamlRoot = XamlRoot, Title = "兼容性修复？",
-                Content = "将先校验安装资源，并按高帧性修复的同一受控流程卸载当前全部 C++ 可再发行运行库，再检测并修复微软 DirectX 旧版组件、安装 C++ 及复检。\n\n卸载后依赖这些组件的应用可能无法运行，直到安装完成；开发环境依赖特定版本时请谨慎。\n\n"
+                Content = (strongMode ? "将先校验安装资源，跳过 C++ 卸载，修复微软 DirectX 旧版组件，并逐包覆盖安装／修复 C++ 及复检。\n\n"
+                    : "将先校验资源和全部 C++ 卸载计划，再修复 DirectX 与 C++。若共享依赖在任何卸载开始前阻塞，将保留组件与登记，改为逐包覆盖安装 C++。\n\n实际卸载后，依赖这些组件的应用可能无法运行，直到安装完成；开发环境依赖特定版本时请谨慎。\n\n")
                     + (strongMode ? "已开启强力修复模式：\n" + RuntimeViewModel.StrongRepairConfirmation + "\n\n" : "")
                     + "请先关闭游戏和运行库防护。停止后续步骤不会强杀正在执行的安装事务。" + EnvironmentWarnings,
                 PrimaryButtonText = "修复", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close };
@@ -187,6 +192,11 @@ public sealed partial class RuntimePage : Page
     }
 
     private void CancelRepairButton_Click(object sender, RoutedEventArgs e) => ViewModel.CancelRepair();
+    private async void ReviewRuntimeOperation_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.IsRepairing || _repairDialogHandling) return;
+        await BackendReviewFlow.RunAsync(XamlRoot, [DeltaNFD.Backends.BackendModules.Runtime]);
+    }
 
     private async void UninstallV14Button_Click(object sender, RoutedEventArgs e)
     {

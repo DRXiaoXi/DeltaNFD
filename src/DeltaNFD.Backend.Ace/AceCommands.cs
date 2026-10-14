@@ -17,6 +17,7 @@ internal static class AceCommands
             [BackendCommands.AceScan] = ScanAsync,
             [BackendCommands.AceCoreCheck] = CoreCheckAsync,
             [BackendCommands.AceClean] = CleanAsync,
+            [BackendCommands.AceCoreClean] = CleanCoreFilesAsync,
             [BackendCommands.AceReconcile] = ReconcileAsync,
             [BackendCommands.AceVirtCheck] = VirtCheckAsync,
         },
@@ -94,6 +95,9 @@ internal static class AceCommands
         var progress = new RelayProgress(context);
         return await service.CleanPhasedAsync(progress, context.CancellationToken);
     }
+
+    private static Task<BackendResult> CleanCoreFilesAsync(BackendCommandContext context) =>
+        new AceService().CleanCoreFilesPhasedAsync(new RelayProgress(context), context.CancellationToken);
 
     /// <summary>虚拟化环境检测（纯只读，不触碰 ACE 组件，游戏运行中也可用）。</summary>
     private static async Task<BackendResult> VirtCheckAsync(BackendCommandContext context)

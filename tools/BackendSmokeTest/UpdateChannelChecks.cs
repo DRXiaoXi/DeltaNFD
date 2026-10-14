@@ -57,6 +57,17 @@ internal static class UpdateChannelChecks
         var typoSettings = Path.Combine(root, "typo-install.json");
         UpdateChannelInstallation.Apply(typoSettings, new("typo", "AAlpha1.0", ""));
         Check(!File.Exists(typoSettings), "AAlpha 错字不新增安装阶段别名");
+        var preAlphaKind = UpdateChannelPolicy.Classify("0.916", "PreAlpha0.916", "stable", false);
+        Check(preAlphaKind == UpdateReleaseKind.Local && !UpdateChannelPolicy.Allows(UpdateChannel.Internal, preAlphaKind)
+            && !UpdateChannelPolicy.Allows(UpdateChannel.Public, preAlphaKind), "PreAlpha0.916 仅本地构建，两个在线通道均不接收，不能被 stable 字段提升");
+        var preAlphaSettings = Path.Combine(root, "prealpha-install.json");
+        UpdateChannelInstallation.Apply(preAlphaSettings, new("prealpha-0916", "PreAlpha0.916", "prealpha-0916"));
+        Check(AppSettingsStore.Read(preAlphaSettings).UpdateChannel == UpdateChannel.Internal,
+            "首次本地 PreAlpha 安装默认内测，不当作线上 Alpha 安装批次");
+        AppSettingsStore.Update(preAlphaSettings, settings => settings.UpdateChannel = UpdateChannel.Public);
+        UpdateChannelInstallation.Apply(preAlphaSettings, new("prealpha-reinstall", "PreAlpha0.916", ""));
+        Check(AppSettingsStore.Read(preAlphaSettings).UpdateChannel == UpdateChannel.Public,
+            "已有用户安装本地 PreAlpha 保留其更新通道选择");
         foreach (var prefix in new[] { "Alpha2.0", "alphaV2.0", "Beta2.0", "Release2.0" })
         {
             var kind = UpdateChannelPolicy.Classify("2.0", prefix);

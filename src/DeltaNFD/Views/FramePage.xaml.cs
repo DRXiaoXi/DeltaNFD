@@ -176,6 +176,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
             FrameSrv.RefreshDualCcdArmState();
             UpdateGameDot();
             RefreshFeaturePresentation();
+            _ = LoadFrameBackgroundAsync();
         };
         Unloaded += (_, _) => FrameSrv.PropertyChanged -= OnFramePropertyChanged;
         UpdateGameDot();
@@ -285,6 +286,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
             }
 
             _suppressFrameModeToggle = false;
+            await LoadFrameBackgroundAsync();
         }
     }
 

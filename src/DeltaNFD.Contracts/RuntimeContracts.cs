@@ -2,8 +2,12 @@ namespace DeltaNFD.Services;
 
 public enum RuntimeGuardMode { BasicV14, Full }
 
-public sealed record RuntimeUninstallPreview(List<VcRedistEntry> Entries, string Fingerprint);
-public sealed class RuntimeUninstallAllArgs { public string Fingerprint { get; set; } = ""; }
+public sealed record RuntimeUninstallPreview(List<VcRedistEntry> Entries, string Fingerprint, bool AllowNonstandard = false);
+public sealed class RuntimeUninstallAllArgs
+{
+    public string Fingerprint { get; set; } = "";
+    public bool AllowNonstandard { get; set; }
+}
 public enum RuntimeRepairMode { MissingOrOutdated, Legacy2005And2008, FullReinstall }
 public sealed record RuntimeRepairEnvironmentItem(string Name, string Status, string Detail, string Suggestion = "");
 public sealed record RuntimeRepairEnvironmentReport(IReadOnlyList<RuntimeRepairEnvironmentItem> Items)
@@ -59,16 +63,22 @@ public sealed class VcRedistSuboptimal
     /// <summary>推荐（最适）版本。</summary>
     public required string RecommendedVersion { get; init; }
 
-    /// <summary>当前已安装版本（空 = 未安装）。</summary>
+    /// <summary>当前登记/已核对的 MSI 版本（空的原因由 Reason 区分为缺失或无法核对）。</summary>
     public string InstalledVersion { get; init; } = "";
 
     public string DisplayName { get; init; } = "";
+
+    /// <summary>missing / version-unknown / below-recommended；旧协议缺省为空。</summary>
+    public string Reason { get; init; } = "";
+
+    /// <summary>仅推荐版本差异，不作为安装失败或 DLL 损坏的证据。</summary>
+    public bool IsRecommendationOnly { get; init; }
 }
 
-/// <summary>Visual C++ v14 运行库扫描结果（只读快照）。v14 为不完善版本，非伪装包。</summary>
+/// <summary>运行库扫描只读快照。v14 异常是用户确认的三角洲掉帧兼容性策略，不等于 DLL 损坏。</summary>
 public sealed class VcRedistScanReport
 {
-    /// <summary>异常运行库：显示名匹配 "Visual C++ v14 Redistributable"（三角洲强制安装的不完善版本）。</summary>
+    /// <summary>异常运行库：显示名匹配 "Visual C++ v14"；保留三角洲掉帧兼容性标记。</summary>
     public required List<VcRedistEntry> Abnormal { get; init; }
 
     /// <summary>非最适版本条目：各分支（2005~2013 / 2015-2026）低于推荐版本或未安装。</summary>
@@ -175,7 +185,13 @@ public interface IRuntimeGuardService
     Task<OperationResult> UninstallV14Async(IProgress<string>? progress = null);
     /// <summary>只读预览全部微软 C++ 可再发行运行库；不包括 SDK/Debug/VSTO。指纹用于确认后复核。</summary>
     Task<RuntimeUninstallPreview> PreviewUninstallAllAsync() => throw new NotSupportedException("后端未提供全量卸载预览。");
+    Task<RuntimeUninstallPreview> PreviewUninstallAllAsync(bool allowNonstandard) => allowNonstandard
+        ? throw new NotSupportedException("后端未提供强制尝试卸载，请更新后端。") : PreviewUninstallAllAsync();
     /// <summary>按已确认清单执行受控卸载，清单变化则拒绝；不强杀安装事务。</summary>
     Task<OperationResult> UninstallAllAsync(string fingerprint, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
         => Task.FromResult(OperationResult.Fail("后端未提供全量卸载。"));
+    Task<OperationResult> UninstallAllAsync(string fingerprint, bool allowNonstandard, IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default) => allowNonstandard
+        ? Task.FromResult(OperationResult.Fail("后端未提供强制尝试卸载，请更新后端。"))
+        : UninstallAllAsync(fingerprint, progress, cancellationToken);
 }

@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using DeltaNFD.Backends;
 using DeltaNFD.Services;
 using DeltaNFD.Services.Backends;
@@ -46,33 +46,34 @@ public sealed partial class ProcessPage : Page
         if (_memoryBusy || _propertyBusy) return;
         _memoryBusy = true;
         MemoryPreviewButton.IsEnabled = false;
-        MemoryTrimStatusText.Text = "正在采样并核对后台进程…";
+        MemoryTrimStatusText.Text = "正在核对内存回收模式与目标…";
         try
         {
             var response = await BackendProcmanService.Instance.InvokeAsync(BackendCommands.ProcmanMemoryPreview, new { });
             var preview = BackendResults.RequireData<ProcmanMemoryPreview>(response, "后台内存预览");
             MemoryTrimStatusText.Text = preview.Message;
-            if (preview.Candidates.Count == 0) { MemoryTrimStatusText.Text += "\n当前没有符合条件的进程。"; return; }
+            var global = preview.Mode == ProcmanMemoryModes.Aggressive;
+            if (preview.Candidates.Count == 0 && !global) { MemoryTrimStatusText.Text += "\n当前没有符合条件的进程。"; return; }
             if (_detachedFromWindow || XamlRoot is null) return;
             var content = new StackPanel { Spacing = 12 };
             content.Children.Add(new TextBlock { Text = preview.Message + "\n\n回收后应用可能重新调入页面而短暂卡顿。此操作无法手动撤销，Windows 会按需重建工作集。", TextWrapping = TextWrapping.Wrap });
             var choices = new List<(CheckBox Check, ProcmanMemoryCandidate Candidate)>();
             foreach (var candidate in preview.Candidates)
             {
-                var check = new CheckBox { IsChecked = true, Content = new TextBlock
-                { Text = $"{candidate.Name} · PID {candidate.Identity.Pid}\n工作集 {candidate.WorkingSetBytes / 1048576d:0.#} MiB · CPU {candidate.CpuPercent:0.#}%", TextWrapping = TextWrapping.Wrap } };
+                var check = new CheckBox { IsChecked = true, IsEnabled = preview.Mode == ProcmanMemoryModes.Normal, Content = new TextBlock
+                { Text = $"{candidate.Name} · PID {candidate.Identity.Pid}\n工作集 {candidate.WorkingSetBytes / 1048576d:0.#} MiB", TextWrapping = TextWrapping.Wrap } };
                 ToolTipService.SetToolTip(check, candidate.Identity.ExecutablePath);
                 choices.Add((check, candidate)); content.Children.Add(check);
             }
             var confirm = new ContentDialog
             {
-                XamlRoot = XamlRoot, Title = "回收所选后台应用的工作集？",
+                XamlRoot = XamlRoot, Title = global ? "执行全局内存回收？" : preview.Mode == ProcmanMemoryModes.DeltaStable ? "回收全部非系统、非三角洲进程？" : "回收所选后台应用的工作集？",
                 Content = new ScrollViewer { Content = content, MaxHeight = 420 },
-                PrimaryButtonText = "回收已勾选进程", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
+                PrimaryButtonText = global ? "执行全局回收" : "回收已勾选进程", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
             };
             if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
             var selected = choices.Where(c => c.Check.IsChecked == true).Select(c => c.Candidate.Identity).ToList();
-            if (selected.Count == 0) { MemoryTrimStatusText.Text = "未选择进程，未执行回收。"; return; }
+            if (selected.Count == 0 && !global) { MemoryTrimStatusText.Text = "未选择进程，未执行回收。"; return; }
             var result = await BackendProcmanService.Instance.InvokeAsync(BackendCommands.ProcmanMemoryTrim,
                 new ProcmanMemoryTrimArgs { PreviewId = preview.Id, Processes = selected });
             var report = BackendResults.RequireData<ProcmanMemoryTrimReport>(result, "后台内存回收");
@@ -161,8 +162,10 @@ public sealed partial class ProcessPage : Page
             _ = LoadTopologyAsync();
             _ = LoadRulesAsync();
             _ = LoadBackgroundAsync(syncControls: true);
+            if (IsBackgroundTab) _ = LoadMemoryPrelaunchAsync();
         };
         Unloaded += (_, _) => StopPolling();
+        _lastProcessTab = ProcessTabs.SelectedItem;
         _workspaceReady = true;
     }
 
@@ -197,7 +200,7 @@ public sealed partial class ProcessPage : Page
         try
         {
             result = await BackendProcmanService.Instance.ListAsync(_offset, PageSize,
-                _search.Length == 0 ? null : _search, scope: _gameScope ? "delta" : "general");
+                _search.Length == 0 ? null : _search, scope: "general");
         }
         catch (Exception ex) { ListNoteText.Text = "本次读取失败：" + ex.Message; return; }
         if (_detachedFromWindow || generation != _listGeneration) { _listQueued = true; return; }
@@ -284,61 +287,16 @@ public sealed partial class ProcessPage : Page
     {
         _topology = await BackendProcmanService.Instance.GetTopologyAsync();
         TopologyNoteText.Text = _topology is { Groups.Count: > 0 }
-            ? $"本机处理器组：{string.Join("；", _topology.Groups.Select(g => $"组 {g.Group}（0x{g.Mask:X}）"))}。按处理器组设置；P/E 核与 NUMA 拓扑无法识别时不猜测标签。"
+            ? _topology.DetectionNote
             : "处理器组拓扑读取失败：亲和性只能整组设置，不做猜测。";
         RebuildAffinityPanel();
+        BuildCpuSelectionPanel(RuleCpuGroupPanel, _ruleProcessorToggles);
+        SetRuleCpuSelection(RuleValueBox.Text);
         if (_lastAffinityValue.Length > 0) SetAffinityToggles(_lastAffinityValue, primaryOnly: true);
         if (IsAlways) ShowAlwaysSettings();
     }
 
-    private void RebuildAffinityPanel()
-    {
-        AffinityGroupPanel.Children.Clear();
-        _processorToggles.Clear();
-        if (_topology is not { Groups.Count: > 0 })
-        {
-            var note = new TextBlock { Text = "拓扑不可用，亲和性设置已禁用。", FontSize = 11, Opacity = 0.7 };
-            AffinityGroupPanel.Children.Add(note);
-            return;
-        }
-        foreach (var group in _topology.Groups)
-        {
-            var panel = new StackPanel { Spacing = 8 };
-            var label = new TextBlock
-            {
-                Text = $"组 {group.Group}",
-                FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center,
-                MinWidth = 48,
-            };
-            var toggles = new Grid { ColumnSpacing = 4, RowSpacing = 4 };
-            for (var col = 0; col < 8; col++) toggles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            var position = 0;
-            // 按组内逻辑处理器编号生成开关（≤64/组）；掩码 0x1 << n
-            for (var bit = 0; bit < 64; bit++)
-            {
-                var bitMask = 1UL << bit;
-                if ((group.Mask & bitMask) == 0) continue;
-                var toggle = new ToggleButton
-                {
-                    Content = bit.ToString(),
-                    MinWidth = 0, MinHeight = 32, Padding = new Thickness(2), HorizontalAlignment = HorizontalAlignment.Stretch,
-                    Tag = new ProcmanGroupMask(group.Group, bitMask),
-                };
-                if (position % 8 == 0) toggles.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                Grid.SetColumn(toggle, position % 8); Grid.SetRow(toggle, position / 8); position++;
-                ToolTipService.SetToolTip(toggle, $"处理器组 {group.Group} · 逻辑 CPU {bit}");
-                _processorToggles.Add(toggle);
-                toggles.Children.Add(toggle);
-            }
-            panel.Children.Add(label);
-            var all = new Button { Content = "选择整组", FontSize = 12 };
-            all.Click += (_, _) => { foreach (var toggle in EnumerateAffinityToggles(group.Group)) toggle.IsChecked = true; };
-            panel.Children.Add(all);
-            panel.Children.Add(toggles);
-            AffinityGroupPanel.Children.Add(panel);
-        }
-    }
+    private void RebuildAffinityPanel() => BuildCpuSelectionPanel(AffinityGroupPanel, _processorToggles);
 
     // ---------------- 选中与详情 ----------------
 
@@ -804,7 +762,11 @@ public sealed partial class ProcessPage : Page
 
     private void RuleCapabilityCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (RuleValueCombo is not null) RebuildRuleValues();
+        if (RuleValueCombo is not null)
+        {
+            RebuildRuleValues();
+            if (_workspaceReady && IsGameRulesTab) LoadGameCapabilityRule();
+        }
     }
 
     private void RebuildRuleValues(string? selectedValue = null)
@@ -824,26 +786,15 @@ public sealed partial class ProcessPage : Page
             _ => [],
         };
         foreach (var choice in choices) RuleValueCombo.Items.Add(new ComboBoxItem { Content = choice.Label, Tag = choice.Value });
-        if (mask) { if (selectedValue is not null) RuleValueBox.Text = selectedValue; return; }
+        if (mask)
+        {
+            if (selectedValue is not null) RuleValueBox.Text = selectedValue;
+            SetRuleCpuSelection(RuleValueBox.Text);
+            return;
+        }
         var index = Array.FindIndex(choices, c => c.Value.Equals(selectedValue, StringComparison.OrdinalIgnoreCase));
         if (index < 0) index = RuleCapabilityCombo.SelectedIndex switch { 0 or 5 or 7 => 2, 6 => 4, _ => 0 };
         RuleValueCombo.SelectedIndex = choices.Length == 0 ? -1 : index;
-    }
-
-    private void UseSelectedCpus_Click(object sender, RoutedEventArgs e)
-    {
-        if (_selected is null || !_selected.ExecutablePath.Equals(_ruleTargetPath, StringComparison.OrdinalIgnoreCase))
-        { RuleNoteText.Text = "请先选择规则目标进程，再勾选其 CPU。"; return; }
-        var masks = CollectAffinityMasks();
-        RuleValueBox.Text = string.Join(";", masks.Select(m => $"g{m.Group}:0x{m.Mask:X}"));
-        if (masks.Count == 0) RuleNoteText.Text = "请至少选择一个 CPU。";
-    }
-
-    private void GoToCpuSelection_Click(object sender, RoutedEventArgs e)
-    {
-        ProcessTabs.SelectedItem = Path.GetFileNameWithoutExtension(_ruleTargetPath).Equals(DeltaForceLocator.GameProcessName, StringComparison.OrdinalIgnoreCase)
-            ? GameTab : GeneralTab;
-        AffinityExpander.IsExpanded = true;
     }
 
     private void LoadRules_Click(object sender, RoutedEventArgs e) => _ = LoadRulesAsync();
@@ -857,7 +808,8 @@ public sealed partial class ProcessPage : Page
             var rules = BackendJson.Deserialize<ProcmanRulesListResult>(data);
             _savedRules = rules.Rules;
             RuleListPanel.Children.Clear();
-            foreach (var rule in rules.Rules)
+            var visibleRules = rules.Rules.Where(r => !IsGameRulesTab || r.ExecutablePath.Equals(_ruleTargetPath, StringComparison.OrdinalIgnoreCase)).ToList();
+            foreach (var rule in visibleRules)
             {
                 var line = new Grid { ColumnSpacing = 12, Padding = new Thickness(0, 8, 0, 8) };
                 line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -876,7 +828,7 @@ public sealed partial class ProcessPage : Page
                 var edit = new Button { Content = "编辑", Tag = rule, MinWidth = 56 };
                 edit.Click += (_, _) =>
                 {
-                    ProcessTabs.SelectedItem = RulesTab;
+                    ProcessTabs.SelectedItem = IsGameRulesTab ? GameTab : RulesTab;
                     SavedRuleEditor.Visibility = Visibility.Visible;
                     SetRuleTarget(rule.ExecutablePath);
                     RuleCapabilityCombo.SelectedIndex = rule.Capability switch
@@ -892,7 +844,7 @@ public sealed partial class ProcessPage : Page
                 line.Children.Add(delete);
                 RuleListPanel.Children.Add(line);
             }
-            RuleCountText.Text = rules.Rules.Count == 0 ? "暂无规则" : $"已保存 {rules.Rules.Count} 条规则";
+            RuleCountText.Text = visibleRules.Count == 0 ? "暂无规则" : $"已保存 {visibleRules.Count} 条规则";
             // Refresh badges only; list refresh must not overwrite an in-progress property edit.
             if (_selected is { } selected)
                 SelectedAlwaysSummary.Text = string.Join("；", _savedRules.Where(r => r.ExecutablePath.Equals(selected.ExecutablePath, StringComparison.OrdinalIgnoreCase))
@@ -906,6 +858,9 @@ public sealed partial class ProcessPage : Page
 
     private async void SaveRule_Click(object sender, RoutedEventArgs e)
     {
+        if (_gameRulesLoading || _ruleSaveBusy) return;
+        if (IsGameRulesTab && !GameRulePathBox.Text.Trim().Trim('"').Equals(_ruleTargetPath, StringComparison.OrdinalIgnoreCase))
+        { RuleNoteText.Text = "请先点击“使用此路径”，再保存该主进程的规则。"; return; }
         if (_ruleTargetPath.Length == 0)
         {
             RuleNoteText.Text = "请先选择应用或编辑已有总是规则。";
@@ -928,6 +883,11 @@ public sealed partial class ProcessPage : Page
             Enabled = RuleEnabledToggle.IsOn,
             AutoTakeover = RuleAutoTakeoverCheck.IsChecked == true,
         };
+        _ruleSaveBusy = true;
+        SaveRuleButton.IsEnabled = RuleEditorHost.IsEnabled = false;
+        ProcessTabs.IsEnabled = false;
+        SaveRuleButton.Content = "保存中…";
+        RuleNoteText.Text = "正在保存规则…";
         try
         {
             var result = await BackendProcmanService.Instance.InvokeAsync(BackendCommands.ProcmanRulesSave,
@@ -940,6 +900,12 @@ public sealed partial class ProcessPage : Page
         catch (Exception ex)
         {
             RuleNoteText.Text = "规则保存未完成：" + ex.Message;
+        }
+        finally
+        {
+            _ruleSaveBusy = false;
+            ProcessTabs.IsEnabled = SaveRuleButton.IsEnabled = RuleEditorHost.IsEnabled = true;
+            SaveRuleButton.Content = "保存规则";
         }
     }
 
@@ -961,51 +927,4 @@ public sealed partial class ProcessPage : Page
         }
     }
 
-    // ---------------- P4：后台抑制 ----------------
-
-    private async void SaveResponsiveness_Click(object sender, RoutedEventArgs e)
-    {
-        var config = new ProcmanResponsivenessConfigArgs
-        {
-            Enabled = ResponsivenessToggle.IsOn,
-            CpuBusyThreshold = (int)Math.Clamp(BusyThresholdBox.Value, 10, 99),
-            CpuIdleThreshold = (int)Math.Clamp(IdleThresholdBox.Value, 5, 99),
-            MaxAdjustPerRound = (int)Math.Clamp(MaxAdjustBox.Value, 1, 4),
-            CooldownSeconds = (int)Math.Clamp(CooldownBox.Value, 0, 600),
-        };
-        if (config.CpuBusyThreshold <= config.CpuIdleThreshold)
-        {
-            ResponsivenessNoteText.Text = "触发阈值必须高于恢复阈值。";
-            return;
-        }
-        try
-        {
-            var result = await BackendProcmanService.Instance.InvokeAsync(BackendCommands.ProcmanResponsivenessConfig, config);
-            ResponsivenessNoteText.Text = result.Status == BackendResultStatuses.Ok
-                ? (config.Enabled ? "已启用（保守策略；关闭后立即恢复全部调整）。" : "已保存（保持关闭）。")
-                : "保存失败：" + result.Message;
-        }
-        catch (Exception ex)
-        {
-            ResponsivenessNoteText.Text = "保存未完成：" + ex.Message;
-        }
-    }
-
-    private async void LoadResponsivenessEvents_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var result = await BackendProcmanService.Instance.InvokeAsync(BackendCommands.ProcmanResponsivenessEvents, new { });
-            if (result.Data is not { } data) { ResponsivenessNoteText.Text = "事件读取失败：" + result.Message; return; }
-            var events = BackendJson.Deserialize<ProcmanResponsivenessEventResult>(data);
-            ResponsivenessEventsText.Text = events.Events.Count == 0
-                ? "暂无调整事件（保护未启用或未触发）。"
-                : string.Join("\n", events.Events.TakeLast(8).Select(ev =>
-                    $"{ev.TimeUtc.LocalDateTime:HH:mm:ss} {Path.GetFileName(ev.ExecutablePath)}（PID {ev.Pid}）：{(ev.Action == "demote" ? "临时降级" : "恢复")}——{ev.Reason}"));
-        }
-        catch (Exception ex)
-        {
-            ResponsivenessEventsText.Text = "事件读取未完成：" + ex.Message;
-        }
-    }
 }

@@ -5,7 +5,7 @@ internal static class RuntimeUnifiedUninstallChecks
     private static readonly string First = "{11111111-1111-1111-1111-111111111111}";
     private static readonly string Second = "{22222222-2222-2222-2222-222222222222}";
 
-    internal static async Task RunAsync(bool readOnly = false)
+    internal static async Task RunAsync(bool readOnly = false, bool allowNonstandard = false)
     {
         var id = Guid.NewGuid();
         var root = Path.Combine(Path.GetTempPath(), "DeltaNFD_Unified_" + id.ToString("N"));
@@ -24,7 +24,7 @@ internal static class RuntimeUnifiedUninstallChecks
         if (readOnly)
         {
             var diagnostics = new RuntimeRepairDiagnostics(root);
-            var backend = new RuntimeUnifiedUninstallBackend(diagnostics);
+            var backend = new RuntimeUnifiedUninstallBackend(diagnostics, allowNonstandard);
             foreach (var entry in (await new RuntimeGuardService().ScanVcRedistsAsync()).All)
             {
                 try
@@ -87,10 +87,13 @@ internal static class RuntimeUnifiedUninstallChecks
         try { RuntimeUnifiedUninstallBackend.ShouldRetainNewerMsi(Entry(), Product(First) with { Version = "9.0.30729.1" }); }
         catch (InvalidDataException) { lowerRefused = true; }
         Check(lowerRefused, "无法解释的旧版本关联拒绝，不直接卸载");
+        count += await RuntimeVc2013VersionChecks.RunAsync(root);
+        count += RuntimeForcePolicyChecks.Run(root);
         var msi = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "src/DeltaNFD/Assets/VCRedistRepair"), "*.msi", SearchOption.AllDirectories)
             .Where(f => new DirectoryInfo(Path.GetDirectoryName(f)!).Name is "x86" or "x64");
         foreach (var file in msi)
             Check(RuntimeMsiMetadata.ReadArchitecture(file) == new DirectoryInfo(Path.GetDirectoryName(file)!).Name, "真实资源 MSI 架构只读核对：" + file);
+        count += RuntimeBundleProviderChecks.Run();
         count += await RuntimeDependencyUninstallChecks.RunAsync(root);
         count += await RuntimeUninstallBatchChecks.RunAsync(root);
         count += await RuntimeInfUninstallChecks.RunAsync(root);

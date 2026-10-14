@@ -41,6 +41,7 @@ internal static class RuntimeRepairFlowChecks
             "内部受控修复也必须通过卸载复检才能启动安装");
         var scan = Fake.Missing();
         await RuntimeBetaRepairChecks.RunAsync(root, Check);
+        RuntimeScanClassificationChecks.Run(Check);
         var full = RuntimeRepairPlanner.Build(scan, RuntimeRepairMode.FullReinstall);
         Check(full[0].Kind == "uninstall" && full.Any(s => s.Kind == "msi"), "全量模式保留卸载与全系列安装");
         var legacy = RuntimeRepairPlanner.Build(scan, RuntimeRepairMode.Legacy2005And2008);
@@ -148,7 +149,7 @@ internal static class RuntimeRepairFlowChecks
         var model = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "src", "DeltaNFD", "ViewModels", "RuntimeViewModel.cs"));
         var serviceText = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "src", "DeltaNFD.Execution", "Execution", "RuntimeGuardService.cs"));
         var runnerText = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "src", "DeltaNFD.Execution", "Execution", "RuntimeRepairProcessRunner.cs"));
-        Check(!page.Contains("RepairScopeIndex") && page.Contains("Beta0.9") && page.Contains("CancelRepairButton_Click"), "UI 恢复 Beta AIO 单一入口并保留取消入口");
+        Check(!page.Contains("RepairScopeIndex") && page.Contains("完整 AIO") && page.Contains("CancelRepairButton_Click"), "UI 保留完整 AIO 单一入口与取消入口");
         Check(model.Contains("cancellation.Token") && model.Contains("!RepairCancelRequested"), "取消传入后端且迟到进度不覆盖取消提示");
         Check(!runnerText.Contains(".Kill("), "受控安装器不强杀事务");
         Check(serviceText.Contains("new RuntimeBetaRepair(") && !serviceText.Contains("new RuntimeRepairCoordinator("), "产品修复入口恢复 Beta 完整 AIO，不再走分支逐包安装");

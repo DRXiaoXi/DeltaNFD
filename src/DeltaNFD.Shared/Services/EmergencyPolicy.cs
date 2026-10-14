@@ -39,10 +39,10 @@ public static class EmergencyPolicyVerifier
     };
     // 停止、还原、核对、解除防护不允许出现在远程禁用清单。
     public static bool CanBlock(string command) => command is
-        BackendCommands.AceClean or BackendCommands.RuntimeRepair or BackendCommands.RuntimeCompatibilityRepair
+        BackendCommands.AceClean or BackendCommands.AceCoreClean or BackendCommands.RuntimeRepair or BackendCommands.RuntimeCompatibilityRepair
         or BackendCommands.RuntimeRedistUninstall or BackendCommands.RuntimeGuardEnable
         or BackendCommands.CpuFrameDwmRestart or BackendCommands.CpuFrameMemoryClean
-        or BackendCommands.SystemCleanupRun or BackendCommands.SystemCleanupShaderCache;
+        or BackendCommands.SystemCleanupRun or BackendCommands.SystemCleanupShaderCache or BackendCommands.SystemShaderRecoveryClean;
 
     public static EmergencyPolicy Verify(ReadOnlySpan<byte> envelopeBytes,
         IReadOnlyDictionary<string, string> keys, DateTimeOffset now, bool requireFresh = true)

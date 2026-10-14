@@ -4,13 +4,23 @@ using System.Text.RegularExpressions;
 
 namespace DeltaNFD.Services;
 
-internal sealed class RuntimeUnifiedUninstallBackend(RuntimeRepairDiagnostics diagnostics) : IRuntimeUnifiedUninstallBackend
+internal sealed class RuntimeUnifiedUninstallBackend(RuntimeRepairDiagnostics diagnostics, bool allowNonstandard = false) : IRuntimeUnifiedUninstallBackend
 {
     private const string Arp = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\";
     private const string Dependencies = @"SOFTWARE\Classes\Installer\Dependencies\";
     private readonly RuntimeRepairProcessRunner _runner = new(AppDataPaths.Root);
 
-    public RuntimeMsiProduct ReadProduct(string product) => RuntimeMsiMetadata.ReadInstalledProduct(product);
+    public RuntimeMsiProduct ReadProduct(string product)
+    {
+        var installed = RuntimeMsiMetadata.ReadInstalledProduct(product);
+        if (allowNonstandard && installed.State == 5)
+        {
+            RuntimeMsiMetadata.VerifyCachedIdentity(installed);
+            diagnostics.Save("force-msi-identity-" + Guid.Parse(product).ToString("N") + ".json",
+                new { Product = installed, CacheIdentityVerified = true });
+        }
+        return installed;
+    }
 
     public RuntimeUnifiedUninstallPlan Resolve(VcRedistEntry entry)
     {
@@ -18,7 +28,7 @@ internal sealed class RuntimeUnifiedUninstallBackend(RuntimeRepairDiagnostics di
         if (kind == "Msi")
         {
             if (!RuntimeUninstallCommand.TryCreate(entry, null, out var plan, out var error)) throw new InvalidDataException(error);
-            return new(entry, plan!.ProductCodes, []);
+            return new(entry, plan!.ProductCodes, []) { AllowNonstandard = allowNonstandard };
         }
         var registrations = ReadArpSnapshots(entry);
         if (registrations.Count == 0) throw new InvalidDataException("包装登记不存在，无法确认归属。");
@@ -27,7 +37,7 @@ internal sealed class RuntimeUnifiedUninstallBackend(RuntimeRepairDiagnostics di
         {
             var products = RuntimeUninstallCommand.ReadQuietInfProducts(RuntimeUninstallCommand.GetInfPath(entry));
             if (products.Length == 0) throw new InvalidDataException("INF 关联 MSI 无法可靠确认。");
-            var plan = new RuntimeUnifiedUninstallPlan(entry, products, registrations.ToArray());
+            var plan = new RuntimeUnifiedUninstallPlan(entry, products, registrations.ToArray()) { AllowNonstandard = allowNonstandard };
             return plan with { RelatedBundles = ResolveRelatedBundles(plan) };
         }
         if (kind != "Bundle" || !Guid.TryParse(entry.KeyName, out _)) throw new InvalidDataException("不支持的运行库包装登记。");
@@ -42,12 +52,17 @@ internal sealed class RuntimeUnifiedUninstallBackend(RuntimeRepairDiagnostics di
             using var hive = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
             using var own = hive.OpenSubKey(Dependencies + provider);
             if (own is null) continue;
-            if (!string.Equals(own.GetValue("") as string, entry.KeyName, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("Bundle 依赖身份已变化。");
+            var snapshot = new RuntimeRegistrationSnapshot(Dependencies + provider, (int)view, Capture(own));
+            diagnostics.Save("bundle-provider-" + Guid.Parse(entry.KeyName).ToString("N") + "-" + (int)view + ".json",
+                new { entry.KeyName, entry.DisplayName, Provider = provider, snapshot.KeyPath, snapshot.View,
+                    Registration = JsonSerializer.Deserialize<JsonElement>(snapshot.Content) });
+            ValidateBundleProviderIdentity(entry.KeyName, provider, snapshot);
             using var ownDependents = own.OpenSubKey("Dependents");
-            if (ownDependents?.GetSubKeyNames().Any(k => !k.Equals(entry.KeyName, StringComparison.OrdinalIgnoreCase)) == true)
-                throw new InvalidDataException("Bundle 被其他安装包依赖，拒绝统一卸载。");
-            registrations.Add(new(Dependencies + provider, (int)view, Capture(own)));
+            var bundleClients = ownDependents?.GetSubKeyNames() ?? [];
+            if (bundleClients.Any(k => !k.Equals(entry.KeyName, StringComparison.OrdinalIgnoreCase)))
+                throw new RuntimeDependencyConflictException("Bundle 被其他安装包依赖，已保留登记：" + provider
+                    + "；引用：" + string.Join("、", bundleClients) + "。可通过覆盖安装修复 C++。详情见 bundle-provider 日志。");
+            registrations.Add(snapshot);
             using var root = hive.OpenSubKey(Dependencies);
             foreach (var name in root!.GetSubKeyNames())
             {
@@ -57,22 +72,55 @@ internal sealed class RuntimeUnifiedUninstallBackend(RuntimeRepairDiagnostics di
                 using var dependents = package?.OpenSubKey("Dependents");
                 var clients = dependents?.GetSubKeyNames() ?? [];
                 if (!clients.Any(k => k.Equals(entry.KeyName, StringComparison.OrdinalIgnoreCase))) continue;
+                diagnostics.Save("dependency-" + Guid.Parse(entry.KeyName).ToString("N") + "-" + name + "-" + (int)view + ".json",
+                    new { entry.KeyName, entry.DisplayName, Provider = name, View = (int)view,
+                        Product = package?.GetValue("") as string, Dependents = clients,
+                        Registration = JsonSerializer.Deserialize<JsonElement>(Capture(package!)) });
                 if (!Guid.TryParse(package?.GetValue("") as string, out var product)) throw new InvalidDataException("依赖提供者缺少 MSI 产品码。");
                 var installed = ReadProduct(product.ToString("B"));
                 if (installed.State != -1)
                 {
-                    if (ShouldRetainNewerMsi(entry, installed)) { retained.Add(product.ToString("B")); continue; }
+                    if (ShouldRetainNewerMsi(entry, installed, allowNonstandard)) { retained.Add(product.ToString("B")); continue; }
                 }
-                ValidateBundleDependents(entry.KeyName, clients);
+                try { ValidateBundleDependents(entry.KeyName, clients); }
+                catch (InvalidDataException)
+                {
+                    throw new RuntimeDependencyConflictException("关联 MSI 存在共享引用，已保留组件与依赖：" + product.ToString("B")
+                        + "；Provider：" + name + "；引用：" + string.Join("、", clients)
+                        + "。未执行强制卸载；可通过覆盖安装修复 C++。详情见 dependency 日志。");
+                }
                 productsFound.Add(product.ToString("B"));
             }
         }
         if (productsFound.Count + retained.Count == 0) throw new InvalidDataException("缺少 Bundle → MSI 的可靠依赖关系；未执行包装 EXE。");
-        return new(entry, productsFound.ToArray(), registrations.Distinct().ToArray()) { RetainedProducts = retained.ToArray() };
+        return new(entry, productsFound.ToArray(), registrations.Distinct().ToArray())
+            { RetainedProducts = retained.ToArray(), AllowNonstandard = allowNonstandard };
+    }
+
+    internal static void ValidateBundleProviderIdentity(string bundle, string provider, RuntimeRegistrationSnapshot snapshot)
+    {
+        if (!Guid.TryParse(bundle, out var expected) || expected == Guid.Empty)
+            throw new InvalidDataException("Bundle 身份无效。");
+        using var json = JsonDocument.Parse(snapshot.Content);
+        string? explicitIdentity = null;
+        if (json.RootElement.GetProperty("Values").TryGetProperty("", out var value))
+        {
+            var kind = (RegistryValueKind)value.GetProperty("Kind").GetInt32();
+            if (value.GetProperty("Data").ValueKind != JsonValueKind.String
+                || kind is not (RegistryValueKind.String or RegistryValueKind.ExpandString))
+                throw new InvalidDataException($"Bundle 依赖身份值类型无效（注册表视图 {snapshot.View}）；原值已记录。");
+            explicitIdentity = value.GetProperty("Data").GetString();
+        }
+        // WiX DependencyDetectProviderKeyBundleId uses the provider key when no explicit Id is set.
+        // This only accepts a GUID key identifying this very bundle; named v14 providers still need an explicit Id.
+        var identity = string.IsNullOrEmpty(explicitIdentity) ? provider : explicitIdentity;
+        if (!Guid.TryParse(identity, out var actual) || actual != expected)
+            throw new InvalidDataException($"Bundle 依赖身份与当前安装包不匹配（注册表视图 {snapshot.View}）；原值已记录。");
     }
 
     public void ValidateRegistration(RuntimeUnifiedUninstallPlan plan)
     {
+        if (plan.AllowNonstandard != allowNonstandard) throw new IOException("卸载计划的强制尝试选项不一致，请重新预览。");
         var kind = RuntimeUninstallCommand.Classify(plan.Entry.KeyName, plan.Entry.UninstallString, plan.Entry.QuietUninstallString);
         if (kind == "Msi")
         {
@@ -126,9 +174,7 @@ internal sealed class RuntimeUnifiedUninstallBackend(RuntimeRepairDiagnostics di
             {
                 var product = ReadProduct(retained);
                 if (product.State == -1) continue;
-                RuntimeUnifiedUninstaller.ValidateProduct(plan.Entry, product);
-                if (!Version.TryParse(plan.Entry.DisplayVersion, out var oldVersion) || !Version.TryParse(product.Version, out var newVersion)
-                    || NormalizeVersion(newVersion) <= NormalizeVersion(oldVersion))
+                if (!ShouldRetainNewerMsi(plan.Entry, product, allowNonstandard))
                     throw new IOException("保留的 MSI 版本已变化，未清理旧登记。");
             }
             if (current is not null && (current.Products.Any(p => !plan.Products.Contains(p, StringComparer.OrdinalIgnoreCase))
@@ -324,13 +370,47 @@ internal sealed class RuntimeUnifiedUninstallBackend(RuntimeRepairDiagnostics di
 
     private static Version NormalizeVersion(Version version) => new(version.Major, version.Minor, Math.Max(0, version.Build), Math.Max(0, version.Revision));
 
-    internal static bool ShouldRetainNewerMsi(VcRedistEntry entry, RuntimeMsiProduct product)
+    private sealed record Vc2013Bundle(Guid Id, string Architecture, Guid Minimum, Guid Additional);
+    // Verified against Microsoft's signed 12.0.30501 packages, Burn manifest and BA data.
+    // Bundle DisplayVersion is not the ProductVersion of the MSI packages in its chain.
+    private static readonly Version Vc2013BundleVersion = new(12, 0, 30501, 0);
+    private static readonly Version Vc2013MsiVersion = new(12, 0, 21005, 0);
+    private static readonly Vc2013Bundle[] Vc2013Bundles =
+    [
+        new(new("050d4fc8-5d48-4b8f-8972-47c82c46020f"), "x64",
+            new("A749D8E6-B613-3BE3-8F5F-045C84EBA29B"), new("929FBD26-9020-399B-9A7A-751D61F0B942")),
+        new(new("f65db027-aff3-4070-886a-0d87064aabb1"), "x86",
+            new("13A4EE12-23EA-3371-91EE-EFB36DDFFF3E"), new("F8CFEB22-A2E7-3971-9EDA-4B11EDEFC185")),
+    ];
+
+    internal static bool ShouldRetainNewerMsi(VcRedistEntry entry, RuntimeMsiProduct product, bool allowNonstandard = false)
     {
         RuntimeUnifiedUninstaller.ValidateProduct(entry, product);
         if (!Version.TryParse(product.Version, out var current) || !Version.TryParse(entry.DisplayVersion, out var original))
             throw new InvalidDataException("Bundle / MSI 版本无法核验。");
-        var comparison = NormalizeVersion(current).CompareTo(NormalizeVersion(original));
-        if (comparison < 0) throw new InvalidDataException("Bundle 与 MSI 版本不匹配，未猜测卸载。");
+        var expected = NormalizeVersion(original);
+        if (Guid.TryParse(entry.KeyName, out var bundleId) && Vc2013Bundles.FirstOrDefault(b => b.Id == bundleId) is { } bundle)
+        {
+            if (entry.UninstallKind != "Bundle" || entry.Architecture != bundle.Architecture || expected != Vc2013BundleVersion
+                || !entry.DisplayName.Equals($"Microsoft Visual C++ 2013 Redistributable ({bundle.Architecture}) - 12.0.30501", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("VC2013 包装身份、架构或版本与已核验的官方清单不符。");
+            expected = Vc2013MsiVersion;
+            if (NormalizeVersion(current) == expected || allowNonstandard && NormalizeVersion(current) < expected)
+            {
+                var code = Guid.Parse(product.Code);
+                var role = code == bundle.Minimum ? "Minimum" : code == bundle.Additional ? "Additional" : null;
+                if (allowNonstandard)
+                {
+                    var actualRole = Regex.Match(product.Name, $@"^Microsoft Visual C\+\+ 2013 {bundle.Architecture} (Minimum|Additional) Runtime\b", RegexOptions.IgnoreCase);
+                    if (!actualRole.Success || role is not null && !role.Equals(actualRole.Groups[1].Value, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("VC2013 子组件角色不符，强制尝试也不猜测归属。");
+                }
+                else if (role is null || !product.Name.Equals($"Microsoft Visual C++ 2013 {bundle.Architecture} {role} Runtime - 12.0.21005", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("VC2013 子组件产品码或角色与已核验的官方清单不符。");
+            }
+        }
+        var comparison = NormalizeVersion(current).CompareTo(expected);
+        if (comparison < 0 && !allowNonstandard) throw new InvalidDataException("Bundle 与 MSI 版本不匹配，未猜测卸载。");
         return comparison > 0;
     }
 

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!--
     共享执行库（C1/C2）：
@@ -16,8 +16,8 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>0.915</Version>
-    <InformationalVersion>Alpha0.915</InformationalVersion>
+    <Version>0.916</Version>
+    <InformationalVersion>Alpha0.916</InformationalVersion>
     <WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
 

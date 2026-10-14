@@ -6,7 +6,7 @@ namespace DeltaNFD.Services.Backends;
 internal static class FrameBackendReadiness
 {
     internal static IReadOnlyList<string> RequiredModules(bool includesGpu) => includesGpu
-        ? [BackendModules.CpuFrame, BackendModules.Gpu] : [BackendModules.CpuFrame];
+        ? [BackendModules.CpuFrame, BackendModules.Procman, BackendModules.Gpu] : [BackendModules.CpuFrame, BackendModules.Procman];
 
     internal static string DescribeBlocker(bool includesGpu)
     {

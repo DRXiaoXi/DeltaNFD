@@ -13,6 +13,10 @@ internal sealed class BackendNvProfileService : INvProfileService
 
     public IReadOnlyList<NvSettingDef> GetSettingCatalog() => NvSettingsCatalog.Definitions;
 
+    public async Task<OperationResult> SetShaderCacheSizeAsync(string scope, uint? value)
+        => Map(await InvokeAsync(BackendCommands.GpuShaderCacheApply,
+            new NvShaderCacheApplyArgs { Scope = scope, Value = value }, CancellationToken.None), "设置着色器缓存大小");
+
     private async Task<BackendClient> EnsureClientAsync(CancellationToken cancellationToken)
     {
         if (_client is { IsUsable: true }) return _client;

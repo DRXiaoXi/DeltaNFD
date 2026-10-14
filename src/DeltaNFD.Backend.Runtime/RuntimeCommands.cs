@@ -36,8 +36,9 @@ internal static class RuntimeCommands
     /// <summary>只读状态核对：拦截是否生效、已拦截数量与已安装运行库。</summary>
     private static async Task<BackendResult> ReconcileAsync(BackendCommandContext context)
     {
-        context.ReportProgress("正在只读核对运行库防护状态…", null, "reconcile");
-        var snapshot = await BuildSnapshotAsync();
+        context.ReportProgress("正在核对运行库安装事务、防护与当前组件状态…", null, "reconcile");
+        var scope = context.ArgsAs<RecoverArgs>().Scope;
+        var snapshot = scope == RuntimeRepairRecovery.Scope ? await RuntimeRepairRecovery.InspectAsync() : await BuildSnapshotAsync();
         return BackendResult.Ok("runtime.reconcile", snapshot.Summary, snapshot);
     }
 
@@ -46,6 +47,12 @@ internal static class RuntimeCommands
     {
         var args = context.ArgsAs<RecoverArgs>();
         var scope = (args.Scope ?? "").Trim().ToLowerInvariant();
+        if (scope == RuntimeRepairRecovery.Scope)
+        {
+            context.ReportProgress("正在确认旧安装事务结束并归档核对记录…", null, "recover");
+            var reviewed = await RuntimeRepairRecovery.ReviewAsync();
+            return BackendResult.Ok("runtime.recover", reviewed.Message, reviewed);
+        }
         if (scope != "guard")
             return BackendResult.Failed("runtime.recover", $"未知恢复范围“{args.Scope}”，已拒绝执行。");
 
@@ -138,14 +145,15 @@ internal static class RuntimeCommands
 
     private static async Task<BackendResult> PreviewAllAsync(BackendCommandContext context)
     {
-        var preview = await new RuntimeGuardService().PreviewUninstallAllAsync();
+        var args = context.ArgsAs<RuntimeUninstallAllArgs>();
+        var preview = await new RuntimeGuardService().PreviewUninstallAllAsync(args.AllowNonstandard);
         return BackendResult.Ok(context.Command, $"全量卸载候选 {preview.Entries.Count} 项。", preview);
     }
 
     private static async Task<BackendResult> UninstallAllAsync(BackendCommandContext context)
     {
         var args = context.ArgsAs<RuntimeUninstallAllArgs>();
-        return Wrap(context.Command, await new RuntimeGuardService().UninstallAllAsync(args.Fingerprint, new RelayProgress(context), context.CancellationToken));
+        return Wrap(context.Command, await new RuntimeGuardService().UninstallAllAsync(args.Fingerprint, args.AllowNonstandard, new RelayProgress(context), context.CancellationToken));
     }
 
     private static async Task<BackendResult> CompatibilityRepairAsync(BackendCommandContext context)

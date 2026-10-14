@@ -112,14 +112,21 @@ internal sealed class BackendRuntimeGuardService : IRuntimeGuardService
         return Map(result, "卸载 v14 运行库");
     }
 
-    public async Task<RuntimeUninstallPreview> PreviewUninstallAllAsync()
+    public Task<RuntimeUninstallPreview> PreviewUninstallAllAsync() => PreviewUninstallAllAsync(false);
+    public async Task<RuntimeUninstallPreview> PreviewUninstallAllAsync(bool allowNonstandard)
     {
-        var result = await InvokeAsync(BackendCommands.RuntimeRedistPreviewAll, new { }, null, CancellationToken.None);
-        return RequireData<RuntimeUninstallPreview>(result, "预览全部 C++ 卸载条目");
+        var result = await InvokeAsync(BackendCommands.RuntimeRedistPreviewAll,
+            new RuntimeUninstallAllArgs { AllowNonstandard = allowNonstandard }, null, CancellationToken.None);
+        var preview = RequireData<RuntimeUninstallPreview>(result, "预览全部 C++ 卸载条目");
+        if (preview.AllowNonstandard != allowNonstandard) throw new InvalidOperationException("后端未确认强制尝试选项，请更新后端后重新预览。");
+        return preview;
     }
-    public async Task<OperationResult> UninstallAllAsync(string fingerprint, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+    public Task<OperationResult> UninstallAllAsync(string fingerprint, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+        => UninstallAllAsync(fingerprint, false, progress, cancellationToken);
+    public async Task<OperationResult> UninstallAllAsync(string fingerprint, bool allowNonstandard, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
     {
-        var result = await InvokeAsync(BackendCommands.RuntimeRedistUninstallAll, new RuntimeUninstallAllArgs { Fingerprint = fingerprint }, progress, cancellationToken);
+        var result = await InvokeAsync(BackendCommands.RuntimeRedistUninstallAll,
+            new RuntimeUninstallAllArgs { Fingerprint = fingerprint, AllowNonstandard = allowNonstandard }, progress, cancellationToken);
         return Map(result, "卸载全部 C++ 运行库");
     }
 

@@ -22,7 +22,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
-& (Join-Path $PSScriptRoot 'prepare-dotnet-repair.ps1')
 $frontendProject = Join-Path $repo "src/DeltaNFD/DeltaNFD.csproj"
 $out = [IO.Path]::GetFullPath($(if ([IO.Path]::IsPathRooted($OutDir)) { $OutDir } else { Join-Path $repo $OutDir }))
 if (Test-Path -LiteralPath $out) { throw "Output must be a new directory: $out" }
@@ -67,9 +66,6 @@ $required = @(
     "Backends/DeltaNFD.Backend.CpuFrame.exe",
     "Backends/DeltaNFD.Backend.Procman.exe",
     "Assets/UpdateConfig.json",
-    "Assets/DotNetRepair/dotnet-runtime-8.0.31-win-x64.exe",
-    "Assets/DotNetRepair/RepairDotNet.cmd",
-    "Assets/DotNetRepair/RepairDotNet.ps1",
     "Assets/TweakDb/RegistryTweaks.json"
     "Assets/VCRedistRepair/Installer.cmd"
     "Assets/DirectXRepair/DXSETUP.exe"
@@ -81,6 +77,7 @@ foreach ($relative in $required) {
 }
 if ($missing.Count -gt 0) { throw ("publish layout missing: " + ($missing -join ", ")) }
 
+if (Test-Path -LiteralPath (Join-Path $out 'Assets/DotNetRepair')) { throw 'Retired .NET repair payload found; rebuild from current source.' }
 Write-Host "Validate actual .NET runtime files and dependency manifests in the final shared layout..."
 dotnet run --project (Join-Path $repo 'tools/DotNetLayoutCheck/DotNetLayoutCheck.csproj') -c Release `
     -p:Platform=x64 -p:NuGetAudit=false -p:UseArtifactsOutput=true "-p:ArtifactsPath=$artifacts/layout-check" -- $out

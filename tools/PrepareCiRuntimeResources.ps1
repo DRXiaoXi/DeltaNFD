@@ -22,8 +22,7 @@ try {
     foreach ($entry in $archive.Entries) {
         $name = $entry.FullName.Replace('\','/') -replace '^DeltaNFD_Source_0\.914/', ''
         if (!$entry.Name -or ($name -notmatch '^src/DeltaNFD/Assets/(?:VCRedistRepair/|DirectXRepair/)' -and
-            $name -notmatch '^src/DeltaNFD/Assets/VCRedist2015-2022-(?:x64|x86)\.exe$' -and
-            $name -ne 'src/DeltaNFD/Assets/DotNetRepair/dotnet-runtime-8.0.31-win-x64.exe')) { continue }
+            $name -notmatch '^src/DeltaNFD/Assets/VCRedist2015-2022-(?:x64|x86)\.exe$')) { continue }
         if ($name -match '(?:^|/)\.\.(?:/|$)' -or $entry.Length -gt 157286400 -or (($entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000) { throw 'Unsafe input archive entry.' }
         $target = [IO.Path]::GetFullPath((Join-Path $destination $name))
         $assetRoot = Join-Path $destination 'src/DeltaNFD/Assets'
@@ -40,7 +39,7 @@ try {
         $count++
     }
 } finally { $archive.Dispose() }
-foreach ($name in @('VCRedistRepair/Installer.cmd','VCRedistRepair/payload_manifest_sha256.csv','DirectXRepair/DXSETUP.exe','DirectXRepair/payload-manifest.json','DotNetRepair/dotnet-runtime-8.0.31-win-x64.exe')) {
+foreach ($name in @('VCRedistRepair/Installer.cmd','VCRedistRepair/payload_manifest_sha256.csv','DirectXRepair/DXSETUP.exe','DirectXRepair/payload-manifest.json')) {
     if (!(Test-Path -LiteralPath (Join-Path $destination ('src/DeltaNFD/Assets/' + $name)))) { throw ('Missing required test input: ' + $name) }
 }
 Write-Output ('Pinned runtime resources prepared: ' + $count + ' files. No installer or archived source code executed.')

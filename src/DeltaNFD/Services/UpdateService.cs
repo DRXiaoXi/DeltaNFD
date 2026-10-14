@@ -832,7 +832,6 @@ public sealed class UpdateService : IUpdateService
     /// <summary>安装前的条件复检（等价 Inno 脚本 PrepareToInstall 的拒绝条件），把失败前置成可读提示。</summary>
     internal string? DescribeInstallBlocker()
     {
-        if (DotNetRepairService.IsBusy) return ".NET 安装/修复正在运行，请完成后再更新工具。";
         var installLocation = ReadInstalledLocation();
         if (string.IsNullOrWhiteSpace(installLocation))
         {

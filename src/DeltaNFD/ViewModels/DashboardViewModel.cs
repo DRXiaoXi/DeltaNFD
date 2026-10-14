@@ -28,17 +28,19 @@ public partial class DashboardViewModel : ObservableObject
     // ---- 组件健康检测（与着色器 / ACE / 运行库服务的扫描结果同步） ----
     [ObservableProperty] private string shaderStatusText = "检测中…";
     [ObservableProperty] private DashboardHealthState shaderHealthState = DashboardHealthState.Checking;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShaderActionText))]
+    private bool shaderCacheNeedsAttention;
+    public string ShaderActionText => ShaderCacheNeedsAttention ? "缓存修复与预热" : "去处理";
     [ObservableProperty] private string aceStatusText = "检测中…";
     [ObservableProperty] private DashboardHealthState aceHealthState = DashboardHealthState.Checking;
     [ObservableProperty] private string runtimeStatusText = "检测中…";
     [ObservableProperty] private DashboardHealthState runtimeHealthState = DashboardHealthState.Checking;
-    [ObservableProperty] private string dotNetStatusText = "检测中…";
-    [ObservableProperty] private DashboardHealthState dotNetHealthState = DashboardHealthState.Checking;
     [ObservableProperty] private bool isHealthScanning;
 
     public bool CanRefreshHealth => !IsHealthScanning;
 
-    public string HealthSummary => DashboardHealthPresentation.Summary(IsHealthScanning, ShaderHealthState, AceHealthState, RuntimeHealthState, DotNetHealthState);
+    public string HealthSummary => DashboardHealthPresentation.Summary(IsHealthScanning, ShaderHealthState, AceHealthState, RuntimeHealthState);
     [ObservableProperty] private string targetName = "三角洲";
     [ObservableProperty] private string targetModeText = "三角洲模式";
     [ObservableProperty] private string targetPathText = "三角洲默认主进程";
@@ -67,7 +69,6 @@ public partial class DashboardViewModel : ObservableObject
     partial void OnShaderHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
     partial void OnAceHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
     partial void OnRuntimeHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
-    partial void OnDotNetHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
     partial void OnIsHealthScanningChanged(bool value)
     { OnPropertyChanged(nameof(CanRefreshHealth)); OnPropertyChanged(nameof(HealthSummary)); }
 
@@ -134,10 +135,9 @@ public partial class DashboardViewModel : ObservableObject
         }
 
         IsHealthScanning = true;
-        ShaderHealthState = AceHealthState = RuntimeHealthState = DotNetHealthState = DashboardHealthState.Checking;
-        ShaderStatusText = AceStatusText = RuntimeStatusText = DotNetStatusText = "检测中…";
-        // Local .NET inspection must not wait for a backend that itself cannot start without .NET.
-        var dotNetCheck = LoadDotNetHealthAsync();
+        ShaderCacheNeedsAttention = false;
+        ShaderHealthState = AceHealthState = RuntimeHealthState = DashboardHealthState.Checking;
+        ShaderStatusText = AceStatusText = RuntimeStatusText = "检测中…";
 
         try
         {
@@ -172,22 +172,9 @@ public partial class DashboardViewModel : ObservableObject
             Log.Error("主页：运行库组件检测失败", ex);
         }
 
-        try
-        {
-            await dotNetCheck;
-        }
-        catch (Exception ex)
-        {
-            DotNetHealthState = DashboardHealthState.Failed;
-            DotNetStatusText = "检测失败：" + ex.Message;
-            Log.Error("主页：.NET 环境检测失败", ex);
-        }
-        finally
-        {
-            LastHealthCheckText = "最近检测 " + DateTimeOffset.Now.ToString("HH:mm:ss");
-            RefreshTargetDisplay();
-            IsHealthScanning = false;
-        }
+        LastHealthCheckText = "最近检测 " + DateTimeOffset.Now.ToString("HH:mm:ss");
+        RefreshTargetDisplay();
+        IsHealthScanning = false;
     }
 
     private async Task LoadShaderHealthAsync()
@@ -198,35 +185,10 @@ public partial class DashboardViewModel : ObservableObject
             ShaderStatusText = GameTargetService.DeltaOnlyMessage;
             return;
         }
-        // 与着色器页读取同一后端：PSOCache GameVer 通用临时判定 + NVIDIA 驱动体检。
-        var diag = await ServiceLocator.Shader.DiagnoseAsync();
-        var status = await ServiceLocator.Shader.GetStatusAsync();
-        var driverBad = status.DriverState is ShaderDriverState.TooOld or ShaderDriverState.ProblemSeries;
-
-        if (diag.Level is ShaderDiagLevel.Abnormal or ShaderDiagLevel.AbnormalDriverIssue)
-        {
-            ShaderHealthState = DashboardHealthState.Abnormal;
-            ShaderStatusText = diag.Summary;
-        }
-        else if (driverBad)
-        {
-            ShaderHealthState = DashboardHealthState.Abnormal;
-            ShaderStatusText = status.DriverState == ShaderDriverState.TooOld
-                ? $"驱动过老（{status.DriverVersion}）"
-                : $"问题驱动（{status.DriverVersion}）";
-        }
-        else
-        {
-            ShaderHealthState = diag.Level switch
-            {
-                ShaderDiagLevel.Normal => DashboardHealthState.Normal,
-                ShaderDiagLevel.Info => DashboardHealthState.Information,
-                _ => DashboardHealthState.NotApplicable,
-            };
-            ShaderStatusText = diag.Level == ShaderDiagLevel.Normal && status.IsNvidia && status.DriverVersion.Length > 0
-                ? $"正常（{status.DriverVersion}）"
-                : diag.Summary;
-        }
+        var result = await DashboardShaderHealth.CheckAsync(ServiceLocator.Shader, ServiceLocator.NvProfile);
+        ShaderCacheNeedsAttention = result.OpenCacheRecovery;
+        ShaderStatusText = result.Text;
+        ShaderHealthState = result.State;
     }
 
     private async Task LoadAceHealthAsync()
@@ -297,21 +259,6 @@ public partial class DashboardViewModel : ObservableObject
             : report.HasSuboptimal
                 ? $"{report.Suboptimal.Count} 项运行库非最适版本（低于推荐版本或未安装）"
                 : "各分支运行库均为最适版本";
-    }
-
-    private async Task LoadDotNetHealthAsync()
-    {
-        var result = await DotNetEnvironmentService.CheckAsync();
-
-        DotNetHealthState = result.Level switch
-        {
-            DotNetCheckLevel.Complete => DashboardHealthState.Normal,
-            DotNetCheckLevel.Incomplete => DashboardHealthState.Warning,
-            DotNetCheckLevel.Failed => DashboardHealthState.Failed,
-            _ => DashboardHealthState.Checking
-        };
-
-        DotNetStatusText = result.Summary;
     }
 
     [RelayCommand]

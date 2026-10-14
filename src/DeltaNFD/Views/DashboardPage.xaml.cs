@@ -89,6 +89,15 @@ public sealed partial class DashboardPage : Page
             ? Visibility.Visible
             : Visibility.Collapsed;
 
+    /// <summary>缓存大小问题直达隐藏处理页；其他着色器问题仍进入维护页。</summary>
+    private void ShaderAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.ShaderCacheNeedsAttention)
+            Frame.Navigate(typeof(ShaderRecoveryPage), "dashboard");
+        else
+            App.MainWindow?.NavigateByTag("shader");
+    }
+
     /// <summary>异常项「去处理」：按按钮 Tag 跳转到对应功能页。</summary>
     private void JumpButton_Click(object sender, RoutedEventArgs e)
     {

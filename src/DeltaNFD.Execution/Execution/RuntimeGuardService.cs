@@ -148,7 +148,7 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
 
     // ---------------- Visual C++ 运行库分类扫描 ----------------
 
-    /// <summary>不完善运行库的显示名标记（v14 Redistributable，三角洲强制安装的版本）。</summary>
+    /// <summary>用户确认的三角洲掉帧兼容性标记；不等于 DLL 损坏，详见 AGENTS.md。</summary>
     private const string AbnormalRedistMarker = "Visual C++ v14";
 
     /// <summary>
@@ -174,7 +174,6 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
 
     public Task<VcRedistScanReport> ScanVcRedistsAsync() => Task.Run(() =>
     {
-        var abnormal = new List<VcRedistEntry>();
         var all = new List<VcRedistEntry>();
 
         var roots = (string[])
@@ -227,11 +226,38 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
                 };
 
                 all.Add(entry);
-                if (displayName.Contains(AbnormalRedistMarker, StringComparison.OrdinalIgnoreCase))
-                {
-                    abnormal.Add(entry);
-                }
             }
+        }
+        return BuildVcRedistScanReport(all, entry => RuntimeMsiMetadata.ReadInstalledProduct(entry.KeyName));
+    });
+
+    // Share the registration classification with regression fixtures; native reads remain injectable/read-only.
+    internal static VcRedistScanReport BuildVcRedistScanReport(IReadOnlyList<VcRedistEntry> entries,
+        Func<VcRedistEntry, RuntimeMsiProduct>? readMsi = null)
+    {
+        var all = entries.ToList();
+        var abnormal = all.Where(e => e.DisplayName.Contains(AbnormalRedistMarker, StringComparison.OrdinalIgnoreCase)).ToList();
+        var versions = new Dictionary<VcRedistEntry, string>();
+        foreach (var entry in all.Where(RuntimeBulkUninstall.IsCandidate))
+        {
+            var version = entry.DisplayVersion;
+            if (entry.UninstallKind == "Msi" && readMsi is not null)
+            {
+                try
+                {
+                    var product = readMsi(entry);
+                    if (product.State == -1) continue; // Orphan ARP entries do not prove the product is installed.
+                    version = product.State == 5 && product.Code.Equals(entry.KeyName, StringComparison.OrdinalIgnoreCase)
+                        && product.Publisher.Equals("Microsoft Corporation", StringComparison.OrdinalIgnoreCase)
+                        && product.Architecture == entry.Architecture && product.Name == entry.DisplayName
+                        ? product.Version : "";
+                }
+                catch (Exception ex) { Log.Warn("运行库扫描无法核对 MSI 产品版本：" + entry.KeyName + "；" + ex.Message); version = ""; }
+            }
+            var expectedMajor = ResolveRedistBranch(entry.DisplayName) switch
+            { "2005" => 8, "2008" => 9, "2010" => 10, "2012" => 11, "2013" => 12, "2015-2026" => 14, _ => -1 };
+            versions[entry] = Version.TryParse(version, out var parsed) && parsed.Major == expectedMajor
+                && version.Split('.').Length >= 3 ? version : "";
         }
 
         // 分支版本核对：低于推荐版本 / 未安装 → 非最适版本（黄色提醒）
@@ -239,12 +265,12 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         foreach (var (branch, arch, minVersion) in RecommendedRedists)
         {
             VcRedistEntry? installed = null;
-            foreach (var entry in all)
+            foreach (var entry in versions.Keys)
             {
                 if (entry.Architecture == arch && ResolveRedistBranch(entry.DisplayName) == branch)
                 {
                     // 同分支多条目（异常 v14 包除外）取版本最高的一条参与判定
-                    if (installed is null || CompareVersions(entry.DisplayVersion, installed.DisplayVersion) > 0)
+                    if (installed is null || CompareVersions(versions[entry], versions[installed]) > 0)
                     {
                         installed = entry;
                     }
@@ -258,42 +284,28 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
                     Branch = $"{branch} ({arch})",
                     RecommendedVersion = minVersion,
                     InstalledVersion = "",
+                    Reason = "missing",
                 });
             }
-            else if (installed.DisplayVersion.Length == 0 || CompareVersions(installed.DisplayVersion, minVersion) < 0)
+            else if (versions[installed].Length == 0 || CompareRegisteredVersion(versions[installed], minVersion) < 0)
             {
                 suboptimal.Add(new VcRedistSuboptimal
                 {
                     Branch = $"{branch} ({arch})",
                     RecommendedVersion = minVersion,
-                    InstalledVersion = installed.DisplayVersion,
+                    InstalledVersion = versions[installed],
                     DisplayName = installed.DisplayName,
-                });
-            }
-        }
-
-        // 2026 子判定（§24.1）：v14 基线达标但缺少「2026 Redistributable」命名条目时也提醒（黄色）。
-        // 分支整体未安装/低于基线时分支行已覆盖，不重复提醒。修复运行库（AIO 内含官方 2026 版）可补齐。
-        foreach (var arch in (string[])["x64", "x86"])
-        {
-            var branchOk = !suboptimal.Any(s => s.Branch == $"2015-2026 ({arch})");
-            var has2026 = all.Any(e => e.Architecture == arch && IsRedist2026Named(e.DisplayName));
-            if (branchOk && !has2026)
-            {
-                suboptimal.Add(new VcRedistSuboptimal
-                {
-                    Branch = $"2026 ({arch})",
-                    RecommendedVersion = Redist2026RecommendedVersion,
-                    InstalledVersion = "",
+                    Reason = versions[installed].Length == 0 ? "version-unknown" : "below-recommended",
+                    IsRecommendationOnly = versions[installed].Length > 0,
                 });
             }
         }
 
         var advice = abnormal.Count > 0
-            ? "检测到 v14 运行库（不完善版本，可能导致部分游戏/软件异常）——建议执行「修复运行库」。"
+            ? "检测到 v14 命名运行库；根据三角洲严重掉帧反馈标为兼容性异常，建议执行「修复运行库」。"
             : suboptimal.Count > 0
-                ? $"检测到 {suboptimal.Count} 项运行库版本提醒（低于基线或安装记录缺失）；建议先修复缺失/过旧分支，不能据此认定 DLL 一定缺失。"
-                : "运行库均为最适版本。如需确保 C++ 库纯净，可执行「重装运行库」——将卸载全部现有 C++ 运行库后重装官方全系列。";
+                ? $"检测到 {suboptimal.Count} 项安装记录/版本提醒；推荐版本差异不等于安装失败或 DLL 损坏。请先处理缺失或无法核对的分支。"
+                : "各分支安装记录与推荐版本核对通过；此检测不代表 DLL 完整性验证。";
 
         return new VcRedistScanReport
         {
@@ -302,7 +314,7 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
             All = all,
             Advice = advice,
         };
-    });
+    }
 
     /// <summary>从显示名解析运行库分支；返回 null = 无法归入任何分支（含 v14 问题包）。</summary>
     private static string? ResolveRedistBranch(string displayName)
@@ -330,17 +342,12 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         return null;
     }
 
-    /// <summary>「2026 Redistributable」命名条目的推荐版本（AIO 修复包所装官方 2026 版，修复运行库后自动补齐）。</summary>
-    private const string Redist2026RecommendedVersion = "14.51.36247.0";
-
-    /// <summary>
-    /// 显示名是否为「2026 Redistributable」命名的官方 v14 条目（微软 2026 年起的产品命名，见 §20.6 取证）。
-    /// v14 问题包与 MSI 子组件名同样含 "2026"，均按存在性判定即可（装了 2026 包就必有含 2026 的条目）。
-    /// </summary>
-    private static bool IsRedist2026Named(string displayName) =>
-        !displayName.Contains(AbnormalRedistMarker, StringComparison.OrdinalIgnoreCase) &&
-        displayName.Contains("Visual C++", StringComparison.OrdinalIgnoreCase) &&
-        displayName.Contains("2026", StringComparison.Ordinal);
+    private static int CompareRegisteredVersion(string installed, string recommended)
+    {
+        // Some ARP/MSI versions omit the revision. Compare only known parts; omission is not revision zero.
+        var a = installed.Split('.'); var b = recommended.Split('.');
+        return CompareVersions(installed, string.Join(".", b.Take(a.Length)));
+    }
 
     /// <summary>点分版本号比较（"9.0.30729.7523" 风格；不可解析段按 0 处理）。</summary>
     private static int CompareVersions(string a, string b)
@@ -394,8 +401,8 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         try { diagnostics = new RuntimeRepairDiagnostics(Log.LogDirectory); }
         catch (Exception ex) { return OperationResult.Fail("无法创建诊断目录，未更改运行库：" + ex.Message); }
         Log.Info($"运行库修复：Beta0.9 完整 AIO 机制；诊断目录={diagnostics.DirectoryPath}");
-        var environment = new RuntimeBetaRepairEnvironment(this, diagnostics);
-        var repair = new RuntimeBetaRepair(environment, diagnostics);
+        var environment = new RuntimeBetaRepairEnvironment(this, diagnostics, strongRepairMode);
+        var repair = new RuntimeBetaRepair(environment, diagnostics, strongRepairMode: strongRepairMode);
         diagnostics.Save("repair-options.json", new { StrongRepairMode = strongRepairMode, Repair = "high-fps" });
         var result = strongRepairMode
             ? await new RuntimeStrongRepair(new RuntimeStrongRepairEnvironment(diagnostics), diagnostics)
@@ -532,7 +539,7 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
         if (!readiness.CanProceed) return OperationResult.Fail(readiness.Summary + "\n\n" + readiness.Details);
         var diagnostics = new RuntimeRepairDiagnostics(Log.LogDirectory);
         var environment = new RuntimeCompatibilityEnvironment(diagnostics, strongRepairMode);
-        var repair = new RuntimeCompatibilityRepair(environment, diagnostics);
+        var repair = new RuntimeCompatibilityRepair(environment, diagnostics, strongRepairMode: strongRepairMode);
         diagnostics.Save("repair-options.json", new { StrongRepairMode = strongRepairMode, Repair = "compatibility" });
         var result = strongRepairMode
             ? await new RuntimeStrongRepair(new RuntimeStrongRepairEnvironment(diagnostics), diagnostics, RuntimeCompatibilityRepair.TotalBudget)
@@ -597,16 +604,20 @@ public sealed class RuntimeGuardService : IRuntimeGuardService
     public Task<OperationResult> UninstallV14Async(IProgress<string>? progress = null) =>
         Task.Run(() => RuntimeGuardProtection.Exclusive(() => UninstallV14CoreAsync(progress).GetAwaiter().GetResult()));
 
-    public async Task<RuntimeUninstallPreview> PreviewUninstallAllAsync() => RuntimeBulkUninstall.Preview((await ScanVcRedistsAsync()).All);
+    public Task<RuntimeUninstallPreview> PreviewUninstallAllAsync() => PreviewUninstallAllAsync(false);
+    public async Task<RuntimeUninstallPreview> PreviewUninstallAllAsync(bool allowNonstandard)
+        => RuntimeBulkUninstall.Preview((await ScanVcRedistsAsync()).All, allowNonstandard);
 
-    public Task<OperationResult> UninstallAllAsync(string fingerprint, IProgress<string>? progress = null, CancellationToken cancellationToken = default) =>
+    public Task<OperationResult> UninstallAllAsync(string fingerprint, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+        => UninstallAllAsync(fingerprint, false, progress, cancellationToken);
+    public Task<OperationResult> UninstallAllAsync(string fingerprint, bool allowNonstandard, IProgress<string>? progress = null, CancellationToken cancellationToken = default) =>
         Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
         {
             if (!ElevationHelper.IsElevated) return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
             var diagnostics = new RuntimeRepairDiagnostics(Log.LogDirectory);
-            var environment = new RuntimeRepairEnvironment(this, diagnostics, repairInstallerServices: false);
+            var environment = new RuntimeRepairEnvironment(this, diagnostics, repairInstallerServices: false, allowNonstandardUninstall: allowNonstandard);
             return diagnostics.Complete(new RuntimeBulkUninstall(new RuntimeBulkUninstallEnvironment(environment,
-                async () => _protection.RepairBlocker(await FindUe4PrereqAsync())), diagnostics)
+                async () => _protection.RepairBlocker(await FindUe4PrereqAsync())), diagnostics, allowNonstandard)
                 .RunAsync(fingerprint, progress, cancellationToken).GetAwaiter().GetResult());
         }));
 

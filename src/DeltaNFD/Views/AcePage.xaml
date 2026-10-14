@@ -175,6 +175,14 @@
                     <TextBlock Text="{x:Bind ViewModel.CoreCheckText, Mode=OneWay}"
                                Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                FontFamily="Consolas" />
+                    <TextBlock Text="仅清理 C:\Program Files\AntiCheatExpert 及其子目录内的 ACE-CORE*.sys 文件，保留 ACE 服务、注册表、其他文件和游戏目录。适合先尝试清理驱动残留。"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <Button Content="{x:Bind ViewModel.CoreCleanButtonText, Mode=OneWay}"
+                            IsEnabled="{x:Bind ViewModel.CoreCleanEnabled, Mode=OneWay}"
+                            Click="CleanCoreFilesButton_Click" />
+                    <TextBlock Text="{x:Bind ViewModel.CoreCleanupResultText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                               AutomationProperties.LiveSetting="Polite" />
                 </StackPanel>
             </Border>
 
@@ -186,9 +194,9 @@
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="· sguard64.exe（反作弊守卫）或游戏本体运行时，本功能会拒绝执行——请先完全退出游戏（含后台 sguard64 进程）。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                               Text="· 被占用无法删除的文件会注册为重启电脑后自动删除。" />
+                               Text="·「一键清除 ACE」会将被占用的文件登记为重启后删除；「仅清理 ACE-CORE SYS」会保留被占用的文件并显示原因，供退出游戏后重试。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                               Text="· 下次启动三角洲时 ACE 会自动重新安装，本功能适合卸载游戏后清理残留，或排查反作弊导致的异常。" />
+                               Text="· 清理后请先通过游戏启动器执行普通修复，补齐 ACE 组件，再启动游戏。" />
                 </StackPanel>
             </Border>
 

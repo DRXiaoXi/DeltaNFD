@@ -209,6 +209,19 @@
                 </StackPanel>
             </Border>
 
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="恢复出厂设置" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="用于清理新旧配置冲突：备份当前配置，停止并恢复工具的临时修改，将外观、游戏目录、自动功能、进程规则和后台参数重置为默认值。完成后关闭并重新打开工具。"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <TextBlock Text="系统优化的原值备份、日志和插件文件保留；已应用的系统优化不会在此重置，仍可在对应页面按备份还原。未完成的操作必须先核对，不能靠清空记录跳过恢复。"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <Button x:Name="FactoryResetButton" Content="一键恢复出厂设置" Click="FactoryReset_Click" HorizontalAlignment="Left" />
+                    <TextBlock x:Name="FactoryResetStatusText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite" />
+                </StackPanel>
+            </Border>
+
             <!-- Recovery only: shown solely for existing records from retired versions. -->
             <Border x:Name="LegacyRecoveryCard" Style="{StaticResource CardBorderStyle}" Visibility="Collapsed">
                 <StackPanel Spacing="10">
@@ -250,44 +263,6 @@
                     </StackPanel>
 
                     <TextBlock x:Name="GamePathStatusText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
-                </StackPanel>
-            </Border>
-
-            <!-- .NET 环境修复 -->
-            <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Spacing="10">
-                    <TextBlock Text=".NET 环境检测与修复" Style="{StaticResource SectionTitleStyle}" />
-
-                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                               Text="仅检查本工具主程序、官方后端和助手所需的 .NET 8 x64。正式包自带运行时；不要求 SDK、ASP.NET 或 WPF/WinForms 桌面运行时。" />
-
-                    <Grid ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Text=".NET 环境状态" FontWeight="SemiBold" />
-                            <TextBlock Text="{x:Bind DotNet.Status, Mode=OneWay}"
-                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
-                        </StackPanel>
-                        <Button Grid.Column="1" Content="重新检测" Command="{x:Bind DotNet.RefreshCommand}"
-                                IsEnabled="{x:Bind DotNet.CanAct, Mode=OneWay}" VerticalAlignment="Center" />
-                    </Grid>
-
-                    <ProgressBar IsIndeterminate="{x:Bind DotNet.IsBusy, Mode=OneWay}" />
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <Button Content="安装 / 修复所需 .NET" Click="RepairDotNetButton_Click"
-                                IsEnabled="{x:Bind DotNet.CanAct, Mode=OneWay}" Style="{StaticResource AccentButtonStyle}" />
-                        <Button Content="取消下载" Command="{x:Bind DotNet.CancelDownloadCommand}"
-                                IsEnabled="{x:Bind DotNet.IsBusy, Mode=OneWay}" />
-                    </StackPanel>
-                    <Expander Header="检测详情" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                        <TextBlock Text="{x:Bind DotNet.Details, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-                    </Expander>
-
-                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Opacity="0.7"
-                               Text="优先使用随工具携带的 .NET 8 x64 离线修复包，核验后打开官方安装器；缺少离线包时才联网下载。无法启动工具时可从开始菜单打开“.NET 环境修复”。工具自带文件缺损需重新安装工具；取消下载不会终止已启动的安装器。" />
                 </StackPanel>
             </Border>
 

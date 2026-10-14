@@ -1,8 +1,8 @@
-; 三角帧不掉洲（Delta No FPS Drops / Delta NFD）安装脚本 · Inno Setup 6
+﻿; 三角帧不掉洲（Delta No FPS Drops / Delta NFD）安装脚本 · Inno Setup 6
 ; 编译：ISCC.exe DeltaNFD.iss
-; 产物：三角帧不掉洲_DeltaNFD_安装包_0.915_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
+; 产物：三角帧不掉洲_DeltaNFD_安装包_0.916_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
 ;
-; 当前源码版本：0.915 / Alpha0.915。发布清单须在安装包生成后重新生成。
+; 当前源码版本：0.916 / Alpha0.916。发布清单须在安装包生成后重新生成。
 ;
 ; 安装/卸载统一安全交接：先封锁新启动，通知主程序完成恢复并退出，再核对所有官方执行者。
 ; 卸载保留备份时，在删除程序前复制并校验完整数据；历史记录仍待核对时保留原目录。
@@ -14,8 +14,8 @@
 #define MyAppShortName "Delta NFD"
 #define MyAppEnglishName "Delta No FPS Drops"
 #define MyAppDisplayName "三角帧不掉洲（Delta NFD）"
-#define MyAppVersion "0.915"
-#define MyAppDisplayVersion "Alpha0.915"
+#define MyAppVersion "0.916"
+#define MyAppDisplayVersion "Alpha0.916"
 #define MyAppExeName "DeltaNFD.exe"
 ; 登录任务名（与 AppControlService / FrameService 创建的一致）
 #define AutoStartTaskName "DeltaNFD_AutoStart"
@@ -25,11 +25,6 @@
 #define LegacyDataDirName "DeltaOptimizer"
 #ifndef PublishDir
   #define PublishDir "publish\DeltaNFD"
-#endif
-
-; An incomplete publish layout must not silently produce an installer without offline .NET repair.
-#if !FileExists(PublishDir + "\Assets\DotNetRepair\dotnet-runtime-8.0.31-win-x64.exe")
-  #error "Missing bundled .NET 8 x64 repair installer; publish the current source first."
 #endif
 
 [Setup]
@@ -79,6 +74,9 @@ Name: "chinese"; MessagesFile: "ChineseSimplified.isl"
 [InstallDelete]
 ; Delete old executable/assembly and PRI files after Restart Manager has closed a previous instance.
 Type: files; Name: "{app}\DeltaOptimizer.*"
+; Remove the retired product-owned repair payload and shortcut on upgrade.
+Type: filesandordirs; Name: "{app}\Assets\DotNetRepair"
+Type: files; Name: "{group}\.NET 环境修复.lnk"
 
 [CustomMessages]
 chinese.CreateDesktopIcon=在桌面创建「三角帧不掉洲」快捷方式(&D)
@@ -91,12 +89,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "DeploymentControl.ps1"; DestDir: "{app}\Tools"; Flags: ignoreversion
 Source: "DeploymentControl.ps1"; Flags: dontcopy
-Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "Assets\DotNetRepair\*"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppShortcutName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\卸载 {#MyAppShortcutName}"; Filename: "{uninstallexe}"
-Name: "{group}\.NET 环境修复"; Filename: "{app}\Assets\DotNetRepair\RepairDotNet.cmd"; WorkingDir: "{app}\Assets\DotNetRepair"
 Name: "{autodesktop}\{#MyAppShortcutName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]

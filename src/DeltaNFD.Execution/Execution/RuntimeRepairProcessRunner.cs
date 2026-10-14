@@ -64,7 +64,7 @@ internal sealed class RuntimeRepairProcessRunner(string root, Func<bool>? busyPr
     }
 
     internal async Task<RuntimeStepResult> RunAsync(ProcessStartInfo info, string label, TimeSpan timeout,
-        IProgress<string>? progress, CancellationToken token, Action<Process>? onStarted = null)
+        IProgress<string>? progress, CancellationToken token, Action<Process>? onStarted = null, Func<string>? waitStatus = null)
     {
         token.ThrowIfCancellationRequested();
         
@@ -103,7 +103,9 @@ internal sealed class RuntimeRepairProcessRunner(string root, Func<bool>? busyPr
                 var beat = Task.Delay(TimeSpan.FromSeconds(5), deadline.Token);
                 await Task.WhenAny(exit, beat).WaitAsync(deadline.Token);
                 if (exit.IsCompleted) break;
-                progress?.Report($"{label} · PID {process.Id} · 已等待 {watch.Elapsed:mm\\:ss}，单步上限 {timeout.TotalMinutes:0.0} 分钟");
+                progress?.Report(waitStatus is null
+                    ? $"{label} · PID {process.Id} · 已等待 {watch.Elapsed:mm\\:ss}，单步上限 {timeout.TotalMinutes:0.0} 分钟"
+                    : waitStatus() + $"（PID {process.Id}，单步上限 {timeout.TotalMinutes:0.#} 分钟）");
             }
             await exit;
             var code = process.ExitCode;

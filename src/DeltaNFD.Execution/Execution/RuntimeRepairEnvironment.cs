@@ -2,11 +2,14 @@
 
 namespace DeltaNFD.Services;
 
-internal sealed class RuntimeRepairEnvironment(RuntimeGuardService service, RuntimeRepairDiagnostics diagnostics, bool repairInstallerServices = false) : IRuntimeRepairEnvironment
+internal sealed class RuntimeRepairEnvironment(RuntimeGuardService service, RuntimeRepairDiagnostics diagnostics,
+    bool repairInstallerServices = false, bool allowNonstandardUninstall = false) : IRuntimeRepairEnvironment
 {
     private readonly RuntimeRepairProcessRunner _runner = new(AppDataPaths.Root);
     private readonly HashSet<string> _retainedBranches = [];
     private string PackageRoot => Path.Combine(BackendEnvironment.AssetsRoot, "VCRedistRepair");
+    private string UninstallPendingRoot => Path.Combine(AppDataPaths.Root,
+        allowNonstandardUninstall ? "runtime-unified-uninstall-force-pending" : "runtime-unified-uninstall-pending");
 
     public Task<RuntimePreflightSnapshot> PreflightAsync(CancellationToken token)
     {
@@ -31,8 +34,8 @@ internal sealed class RuntimeRepairEnvironment(RuntimeGuardService service, Runt
 
     public Task<IReadOnlyList<VcRedistEntry>> PrepareUninstallBatchAsync(IReadOnlyList<VcRedistEntry> entries, CancellationToken token)
     {
-        var uninstaller = new RuntimeUnifiedUninstaller(new RuntimeUnifiedUninstallBackend(diagnostics), diagnostics,
-            Path.Combine(AppDataPaths.Root, "runtime-unified-uninstall-pending"));
+        var uninstaller = new RuntimeUnifiedUninstaller(new RuntimeUnifiedUninstallBackend(diagnostics, allowNonstandardUninstall), diagnostics,
+            UninstallPendingRoot);
         return Task.FromResult(uninstaller.PrepareBatch(entries, token));
     }
 
@@ -51,8 +54,8 @@ internal sealed class RuntimeRepairEnvironment(RuntimeGuardService service, Runt
         if (step.Kind == "uninstall")
         {
             if (step.UninstallEntry is null) return new(-1, "缺少卸载条目");
-            return await new RuntimeUnifiedUninstaller(new RuntimeUnifiedUninstallBackend(diagnostics), diagnostics,
-                Path.Combine(AppDataPaths.Root, "runtime-unified-uninstall-pending"))
+            return await new RuntimeUnifiedUninstaller(new RuntimeUnifiedUninstallBackend(diagnostics, allowNonstandardUninstall), diagnostics,
+                UninstallPendingRoot)
                 .RunAsync(step.UninstallEntry, step.Id, timeout, progress, token);
         }
         else if (step.Kind == "msi")

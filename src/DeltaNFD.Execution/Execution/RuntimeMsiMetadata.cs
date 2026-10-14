@@ -127,6 +127,29 @@ internal static class RuntimeMsiMetadata
             ReadInstalledProperty(product, "Publisher"), ReadInstalledProperty(product, "VersionString"), ReadArchitecture(cache));
     }
 
+    internal static void VerifyCachedIdentity(RuntimeMsiProduct product)
+    {
+        var cache = ReadInstalledProperty(product.Code, "LocalPackage");
+        if (!File.Exists(cache)) throw new IOException("强制尝试仍需可读的 MSI 缓存，未猜测卸载。");
+        string Property(string name) => ReadRows(cache,
+            $"SELECT `Value` FROM `Property` WHERE `Property`='{name}'", 1).Single()[0];
+        ValidateCachedIdentity(product, ReadProductCode(cache), Property("ProductName"), Property("Manufacturer"),
+            Property("ProductVersion"), ReadArchitecture(cache));
+    }
+
+    internal static void ValidateCachedIdentity(RuntimeMsiProduct installed, string code, string name, string publisher, string version, string architecture)
+    {
+        static Version Normal(Version v) => new(v.Major, v.Minor, Math.Max(0, v.Build), Math.Max(0, v.Revision));
+        if (installed.State != 5 || !Guid.TryParse(code, out var cacheCode) || !Guid.TryParse(installed.Code, out var productCode)
+            || cacheCode == Guid.Empty || cacheCode != productCode
+            || !name.Equals(installed.Name, StringComparison.OrdinalIgnoreCase)
+            || !publisher.Equals("Microsoft Corporation", StringComparison.OrdinalIgnoreCase)
+            || !publisher.Equals(installed.Publisher, StringComparison.OrdinalIgnoreCase)
+            || !Version.TryParse(version, out var cacheVersion) || !Version.TryParse(installed.Version, out var actualVersion)
+            || Normal(cacheVersion) != Normal(actualVersion) || architecture != installed.Architecture)
+            throw new InvalidDataException("缓存 MSI 与已安装的产品码、名称、发布者、版本或架构不符；强制尝试已停止。");
+    }
+
     internal static string ReadArchitecture(string path)
     {
         var code = MsiGetSummaryInformationW(0, path, 0, out var summary);

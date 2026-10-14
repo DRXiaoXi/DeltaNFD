@@ -14,7 +14,7 @@ public sealed record DotNetCheckResult(DotNetCheckLevel Level, string Summary, I
         $"{c.Name}：{(c.Complete ? "文件检查通过" : "未通过")} · {c.Version} · {c.Source}\n{c.Detail}"));
 }
 
-/// <summary>只读检查实际 runtimeconfig 所声明的 .NET 8 x64；不运行 dotnet、后端或下载文件。</summary>
+/// <summary>仅开发构建工具使用：核验 runtimeconfig 和自包含部署文件；不编入产品程序。</summary>
 public static class DotNetEnvironmentProbe
 {
     private static readonly string[] CoreFiles = ["coreclr.dll", "clrjit.dll", "hostpolicy.dll", "System.Private.CoreLib.dll", "System.Runtime.dll", "netstandard.dll"];
@@ -35,8 +35,9 @@ public static class DotNetEnvironmentProbe
             {
                 using var config = JsonDocument.Parse(File.ReadAllText(app.ConfigPath));
                 var options = config.RootElement.GetProperty("runtimeOptions");
-                bundled = options.TryGetProperty("includedFrameworks", out var frameworks);
-                var required = bundled ? frameworks.EnumerateArray().ToArray()
+                var selfContained = options.TryGetProperty("includedFrameworks", out var frameworks);
+                bundled = selfContained;
+                var required = selfContained ? frameworks.EnumerateArray().ToArray()
                     : options.TryGetProperty("frameworks", out frameworks) ? frameworks.EnumerateArray().ToArray()
                     : [options.GetProperty("framework")];
                 if (required.Length != 1 || required[0].GetProperty("name").GetString() != "Microsoft.NETCore.App"
@@ -45,7 +46,7 @@ public static class DotNetEnvironmentProbe
                 resolved = true;
                 var appDir = Path.GetDirectoryName(Path.GetFullPath(app.ConfigPath))!;
                 string runtimeDir, deps, hostfxr;
-                if (bundled)
+                if (selfContained)
                 {
                     runtimeDir = appDir;
                     deps = app.ConfigPath[..^".runtimeconfig.json".Length] + ".deps.json";
@@ -53,18 +54,27 @@ public static class DotNetEnvironmentProbe
                 }
                 else
                 {
+                    // Apphost loads an adjacent hostfxr before consulting the system installation.
+                    // That host uses the app directory as its .NET root. A stale self-contained
+                    // host next to a framework-dependent config must not pass on system files.
+                    var localHostFxr = Path.Combine(appDir, "hostfxr.dll");
+                    var hasLocalHost = File.Exists(localHostFxr);
+                    bundled = hasLocalHost;
                     var exact = options.TryGetProperty("rollForward", out var roll) && roll.GetString() == "Disable";
-                    var candidates = roots.SelectMany(root => InstalledRuntimes(root, version, exact))
+                    var effectiveRoots = hasLocalHost ? new[] { appDir } : roots;
+                    var candidates = effectiveRoots.SelectMany(root => InstalledRuntimes(root, version, exact))
                         .OrderByDescending(c => c.Version).ToArray();
                     if (candidates.Length == 0)
                     {
-                        results.Add(new(app.Name, "系统 x64 运行时", version.ToString(), false, false,
-                            "未找到兼容的 .NET 8 x64；.NET 6/9/10 或 x86 不能替代。"));
+                        results.Add(new(app.Name, hasLocalHost ? "工具目录：" + appDir : "系统 x64 运行时",
+                            version.ToString(), false, bundled, hasLocalHost
+                                ? "部署冲突：配置依赖框架，但同目录 hostfxr.dll 将运行时查找限定到工具目录，未找到兼容框架。系统 .NET 不能弥补此布局；请修复工具安装或重新生成完整自包含版本。"
+                                : "未找到兼容的 .NET 8 x64；.NET 6/9/10 或 x86 不能替代。"));
                         continue;
                     }
                     runtimeDir = candidates[0].Directory;
                     deps = Path.Combine(runtimeDir, "Microsoft.NETCore.App.deps.json");
-                    hostfxr = candidates[0].HostFxr;
+                    hostfxr = hasLocalHost ? localHostFxr : candidates[0].HostFxr;
                     version = candidates[0].Version;
                 }
                 var key = runtimeDir + "|" + deps + "|" + hostfxr + "|" + version;
@@ -87,9 +97,9 @@ public static class DotNetEnvironmentProbe
         if (results.Count == 0) return new(DotNetCheckLevel.Failed, "未获得工具运行时需求，检测失败。", results);
         var bad = results.Count(c => !c.Complete);
         return new(bad == 0 ? DotNetCheckLevel.Complete : DotNetCheckLevel.Incomplete,
-            bad == 0 ? ".NET 8 x64 所需文件检查通过（含主程序、官方后端及助手）。"
+            bad == 0 ? ".NET 8 x64 所需文件检查通过（按各组件实际部署配置核对）。"
                 : $"{bad} 个组件的 .NET 检查未通过。" + (results.Any(c => c.Bundled && !c.Complete)
-                    ? "工具自带文件或配置缺损，请修复工具安装。" : "请到设置安装/修复 .NET 8 x64。"), results);
+                    ? "工具自带文件或配置缺损，请重新生成完整部署。" : "缺少兼容框架；请生成完整自包含部署。"), results);
     }
 
     private sealed record Installed(Version Version, string Directory, string HostFxr);

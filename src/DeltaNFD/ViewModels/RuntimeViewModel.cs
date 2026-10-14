@@ -63,7 +63,7 @@ public partial class RuntimeViewModel : ObservableObject
             var text = new StringBuilder();
             if (report.HasAbnormal)
             {
-                text.AppendLine($"⚠ 检测到 {report.Abnormal.Count} 个 v14 运行库（不完善版本，可能导致部分游戏/软件异常）：");
+                text.AppendLine($"⚠ 检测到 {report.Abnormal.Count} 个 v14 命名运行库（三角洲掉帧兼容性异常）：");
                 foreach (var e in report.Abnormal)
                 {
                     text.AppendLine($"· {e.Architecture}  {e.DisplayVersion}  （{e.DisplayName}）");
@@ -76,17 +76,19 @@ public partial class RuntimeViewModel : ObservableObject
 
             if (report.HasSuboptimal)
             {
-                text.AppendLine($"⚠ 检测到 {report.Suboptimal.Count} 项运行库版本提醒（低于基线或未检测到安装记录）：");
+                text.AppendLine($"⚠ 检测到 {report.Suboptimal.Count} 项安装记录/推荐版本提醒：");
                 foreach (var s in report.Suboptimal)
                 {
-                    text.AppendLine(string.IsNullOrEmpty(s.InstalledVersion)
+                    text.AppendLine(s.Reason == "version-unknown"
+                        ? $"· {s.Branch}：已有安装记录，版本无法核对；请查看诊断日志"
+                        : string.IsNullOrEmpty(s.InstalledVersion)
                         ? $"· {s.Branch}：未检测到安装记录（推荐 {s.RecommendedVersion}）"
-                        : $"· {s.Branch}：{s.InstalledVersion}（推荐 ≥ {s.RecommendedVersion}）");
+                        : $"· {s.Branch}：{s.InstalledVersion}（推荐 ≥ {s.RecommendedVersion}；版本建议不等于损坏）");
                 }
             }
             else
             {
-                text.AppendLine("✓ 各分支运行库均为最适版本。");
+                text.AppendLine("✓ 各分支安装记录与推荐版本核对通过；不代表 DLL 完整性验证。");
             }
 
             text.Append("👉 " + report.Advice);
@@ -111,7 +113,7 @@ public partial class RuntimeViewModel : ObservableObject
     [ObservableProperty] private bool isRepairing;
     [ObservableProperty] private bool strongRepairMode;
     public string StrongRepairDescription => StrongRepairConfirmation;
-    public const string StrongRepairConfirmation = "开启后，两种修复都会先使用 DISM／SFC 修复 Windows 系统组件，并抽查 API Sets／UCRT，再执行共享的 C++ 卸载阶段。兼容性安装会加强同版本文件内容复核。可能需要联网，耗时较长，部分情况需重启。";
+    public const string StrongRepairConfirmation = "开启后，两种修复都会先使用 DISM／SFC 修复 Windows 系统组件，并抽查 API Sets／UCRT；此阶段可能需要联网及等待数十分钟，界面显示工具实际进度，百分比停留不等于卡死。停止等待后系统工具可能继续运行，其结束前不能重试。随后 C++ 跳过卸载，直接逐包覆盖安装／修复，同版本文件也重新写入并复检；较新产品保留并验证。兼容性修复另含 DirectX 旧组件，部分情况需重启。";
     [ObservableProperty] private string repairStatusText = "";
     [ObservableProperty] private string compatibilityRepairStatusText = "";
     [ObservableProperty] private bool compatibilityRepairSelected;
@@ -281,6 +283,7 @@ public partial class RuntimeViewModel : ObservableObject
 
     // ---------------- 防护模式 ----------------
     [ObservableProperty] private bool uninstallAllBusy;
+    [ObservableProperty] private bool uninstallAllAllowNonstandard;
     [ObservableProperty] private string uninstallAllStatusText = "";
     [ObservableProperty] private bool uninstallAllCancelRequested;
     private CancellationTokenSource? _allCancellation;
@@ -292,7 +295,7 @@ public partial class RuntimeViewModel : ObservableObject
         foreach (var name in new[] { nameof(UninstallAllEnabled), nameof(CanCancelUninstallAll), nameof(UninstallV14Enabled),
             nameof(RepairEnabled), nameof(CanCheck), nameof(GuardToggleEnabled), nameof(GuardModeEnabled), nameof(GuardCleanupEnabled) }) OnPropertyChanged(name);
     }
-    public Task<RuntimeUninstallPreview> PreviewUninstallAllAsync() => _guard.PreviewUninstallAllAsync();
+    public Task<RuntimeUninstallPreview> PreviewUninstallAllAsync() => _guard.PreviewUninstallAllAsync(UninstallAllAllowNonstandard);
     public void CancelUninstallAll()
     {
         if (!CanCancelUninstallAll) return;
@@ -300,7 +303,7 @@ public partial class RuntimeViewModel : ObservableObject
         UninstallAllStatusText = "已请求停止后续卸载；不会强杀安装事务，已卸载的组件不会自动还原。";
         _allCancellation?.Cancel();
     }
-    public async Task<OperationResult?> UninstallAllAsync(string fingerprint)
+    public async Task<OperationResult?> UninstallAllAsync(string fingerprint, bool allowNonstandard = false)
     {
         if (!UninstallAllEnabled) return null;
         UninstallAllBusy = true; UninstallAllCancelRequested = false;
@@ -311,7 +314,7 @@ public partial class RuntimeViewModel : ObservableObject
         {
             var progress = new Progress<string>(message =>
             { if (!operationEnded && UninstallAllBusy && !UninstallAllCancelRequested && ReferenceEquals(_allCancellation, cancellation)) UninstallAllStatusText = message; });
-            var result = await _guard.UninstallAllAsync(fingerprint, progress, cancellation.Token);
+            var result = await _guard.UninstallAllAsync(fingerprint, allowNonstandard, progress, cancellation.Token);
             operationEnded = true;
             UninstallAllStatusText = result.Success ? "全部卸载及复检通过。" : result.OutcomeUnknown ? "卸载事务未确认，请核对诊断记录。" : "卸载未全部完成，详见结果。";
             if (!result.OutcomeUnknown && !UninstallAllCancelRequested) await LoadAsync();

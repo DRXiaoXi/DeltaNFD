@@ -30,9 +30,16 @@ internal static class RuntimeCompatibilityChecks
             && good.Trace.IndexOf("uninstall") < good.Trace.IndexOf("dx"), "资源验证后先卸载全部 C++，再安装 DirectX 和 C++");
         var strong = new Fake();
         Check((await RuntimeStrongRepairChecks.WithSystemPhaseAsync(root, strong.VerifyAsync,
-            new RuntimeCompatibilityRepair(strong, new RuntimeRepairDiagnostics(root)).RunAsync)).Success
-            && strong.DxCalls == 1 && strong.CppCalls == 18,
-            "强力系统组件阶段与兼容性 DirectX 和 18 项 C++ 流程集成通过");
+            new RuntimeCompatibilityRepair(strong, new RuntimeRepairDiagnostics(root), strongRepairMode: true).RunAsync)).Success
+            && strong.DxCalls == 1 && strong.CppCalls == 18 && strong.UninstallCalls == 0 && !strong.Trace.Contains("prepare"),
+            "强力兼容性修复 DirectX 和 18 个 C++ 包，完全跳过卸载准备与执行");
+        var strongDependency = new Fake { PrepareFailed = true, UninstallResult = new(1603) };
+        Check((await new RuntimeCompatibilityRepair(strongDependency, new RuntimeRepairDiagnostics(root), strongRepairMode: true).RunAsync(null, default)).Success
+            && strongDependency.CppCalls == 18 && strongDependency.UninstallCalls == 0 && !strongDependency.Trace.Contains("prepare"),
+            "强力兼容性不受包装共享依赖卸载检查阻塞");
+        var strongUnknown = new Fake { CppResult = new(null, OutcomeUnknown: true) };
+        Check((await new RuntimeCompatibilityRepair(strongUnknown, new RuntimeRepairDiagnostics(root), strongRepairMode: true).RunAsync(null, default)).OutcomeUnknown
+            && strongUnknown.CppCalls == 1 && strongUnknown.UninstallCalls == 0, "强力覆盖结果未知立即停止");
         var healthy = new Fake { Before = [new("d3dx9_43.dll", "x64", true, "healthy")] };
         Check((await Run(healthy)).Success && healthy.DxCalls == 0, "DirectX 组件健康时跳过安装器");
         var corruptResource = new Fake { Verified = false };
@@ -42,6 +49,17 @@ internal static class RuntimeCompatibilityChecks
         var badBatch = new Fake { PrepareFailed = true };
         Check(!(await Run(badBatch)).Success && badBatch.UninstallCalls == 0 && badBatch.DxCalls == 0 && badBatch.CppCalls == 0,
             "兼容性整批预检失败必须先于任何卸载和安装");
+        var shared = new Fake { SharedDependency = true };
+        var sharedResult = await Run(shared);
+        Check(sharedResult.Success && shared.UninstallCalls == 0 && shared.DxCalls == 1 && shared.CppCalls == 18
+            && shared.OverwritePrepared && sharedResult.Message.Contains("共享依赖"),
+            "兼容性共享依赖卸载前阻塞时改用覆盖安装，DirectX 流程保留");
+        var badOverwrite = new Fake { SharedDependency = true, OverwriteResourceFailed = true };
+        Check(!(await Run(badOverwrite)).Success && badOverwrite.DxCalls == 0 && badOverwrite.CppCalls == 0,
+            "兼容性覆盖资源损坏不能启动 DirectX 或 C++");
+        var lateDependency = new Fake { UninstallThrowsDependency = true };
+        Check(!(await Run(lateDependency)).Success && !lateDependency.OverwritePrepared && lateDependency.CppCalls == 0,
+            "兼容性已经调用卸载后不得因共享依赖回退安装");
         var residue = new Fake { KeepInstalled = true };
         Check(!(await Run(residue)).Success && residue.UninstallCalls == 1 && residue.DxCalls == 0 && residue.CppCalls == 0,
             "兼容性卸载复检残留时禁止 DirectX 和 C++ 安装");
@@ -121,6 +139,9 @@ internal static class RuntimeCompatibilityChecks
     private sealed class Fake : IRuntimeCompatibilityEnvironment
     {
         internal bool Verified = true, PrepareFailed, KeepInstalled;
+        internal bool SharedDependency, OverwritePrepared, OverwriteResourceFailed, UninstallThrowsDependency;
+        public Task PrepareOverwriteAsync(CancellationToken token)
+        { token.ThrowIfCancellationRequested(); if (OverwriteResourceFailed) throw new IOException("fixture bad overwrite"); OverwritePrepared = true; return Task.CompletedTask; }
         internal int DxCalls, CppCalls, ProbeCalls;
         internal int UninstallCalls;
         internal List<string> Trace = [];
@@ -129,7 +150,7 @@ internal static class RuntimeCompatibilityChecks
         internal IReadOnlyList<DirectXProbeResult> After = [new("d3dx9_43.dll", "x64", true, "healthy")];
         internal RuntimeStepResult DirectXResult = new(0), CppResult = new(0);
         public Task<IReadOnlyList<VcRedistEntry>> PrepareUninstallBatchAsync(IReadOnlyList<VcRedistEntry> entries, CancellationToken token)
-        { token.ThrowIfCancellationRequested(); Trace.Add("prepare"); if (PrepareFailed) throw new IOException("fixture bad batch"); return Task.FromResult(entries); }
+        { token.ThrowIfCancellationRequested(); Trace.Add("prepare"); if (SharedDependency) throw new RuntimeDependencyConflictException("fixture shared 2013 MSI"); if (PrepareFailed) throw new IOException("fixture bad batch"); return Task.FromResult(entries); }
         public Task<OperationResult> VerifyAsync(IProgress<string>? progress, CancellationToken token)
         { token.ThrowIfCancellationRequested(); return Task.FromResult(Verified ? OperationResult.Ok("verified") : OperationResult.Fail("bad resource")); }
         public Task<IReadOnlyList<DirectXProbeResult>> ProbeAsync(CancellationToken token)
@@ -141,6 +162,6 @@ internal static class RuntimeCompatibilityChecks
         public Task<VcRedistScanReport> ScanCppAsync(CancellationToken token) => Task.FromResult(new VcRedistScanReport
         { All = UninstallCalls == 0 || KeepInstalled ? [new() { DisplayName = "Microsoft Visual C++ 2005 Redistributable", Architecture = "x86", KeyName = "fixture", UninstallKind = "Msi" }] : [], Abnormal = [], Suboptimal = [], Advice = "" });
         public Task<RuntimeStepResult> UninstallCppAsync(VcRedistEntry entry, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
-        { Trace.Add("uninstall"); UninstallCalls++; return Task.FromResult(UninstallResult); }
+        { Trace.Add("uninstall"); UninstallCalls++; if (UninstallThrowsDependency) throw new RuntimeDependencyConflictException("fixture late dependency"); return Task.FromResult(UninstallResult); }
     }
 }

@@ -1,5 +1,94 @@
 using DeltaNFD.Services;
 
+if (args.Contains("--shader-recovery-checks"))
+{
+    try { ShaderRecoveryChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--nv-shader-cache-checks") || args.Contains("--nv-shader-cache-readonly"))
+{
+    try { NvShaderCacheChecks.Run(args.Contains("--nv-shader-cache-readonly")); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--memory-mode-checks"))
+{
+    try { await ProcmanMemoryModeChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--procman-priority-interval-ipc-checks"))
+{
+    try { await ProcmanPriorityIntervalChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--memory-efficiency-benchmark"))
+{
+    try { await MemoryEfficiencyBenchmark.RunAsync(args.Contains("--all-memory-levels")); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--runtime-pending-recovery-checks"))
+{
+    try { await RuntimePendingRecoveryChecks.RunAsync(args.Contains("--with-ipc")); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--runtime-progress-child"))
+{
+    Console.Write("[== 3.8% ]\r[=== 20.2% ]\r");
+    Console.Out.Flush();
+    await Task.Delay(6500);
+    Console.WriteLine("fixture complete");
+    return;
+}
+
+if (args.Contains("--procman-soak-child"))
+{
+    BackgroundSustainedChecks.RunChild(args.Contains("--allocate-memory"));
+    return;
+}
+if (args.Contains("--suppression-sustained-checks"))
+{
+    try { await BackgroundSustainedChecks.SuppressionAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+if (args.Contains("--memory-sustained-checks"))
+{
+    try { await BackgroundSustainedChecks.MemoryAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+if (args.Contains("--background-native-soak"))
+{
+    try { await BackgroundSustainedChecks.NativeSoakAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--procman-topology-checks"))
+{
+    try { ProcmanCpuTopologyChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--procman-topology-ipc-checks"))
+{
+    try { await ProcmanCpuTopologyChecks.RunIpcAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args.Contains("--ace-virtualization-checks"))
 {
     AceVirtualizationChecks.Run();
@@ -23,6 +112,27 @@ if (args.Contains("--ace-virtualization-readonly"))
 if (args.Contains("--procman-list-checks"))
 {
     ProcmanListChecks.Run();
+    return;
+}
+
+if (args.Contains("--delta-rules-offline-checks"))
+{
+    try { DeltaRulesOfflineChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--frame-background-checks"))
+{
+    try { FrameBackgroundChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--factory-reset-checks"))
+{
+    try { await FactoryResetChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
 
@@ -94,18 +204,16 @@ if (args.Length == 2 && args[0] == "--frame-power-readonly-probe")
     return;
 }
 
-if (args.Length == 2 && args[0] == "--dotnet-environment-inspect")
+if (args.Length == 2 && args[0] == "--backend-startup-checks")
 {
-    var result = await DotNetEnvironmentService.CheckAtAsync(Path.GetFullPath(args[1]));
-    Console.WriteLine(result.Summary);
-    Console.WriteLine(result.Details);
-    Environment.ExitCode = result.Level == DotNetCheckLevel.Complete ? 0 : 1;
+    try { await BackendStartupChecks.RunAsync(args[1]); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
 
-if (args.Contains("--dotnet-environment-checks"))
+if (args.Contains("--dotnet-layout-checks"))
 {
-    try { await DotNetEnvironmentChecks.RunAsync(); }
+    try { await DotNetLayoutChecks.RunAsync(); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
@@ -178,9 +286,11 @@ if (args.Contains("--runtime-guard-recovery-scope-checks"))
     return;
 }
 
-if (args.Contains("--runtime-unified-uninstall-checks") || args.Contains("--runtime-unified-uninstall-readonly"))
+if (args.Contains("--runtime-unified-uninstall-checks") || args.Contains("--runtime-unified-uninstall-readonly")
+    || args.Contains("--runtime-unified-uninstall-force-readonly"))
 {
-    try { await RuntimeUnifiedUninstallChecks.RunAsync(args.Contains("--runtime-unified-uninstall-readonly")); }
+    try { await RuntimeUnifiedUninstallChecks.RunAsync(args.Contains("--runtime-unified-uninstall-readonly")
+        || args.Contains("--runtime-unified-uninstall-force-readonly"), args.Contains("--runtime-unified-uninstall-force-readonly")); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
@@ -307,6 +417,13 @@ if (args.Contains("--ace-cleanup-scope-checks", StringComparer.OrdinalIgnoreCase
     return;
 }
 
+if (args.Contains("--ace-core-cleanup-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { AceCoreFileCleanupChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args.Contains("--backend-recovery-checks", StringComparer.OrdinalIgnoreCase))
 {
     try { await BackendRecoveryChecks.RunAsync(); }
@@ -349,6 +466,13 @@ if (args.Contains("--ace-cleanup-stage-checks", StringComparer.OrdinalIgnoreCase
 if (args.Contains("--gpu-spoof-watch-checks", StringComparer.OrdinalIgnoreCase))
 {
     try { GpuSpoofWatchChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Length is 1 or 2 && args[0] == "--dashboard-shader-health-checks")
+{
+    try { await DashboardShaderHealthChecks.RunAsync(args.Length == 2 ? args[1] : null); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }

@@ -40,11 +40,19 @@ jobs:
       - name: Update channels and installation policy checks (isolated, offline)
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --update-channel-checks
 
+      - name: Alpha0.916 feature regression checks (isolated fixtures)
+        run: |
+          $checks = @('--memory-mode-checks', '--procman-topology-checks', '--delta-rules-offline-checks', '--frame-background-checks', '--factory-reset-checks', '--ace-core-cleanup-checks', '--runtime-pending-recovery-checks', '--nv-shader-cache-checks', '--shader-recovery-checks', '--dashboard-shader-health-checks')
+          foreach ($check in $checks) {
+            dotnet run --project tools/BackendSmokeTest -c Release --no-build -- $check
+            if ($LASTEXITCODE -ne 0) { throw "Feature regression failed: $check" }
+          }
+
       - name: ACE registry, cleanup scope and update responsiveness checks (isolated, offline)
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --external-fix-regression-checks
 
-      - name: Tool .NET dependency and installer validation checks (isolated, offline)
-        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --dotnet-environment-checks
+      - name: Build-only self-contained runtime layout checks (isolated, offline)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --dotnet-layout-checks
 
       - name: Actual SDK self-contained .NET manifest check
         run: |

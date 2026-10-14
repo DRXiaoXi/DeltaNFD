@@ -37,7 +37,8 @@ internal static class RuntimeGuardRecoveryScopeChecks
         Check(!RuntimeGuardRecoveryReport.BuildOutcome(OperationResult.Fail("close failed"),clean).Verified, "关闭失败不能因快照干净改成成功");
         Check(!RuntimeGuardRecoveryReport.Build(Status(managed:-1)).Complete, "无效计数不作为完整证据");
         var source = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "src/DeltaNFD.Backend.Runtime/RuntimeCommands.cs"));
-        Check(source.Contains("RuntimeGuardRecoveryReport.BuildOutcome") && source.Contains("RuntimeGuardRecoveryReport.Build(await"), "真实后端使用本次受测的状态判定");
+        Check(source.Contains("RuntimeGuardRecoveryReport.BuildOutcome") && source.Contains("RuntimeRepairRecovery.InspectAsync")
+            && source.Contains("RuntimeGuardRecoveryReport.Build(await"), "真实后端使用防护与安装事务的独立核对路径");
         Check(!source.Contains("State.StartsWith(\"拦截已生效\""), "恢复复核不再靠显示文案前缀");
         Console.WriteLine($"运行库防护恢复范围检查通过：{count} 项；全部合成状态，无系统改写。");
     }

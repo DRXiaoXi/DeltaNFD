@@ -7,6 +7,7 @@ public static class BackendCommands
     public const string AceScan = "ace.scan";
     public const string AceCoreCheck = "ace.core";
     public const string AceClean = "ace.clean";
+    public const string AceCoreClean = "ace.core.clean";
     public const string AceReconcile = "ace.reconcile";
     public const string AceVirtCheck = "ace.vircheck";
 
@@ -21,6 +22,8 @@ public static class BackendCommands
     public const string GpuDriverApply = "gpu.driver.apply";
     public const string GpuDriverRestore = "gpu.driver.restore";
     public const string GpuDriverLock = "gpu.driver.lock";
+    public const string GpuShaderCacheApply = "gpu.shader-cache.apply";
+    public const string SystemShaderRecoveryClean = "system.shader.recovery-clean";
     public const string GpuReconcile = "gpu.reconcile";
     public const string GpuRecover = "gpu.recover";
 
@@ -37,6 +40,7 @@ public static class BackendCommands
     public const string ProcmanMemoryTrim = "procman.memory.trim";
     public const string ProcmanBackgroundGet = "procman.background.get";
     public const string ProcmanBackgroundSave = "procman.background.save";
+    public const string ProcmanFrameBackgroundSync = "procman.background.frame.sync";
     public const string RuntimeRedistListV14 = "runtime.redist.list-v14";
     public const string RuntimeRepair = "runtime.repair";
     public const string RuntimeCompatibilityRepair = "runtime.compatibility.repair";
@@ -179,7 +183,7 @@ public static class BackendModules
     private static readonly TimeSpan ThirtyMinutes = TimeSpan.FromMinutes(30);
 
     /// <summary>按需任务模块（清理等）在完成指定命令后自行退出。</summary>
-    private static readonly HashSet<string> AceExitAfter = new(StringComparer.Ordinal) { BackendCommands.AceClean };
+    private static readonly HashSet<string> AceExitAfter = new(StringComparer.Ordinal) { BackendCommands.AceClean, BackendCommands.AceCoreClean };
 
     private static BackendModuleSpec Make(
         string id, string display, string exe, IReadOnlyDictionary<string, TimeSpan>? timeouts,
@@ -197,6 +201,7 @@ public static class BackendModules
                     [BackendCommands.AceScan] = ThreeMinutes,
                     [BackendCommands.AceCoreCheck] = TwoMinutes,
                     [BackendCommands.AceClean] = FifteenMinutes,
+                    [BackendCommands.AceCoreClean] = TwoMinutes,
                     [BackendCommands.AceReconcile] = ThreeMinutes,
                     [BackendCommands.AceVirtCheck] = ThreeMinutes,
                 }, ThreeMinutes, AceExitAfter),
@@ -214,6 +219,7 @@ public static class BackendModules
                     [BackendCommands.GpuDriverApply] = FiveMinutes,
                     [BackendCommands.GpuDriverRestore] = FiveMinutes,
                     [BackendCommands.GpuDriverLock] = TwoMinutes,
+                    [BackendCommands.GpuShaderCacheApply] = TwoMinutes,
                     [BackendCommands.GpuReconcile] = FiveMinutes,
                     [BackendCommands.GpuRecover] = FifteenMinutes,
                 }, FiveMinutes),
@@ -298,6 +304,7 @@ public static class BackendModules
                     [BackendCommands.ProcmanMemoryTrim] = TwoMinutes,
                     [BackendCommands.ProcmanBackgroundGet] = TwoMinutes,
                     [BackendCommands.ProcmanBackgroundSave] = TwoMinutes,
+                    [BackendCommands.ProcmanFrameBackgroundSync] = TwoMinutes,
                     [BackendCommands.ProcmanNativeProbe] = TwoMinutes,
                 }, TwoMinutes),
 
@@ -327,6 +334,7 @@ public static class BackendModules
                     [BackendCommands.SystemShaderStatus] = TwoMinutes,
                     [BackendCommands.SystemShaderDiagnose] = TwoMinutes,
                     [BackendCommands.SystemShaderClear] = FiveMinutes,
+                    [BackendCommands.SystemShaderRecoveryClean] = FiveMinutes,
                     [BackendCommands.SystemPagefileStatus] = TwoMinutes,
                     [BackendCommands.SystemPagefileSet] = FiveMinutes,
                     [BackendCommands.SystemPagefileRestoreAuto] = FiveMinutes,
