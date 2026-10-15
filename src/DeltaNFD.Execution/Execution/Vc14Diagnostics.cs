@@ -7,10 +7,7 @@ namespace DeltaNFD.Services;
 // Read-only evidence. Registration labels and uninstall strings are data, never commands to execute.
 internal static class Vc14Diagnostics
 {
-    internal static bool Relevant(string name, string version) => name.Contains("Visual C++", StringComparison.OrdinalIgnoreCase)
-        && !name.Contains("Debug", StringComparison.OrdinalIgnoreCase)
-        && (name.Contains("Visual C++ v14", StringComparison.OrdinalIgnoreCase)
-            || Version.TryParse(version, out var parsed) && parsed.Major == 14);
+    internal static bool Relevant(string name, string version) => Vc14BetaUninstall.RelevantForResidue(name, version);
     internal static string? Save(Vc14Scan scan)
     {
         try

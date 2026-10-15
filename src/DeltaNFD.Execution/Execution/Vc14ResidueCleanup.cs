@@ -14,7 +14,7 @@ public sealed record Vc14ResidueItem(
 }
 
 /// <summary>
-/// 残留登记受控清理（2026-10-15 用户授权）：仅在全量重装成功并复检后自动执行。
+/// 残留登记受控清理（2026-10-15 用户授权）：卸载完成后、安装 14.42 基线前执行。
 /// 只删 14.x 相关的登记叶子键与固定 v14 INF 包装文件；不碰 Appx、System32/WinSxS、
 /// 形状异常的键、重解析点或 MSI 仍安装的条目；每步先备份后删除、删后复扫。
 /// </summary>
@@ -29,10 +29,10 @@ internal static class Vc14ResidueCleanup
     // INF 形状哈希：规范化（去注释、压空格、动态字段替换为占位）后比对固定值。
     private static readonly IReadOnlyDictionary<string, string> LegacyInfShapeHashes = new Dictionary<string, string>
     {
-        ["x64"] = "A566495B7E03B0FE3D1F293B1C77D69B5D2E7D96BDF55A3B25B9833D80904356",
-        ["x86"] = "5191392B5A6E5A4688598F2A05BF393740E7E0AE05E3FE0BBFE684DC5D06A525",
+        ["x64"] = "0F75FD30A1E76028CFDDEDFF9B47DF77945B27DBBC007C0F773BC051E477E45D",
+        ["x86"] = "D7DE279633764C74E81B7A48C09C15ED7361DE21B9B25AC46F98FE5AAEDDA59C",
     };
-    // 固定 v14 包装登记的识别用卸载命令模板（不执行）。
+    // 固定 v14 包装登记模板；仅 Vc14BetaUninstall 经额外产品身份核验后可以构造执行命令。
     private const string LegacyUninstallTemplate = "rundll32.exe advpack.dll,LaunchINFSection vcred14_{ARCH}.inf,Uninstall";
     // 登记键值名白名单：超出名单的键值形状异常，保留不处理。
     private static readonly HashSet<string> AllowedValueNames = new(StringComparer.OrdinalIgnoreCase)
@@ -93,8 +93,9 @@ internal static class Vc14ResidueCleanup
         {
             var (leaf, infBase) = LegacyPackages[arch];
             if (!keyName.Equals(leaf, StringComparison.OrdinalIgnoreCase)) continue;
-            if (!OrphanNamePattern.IsMatch(name))
-                return new(hiveName, viewName, keyName, name, version, "keep", "v14 包装登记名称形态不符，保留不处理。");
+            var registration = OrphanNamePattern.Match(name);
+            if (!registration.Success || !registration.Groups[1].Value.Equals(arch, StringComparison.OrdinalIgnoreCase))
+                return new(hiveName, viewName, keyName, name, version, "keep", "v14 包装登记名称或架构与固定键不符，保留不处理。");
             var uninstall = (key.GetValue("UninstallString") as string ?? "").Trim();
             var expected = LegacyUninstallTemplate.Replace("{ARCH}", arch);
             if (uninstall.Length > 0 && !uninstall.Equals(expected, StringComparison.OrdinalIgnoreCase))
@@ -108,6 +109,8 @@ internal static class Vc14ResidueCleanup
                 catch (Exception ex) { return new(hiveName, viewName, keyName, name, version, "keep", "INF 文件无法读取：" + ex.Message); }
                 if (!shape.Equals(LegacyInfShapeHashes[arch], StringComparison.OrdinalIgnoreCase))
                     return new(hiveName, viewName, keyName, name, version, "keep", "INF 文件形状哈希与固定值不符（内容可能被修改），保留不处理。");
+                try { Vc14BetaUninstall.ValidateInf(File.ReadAllText(inf), arch, Vc14Catalog.ReadAny); }
+                catch (Exception ex) { return new(hiveName, viewName, keyName, name, version, "keep", "INF 目标组件未确认属于 14.x，保留：" + ex.Message); }
                 infPresent = true;
             }
             var publisher = key.GetValue("Publisher") as string ?? "";
@@ -137,9 +140,16 @@ internal static class Vc14ResidueCleanup
             return new(hiveName, viewName, keyName, name, version, "keep", "登记发布者非微软，保留不处理。");
         // 有可用卸载途径（命令的可执行文件按系统目录/PATH 可解析，或缓存可核验）的登记属于可卸载对象，
         // 应在重装阶段处理。命令在但程序不可用（如旧版工具留下的失效命令）视为无可用途径，转入孤儿清理。
-        var uninstall = key.GetValue("QuietUninstallString") as string ?? key.GetValue("UninstallString") as string ?? "";
+        var uninstall = Vc14BetaUninstall.PreferredCommand(key.GetValue("QuietUninstallString") as string ?? "",
+            key.GetValue("UninstallString") as string ?? "");
         var cache = key.GetValue("BundleCachePath") as string;
-        if (Vc14Catalog.UninstallExecutableAvailable(uninstall) || Vc14PackageTrust.Verify(cache, version, arch))
+        var commandAvailable = Vc14Catalog.UninstallExecutableAvailable(uninstall);
+        if (Vc14BetaUninstall.IsMsiCommand(uninstall))
+        {
+            try { commandAvailable = Vc14BetaUninstall.MsiTarget(uninstall, Vc14Catalog.ReadAny) is not null; }
+            catch (Exception ex) { return new(hiveName, viewName, keyName, name, version, "keep", "MSI 身份无法核验，未清理登记：" + ex.Message); }
+        }
+        if (commandAvailable || Vc14PackageTrust.Verify(cache, version, arch))
             return new(hiveName, viewName, keyName, name, version, "keep", "该登记仍有可用卸载途径，应在重装阶段处理，不作为孤儿清理。");
         if (!ShapeIsSimple(key, out var shapeDetail))
             return new(hiveName, viewName, keyName, name, version, "keep", shapeDetail);
@@ -166,7 +176,15 @@ internal static class Vc14ResidueCleanup
     /// <summary>INF 形状哈希：去注释、压空白、四个动态数据字段替换为占位后取 SHA256。</summary>
     internal static string InfShape(string path)
     {
-        var lines = File.ReadAllLines(path)
+        return InfShapeText(File.ReadAllText(path));
+    }
+
+    internal static bool MatchesLegacyInfText(string text, string arch) => text.Length <= 65536
+        && LegacyInfShapeHashes.TryGetValue(arch, out var expected) && InfShapeText(text) == expected;
+
+    internal static string InfShapeText(string text)
+    {
+        var lines = text.Split('\n')
             .Select(line => line.Split(';', 2)[0])
             .Where(line => line.Trim().Length > 0)
             .Select(line => Regex.Replace(line, @"\s+", " ").Trim());
@@ -179,6 +197,20 @@ internal static class Vc14ResidueCleanup
             normalized.Add(replaced);
         }
         return Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(string.Join("\n", normalized))));
+    }
+
+    internal static void BackupBeforeInfUninstall(string keyName, string diagnosticsDirectory)
+    {
+        var items = Survey(Vc14Catalog.Scan()).Where(i => i.KeyName.Equals(keyName, StringComparison.OrdinalIgnoreCase)
+            && i.Kind == "inf-legacy").ToArray();
+        if (items.Length == 0) throw new IOException("旧 INF 包装登记已变化，请重新预览。");
+        foreach (var item in items)
+        {
+            var folder = Path.Combine(diagnosticsDirectory, "before-inf-uninstall", item.HiveName + "-" + item.ViewName + "-" + item.KeyName);
+            Directory.CreateDirectory(folder);
+            BackupRegistration(item, folder);
+            if (!BackupLegacyInf(item, folder)) throw new IOException("旧 INF 备份未确认，未执行卸载。");
+        }
     }
 
     /// <summary>

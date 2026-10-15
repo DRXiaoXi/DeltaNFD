@@ -13,10 +13,10 @@ public sealed class Vc14RepairArgs { public string Fingerprint { get; set; } = "
 /// <summary>单个待处理 14.x 登记项：MSI 产品、Burn 包装、登记卸载命令或无法处理项。</summary>
 public sealed record Vc14RemovalPlanItem(
     string Key, string Architecture, string Name, string Version, string Kind, string Identity, string Method, string Detail,
-    string Role = "", string UpgradeCode = "")
+    string Role = "", string UpgradeCode = "", string Command = "", string Hive = "", string View = "")
 {
-    /// <summary>msi=已核验 MSI 产品；bundle=已核验签名缓存包装；registry=按登记卸载命令；其余保留不处理。</summary>
-    public bool CanRemove => Kind is "msi" or "bundle" or "registry";
+    /// <summary>msi=已核验 MSI；bundle=已核验包装；registry=登记 EXE 命令；inf=固定模板及目标均核验的旧 14.x INF。</summary>
+    public bool CanRemove => Kind is "msi" or "bundle" or "registry" or "inf";
 }
 
 /// <summary>全量重装预览：完整卸载计划、身份指纹与放行条件。</summary>

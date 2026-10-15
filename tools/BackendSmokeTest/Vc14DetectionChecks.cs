@@ -124,6 +124,7 @@ internal static class Vc14DetectionChecks
         plan.Add(new("{B}", "x86", "N2", "unknown", "registry", "cmd", "m", "d"));
         Check(fingerprint != Vc14Reinstall.Fingerprint(plan), "fingerprint ignores plan items");
         Console.WriteLine($"VC14 reinstall checks: {count} checks passed.");
+        Vc14BetaUninstallChecks.Run();
     }
     internal static void ReadOnly()
     {

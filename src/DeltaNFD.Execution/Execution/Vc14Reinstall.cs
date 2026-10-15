@@ -55,6 +55,7 @@ public static class Vc14Reinstall
         var covered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var product in scan.Products)
         {
+            if (!Vc14BetaUninstall.InScope(product.Name, product.Version, product.Architecture)) continue;
             plan.Add(new(product.Code, product.Architecture, product.Name, product.Version, "msi", product.Code,
                 "msiexec /x " + product.Code, "已核验 MSI 登记：" + product.Name + " · " + product.Version,
                 product.Role, product.UpgradeCode));
@@ -89,12 +90,52 @@ public static class Vc14Reinstall
                         "ARM64 组件不在本次 x86/x64 重装范围，保留并说明。"));
                     continue;
                 }
+                if (!Vc14BetaUninstall.InScope(name, version, architecture))
+                {
+                    plan.Add(new(keyName, architecture, name, version, "unknown", keyName, "保留不处理",
+                        "未确认属于 14.x release 运行库；仅评估已授权的旧 2026 残留，不执行卸载。"));
+                    continue;
+                }
+                if (keyName.Equals("vcredist14_" + architecture, StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        if (Vc14ResidueCleanup.DescribeLegacyInf(hive.ToString(), view.ToString(), keyName, key!, name, version)
+                            is not { Kind: "inf-legacy" }) throw new IOException("旧 INF 包装身份未确认。");
+                        var inf = Vc14BetaUninstall.LegacyInfPath(architecture);
+                        Vc14BetaUninstall.ValidateInf(File.ReadAllText(inf), architecture, Vc14Catalog.ReadAny);
+                        plan.Add(new(keyName, architecture, name, version, "inf", Vc14BetaUninstall.LegacyInfCommand(architecture),
+                            "Beta0.9：cmd /c 执行旧 INF 卸载节", "固定模板与目标 14.x 产品码已核验；执行前备份登记及 INF/PNF。",
+                            Hive: hive.ToString(), View: view.ToString()));
+                    }
+                    catch (Exception ex)
+                    {
+                        plan.Add(new(keyName, architecture, name, version, "unknown", keyName, "残留清理评估",
+                            "未执行旧 INF 卸载节：" + ex.Message + "；卸载后保留备份清理路径。"));
+                    }
+                    continue;
+                }
                 var cache = key?.GetValue("BundleCachePath") as string;
-                var uninstall = key?.GetValue("QuietUninstallString") as string ?? key?.GetValue("UninstallString") as string ?? "";
+                var uninstall = Vc14BetaUninstall.PreferredCommand(key?.GetValue("QuietUninstallString") as string ?? "",
+                    key?.GetValue("UninstallString") as string ?? "");
+                if (Vc14BetaUninstall.IsMsiCommand(uninstall))
+                {
+                    try
+                    {
+                        var target = Vc14BetaUninstall.MsiTarget(uninstall, Vc14Catalog.ReadAny)
+                            ?? throw new IOException("登记的 MSI 产品已不安装；转入残留清理评估。");
+                        if (!plan.Any(p => p.Kind == "msi" && p.Key.Equals(target.Code, StringComparison.OrdinalIgnoreCase)))
+                            plan.Add(new(target.Code, target.Architecture, target.Name, target.Version, "msi", target.Code,
+                                "Beta0.9：msiexec /x 产品码", "登记命令中的产品码已重新核验为 14.x。", target.Role, target.UpgradeCode));
+                    }
+                    catch (Exception ex) { plan.Add(new(keyName, architecture, name, version, "unknown", keyName, "保留不处理", ex.Message)); }
+                    continue;
+                }
                 if (Guid.TryParse(keyName, out _) && Vc14PackageTrust.Verify(cache, version, architecture))
                 {
                     plan.Add(new(keyName, architecture, name, version, "bundle", cache!,
-                        "Burn 包装静默卸载：" + name, "已核验微软签名包装缓存：" + cache));
+                        "Beta0.9：cmd /c 执行包装卸载命令", "已核验微软签名包装缓存：" + cache,
+                        Command: uninstall, Hive: hive.ToString(), View: view.ToString()));
                     continue;
                 }
                 if (Guid.TryParse(keyName, out var code) && BaselineBundles.Values.Any(b => b.Equals(keyName, StringComparison.OrdinalIgnoreCase)))
@@ -107,10 +148,12 @@ public static class Vc14Reinstall
                 // 与执行阶段共用同一解析（含带引号路径与相对名按系统目录/PATH 解析）。
                 var uninstallExecutableExists = !string.IsNullOrWhiteSpace(uninstall)
                     && Vc14Catalog.UninstallExecutableAvailable(uninstall);
-                if (Guid.TryParse(keyName, out _) && !string.IsNullOrWhiteSpace(uninstall) && uninstallExecutableExists)
+                if (!string.IsNullOrWhiteSpace(uninstall) && uninstallExecutableExists
+                    && !Vc14BetaUninstall.IsUnsupportedScript(uninstall))
                     plan.Add(new(keyName, architecture, name, string.IsNullOrWhiteSpace(version) ? "未知" : version, "registry",
-                        uninstall, "按登记卸载命令执行：" + uninstall,
-                        "未知包装：无缓存可核验签名。按用户 2026-10-15 授权（严格全部，含未知）执行其登记的静默卸载命令。"));
+                        uninstall, "Beta0.9：cmd /c 执行登记命令：" + uninstall,
+                        "未知包装：无缓存可核验签名。按用户 2026-10-15 授权（严格全部，含未知）执行其登记的静默卸载命令。",
+                        Command: uninstall, Hive: hive.ToString(), View: view.ToString()));
                 else
                     plan.Add(new(keyName, architecture, name, string.IsNullOrWhiteSpace(version) ? "未知" : version, "unknown",
                         keyName, "无法处理", "无法处理：缺少可执行的卸载命令（或命令指向的程序不存在），且身份未经核验；卸载完成后将由残留清理阶段评估。"));
@@ -122,7 +165,7 @@ public static class Vc14Reinstall
 
     internal static string Fingerprint(IReadOnlyList<Vc14RemovalPlanItem> plan) => Convert.ToHexString(SHA256.HashData(
         Encoding.UTF8.GetBytes(JsonSerializer.Serialize(plan.Select(p =>
-            new { p.Key, p.Kind, p.Identity, p.Version, p.Role, p.UpgradeCode }).ToArray()))));
+            new { p.Key, p.Kind, p.Identity, p.Version, p.Role, p.UpgradeCode, p.Name, p.Architecture, p.Command, p.Hive, p.View }).ToArray()))));
 
     public static Vc14ReinstallPreview Preview(IVc14ReinstallEnvironment environment)
     {
@@ -155,10 +198,12 @@ public static class Vc14Reinstall
             environment.Trace("confirmed-plan", new { Count = preview.RemovalPlan.Count, preview.Fingerprint });
 
             // 阶段一：逐项卸载全部可移除的 14.x 登记（含未知包装）。
+            var handledInf = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in preview.RemovalPlan)
             {
                 token.ThrowIfCancellationRequested();
                 if (!item.CanRemove) continue; // unknown / baseline-bundle / arm64：保留并说明
+                if (item.Kind == "inf" && !handledInf.Add(item.Key)) continue; // 多处登记共用同一个 INF，只执行一次
                 var current = environment.Scan();
                 if (current.Issues.Count > 0) return Fail("检测出现问题，已停止：" + string.Join("\n", current.Issues));
                 if (environment.Blocker() is { } blocked) return Fail(blocked);
@@ -298,13 +343,15 @@ internal sealed class Vc14ReinstallEnvironment : IVc14ReinstallEnvironment
 
     public async Task<Vc14StepResult> RemoveAsync(Vc14RemovalPlanItem item, IProgress<string>? progress, CancellationToken token)
     {
+        if (!Vc14BetaUninstall.InScope(item.Name, item.Version, item.Architecture))
+            throw new IOException("卸载对象不属于 x86/x64 C++ 14.x，已拒绝：" + item.Name);
         if (item.Kind == "msi")
         {
             // 动态发现的家族（如 2026 产品线新升级码）不在固定 Families 内；
             // 卸载前重读产品信息并按名称/版本/架构/升级码复核身份即可，不要求固定家族。
             if (!Guid.TryParse(item.Key, out _)) throw new IOException("待卸载 MSI 产品码无效：" + item.Name);
-            var current = Vc14Catalog.ReadAny(item.Key)
-                ?? throw new IOException("待卸载 MSI 已不在安装状态：" + item.Name);
+            var current = Vc14Catalog.ReadAny(item.Key);
+            if (current is null) return Vc14BetaUninstall.MsiResult(new(1605, false, "目标 MSI 已不安装。"));
             if (!current.Architecture.Equals(item.Architecture, StringComparison.OrdinalIgnoreCase)
                 || !current.UpgradeCode.Equals(item.UpgradeCode, StringComparison.OrdinalIgnoreCase)
                 || !Vc14Catalog.SameVersion(current.Version, item.Version))
@@ -313,30 +360,56 @@ internal sealed class Vc14ReinstallEnvironment : IVc14ReinstallEnvironment
                 { UseShellExecute = false, CreateNoWindow = true };
             foreach (var argument in new[] { "/x", item.Key, "/qn", "/norestart", "/L*V", NewLog(item.Key.Trim('{', '}')) })
                 info.ArgumentList.Add(argument);
-            return await RunProcessAsync(info, progress, token, TimeSpan.FromMinutes(5));
+            return Vc14BetaUninstall.MsiResult(await RunProcessAsync(info, progress, token, TimeSpan.FromMinutes(5)));
         }
         if (item.Kind == "bundle")
         {
-            var info = new ProcessStartInfo(item.Identity) { UseShellExecute = false, CreateNoWindow = true };
-            foreach (var argument in new[] { "/uninstall", "/quiet", "/norestart", "/log", NewLog("bundle-" + item.Key.Trim('{', '}')) })
-                info.ArgumentList.Add(argument);
+            if (!Vc14PackageTrust.Verify(item.Identity, item.Version, item.Architecture))
+                throw new IOException("包装缓存身份已变化，未执行卸载。");
+            var registered = RegisteredBundleCommand(item);
+            var command = string.IsNullOrWhiteSpace(registered)
+                ? Vc14BetaUninstall.CachedBundleCommand(item.Identity, NewLog("bundle-" + item.Key.Trim('{', '}')))
+                : Vc14BetaUninstall.ResolveCommand(registered);
+            var info = Vc14BetaUninstall.Shell(command);
             return await RunProcessAsync(info, progress, token, TimeSpan.FromMinutes(10));
         }
         if (item.Kind == "registry")
         {
             // 登记的卸载命令按原样执行：不猜测参数、不静默改写、不强杀。
             // 相对名（如 MsiExec.exe）解析为完整路径再启动，活动记录须存完整路径供核对入口校验。
-            var resolved = Vc14Catalog.ResolveUninstallExecutable(item.Identity)
-                ?? throw new IOException("卸载命令的可执行文件无法解析（原命令：" + item.Identity + "）。");
-            var (_, arguments) = Vc14Catalog.SplitUninstallCommand(item.Identity);
-            var info = new ProcessStartInfo(resolved)
-            {
-                UseShellExecute = false, CreateNoWindow = true,
-                Arguments = arguments,
-            };
+            if (Vc14BetaUninstall.IsUnsupportedScript(item.Identity) || Vc14BetaUninstall.IsMsiCommand(item.Identity))
+                throw new IOException("该登记命令不属于已确认的 14.x EXE 卸载路径，请重新预览。");
+            if (RegisteredBundleCommand(item) != item.Identity) throw new IOException("登记卸载命令已变化，请重新预览。");
+            var info = Vc14BetaUninstall.Shell(Vc14BetaUninstall.ResolveCommand(item.Identity));
             return await RunProcessAsync(info, progress, token, TimeSpan.FromMinutes(10));
         }
+        if (item.Kind == "inf")
+        {
+            var inf = Vc14BetaUninstall.LegacyInfPath(item.Architecture);
+            if (!File.Exists(inf)) return new(0, false, "共用 INF 已不在；剩余登记将在残留清理阶段处理。");
+            Vc14BetaUninstall.ValidateInf(File.ReadAllText(inf), item.Architecture, Vc14Catalog.ReadAny);
+            Vc14ResidueCleanup.BackupBeforeInfUninstall(item.Key, logs);
+            Vc14BetaUninstall.ValidateInf(File.ReadAllText(inf), item.Architecture, Vc14Catalog.ReadAny);
+            return await RunProcessAsync(Vc14BetaUninstall.Shell(Vc14BetaUninstall.LegacyInfCommand(item.Architecture),
+                Path.GetDirectoryName(inf)), progress, token, TimeSpan.FromMinutes(10));
+        }
         throw new IOException("不支持的卸载类型：" + item.Kind);
+    }
+
+    private static string RegisteredBundleCommand(Vc14RemovalPlanItem item)
+    {
+        using var hive = RegistryKey.OpenBaseKey(Enum.Parse<RegistryHive>(item.Hive), Enum.Parse<RegistryView>(item.View));
+        using var key = hive.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\" + item.Key)
+            ?? throw new IOException("登记已不存在，请重新预览。");
+        var name = key.GetValue("DisplayName") as string ?? "";
+        var version = Vc14Catalog.RegistrationVersion(key);
+        if (name != item.Name || (string.IsNullOrWhiteSpace(version) ? "未知" : version) != item.Version)
+            throw new IOException("包装登记身份已变化，请重新预览。");
+        var result = Vc14BetaUninstall.PreferredCommand(key.GetValue("QuietUninstallString") as string ?? "", key.GetValue("UninstallString") as string ?? "");
+        if (result != item.Command) throw new IOException("包装登记命令已变化，请重新预览。");
+        if (result.Length > 0 && (Vc14BetaUninstall.IsMsiCommand(result) || Vc14BetaUninstall.IsUnsupportedScript(result)))
+            throw new IOException("包装登记命令不是可确认的 EXE 卸载命令，未执行。");
+        return result;
     }
 
     public Task<Vc14StepResult> InstallAsync(string arch, IProgress<string>? progress, CancellationToken token)

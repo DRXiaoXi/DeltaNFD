@@ -40,7 +40,7 @@ jobs:
           dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-guard-recovery-scope-checks
           if ($LASTEXITCODE -ne 0) { throw "Protection recovery regression" }
 
-      - name: Beta0.9191 feature regression checks (isolated fixtures)
+      - name: Beta0.9192 feature regression checks (isolated fixtures)
         run: |
           $checks = @('--memory-mode-checks', '--procman-topology-checks', '--delta-rules-offline-checks', '--frame-background-checks', '--factory-reset-checks', '--ace-core-cleanup-checks', '--runtime-pending-recovery-checks', '--nv-shader-cache-checks', '--shader-recovery-checks', '--dashboard-shader-health-checks')
           foreach ($check in $checks) {
