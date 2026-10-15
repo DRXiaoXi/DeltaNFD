@@ -37,8 +37,9 @@ public sealed partial class RuntimePage : Page
                 XamlRoot = XamlRoot, Title = "确认全量重装 C++ 14.x？",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
                     Text = "将卸载以下全部检测到的 x86/x64 C++ 14.x 登记（含未知包装，按其登记的卸载命令执行）：\n" + list
-                        + "\n\n随后安装 2015–2022 x64/x86 14.42.34433 原包并复检组件与 DLL。"
-                        + (skipped.Length > 0 ? "\n\n以下登记无法自动处理，将保留：\n" + skipped : "")
+                        + "\n\n随后安装 2015–2022 x64/x86 14.42.34433 原包并复检组件与 DLL；若 DLL 版本未对齐会自动用原包修复。"
+                        + "\n卸载完成后、安装前会自动备份并清理旧版工具留下的 v14/2026 残留登记（避免其阻止基线安装），备份会保留。"
+                        + (skipped.Length > 0 ? "\n\n以下登记重装阶段不卸载（由残留清理阶段评估）：\n" + skipped : "")
                         + "\n保留 2005–2013、SDK/Debug、ARM64 和 DirectX。"
                         + "\n请先关闭游戏与其他应用及运行库防护。共享运行库降级可能影响需要较新版本的软件。"
                         + "\n失败、身份变化、需要重启或结果未确认时停止；不会强杀安装器。" } },

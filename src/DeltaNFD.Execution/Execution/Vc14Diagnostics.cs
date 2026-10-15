@@ -16,12 +16,12 @@ internal static class Vc14Diagnostics
         try
         {
             var registrations = new List<object>(); var errors = new List<string>();
-            foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+            foreach (var (hive, view) in Vc14Catalog.RegistryViews())
             {
                 try
                 {
-                    using var hive = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
-                    using var root = hive.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+                    using var baseKey = RegistryKey.OpenBaseKey(hive, view);
+                    using var root = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
                     foreach (var keyName in root?.GetSubKeyNames() ?? [])
                     {
                         using var key = root!.OpenSubKey(keyName);
@@ -30,9 +30,9 @@ internal static class Vc14Diagnostics
                             var text = key?.GetValue(valueName, "", RegistryValueOptions.DoNotExpandEnvironmentNames) as string ?? "";
                             return text[..Math.Min(8192, text.Length)];
                         }
-                        var name = Text("DisplayName"); var version = Text("DisplayVersion");
+                        var name = Text("DisplayName"); var version = Vc14Catalog.RegistrationVersion(key);
                         if (!Relevant(name, version)) continue;
-                        registrations.Add(new { RegistryView = view.ToString(), Key = keyName, Name = name, Version = version,
+                        registrations.Add(new { Hive = hive.ToString(), RegistryView = view.ToString(), Key = keyName, Name = name, Version = version,
                             Publisher = Text("Publisher"), BundleVersion = Text("BundleVersion"), BundleCachePath = Text("BundleCachePath"),
                             UninstallString = Text("UninstallString"), QuietUninstallString = Text("QuietUninstallString"),
                             WindowsInstaller = key?.GetValue("WindowsInstaller"),
@@ -40,7 +40,7 @@ internal static class Vc14Diagnostics
                         if (registrations.Count >= 256) { errors.Add("登记证据达到 256 项上限，后续项未收集。"); break; }
                     }
                 }
-                catch (Exception ex) { errors.Add(view + "：" + ex.Message); }
+                catch (Exception ex) { errors.Add(hive + " " + view + "：" + ex.Message); }
             }
             var dlls = new List<object>();
             foreach (var arch in new[] { "x64", "x86" })

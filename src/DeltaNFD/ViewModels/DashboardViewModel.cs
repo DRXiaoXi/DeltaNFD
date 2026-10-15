@@ -251,7 +251,7 @@ public partial class DashboardViewModel : ObservableObject
         var scan = await ServiceLocator.Guard.Scan14Async();
         RuntimeHealthState = scan.HasAbnormal ? DashboardHealthState.Abnormal : scan.HasWarning || status.GuardIssue.Length > 0 || status.IfeoRestorePending || status.Ue4RestorePending || status.Ue4PrereqDenied || status.IfeoManagedCount > 0 && !status.IfeoApplied
             ? DashboardHealthState.Warning : DashboardHealthState.Normal;
-        RuntimeStatusText = scan.HasAbnormal ? "14.x 兼容性异常：检测到 14.51 或 Visual C++ v14，请进入运行库页核对"
+        RuntimeStatusText = scan.HasAbnormal ? "14.x 兼容性异常：检测到 14.51 或 Visual C++ v14 组件，请进入运行库页核对"
             : scan.HasWarning ? "14.x 版本非 14.42 或状态待核对，请进入运行库页查看"
             : status.GuardIssue.Length > 0 ? "防护状态待核对：" + status.GuardIssue
             : status.IfeoRestorePending || status.Ue4RestorePending ? "旧防护有待恢复记录"

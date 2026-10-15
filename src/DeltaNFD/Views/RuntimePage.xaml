@@ -8,14 +8,14 @@
                 <TextBlock Text="检测 C++ 14.x 兼容性、全量重装与管理安装器防护。" Style="{StaticResource PageSubtitleStyle}" TextWrapping="Wrap" />
             </StackPanel>
             <InfoBar IsOpen="{x:Bind ViewModel.HasAbnormal, Mode=OneWay}" IsClosable="False" Severity="Error"
-                     Title="14.x 兼容性异常：14.51 或 Visual C++ v14" Message="{x:Bind ViewModel.AbnormalText, Mode=OneWay}" />
+                     Title="14.x 兼容性异常：已安装 14.51 或 Visual C++ v14 组件" Message="{x:Bind ViewModel.AbnormalText, Mode=OneWay}" />
             <InfoBar IsOpen="{x:Bind ViewModel.HasWarning, Mode=OneWay}" IsClosable="False" Severity="Warning"
-                     Title="版本提醒或状态待核对" Message="{x:Bind ViewModel.WarningText, Mode=OneWay}" />
+                     Title="版本提醒或登记待核对" Message="{x:Bind ViewModel.WarningText, Mode=OneWay}" />
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
                     <TextBlock Text="C++ 14.x 全量重装" Style="{StaticResource SectionTitleStyle}" />
                     <TextBlock Text="卸载所有检测到的 x86/x64 C++ 14.x 登记（含未知包装，按其登记的卸载命令执行），随后安装工具内置的 2015–2022 14.42.34433 双架构原包并复检。修复前请关闭游戏与其他应用，并手动关闭运行库防护。" TextWrapping="Wrap" />
-                    <TextBlock Text="14.x 是共享运行库；依赖较新版本（如 14.5x）的其他软件在重装后可能需要自行重装其要求的版本。无法执行卸载命令的登记会保留并在结果中说明原因；ARM64、2005–2013、SDK/Debug 与 DirectX 不在范围内。颜色是项目兼容性规则，不代表文件损坏或已验证掉帧。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <TextBlock Text="红色只由实际安装的 14.51 或 Visual C++ v14 组件触发；包装登记与残留最高黄色，修复清理后会消除。Appx 系统组件包由 Windows 管理，不参与判定。14.x 是共享运行库；依赖较新版本（如 14.5x）的其他软件在重装后可能需要自行重装其要求的版本。卸载完成后、安装基线前会自动备份并清理旧版工具留下的 v14/2026 残留登记（避免其阻止安装）；ARM64、2005–2013、SDK/Debug 与 DirectX 不在范围内。颜色是项目兼容性规则，不代表文件损坏或已验证掉帧。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <Button Content="预览并全量重装 14.x" Click="Repair14_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" />
                         <Button Content="停止后续步骤" Click="CancelRepair_Click" IsEnabled="{x:Bind ViewModel.RepairIsBusy, Mode=OneWay}" />
@@ -70,7 +70,7 @@
                 <StackPanel Spacing="10">
                     <TextBlock Text="安装登记（只读）" Style="{StaticResource SectionTitleStyle}" />
                     <TextBlock Text="{x:Bind ViewModel.InstalledText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-                    <TextBlock Text="红色优先：14.51.x 或 Visual C++ v14；其余 14.x 非 14.42.x 黄色；14.42.x 无版本提醒。检测失败保留待核对，安装登记不能证明 DLL 完整性或游戏性能。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <TextBlock Text="红色优先：已安装的 14.51.x 或 Visual C++ v14 组件；其余非 14.42 组件黄色；包装登记与残留最高黄色待核对，修复清理后消除；Appx 系统包只作说明。检测失败保留待核对，安装登记不能证明 DLL 完整性或游戏性能。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                     <Button Content="刷新防护状态" Click="RefreshGuard_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" HorizontalAlignment="Left" />
                     <Button Content="核对未完成操作" Click="ReviewRuntimeOperation_Click" HorizontalAlignment="Left" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" />
                     <TextBlock Text="旧操作核对只检查事务是否结束并归档记录，不重新安装、不卸载运行库，也不代表旧修复成功。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />

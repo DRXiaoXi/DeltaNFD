@@ -50,26 +50,37 @@ public static class Vc14Reinstall
     internal static IReadOnlyList<Vc14RemovalPlanItem> BuildRemovalPlan(Vc14Scan scan)
     {
         var plan = new List<Vc14RemovalPlanItem>();
+        // 去重按 Hive+View+Key 三段：不同位置的相同键名（HKLM/HKCU、32/64 视图）是不同登记，
+        // 只按键名去重会漏掉后面的条目（其卸载命令或版本可能不同）。
         var covered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var product in scan.Products)
         {
             plan.Add(new(product.Code, product.Architecture, product.Name, product.Version, "msi", product.Code,
                 "msiexec /x " + product.Code, "已核验 MSI 登记：" + product.Name + " · " + product.Version,
                 product.Role, product.UpgradeCode));
-            covered.Add(product.Code);
+            covered.Add("msi:" + product.Code);
         }
-        foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+        foreach (var (hive, view) in Vc14Catalog.RegistryViews())
         {
-            using var hive = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
-            using var root = hive.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+            using var baseKey = RegistryKey.OpenBaseKey(hive, view);
+            using var root = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
             foreach (var keyName in root?.GetSubKeyNames() ?? [])
             {
-                if (covered.Contains(keyName)) continue;
+                var locationKey = hive + ":" + view + ":" + keyName;
+                if (covered.Contains(locationKey)) continue;
                 using var key = root!.OpenSubKey(keyName);
                 var name = key?.GetValue("DisplayName") as string ?? "";
-                var version = key?.GetValue("DisplayVersion") as string ?? key?.GetValue("BundleVersion") as string ?? "";
+                var version = Vc14Catalog.RegistrationVersion(key);
                 if (!Vc14Diagnostics.Relevant(name, version)) continue;
-                covered.Add(keyName);
+                covered.Add(locationKey);
+                // 已核验 MSI 产品本身的登记键跳过（MSI 上下文登记随卸载移除，不重复处理）。
+                if (scan.Products.Any(p => p.Code.Equals(keyName, StringComparison.OrdinalIgnoreCase))) continue;
+                if (Vc14Catalog.IsAppxPackage(name))
+                {
+                    plan.Add(new(keyName, "arm64", name, version, "unknown", keyName, "无法处理",
+                        "系统组件包（Appx），由 Windows 管理，不卸载。"));
+                    continue;
+                }
                 var architecture = name.Contains("arm64", StringComparison.OrdinalIgnoreCase) ? "arm64"
                     : Regex.IsMatch(name, @"\bx64\b", RegexOptions.IgnoreCase) ? "x64" : "x86";
                 if (architecture == "arm64")
@@ -92,13 +103,17 @@ public static class Vc14Reinstall
                         "安装阶段由原包 /repair 处理", "基线 14.42 包装登记仍在但缓存缺失或未通过核验；不先卸载，安装阶段用原包修复。"));
                     continue;
                 }
-                if (Guid.TryParse(keyName, out _) && !string.IsNullOrWhiteSpace(uninstall))
+                // 卸载命令的可执行文件不可用时按命令执行必然失败，转入清理阶段评估。
+                // 与执行阶段共用同一解析（含带引号路径与相对名按系统目录/PATH 解析）。
+                var uninstallExecutableExists = !string.IsNullOrWhiteSpace(uninstall)
+                    && Vc14Catalog.UninstallExecutableAvailable(uninstall);
+                if (Guid.TryParse(keyName, out _) && !string.IsNullOrWhiteSpace(uninstall) && uninstallExecutableExists)
                     plan.Add(new(keyName, architecture, name, string.IsNullOrWhiteSpace(version) ? "未知" : version, "registry",
                         uninstall, "按登记卸载命令执行：" + uninstall,
                         "未知包装：无缓存可核验签名。按用户 2026-10-15 授权（严格全部，含未知）执行其登记的静默卸载命令。"));
                 else
                     plan.Add(new(keyName, architecture, name, string.IsNullOrWhiteSpace(version) ? "未知" : version, "unknown",
-                        keyName, "无法处理", "无法处理：缺少可执行的卸载命令，且身份未经核验；保留并在结果中说明。"));
+                        keyName, "无法处理", "无法处理：缺少可执行的卸载命令（或命令指向的程序不存在），且身份未经核验；卸载完成后将由残留清理阶段评估。"));
             }
         }
         return [.. plan.OrderBy(p => p.Kind switch { "msi" => 0, "bundle" => 1, "registry" => 2, _ => 3 })
@@ -156,10 +171,15 @@ public static class Vc14Reinstall
                     return Fail("14.x 卸载未完成或需要重启：" + item.Name + "\n" + step.Detail, step.Unknown);
             }
 
-            // 阶段二：确认无 14.x MSI 组件残留后，安装双架构基线。
+            // 阶段二：确认无 14.x MSI 组件残留后，先受控清理残留登记再安装基线
+            // （旧版工具留下的 v14/2026 包装登记会阻止基线安装，即 MSI 1638 的成因之一）。
             var cleared = environment.Scan();
             if (cleared.Products.Count > 0)
                 return Fail("仍有 14.x MSI 组件未卸载完成，未启动安装：" + string.Join("; ", cleared.Products.Select(p => p.Name)));
+            var residue = Vc14ResidueCleanup.Run(cleared, environment, progress, token);
+            environment.Trace("residue-cleanup-result", new { residue.Success, residue.Message });
+            if (!residue.Success && !residue.Message.Contains("无可清理"))
+                return Fail("残留登记清理未完成，已停止（不会带着阻止安装的残留登记继续装基线）：\n" + residue.Message);
             environment.VerifyBaselines();
             foreach (var arch in new[] { "x64", "x86" })
             {
@@ -181,16 +201,42 @@ public static class Vc14Reinstall
             }
 
             // 阶段三：最终复检（MSI 登记与系统 DLL 实际版本）。
+            // MSI 登记齐全但 DLL 版本未对齐时（更高版本文件曾由范围外产品持有，MSI 不降级覆盖文件），
+            // 对失败架构执行原包 /repair 强制恢复文件版本，再复检一次。
             var after = environment.Scan();
             var complete = after.Issues.Count == 0 && after.Products.Count == 4 && Vc14Catalog.Families.All(f =>
                 after.Products.Count(p => p.Architecture == f.Arch && p.Role == f.Role && Vc14Catalog.SameVersion(p.Version, BaselineVersion)) == 1);
             if (!complete) return Fail("安装后未确认 x64/x86 的四个 14.42 基线组件，不能报告修复成功。");
-            environment.VerifyInstalled();
+            try { environment.VerifyInstalled(); }
+            catch (Exception dllMismatch)
+            {
+                progress?.Report("系统 DLL 版本未对齐，执行原包修复以恢复文件版本…");
+                changed = true;
+                foreach (var arch in new[] { "x64", "x86" })
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (environment.Blocker() is { } blocked) return Fail(blocked);
+                    var repair = await environment.InstallAsync(arch, progress, token); // 已登记包装时即 /repair
+                    reboot |= repair.Reboot;
+                    environment.Trace("dll-align-repair", new { arch, repair.ExitCode, repair.Unknown, repair.Detail });
+                    if (!repair.Success || repair.Reboot)
+                        return Fail(arch + " 文件版本对齐修复未完成或需要重启。\n" + repair.Detail, repair.Unknown);
+                }
+                try { environment.VerifyInstalled(); }
+                catch
+                {
+                    return Fail("MSI 登记已是 14.42，但系统 DLL 实际版本仍未对齐（更高版本文件可能被其他产品持有）。"
+                        + "原包 /repair 后仍未恢复，不能报告修复成功。\n" + dllMismatch.Message);
+                }
+                after = environment.Scan();
+            }
             environment.Trace("verified-after", after);
+
             var skipped = preview.RemovalPlan.Where(p => !p.CanRemove).ToArray();
             return new OperationResult { Success = true, DiagnosticsDirectory = logs,
                 Message = "已卸载全部检测到的可移除 C++ 14.x 登记，并安装/复检 2015–2022 x64/x86 " + BaselineVersion + "。"
-                    + (skipped.Length > 0 ? "\n以下登记无法自动处理，已保留：\n" + string.Join("\n", skipped.Select(p => p.Name + " · " + p.Detail)) : "")
+                    + (residue.Success && !residue.Message.Contains("无可清理") ? "\n" + residue.Message : "")
+                    + (skipped.Length > 0 ? "\n以下登记在重装阶段保留（未构成安装阻碍）：\n" + string.Join("\n", skipped.Select(p => p.Name + " · " + p.Detail)) : "")
                     + (after.HasAbnormal || after.HasWarning ? "\n仍有其他包装登记或兼容性提醒，请核对详情。" : "")
                     + "\n未处理 2005–2013、SDK/Debug、ARM64 或 DirectX；此结果不代表已验证游戏帧率改善。" };
         }
@@ -254,12 +300,14 @@ internal sealed class Vc14ReinstallEnvironment : IVc14ReinstallEnvironment
     {
         if (item.Kind == "msi")
         {
-            var family = Vc14Catalog.Families.SingleOrDefault(f => f.Arch == item.Architecture
-                && f.Upgrade.Equals(item.UpgradeCode, StringComparison.OrdinalIgnoreCase));
-            if (family == default) throw new IOException("待卸载 MSI 的升级家族无法确认：" + item.Name);
-            var current = Vc14Catalog.Read(item.Key, item.Architecture, family.Role, family.Upgrade)
+            // 动态发现的家族（如 2026 产品线新升级码）不在固定 Families 内；
+            // 卸载前重读产品信息并按名称/版本/架构/升级码复核身份即可，不要求固定家族。
+            if (!Guid.TryParse(item.Key, out _)) throw new IOException("待卸载 MSI 产品码无效：" + item.Name);
+            var current = Vc14Catalog.ReadAny(item.Key)
                 ?? throw new IOException("待卸载 MSI 已不在安装状态：" + item.Name);
-            if (!Vc14Catalog.SameVersion(current.Version, item.Version))
+            if (!current.Architecture.Equals(item.Architecture, StringComparison.OrdinalIgnoreCase)
+                || !current.UpgradeCode.Equals(item.UpgradeCode, StringComparison.OrdinalIgnoreCase)
+                || !Vc14Catalog.SameVersion(current.Version, item.Version))
                 throw new IOException("待卸载 MSI 身份已变化：" + item.Name);
             var info = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "msiexec.exe"))
                 { UseShellExecute = false, CreateNoWindow = true };
@@ -277,13 +325,14 @@ internal sealed class Vc14ReinstallEnvironment : IVc14ReinstallEnvironment
         if (item.Kind == "registry")
         {
             // 登记的卸载命令按原样执行：不猜测参数、不静默改写、不强杀。
-            var command = item.Identity.Trim();
-            var marker = command.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
-            var executable = marker >= 0 ? command[..(marker + 4)].Trim('"', ' ') : command;
-            var info = new ProcessStartInfo(executable)
+            // 相对名（如 MsiExec.exe）解析为完整路径再启动，活动记录须存完整路径供核对入口校验。
+            var resolved = Vc14Catalog.ResolveUninstallExecutable(item.Identity)
+                ?? throw new IOException("卸载命令的可执行文件无法解析（原命令：" + item.Identity + "）。");
+            var (_, arguments) = Vc14Catalog.SplitUninstallCommand(item.Identity);
+            var info = new ProcessStartInfo(resolved)
             {
                 UseShellExecute = false, CreateNoWindow = true,
-                Arguments = marker >= 0 ? command[(marker + 4)..].Trim() : "",
+                Arguments = arguments,
             };
             return await RunProcessAsync(info, progress, token, TimeSpan.FromMinutes(10));
         }
@@ -340,9 +389,11 @@ internal sealed class Vc14ReinstallEnvironment : IVc14ReinstallEnvironment
         using (var file = new FileStream(active, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
             JsonSerializer.Serialize(file, Record("prepared", 0, 0));
         Process? process = null;
+        var started = false;
         try
         {
             process = Process.Start(info) ?? throw new IOException("安装器未启动。");
+            started = true;
             var temporary = active + "." + id + ".tmp";
             File.WriteAllText(temporary, JsonSerializer.Serialize(Record("running", process.Id, process.StartTime.ToUniversalTime().Ticks)));
             File.Move(temporary, active, true);
@@ -367,7 +418,20 @@ internal sealed class Vc14ReinstallEnvironment : IVc14ReinstallEnvironment
         }
         catch (Exception ex)
         {
-            return new(null, true, "安装器启动或结果未确认，未强杀进程，记录保留：" + ex.Message + "；日志：" + logs);
+            if (!started)
+            {
+                // 启动明确失败（文件不存在、权限等）：进程从未运行，无事务可等待。
+                // 归档 prepared 记录为 launch-failed，避免核对入口对"启动结果未知"永久阻断。
+                try
+                {
+                    var archive = Path.Combine(root, "runtime-repair-history");
+                    Directory.CreateDirectory(archive);
+                    File.Move(active, Path.Combine(archive, id + "-launch-failed.json"), true);
+                }
+                catch (Exception archiveError) { Log.Warn("启动失败记录未能归档：" + archiveError.Message); }
+                return new(null, true, "安装器启动失败（进程未运行，无系统变更）：" + ex.Message + "；日志：" + logs);
+            }
+            return new(null, true, "安装器结果未确认，未强杀进程，记录保留：" + ex.Message + "；日志：" + logs);
         }
         finally { process?.Dispose(); }
     }
