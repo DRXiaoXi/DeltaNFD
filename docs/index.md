@@ -11,8 +11,6 @@ import { withBase } from 'vitepress'
 const version = ref('v0.915+')
 const releaseDate = ref('最新稳定版')
 const downloadUrl = ref('https://github.com/xlht4106/deltanfd/releases/latest')
-const mirrorPrefix = ref('https://ghfast.top/')
-const useMirror = ref(true)
 const showQrModal = ref(false)
 const activeTab = ref('cpu')
 
@@ -41,14 +39,6 @@ onMounted(async () => {
     } catch (_) {}
   }
 })
-
-const getFinalDownloadUrl = () => {
-  const raw = downloadUrl.value
-  if (useMirror.value && raw.startsWith('https://github.com/') && raw.endsWith('.exe')) {
-    return `${mirrorPrefix.value}${raw}`
-  }
-  return raw
-}
 
 const coreModules = [
   {
@@ -123,7 +113,7 @@ const acknowledgements = [
       专为《三角洲行动》玩家与硬件发烧友打造。集 <strong>异构 CPU 拓扑调度</strong>、<strong>ACE 反作弊环境整备</strong>、<strong>NvAPI 驱动级调优</strong>、<strong>进程内存压制</strong> 与 <strong>运行库强力修复</strong> 于一体的现代化 Windows 性能工作站。
     </p>
     <div class="dn-cta-group">
-      <a class="dn-btn dn-btn-primary" :href="getFinalDownloadUrl()" target="_blank" rel="noopener">
+      <a class="dn-btn dn-btn-primary" :href="downloadUrl" target="_blank" rel="noopener">
         <span>⬇ 立即下载安装包 ({{ version }})</span>
       </a>
       <a class="dn-btn dn-btn-secondary" :href="withBase('/guide/quick-start')">
@@ -133,12 +123,7 @@ const acknowledgements = [
         <span>💬 加入反馈交流群</span>
       </button>
     </div>
-    <div class="dn-mirror-switch">
-      <label>
-        <input type="checkbox" v-model="useMirror" />
-        <span>启用国内镜像加速下载（推荐国内网络勾选，若直连 GitHub 更快可取消）</span>
-      </label>
-      <span class="dn-meta-divider">|</span>
+    <div class="dn-hero-meta">
       <span>运行环境：Windows 10 / 11 (x64)</span>
       <span class="dn-meta-divider">|</span>
       <a href="https://github.com/xlht4106/deltanfd/releases" target="_blank">查看历史版本与校验码 ↗</a>
@@ -418,7 +403,7 @@ const acknowledgements = [
   background: rgba(0, 255, 102, 0.1);
 }
 
-.dn-mirror-switch {
+.dn-hero-meta {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -427,13 +412,6 @@ const acknowledgements = [
   font-size: 0.85rem;
   color: #7d8997;
   margin-bottom: 3rem;
-}
-.dn-mirror-switch label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  color: #a9b6c5;
 }
 .dn-meta-divider {
   opacity: 0.3;
