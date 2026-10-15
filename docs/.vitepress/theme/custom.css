@@ -18,3 +18,114 @@ body {
         linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
     background-size: 100% 100%, 32px 32px, 32px 32px;
 }
+
+/* ==========================================================================
+   DeltaNFD 增量优化样式 (网盘/视频按钮、防拦截提示条、FPS徽章、致谢墙分层)
+   ========================================================================== */
+
+/* 首屏夸克网盘与B站视频次级按钮微调 */
+.dnfd-btn-quark {
+  border-color: rgba(16, 185, 129, 0.45) !important;
+}
+.dnfd-btn-quark:hover {
+  border-color: #10b981 !important;
+  background-color: rgba(16, 185, 129, 0.1) !important;
+}
+.dnfd-btn-bili {
+  border-color: rgba(251, 114, 153, 0.45) !important;
+}
+.dnfd-btn-bili:hover {
+  border-color: #fb7299 !important;
+  background-color: rgba(251, 114, 153, 0.1) !important;
+}
+
+/* 首屏 Windows 智能应用控制必看提示条 */
+.dnfd-sac-alert {
+  margin: 14px auto 0;
+  max-width: 780px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--vp-c-text-1);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+.dnfd-sac-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.2);
+  color: #d97706;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+.dark .dnfd-sac-badge {
+  color: #fbbf24;
+}
+
+/* 实机基准测试 FPS 差值与特性胶囊徽章 */
+.dnfd-fps-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-style: normal;
+  font-size: 0.75rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.dnfd-fps-up {
+  background: rgba(16, 185, 129, 0.16);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+.dark .dnfd-fps-up {
+  color: #34d399;
+}
+.dnfd-fps-lowlat {
+  background: rgba(59, 130, 246, 0.15);
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+}
+.dark .dnfd-fps-lowlat {
+  color: #60a5fa;
+}
+.dnfd-fps-down {
+  background: rgba(239, 68, 68, 0.14);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+.dark .dnfd-fps-down {
+  color: #f87171;
+}
+.dnfd-text-warn {
+  color: #d97706;
+}
+.dark .dnfd-text-warn {
+  color: #fbbf24;
+}
+
+/* 致谢墙前三位核心贡献者卡片高亮边框 */
+.dnfd-hof-core {
+  border-color: rgba(245, 158, 11, 0.45) !important;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.07) 0%, transparent 65%) !important;
+  box-shadow: 0 4px 20px -4px rgba(245, 158, 11, 0.12);
+}
+
+@media (max-width: 640px) {
+  .dnfd-sac-alert {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+}
+
+/* 首屏提示条与下方仿真卡片之间保留呼吸间距（原 meta 底部外边距会与其合并） */
+.dn-hero .dnfd-sac-alert {
+  margin-bottom: 2.4rem;
+}

@@ -43,28 +43,28 @@ onMounted(async () => {
 
 const painPoints = [
   {
-    mark: 'DWM',
-    title: 'DWM 占用飙升自愈',
-    desc: '对比游戏启动前后的任务管理器占用，判断桌面窗口管理器是否异常飙升。帧格开启后可在目标游戏启动约 5 秒后自动重启一次 DWM。',
-    note: 'Intel 显卡玩家尤其值得先做这项排查。'
+    mark: 'DRIVER & SHADER',
+    title: 'N 卡驱动避坑与三步预热法',
+    desc: '确保驱动 <strong>≥ 572.83</strong>，且必须避开 <strong>591 系、610 系、616 系及 620.14</strong>（会导致缺失 256MB 缓存并产生 0KB 异常文件）。推荐 <strong>30 系及以下使用 576.88</strong>，<strong>40 / 50 系使用 596.49</strong>。',
+    note: '清理着色器后：先在游戏大厅静止几分钟等 CPU 占用平稳 → 进靶场跑完 → 退出重进游戏即可满血。'
   },
   {
-    mark: 'GPU',
-    title: '网吧免重启临时伪装',
-    desc: '把显卡型号临时伪装为 GTX 1050 Ti 等低端型号，尝试解锁游戏隐藏最低画质；选择「立即重载显卡（不重启）」即可在网吧机器上快速验证。',
-    note: '重载瞬间会短暂黑屏，正在运行的游戏和 3D 应用可能崩溃。'
+    mark: 'DLSS & SPOOF',
+    title: '烟雾火焰马赛克修复与网吧伪装',
+    desc: 'N 卡设置支持修改 DLSS 超分模型（推荐 <strong>K 最均衡 / F 损耗最低 / L 最清晰</strong>）。针对烟雾火焰糊成马赛克，可按画质档位调整「抗锯齿透明度」：<strong>质量档开 ×2、平衡档开 ×4、性能档开 ×8</strong>。',
+    note: '8G 及以上显存建议开启「显存不回退」减少掉帧；网吧玩家可用显卡伪装「临时模式 + 立即重启显卡」免关机解锁隐藏最低画质。'
   },
   {
-    mark: 'TARGET',
-    title: '「不玩三角洲辣」跨游戏调度',
-    desc: '在设置中选择其它游戏的主进程，让帧格、进程管理与 CPU 调度等支持自定义目标的功能转向指定的游戏。',
-    note: '三角洲专属的着色器、ACE 与运行库模块仍只面向三角洲。'
+    mark: 'DWM & ACE',
+    title: 'DWM 占用暴涨自愈与 ACE 清理',
+    desc: '若游戏启动前 <code>dwm.exe</code> 占用极低、启动后 CPU 占用飙升，开启「帧格」即可自动干预恢复正常。此外，当 <code>ACE-Base/Core</code> 驱动超过 2 个及以上文件时会引发局内外卡顿，支持一键清理。',
+    note: '实测 Intel 显卡玩家 100% 遭遇 DWM 占用 Bug；清理 ACE 后用启动器或 WeGame 执行游戏修复即可。'
   },
   {
-    mark: 'MEM',
-    title: '后台内存压力回收',
-    desc: '旧版帧格全局内存清理已下线；当前入口在「进程管理 → 后台管理 → 后台内存回收」，按系统内存压力自动或手动回收后台工作集。',
-    note: '不会结束进程，可能引起换页，也不保证一定提升帧率。'
+    mark: 'CPU & SYSTEM',
+    title: '双 CCD 分模式调度与系统减负',
+    desc: '台式机可导入「无省电电源计划」。AMD 双 CCD 在<strong>全面战场 / 烽火地带</strong>下可将其他进程驱赶至另一侧 CCD，让游戏独占整颗 CCD 缓存与核心；系统优化优先执行「UP 推荐」分类即可。',
+    note: '注意：「黑潮爆破」模式官方已优化调度，关闭双 CCD 专属调度反而温度更低、画面更流畅；内存 &gt;24GB 可关闭内存压缩。'
   }
 ]
 
@@ -95,13 +95,13 @@ const coreModules = [
     badge: '显卡伪装与 N 卡设置',
     title: '🚀 隐藏画质解锁与 NvAPI 调优',
     desc: '修改注册表中的显卡描述以尝试激活隐藏最低画质，支持临时模式与立即重载；直连 NvAPI 调整 DLSS 超分模型、抗锯齿透明采样与 CUDA 显存回退策略。',
-    tags: ['临时伪装', '立即重载显卡', 'DLSS F / J / K', '显存偏好不回退']
+    tags: ['临时伪装', '立即重载显卡', 'DLSS F / K / M / L', '显存偏好不回退']
   },
   {
     id: 'sysopt',
     badge: '系统优化',
     title: '🧰 UP 推荐与虚拟内存管理',
-    desc: '以 UP 推荐分类为起点，覆盖暂停更新、自动加密、VBS、预读取、遥测、快速启动与内存压缩等底层项，并提供最小 / 最大容量可手动指定的页面文件设置。',
+    desc: '以 UP 推荐分类为起点，涵盖暂停百年更新、检查并关闭自动加密、禁用遥测 / 快速启动 / VBS / 预读取、关闭鼠标加速及 Win11 24H2 区域内存优化（>24GB 内存可关内存压缩与分页合并），并支持固定虚拟内存最小值防止扩容卡顿。',
     tags: ['UP 推荐分类', 'BitLocker 预防', '大内存去压缩', '页面文件固定'],
   },
   {
@@ -137,17 +137,20 @@ const acknowledgements = [
       <span>三角帧不掉洲</span> (DeltaNFD)
     </h1>
     <p class="dn-hero-subtitle">
-      因为《三角洲行动》的优化痛点太多、玩家排查无门，我们把整套硬核排障经验浓缩成这款开源工具。集
-      <strong>着色器 / ACE / 运行库环境体检</strong>、<strong>帧格运行时稳帧</strong>、
-      <strong>AMD 双 CCD 独占调度</strong>、<strong>网吧免重启显卡伪装</strong> 与
-      <strong>跨游戏进程调度</strong> 于一体，拒绝粗制滥造的“AI 许愿圈米工具”。
+      针对《三角洲行动》优化痛点多、玩家排查无门的现状，B 站 UP 主<strong>「逐梦之子-晓夕」</strong>将整套硬核排障经验浓缩成这款开源工具。集 <strong>着色器 / ACE / 运行库环境体检</strong>、<strong>帧格运行时稳帧</strong>、<strong>AMD 双 CCD 独占调度</strong>、<strong>网吧免重启显卡伪装</strong> 与 <strong>跨游戏进程调度</strong> 于一体，拒绝粗制滥造的“AI 许愿圈米工具”。
     </p>
     <div class="dn-cta-group">
       <a class="dn-btn dn-btn-primary" :href="downloadUrl" target="_blank" rel="noopener">
         <span>立即免费下载 ({{ version }})</span>
       </a>
+      <a href="https://pan.quark.cn/s/ea7f97614465" rel="noopener" target="_blank" class="dn-btn dn-btn-secondary dnfd-btn-quark">
+        <span>⚡ 夸克网盘下载 (提取码: A691)</span>
+      </a>
+      <a href="https://www.bilibili.com/video/BV1AWHW6hEBE/" rel="noopener" target="_blank" class="dn-btn dn-btn-secondary dnfd-btn-bili">
+        <span>📺 14分钟原理与实机演示</span>
+      </a>
       <a class="dn-btn dn-btn-secondary" :href="withBase('/guide/quick-start')">
-        <span>快速上手与环境整备指南</span>
+        <span>📖 快速上手指南</span>
       </a>
       <button class="dn-btn dn-btn-outline" type="button" @click="showQrModal = true">
         <span>加入反馈交流群</span>
@@ -159,6 +162,10 @@ const acknowledgements = [
       <a :href="bilibiliUrl" target="_blank" rel="noopener">B 站 @逐梦之子-晓夕</a>
       <span class="dn-meta-divider">|</span>
       <a :href="releasesUrl" target="_blank" rel="noopener">历史发行版与校验码</a>
+    </div>
+    <div class="dnfd-sac-alert">
+      <span class="dnfd-sac-badge">⚠️ 必看提示</span>
+      <span>若工具运行被拦截，请进入 <strong>Windows 安全中心 → 应用和浏览器控制 → 智能应用控制</strong> 将其关闭。公测期如遇 Bug 或掉帧，请前往 B 站视频置顶评论加群反馈。</span>
     </div>
     <div class="dn-console-preview">
       <div class="dn-console-bar">
@@ -188,7 +195,7 @@ const acknowledgements = [
             <span class="dn-row-msg" :class="demoFixed ? 'ok-text' : 'err-text'">
               {{ demoFixed ? '正常 · 驱动 596.49 · 无 0KB 空文件 · 2 个 ≥256MB NVPH' : '检测到 2 个 GameVer 文件夹，并存在 0KB NVPH 异常特征' }}
             </span>
-            <a class="dn-row-btn" :href="withBase('/guide/quick-start#_1-着色器维护-解决编译掉帧与切换异常')">去处理</a>
+            <a class="dn-row-btn" :href="withBase('/guide/quick-start#_1-着色器维护-解决编译掉帧与切换异常')">去处理 →</a>
           </div>
           <div class="dn-ui-check-row">
             <span class="dn-dot" :class="demoFixed ? 'ok' : 'err'"></span>
@@ -196,7 +203,7 @@ const acknowledgements = [
             <span class="dn-row-msg" :class="demoFixed ? 'ok-text' : 'err-text'">
               {{ demoFixed ? '正常 · 仅 1 个 ACE-CORE 驱动文件，无多版本冗余' : '检测到 3 个 ACE-CORE 系列 .sys 文件，存在多版本冗余风险' }}
             </span>
-            <a class="dn-row-btn" :href="withBase('/guide/quick-start#_2-ace-反作弊组件清理-解决局内外周期性顿卡')">去处理</a>
+            <a class="dn-row-btn" :href="withBase('/guide/quick-start#_2-ace-反作弊组件清理-解决局内外周期性顿卡')">去处理 →</a>
           </div>
           <div class="dn-ui-check-row">
             <span class="dn-dot" :class="demoFixed ? 'ok' : 'err'"></span>
@@ -204,7 +211,7 @@ const acknowledgements = [
             <span class="dn-row-msg" :class="demoFixed ? 'ok-text' : 'err-text'">
               {{ demoFixed ? '已安装官方 14.42 基线 · 运行库防护开启中' : '检测到游戏可能静默覆盖 v14 运行库，建议重新校准并开启防护' }}
             </span>
-            <a class="dn-row-btn" :href="withBase('/guide/quick-start#_3-运行库重装与防篡改守护-解决静默更新掉帧')">去处理</a>
+            <a class="dn-row-btn" :href="withBase('/guide/quick-start#_3-运行库重装与防篡改守护-解决静默更新掉帧')">去处理 →</a>
           </div>
         </div>
       </div>
@@ -223,25 +230,25 @@ const acknowledgements = [
         <div class="dn-bar-group">
           <div class="dn-bar-label">
             <span><strong>内置 14.42 版</strong> · 帧数最高，工具默认集成</span>
-            <strong class="dn-green">351 FPS</strong>
+            <strong class="dn-green">351 FPS <em class="dnfd-fps-tag dnfd-fps-up">+49 FPS (+16.2%)</em></strong>
           </div>
           <div class="dn-bar-track"><div class="dn-bar-fill fill-best dn-bar-100"></div></div>
         </div>
         <div class="dn-bar-group">
           <div class="dn-bar-label">
             <span><strong>14.40 版</strong> · 帧数适中，操作延迟最低</span>
-            <strong class="dn-cyan">334 FPS</strong>
+            <strong class="dn-cyan">334 FPS <em class="dnfd-fps-tag dnfd-fps-lowlat">延迟最低</em></strong>
           </div>
           <div class="dn-bar-track"><div class="dn-bar-fill fill-mid dn-bar-95"></div></div>
         </div>
         <div class="dn-bar-group">
           <div class="dn-bar-label">
             <span><strong>游戏静默覆盖版本</strong> · 帧数明显缩水</span>
-            <strong class="dn-red">302 FPS</strong>
+            <strong class="dn-red">302 FPS <em class="dnfd-fps-tag dnfd-fps-down">静默负优化</em></strong>
           </div>
           <div class="dn-bar-track"><div class="dn-bar-fill fill-bad dn-bar-86"></div></div>
         </div>
-        <p class="dn-bench-foot">工具提供运行库重装流程与 IFEO 防护模式；实测差值受硬件、驱动、画质和游戏版本影响，不代表所有设备都能得到相同提升。</p>
+        <p class="dn-bench-foot">工具提供运行库一键重装与 IFEO 防护（基础拦截 v14 安装包 / 完全防护拦截所有 C++ 安装）。<strong class="dnfd-text-warn">⚠️ 注意：重装运行库会卸载现有 VC++ 并导致当前运行的 C++ 依赖软件全部崩溃，重装时请勿运行其他软件；若后续安装驱动或其它软件被拦截，先关闭防护并清理拦截即可。</strong></p>
       </article>
       <article class="dn-bench-card">
         <h3>💻 笔记本过热环境实战</h3>
@@ -263,16 +270,16 @@ const acknowledgements = [
   </section>
   <section class="dn-section">
     <div class="dn-section-header">
-      <span class="dn-eyebrow">PLAYER-CENTERED FIXES</span>
-      <h2>四个玩家呼声最高的实用设计</h2>
-      <p>不堆概念，先把玩家真实遇到的卡顿、排查和操作成本降下来</p>
+      <span class="dn-eyebrow">SCENARIO-BASED TROUBLESHOOTING</span>
+      <h2>四大高频症状与黄金参数速查</h2>
+      <p>拒绝盲目乱调，直接对照视频实测结论按症状下药</p>
     </div>
     <div class="dn-pain-grid">
       <article class="dn-pain-card" v-for="item in painPoints" :key="item.mark">
         <span class="dn-pain-mark">{{ item.mark }}</span>
         <h3>{{ item.title }}</h3>
-        <p>{{ item.desc }}</p>
-        <span class="dn-pain-note">{{ item.note }}</span>
+        <p v-html="item.desc"></p>
+        <span class="dn-pain-note" v-html="item.note"></span>
       </article>
     </div>
   </section>
@@ -326,12 +333,12 @@ const acknowledgements = [
     <div class="dn-section-header">
       <span class="dn-eyebrow">HALL OF FAME</span>
       <h2>社区荣誉与特别致谢</h2>
-      <p>“我只是个医学生，能把脑海中的构想变成这款开源软件，离不开各位粉丝的测试、算力与资金支持。”</p>
+      <p>“我只是个医学生，能把脑海中的构想变成这款开源软件，离不开各位粉丝的测试、算力与资金支持。” —— <strong>原作者 @逐梦之子-晓夕</strong></p>
     </div>
     <div class="dn-ack-grid">
       <article
         class="dn-ack-card"
-        :class="{ 'is-highlight': person.highlight }"
+        :class="{ 'is-highlight': person.highlight, 'dnfd-hof-core': person.highlight }"
         v-for="person in acknowledgements"
         :key="person.name"
       >
