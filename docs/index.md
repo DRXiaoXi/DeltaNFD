@@ -1,6 +1,6 @@
 ---
 layout: page
-title: DeltaNFD - 专为《三角洲行动》打造的硬核系统调优与环境修复引擎
+title: 三角帧不掉洲 (DeltaNFD) - 专为《三角洲行动》打造的开源系统调优与环境修复工具
 sidebar: false
 ---
 
@@ -8,269 +8,331 @@ sidebar: false
 import { ref, onMounted } from 'vue'
 import { withBase } from 'vitepress'
 
-const version = ref('v0.915+')
-const releaseDate = ref('最新稳定版')
-const downloadUrl = ref('https://github.com/xlht4106/deltanfd/releases/latest')
+const version = ref('Beta0.9192')
+const downloadUrl = ref('https://github.com/DRXiaoXi/DeltaNFD/releases/latest')
+const releasesUrl = 'https://github.com/DRXiaoXi/DeltaNFD/releases'
+const bilibiliUrl = 'https://space.bilibili.com/630440925'
 const showQrModal = ref(false)
-const activeTab = ref('cpu')
+const demoFixed = ref(false)
 
-// 自动拉取根目录同步过来的 update.json 或 GitHub Releases API
 onMounted(async () => {
   try {
     const res = await fetch(withBase('/update.json'))
-    if (res.ok) {
-      const data = await res.json()
-      const ver = data.version || data.Version || data.latestVersion || data.tag_name
-      const url = data.url || data.Url || data.downloadUrl || data.installerUrl
-      if (ver) version.value = String(ver).startsWith('v') ? ver : `v${ver}`
-      if (url) downloadUrl.value = url
+    if (!res.ok) return
+
+    const data = await res.json()
+    const rawVersion = data.displayVersion || data.version || data.Version || data.latestVersion || data.tag_name
+    if (rawVersion) {
+      const normalized = String(rawVersion).trim()
+      version.value = /^(v|beta)/i.test(normalized) ? normalized : `v${normalized}`
     }
-  } catch (e) {
-    // 降级尝试 GitHub API
-    try {
-      const ghRes = await fetch('https://api.github.com/repos/xlht4106/deltanfd/releases/latest')
-      if (ghRes.ok) {
-        const ghData = await ghRes.json()
-        if (ghData.tag_name) version.value = ghData.tag_name
-        if (ghData.published_at) releaseDate.value = new Date(ghData.published_at).toLocaleDateString('zh-CN')
-        const exeAsset = ghData.assets?.find(a => a.name.endsWith('.exe'))
-        if (exeAsset) downloadUrl.value = exeAsset.browser_download_url
-      }
-    } catch (_) {}
-  }
+
+    const installer = Array.isArray(data.installers)
+      ? data.installers.find(item => item && item.url)
+      : null
+    if (installer?.url) {
+      downloadUrl.value = installer.url
+    } else if (data.releasePageUrl) {
+      downloadUrl.value = data.releasePageUrl
+    } else {
+      const fallback = data.url || data.Url || data.downloadUrl || data.installerUrl
+      if (fallback) downloadUrl.value = fallback
+    }
+  } catch (_) {}
 })
+
+const painPoints = [
+  {
+    mark: 'DWM',
+    title: 'DWM 占用飙升自愈',
+    desc: '对比游戏启动前后的任务管理器占用，判断桌面窗口管理器是否异常飙升。帧格开启后可在目标游戏启动约 5 秒后自动重启一次 DWM。',
+    note: 'Intel 显卡玩家尤其值得先做这项排查。'
+  },
+  {
+    mark: 'GPU',
+    title: '网吧免重启临时伪装',
+    desc: '把显卡型号临时伪装为 GTX 1050 Ti 等低端型号，尝试解锁游戏隐藏最低画质；选择「立即重载显卡（不重启）」即可在网吧机器上快速验证。',
+    note: '重载瞬间会短暂黑屏，正在运行的游戏和 3D 应用可能崩溃。'
+  },
+  {
+    mark: 'TARGET',
+    title: '「不玩三角洲辣」跨游戏调度',
+    desc: '在设置中选择其它游戏的主进程，让帧格、进程管理与 CPU 调度等支持自定义目标的功能转向指定的游戏。',
+    note: '三角洲专属的着色器、ACE 与运行库模块仍只面向三角洲。'
+  },
+  {
+    mark: 'MEM',
+    title: '后台内存压力回收',
+    desc: '旧版帧格全局内存清理已下线；当前入口在「进程管理 → 后台管理 → 后台内存回收」，按系统内存压力自动或手动回收后台工作集。',
+    note: '不会结束进程，可能引起换页，也不保证一定提升帧率。'
+  }
+]
 
 const coreModules = [
   {
-    id: 'cpu',
-    badge: 'Backend.CpuFrame',
-    title: '🎯 异构 CPU 与帧率调度引擎',
-    desc: '自动探测大小核与 AMD 双 CCD 拓扑结构（CcdTopologyDetector），智能接管 Core Parking 核心停驻循环与离线 CPU Sets 调度，搭载专属 NoPowerSave 电源方案，彻底消除跨 CCD 延迟与团战 1% Low 帧骤降。',
-    tags: ['双 CCD 感知', 'Core Parking 动态锁', 'Offline CPU Sets', '专属电源计划']
+    id: 'diag',
+    badge: '环境体检',
+    title: '🩺 着色器 / ACE / 运行库红绿灯',
+    desc: '识别 N 卡问题驱动导致的 0KB 残缺着色器与多 GameVer 目录冲突；清理冗余 ACE-CORE 驱动；重装内置 14.42 C++ 运行库并用 IFEO 防护阻止游戏静默覆盖。',
+    tags: ['0KB / GameVer 归因', 'ACE-CORE 冗余清理', '14.42 运行库基线', '基础 / 完全防护']
   },
   {
-    id: 'ace',
-    badge: 'Backend.Ace',
-    title: '🛡️ ACE 反作弊环境专项管家',
-    desc: '针对游戏反作弊机制设计的安全体检与环境整备模块。内置虚拟化冲突（VBS/内核隔离）检测、ACE 异常残留分阶段清理守护（AceCleanupGuard）以及注册表 ACL 权限安全保护。',
-    tags: ['虚拟化状态诊断', 'ACE 残留安全清理', '注册表权限守护', '零注入纯系统级']
+    id: 'frame',
+    badge: '帧格',
+    title: '⚡ 运行时持续稳帧',
+    desc: '集成电源计划 30 秒巡检锁定、防核心停放、禁用游戏进程 EcoQoS、0.5ms 定时器、前台响应加速、网卡 / USB / PCIe 省电控制，以及目标游戏启动后的 DWM 自愈。',
+    tags: ['DWM 异常自愈', '电源计划锁定', '0.5ms 定时器', '外设省电控制']
+  },
+  {
+    id: 'cpulab',
+    badge: 'CPU 实验室',
+    title: '🎯 AMD 双 CCD 独占调度',
+    desc: '台式机可一键导入「无省电电源计划」。AMD 双 CCD 平台可通过硬约束让游戏独占一侧 CCD，并通过 CPU Sets 软约束将后台进程驱赶至另一侧，同时支持单 CCD「排除 CPU0」。',
+    tags: ['无省电电源计划', '双 CCD 独占', 'CPU Sets 驱赶', '排除 CPU0']
   },
   {
     id: 'gpu',
-    badge: 'Backend.Gpu & Shader',
-    title: '🚀 GPU 底层驱动与着色器调优',
-    desc: '通过 NvApiDrs 直连 NVIDIA 驱动底层配置 Profile，支持一键清理 DirectX / 显卡着色器缓存（ShaderService）、显卡设备热重载与特定场景配置规则守护。',
-    tags: ['NvAPI 底层调优', '着色器缓存清理', '设备热重载', '驱动配置备份']
+    badge: '显卡伪装与 N 卡设置',
+    title: '🚀 隐藏画质解锁与 NvAPI 调优',
+    desc: '修改注册表中的显卡描述以尝试激活隐藏最低画质，支持临时模式与立即重载；直连 NvAPI 调整 DLSS 超分模型、抗锯齿透明采样与 CUDA 显存回退策略。',
+    tags: ['临时伪装', '立即重载显卡', 'DLSS F / J / K', '显存偏好不回退']
   },
   {
-    id: 'procman',
-    badge: 'Backend.Procman',
-    title: '⚡ 进程压制与智能内存修剪',
-    desc: '实时采样后台干扰进程 CPU 占用，支持进程规则化降级、智能工作集内存清理（MemoryPurge/Trimmer）、游戏前瞻启动控制以及 GPU 高性能偏好强制绑定。',
-    tags: ['后台干扰压制', 'MemoryPurge 内存释放', 'I/O 与优先级门控', '响应式过滤']
+    id: 'sysopt',
+    badge: '系统优化',
+    title: '🧰 UP 推荐与虚拟内存管理',
+    desc: '以 UP 推荐分类为起点，覆盖暂停更新、自动加密、VBS、预读取、遥测、快速启动与内存压缩等底层项，并提供最小 / 最大容量可手动指定的页面文件设置。',
+    tags: ['UP 推荐分类', 'BitLocker 预防', '大内存去压缩', '页面文件固定'],
   },
   {
-    id: 'runtime',
-    badge: 'Backend.Runtime',
-    title: '🔧 运行库强力修复与防篡改守护',
-    desc: '告别莫名闪退与 DLL 报错。内置 SxS 组件解析器、MSI 元数据扫描、.NET 运行环境自动诊断修复（DotNetRepair）与 RuntimeGuard 运行库防破坏保护机制。',
-    tags: ['VC++ / DirectX 强修', 'SxS 依赖解析', '.NET 离线修复', '批量静默重装']
-  },
-  {
-    id: 'tweakdb',
-    badge: 'TweakDb & Plugins',
-    title: '🧰 百宝箱调优库与声明式插件生态',
-    desc: '内置基础设置、系统精简（Debloat）、电源、注册表、安全防护及“UP主推荐（UpRecommended）”一键预设；原生自带「弱网加速优化（WeakNetBoost）」与「硬件体检报告」插件。',
-    tags: ['UP主推荐预设', '弱网优化插件', 'Pagefile 虚拟内存管理', '声明式插件扩展']
+    id: 'extra',
+    badge: '进程与插件',
+    title: '🔌 跨游戏调度与插件生态',
+    desc: '「不玩三角洲辣」可指定其它游戏主进程；后台管理提供受保护的自动内存回收；拓展插件支持导入 .dnfdplugin 包、查看运行历史、恢复备份并按权限逐项授权。',
+    tags: ['自定义游戏目标', '后台内存回收', '.dnfdplugin 插件', '逐项权限授权']
   }
 ]
 
 const acknowledgements = [
-  { name: '首席测试官', role: 'Lead Tester · 核心质量把关', avatar: '/assets/acknowledgements/lead-tester.jpg', highlight: true },
-  { name: '上官', role: 'Cash Support · 特别资金支持', avatar: '/assets/acknowledgements/shangguan-cash-support.jpg', highlight: true },
-  { name: 'Token 提供支持', role: 'Token Provider · 算力与开发支持', avatar: '/assets/acknowledgements/token-provider.jpg', highlight: true },
-  { name: '匿名岩柱', role: 'Bug Hunter · 捉虫猎人', avatar: '/assets/acknowledgements/bug-hunter-anonymous-yanzhu.png' },
-  { name: '姐妹网名', role: 'Bug Hunter · 捉虫猎人', avatar: '/assets/acknowledgements/bug-hunter-jiemei-wangming.jpg' },
-  { name: '木朵', role: 'Bug Hunter · 捉虫猎人', avatar: '/assets/acknowledgements/bug-hunter-muduo.jpg' },
-  { name: '葡萄酒吐司', role: 'Bug Hunter · 捉虫猎人', avatar: '/assets/acknowledgements/bug-hunter-putaojiu-tusi.jpg' },
-  { name: '乌鸡燕', role: 'Bug Hunter · 捉虫猎人', avatar: '/assets/acknowledgements/bug-hunter-wujiyan.jpg' },
-  { name: '紫', role: 'Bug Hunter · 捉虫猎人', avatar: '/assets/acknowledgements/bug-hunter-zi.jpg' }
+  { name: '14代耐电王', role: '头号测试员 · 运行库帧数与延迟实测', avatar: '/assets/acknowledgements/lead-tester.jpg', highlight: true },
+  { name: '上官赐福', role: '提供 648 元资金支持', avatar: '/assets/acknowledgements/shangguan-cash-support.jpg', highlight: true },
+  { name: '怜爱', role: 'Token 提供者 · 算力与 API 中转支持', avatar: '/assets/acknowledgements/token-provider.jpg', highlight: true },
+  { name: '无数不留姓名的彦祖', role: 'Bug 排雷员 · 捉虫猎人', avatar: '/assets/acknowledgements/bug-hunter-anonymous-yanzhu.png' },
+  { name: '九妹亡命天涯', role: 'Bug 排雷员 · 捉虫猎人', avatar: '/assets/acknowledgements/bug-hunter-jiemei-wangming.jpg' },
+  { name: '目夺', role: 'Bug 排雷员 · 捉虫猎人', avatar: '/assets/acknowledgements/bug-hunter-muduo.jpg' },
+  { name: '葡萄酒吐司', role: 'Bug 排雷员 · 捉虫猎人', avatar: '/assets/acknowledgements/bug-hunter-putaojiu-tusi.jpg' },
+  { name: '无机盐', role: 'Bug 排雷员 · 捉虫猎人', avatar: '/assets/acknowledgements/bug-hunter-wujiyan.jpg' },
+  { name: '梓', role: 'Bug 排雷员 · 捉虫猎人', avatar: '/assets/acknowledgements/bug-hunter-zi.jpg' }
 ]
 </script>
 
 <div class="dn-landing">
-  <!-- 1. HERO 首屏区 -->
   <section class="dn-hero">
     <div class="dn-hero-badge">
       <span class="dn-pulse"></span>
-      <span>GPL-3.0 开源透明 · 6 大独立后端进程隔离 · 全操作可逆可回滚</span>
+      <span>B 站 UP 主「逐梦之子-晓夕」开源力作 · 永久免费 · 完全开源</span>
     </div>
-    <img class="dn-hero-logo" :src="withBase('/assets/logo.png')" alt="DeltaNFD Logo" />
+    <img class="dn-hero-logo" :src="withBase('/assets/logo.png')" alt="三角帧不掉洲 Logo" />
     <h1 class="dn-hero-title">
-      <span>DeltaNFD</span> 战术级系统调优引擎
+      <span>三角帧不掉洲</span> (DeltaNFD)
     </h1>
     <p class="dn-hero-subtitle">
-      专为《三角洲行动》玩家与硬件发烧友打造。集 <strong>异构 CPU 拓扑调度</strong>、<strong>ACE 反作弊环境整备</strong>、<strong>NvAPI 驱动级调优</strong>、<strong>进程内存压制</strong> 与 <strong>运行库强力修复</strong> 于一体的现代化 Windows 性能工作站。
+      因为《三角洲行动》的优化痛点太多、玩家排查无门，我们把整套硬核排障经验浓缩成这款开源工具。集
+      <strong>着色器 / ACE / 运行库环境体检</strong>、<strong>帧格运行时稳帧</strong>、
+      <strong>AMD 双 CCD 独占调度</strong>、<strong>网吧免重启显卡伪装</strong> 与
+      <strong>跨游戏进程调度</strong> 于一体，拒绝粗制滥造的“AI 许愿圈米工具”。
     </p>
     <div class="dn-cta-group">
       <a class="dn-btn dn-btn-primary" :href="downloadUrl" target="_blank" rel="noopener">
-        <span>⬇ 立即下载安装包 ({{ version }})</span>
+        <span>立即免费下载 ({{ version }})</span>
       </a>
       <a class="dn-btn dn-btn-secondary" :href="withBase('/guide/quick-start')">
-        <span>📖 快速上手指南</span>
+        <span>快速上手与环境整备指南</span>
       </a>
-      <button class="dn-btn dn-btn-outline" @click="showQrModal = true">
-        <span>💬 加入反馈交流群</span>
+      <button class="dn-btn dn-btn-outline" type="button" @click="showQrModal = true">
+        <span>加入反馈交流群</span>
       </button>
     </div>
     <div class="dn-hero-meta">
-      <span>运行环境：Windows 10 / 11 (x64)</span>
+      <span>Windows 10 / 11 x64</span>
       <span class="dn-meta-divider">|</span>
-      <a href="https://github.com/xlht4106/deltanfd/releases" target="_blank">查看历史版本与校验码 ↗</a>
+      <a :href="bilibiliUrl" target="_blank" rel="noopener">B 站 @逐梦之子-晓夕</a>
+      <span class="dn-meta-divider">|</span>
+      <a :href="releasesUrl" target="_blank" rel="noopener">历史发行版与校验码</a>
     </div>
-    <!-- 模拟软件主控台视觉预览框 -->
     <div class="dn-console-preview">
       <div class="dn-console-bar">
         <div class="dn-dots"><span></span><span></span><span></span></div>
-        <div class="dn-console-title">DeltaNFD Workstation — Dashboard & Backend Host Status [ONLINE]</div>
-        <div class="dn-console-status">6 Backends Ready</div>
+        <div class="dn-console-title">三角帧不掉洲 · 主页体检与一键帧格</div>
+        <button class="dn-demo-toggle" type="button" :aria-pressed="demoFixed" @click="demoFixed = !demoFixed">
+          {{ demoFixed ? '查看异常状态' : '模拟一键修复' }}
+        </button>
       </div>
-      <div class="dn-console-grid">
-        <div class="dn-stat-card">
-          <div class="dn-stat-label">CPU 拓扑与帧率引擎</div>
-          <div class="dn-stat-value dn-green">CCD 优选 & 停驻已接管</div>
-          <div class="dn-stat-sub">OfflineHelper 断电恢复守护就绪</div>
+      <div class="dn-ui-mockup">
+        <div class="dn-ui-quickbar">
+          <div>
+            <strong>一键帧格模式</strong>
+            <p>{{ demoFixed ? '帧格模式运行中：电源计划锁定 · 加速响应 · 前台加速 · 省电延迟 · DWM 自愈' : '开启后联动已配置的帧格功能；各功能开关仍由帧格页独立控制' }}</p>
+          </div>
+          <button class="dn-switch-pill" type="button" :class="{ active: demoFixed }" :aria-pressed="demoFixed" @click="demoFixed = !demoFixed">
+            {{ demoFixed ? '已开启' : '待开启' }}
+          </button>
         </div>
-        <div class="dn-stat-card">
-          <div class="dn-stat-label">ACE 反作弊环境整备</div>
-          <div class="dn-stat-value dn-green">VBS 虚拟化无冲突</div>
-          <div class="dn-stat-sub">AceCleanupGuard 权限保护已启用</div>
-        </div>
-        <div class="dn-stat-card">
-          <div class="dn-stat-label">NVIDIA 驱动与着色器</div>
-          <div class="dn-stat-value dn-green">NvApiDrs 已直连</div>
-          <div class="dn-stat-sub">DirectX / 着色器缓存健康</div>
-        </div>
-        <div class="dn-stat-card">
-          <div class="dn-stat-label">安全备份与熔断中心</div>
-          <div class="dn-stat-value dn-amber">TweakBackup 已同步</div>
-          <div class="dn-stat-sub">支持随时一键还原系统默认状态</div>
-        </div>
-      </div>
-    </div>
-  </section>
-  <!-- 2. 痛点直击对比区 (Before vs After) -->
-  <section class="dn-section">
-    <div class="dn-section-header">
-      <span class="dn-eyebrow">WHY DELTANFD</span>
-      <h2>告别玄学批处理，直击三大核心痛点</h2>
-      <p>将底层系统工程转化为实打实的帧率稳定性与环境可靠性</p>
-    </div>
-    <div class="dn-compare-grid">
-      <div class="dn-compare-card">
-        <div class="dn-compare-bad">❌ 传统痛点：团战掉帧、大小核/双CCD乱跳导致 1% Low 帧断崖下跌</div>
-        <div class="dn-compare-good">
-          <h4>✅ DeltaNFD 方案：硬件拓扑感知 + 离线级安全调度</h4>
-          <p>自动识别 Intel 大小核与 AMD 双 CCD 架构，精细管理 Core Parking 与 CPU Sets，配合 <code>OfflineHelper</code> 独立守护进程，即使游戏或工具异常退出也能在数秒内自动恢复系统默认调度。</p>
-        </div>
-      </div>
-      <div class="dn-compare-card">
-        <div class="dn-compare-bad">❌ 传统痛点：反作弊环境冲突、残留服务报错、乱用网传脚本导致系统崩溃</div>
-        <div class="dn-compare-good">
-          <h4>✅ DeltaNFD 方案：合规边界内的 ACE 诊断与清理守护</h4>
-          <p>绝不触碰游戏内存与文件完整性。纯系统级排查虚拟化（VBS）配置冲突，提供分阶段、带安全门控（<code>AceCleanupGuard</code> / <code>AceRegistrySafety</code>）的残留清理与权限修复。</p>
-        </div>
-      </div>
-      <div class="dn-compare-card">
-        <div class="dn-compare-bad">❌ 传统痛点：游戏莫名闪退、VC++/DirectX/.NET 损坏且常规安装器无法覆盖重装</div>
-        <div class="dn-compare-good">
-          <h4>✅ DeltaNFD 方案：SxS 级强力运行库修复与防篡改保护</h4>
-          <p>内置 <code>RuntimeStrongRepair</code> 与 <code>RuntimeSxsResolver</code>，支持损坏 MSI/INF 依赖深度清理、批量静默重装以及运行库防护，一站式解决疑难杂症。</p>
+        <div class="dn-ui-check-list">
+          <div class="dn-ui-check-header">
+            组件检测状态：红色项表示当前存在拖累帧数的风险，点击「去处理」可跳转到对应指南
+          </div>
+          <div class="dn-ui-check-row">
+            <span class="dn-dot" :class="demoFixed ? 'ok' : 'err'"></span>
+            <strong class="dn-row-name">着色器</strong>
+            <span class="dn-row-msg" :class="demoFixed ? 'ok-text' : 'err-text'">
+              {{ demoFixed ? '正常 · 驱动 596.49 · 无 0KB 空文件 · 2 个 ≥256MB NVPH' : '检测到 2 个 GameVer 文件夹，并存在 0KB NVPH 异常特征' }}
+            </span>
+            <a class="dn-row-btn" :href="withBase('/guide/quick-start#_1-着色器维护-解决编译掉帧与切换异常')">去处理</a>
+          </div>
+          <div class="dn-ui-check-row">
+            <span class="dn-dot" :class="demoFixed ? 'ok' : 'err'"></span>
+            <strong class="dn-row-name">ACE</strong>
+            <span class="dn-row-msg" :class="demoFixed ? 'ok-text' : 'err-text'">
+              {{ demoFixed ? '正常 · 仅 1 个 ACE-CORE 驱动文件，无多版本冗余' : '检测到 3 个 ACE-CORE 系列 .sys 文件，存在多版本冗余风险' }}
+            </span>
+            <a class="dn-row-btn" :href="withBase('/guide/quick-start#_2-ace-反作弊组件清理-解决局内外周期性顿卡')">去处理</a>
+          </div>
+          <div class="dn-ui-check-row">
+            <span class="dn-dot" :class="demoFixed ? 'ok' : 'err'"></span>
+            <strong class="dn-row-name">运行库</strong>
+            <span class="dn-row-msg" :class="demoFixed ? 'ok-text' : 'err-text'">
+              {{ demoFixed ? '已安装官方 14.42 基线 · 运行库防护开启中' : '检测到游戏可能静默覆盖 v14 运行库，建议重新校准并开启防护' }}
+            </span>
+            <a class="dn-row-btn" :href="withBase('/guide/quick-start#_3-运行库重装与防篡改守护-解决静默更新掉帧')">去处理</a>
+          </div>
         </div>
       </div>
     </div>
   </section>
-  <!-- 3. 六大核心功能矩阵 (Bento Grid) -->
   <section class="dn-section">
     <div class="dn-section-header">
-      <span class="dn-eyebrow">CORE ARCHITECTURE</span>
-      <h2>六大独立后端模块 + 插件化生态</h2>
-      <p>采用前后端分离的多进程架构，每个核心领域由专属 Backend 引擎独立承载</p>
+      <span class="dn-eyebrow">REAL-WORLD BENCHMARKS</span>
+      <h2>拒绝玄学安慰剂，用实机帧数与帧时间说话</h2>
+      <p>以下数据来自原作者演示视频中的实机对比，仅代表对应硬件与游戏版本</p>
+    </div>
+    <div class="dn-bench-grid">
+      <article class="dn-bench-card">
+        <h3>📊 C++ 运行库版本实测</h3>
+        <p class="dn-bench-sub">测试协助：@14代耐电王 · 同一靶场点位对比</p>
+        <div class="dn-bar-group">
+          <div class="dn-bar-label">
+            <span><strong>内置 14.42 版</strong> · 帧数最高，工具默认集成</span>
+            <strong class="dn-green">351 FPS</strong>
+          </div>
+          <div class="dn-bar-track"><div class="dn-bar-fill fill-best dn-bar-100"></div></div>
+        </div>
+        <div class="dn-bar-group">
+          <div class="dn-bar-label">
+            <span><strong>14.40 版</strong> · 帧数适中，操作延迟最低</span>
+            <strong class="dn-cyan">334 FPS</strong>
+          </div>
+          <div class="dn-bar-track"><div class="dn-bar-fill fill-mid dn-bar-95"></div></div>
+        </div>
+        <div class="dn-bar-group">
+          <div class="dn-bar-label">
+            <span><strong>游戏静默覆盖版本</strong> · 帧数明显缩水</span>
+            <strong class="dn-red">302 FPS</strong>
+          </div>
+          <div class="dn-bar-track"><div class="dn-bar-fill fill-bad dn-bar-86"></div></div>
+        </div>
+        <p class="dn-bench-foot">工具提供运行库重装流程与 IFEO 防护模式；实测差值受硬件、驱动、画质和游戏版本影响，不代表所有设备都能得到相同提升。</p>
+      </article>
+      <article class="dn-bench-card">
+        <h3>💻 笔记本过热环境实战</h3>
+        <p class="dn-bench-sub">华硕天选 A16 · R9 7940HX 双 CCD · RTX 4070 Laptop 8G · 32G DDR5</p>
+        <ul class="dn-highlight-list">
+          <li>
+            <strong>测试条件：</strong>未带风压散热器，CPU 处于过热运行状态，全程不开启帧生成。
+          </li>
+          <li>
+            <strong>全面战场与烽火地带：</strong>开启双 CCD 专属调度、帧格与环境整备后，实战稳定 <strong>200 ~ 245+ FPS</strong>，帧时间约 <strong>3.6ms ~ 5.1ms</strong>。
+          </li>
+          <li>
+            <strong>黑潮爆破：</strong>该模式官方已有特殊调度，关闭双 CCD 调度后温度更低，仍约 <strong>200+ FPS</strong>、<strong>3.1ms ~ 4.1ms</strong>。
+          </li>
+        </ul>
+        <p class="dn-bench-foot">这是单台设备的作者实测，不是跨硬件通用承诺。笔记本请优先确认散热与功耗释放。</p>
+      </article>
+    </div>
+  </section>
+  <section class="dn-section">
+    <div class="dn-section-header">
+      <span class="dn-eyebrow">PLAYER-CENTERED FIXES</span>
+      <h2>四个玩家呼声最高的实用设计</h2>
+      <p>不堆概念，先把玩家真实遇到的卡顿、排查和操作成本降下来</p>
+    </div>
+    <div class="dn-pain-grid">
+      <article class="dn-pain-card" v-for="item in painPoints" :key="item.mark">
+        <span class="dn-pain-mark">{{ item.mark }}</span>
+        <h3>{{ item.title }}</h3>
+        <p>{{ item.desc }}</p>
+        <span class="dn-pain-note">{{ item.note }}</span>
+      </article>
+    </div>
+  </section>
+  <section class="dn-section">
+    <div class="dn-section-header">
+      <span class="dn-eyebrow">CORE CAPABILITIES</span>
+      <h2>全方位覆盖《三角洲行动》的性能痛点</h2>
+      <p>从驱动、反作弊冗余、运行库版本到异构 CPU 调度的一站式解决方案</p>
     </div>
     <div class="dn-bento-grid">
-      <div class="dn-bento-card" v-for="mod in coreModules" :key="mod.id">
+      <article class="dn-bento-card" v-for="mod in coreModules" :key="mod.id">
         <div class="dn-bento-badge">{{ mod.badge }}</div>
         <h3>{{ mod.title }}</h3>
         <p>{{ mod.desc }}</p>
         <div class="dn-tag-list">
-          <span class="dn-tag" v-for="t in mod.tags" :key="t">{{ t }}</span>
+          <span class="dn-tag" v-for="tag in mod.tags" :key="tag">{{ tag }}</span>
         </div>
-      </div>
+      </article>
     </div>
   </section>
-  <!-- 4. 安全防呆与工程实力背书 -->
   <section class="dn-section dn-safety-box">
     <div class="dn-section-header">
-      <span class="dn-eyebrow">SAFETY & RELIABILITY</span>
-      <h2>为什么你可以放心把系统交给 DeltaNFD？</h2>
-      <p>比优化效果更重要的，是确保每一项修改都可追踪、可回滚、有熔断</p>
+      <span class="dn-eyebrow">SAFETY & ARCHITECTURE</span>
+      <h2>纯系统级合法调优 · 可追踪、可回滚、可熔断</h2>
+      <p>不修改游戏内存与客户端文件，后端按模块隔离运行</p>
     </div>
     <div class="dn-safety-grid">
-      <div class="dn-safety-item">
+      <article class="dn-safety-item">
         <div class="dn-safety-num">01</div>
-        <h4>全链路自动备份 (TweakBackupStore)</h4>
-        <p>在修改任何注册表、服务、电源计划或驱动参数前，系统自动记录原始状态快照，支持单项回退或全局一键恢复。</p>
-      </div>
-      <div class="dn-safety-item">
+        <h4>备份与还原机制</h4>
+        <p>对支持回滚的注册表、服务、电源计划与驱动配置保存原值，并提供单项恢复、一键恢复或强制清理入口。</p>
+      </article>
+      <article class="dn-safety-item">
         <div class="dn-safety-num">02</div>
-        <h4>断电与异常退出自愈 (OfflineRestoreHandover)</h4>
-        <p>独创离线交接守护机制。即便遭遇死机、断电或强制杀进程，<code>DeltaNFD.OfflineHelper</code> 也会在重启或超时后自动接管并还原 CPU 调度与电源状态。</p>
-      </div>
-      <div class="dn-safety-item">
+        <h4>多后端隔离与未确认操作核对</h4>
+        <p>官方后端按功能模块拆分运行。超时、断线或异常退出时保留证据并要求人工核对，不把未知结果当作成功。</p>
+      </article>
+      <article class="dn-safety-item">
         <div class="dn-safety-num">03</div>
-        <h4>远端紧急熔断策略 (EmergencyPolicy)</h4>
-        <p>内置带数字签名校验的紧急策略通道。若游戏版本大更或 Windows 补丁引发特定优化项兼容问题，客户端可即时拉取策略自动熔断高风险项。</p>
-      </div>
-      <div class="dn-safety-item">
+        <h4>签名紧急熔断策略</h4>
+        <p>紧急策略通道使用数字签名与固定信任根校验。游戏或 Windows 更新引发兼容问题时，可熔断对应高风险命令。</p>
+      </article>
+      <article class="dn-safety-item">
         <div class="dn-safety-num">04</div>
-        <h4>60+ 项自动化冒烟测试 (BackendSmokeTest)</h4>
-        <p>每次版本构建均经过涵盖权限边界、并发备份、离线恢复、插件沙箱与安装器交接的严苛自动化测试验证。</p>
-      </div>
+        <h4>永久免费与 GPL-3.0 开源</h4>
+        <p>前端、官方后端、插件规范与测试工具均可公开审计。历史入口的残留状态会在升级后按提示恢复，再进入当前功能。</p>
+      </article>
     </div>
   </section>
-  <!-- 5. 版本演进与开源透明 -->
-  <section class="dn-section">
-    <div class="dn-section-header">
-      <span class="dn-eyebrow">EVOLUTION</span>
-      <h2>持续高频迭代 · 紧跟游戏与系统更新</h2>
-    </div>
-    <div class="dn-timeline">
-      <div class="dn-time-node">
-        <span class="dn-ver">v0.915 / v0.914</span>
-        <p>强化进程规则引擎、离线调度交接稳定性与运行库深度修复流，完善插件生态与 UI 体验。</p>
-      </div>
-      <div class="dn-time-node">
-        <span class="dn-ver">v0.91 / v0.90.1</span>
-        <p>引入多后端进程解耦架构、完善 NvAPI 驱动配置与着色器缓存清理守护、升级安装包自包含部署能力。</p>
-      </div>
-      <div class="dn-time-node">
-        <span class="dn-ver">v0.89.0 / v0.83.0</span>
-        <p>奠定核心系统调优数据库（TweakDb）、ACE 环境检测与异构 CPU 帧率优化基础架构。</p>
-      </div>
-    </div>
-  </section>
-  <!-- 6. 社区致谢墙 (Acknowledgements) -->
   <section class="dn-section">
     <div class="dn-section-header">
       <span class="dn-eyebrow">HALL OF FAME</span>
-      <h2>社区荣誉与致谢墙</h2>
-      <p>感谢每一位参与极限测试、提交关键 Bug 与提供算力/资金支持的伙伴</p>
+      <h2>社区荣誉与特别致谢</h2>
+      <p>“我只是个医学生，能把脑海中的构想变成这款开源软件，离不开各位粉丝的测试、算力与资金支持。”</p>
     </div>
     <div class="dn-ack-grid">
-      <div 
-        class="dn-ack-card" 
+      <article
+        class="dn-ack-card"
         :class="{ 'is-highlight': person.highlight }"
-        v-for="person in acknowledgements" 
+        v-for="person in acknowledgements"
         :key="person.name"
       >
         <img :src="withBase(person.avatar)" :alt="person.name" loading="lazy" />
@@ -278,16 +340,43 @@ const acknowledgements = [
           <strong>{{ person.name }}</strong>
           <span>{{ person.role }}</span>
         </div>
-      </div>
+      </article>
     </div>
   </section>
-  <!-- 反馈交流群二维码弹窗 -->
-  <div class="dn-modal-mask" v-if="showQrModal" @click.self="showQrModal = false">
+  <section class="dn-section">
+    <div class="dn-section-header">
+      <span class="dn-eyebrow">EVOLUTION</span>
+      <h2>持续迭代 · 紧跟游戏与系统更新</h2>
+      <p>正式发布前仍会保留未确认操作核对与回滚义务</p>
+    </div>
+    <div class="dn-timeline">
+      <article class="dn-time-node">
+        <span class="dn-ver">Beta0.9192 / Alpha0.915</span>
+        <p>运行库 v14 卸载与 14.42 基线重建流程继续加固；下线旧脱机模式与帧格全局内存清理，改用后台内存回收、逐插件授权和可核对恢复记录。</p>
+      </article>
+      <article class="dn-time-node">
+        <span class="dn-ver">v0.915 / v0.914</span>
+        <p>强化多后端进程隔离、运行库诊断与恢复、插件授权和声明式界面渲染，完善 NVIDIA 驱动配置与着色器缓存维护。</p>
+      </article>
+      <article class="dn-time-node">
+        <span class="dn-ver">v0.91 / v0.89</span>
+        <p>奠定系统调优数据库、ACE 环境检测、异构 CPU 调度和帧格运行时优化的基础架构。</p>
+      </article>
+    </div>
+  </section>
+  <div
+    class="dn-modal-mask"
+    v-if="showQrModal"
+    role="dialog"
+    aria-modal="true"
+    aria-label="反馈交流群二维码"
+    @click.self="showQrModal = false"
+  >
     <div class="dn-modal-card">
-      <h3>扫码加入 DeltaNFD 反馈交流群</h3>
-      <p>获取最新测试版通知、反馈疑难杂症或交流硬件调优心得</p>
+      <h3>扫码加入「三角帧不掉洲」反馈群</h3>
+      <p>遇到 Bug 或帧数异常时，可以在群内直接反馈给作者 @逐梦之子-晓夕。</p>
       <img :src="withBase('/assets/FeedbackGroupQr.png')" alt="反馈交流群二维码" />
-      <button class="dn-btn dn-btn-primary" @click="showQrModal = false">关闭窗口</button>
+      <button class="dn-btn dn-btn-primary" type="button" @click="showQrModal = false">关闭窗口</button>
     </div>
   </div>
 </div>
@@ -300,62 +389,65 @@ const acknowledgements = [
   color: #e6edf3;
 }
 
-/* Hero 首屏 */
 .dn-hero {
   text-align: center;
-  padding: 3rem 0 4rem;
+  padding: 2.5rem 0 3.5rem;
 }
+
 .dn-hero-badge {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 6px 16px;
   border-radius: 999px;
-  background: rgba(0, 255, 102, 0.08);
-  border: 1px solid rgba(0, 255, 102, 0.3);
-  color: #00ff66;
+  background: rgba(0, 230, 92, 0.08);
+  border: 1px solid rgba(0, 230, 92, 0.3);
+  color: #6ee7a0;
   font-size: 0.85rem;
   font-weight: 600;
   margin-bottom: 1.5rem;
 }
+
 .dn-pulse {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #00ff66;
-  box-shadow: 0 0 10px #00ff66;
+  background: #00e65c;
+  box-shadow: 0 0 10px rgba(0, 230, 92, 0.8);
 }
+
 .dn-hero-logo {
   width: 88px;
   height: 88px;
   margin: 0 auto 1.2rem;
-  border-radius: 20px;
-  box-shadow: 0 0 35px rgba(0, 255, 102, 0.25);
+  border-radius: 18px;
+  box-shadow: 0 0 35px rgba(0, 230, 92, 0.2);
 }
+
 .dn-hero-title {
-  font-size: clamp(2.2rem, 5vw, 3.6rem);
+  font-size: 3rem;
   font-weight: 800;
   line-height: 1.15;
-  letter-spacing: -0.02em;
-  margin-bottom: 1.2rem;
+  letter-spacing: 0;
+  margin: 0 0 1.2rem;
 }
+
 .dn-hero-title span {
-  background: linear-gradient(135deg, #00ff66 0%, #00b8ff 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: #7ef0a7;
 }
+
 .dn-hero-subtitle {
-  max-width: 780px;
+  max-width: 840px;
   margin: 0 auto 2rem;
-  font-size: 1.1rem;
-  line-height: 1.7;
+  font-size: 1.08rem;
+  line-height: 1.75;
   color: #9ba7b4;
 }
+
 .dn-hero-subtitle strong {
   color: #e6edf3;
 }
 
-/* 按钮组 */
 .dn-cta-group {
   display: flex;
   flex-wrap: wrap;
@@ -363,44 +455,52 @@ const acknowledgements = [
   gap: 14px;
   margin-bottom: 1.2rem;
 }
+
 .dn-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.8rem 1.6rem;
-  border-radius: 10px;
+  min-height: 44px;
+  padding: 0.75rem 1.4rem;
+  border-radius: 8px;
   font-weight: 700;
-  font-size: 0.98rem;
+  font-size: 0.96rem;
   text-decoration: none !important;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
   cursor: pointer;
 }
+
 .dn-btn-primary {
-  background: linear-gradient(135deg, #00e65c, #00b347);
+  background: #00e65c;
   color: #041208 !important;
-  box-shadow: 0 8px 25px rgba(0, 230, 92, 0.3);
-  border: none;
+  box-shadow: 0 8px 24px rgba(0, 230, 92, 0.22);
+  border: 1px solid #00e65c;
 }
+
 .dn-btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 30px rgba(0, 255, 102, 0.45);
+  box-shadow: 0 12px 28px rgba(0, 230, 92, 0.3);
 }
+
 .dn-btn-secondary {
   background: #161f2c;
   color: #e6edf3 !important;
   border: 1px solid #2a3648;
 }
+
 .dn-btn-secondary:hover {
-  border-color: #00ff66;
+  border-color: #00e65c;
   background: #1c2838;
 }
+
 .dn-btn-outline {
   background: transparent;
-  color: #00ff66;
-  border: 1px solid rgba(0, 255, 102, 0.4);
+  color: #7ef0a7;
+  border: 1px solid rgba(0, 230, 92, 0.4);
 }
+
 .dn-btn-outline:hover {
-  background: rgba(0, 255, 102, 0.1);
+  background: rgba(0, 230, 92, 0.1);
 }
 
 .dn-hero-meta {
@@ -411,179 +511,408 @@ const acknowledgements = [
   gap: 10px;
   font-size: 0.85rem;
   color: #7d8997;
-  margin-bottom: 3rem;
+  margin-bottom: 2.8rem;
 }
+
+.dn-hero-meta a {
+  color: #a9b6c5;
+  text-decoration: none;
+}
+
+.dn-hero-meta a:hover {
+  color: #7ef0a7;
+}
+
 .dn-meta-divider {
   opacity: 0.3;
 }
 
-/* 模拟控制台预览 */
 .dn-console-preview {
   background: #0d131c;
   border: 1px solid #1f2b3d;
-  border-radius: 16px;
+  border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(0, 255, 102, 0.06);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55), 0 0 40px rgba(0, 230, 92, 0.05);
   text-align: left;
 }
+
 .dn-console-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
   padding: 12px 18px;
   background: #121a26;
   border-bottom: 1px solid #1f2b3d;
-  font-size: 0.8rem;
-  color: #8b98a9;
+  font-size: 0.82rem;
+  color: #a9b6c5;
 }
+
 .dn-dots {
   display: flex;
   gap: 6px;
 }
+
 .dn-dots span {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   background: #2b384b;
 }
-.dn-console-status {
-  color: #00ff66;
-  font-family: monospace;
-  font-weight: 700;
-}
-.dn-console-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  padding: 20px;
-}
-.dn-stat-card {
-  background: #121a26;
-  border: 1px solid #1d293a;
-  padding: 16px;
-  border-radius: 12px;
-}
-.dn-stat-label {
-  font-size: 0.8rem;
-  color: #8b98a9;
-  margin-bottom: 6px;
-}
-.dn-stat-value {
-  font-size: 1.05rem;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-.dn-green { color: #00ff66; }
-.dn-amber { color: #ffbe0b; }
-.dn-stat-sub {
-  font-size: 0.76rem;
-  color: #697789;
+
+.dn-demo-toggle {
+  background: rgba(0, 230, 92, 0.1);
+  border: 1px solid rgba(0, 230, 92, 0.35);
+  color: #7ef0a7;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
-/* 通用板块头部 */
+.dn-demo-toggle:hover {
+  background: rgba(0, 230, 92, 0.18);
+}
+
+.dn-ui-mockup {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dn-ui-quickbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  background: #131c29;
+  border: 1px solid #223044;
+  border-radius: 10px;
+}
+
+.dn-ui-quickbar strong {
+  font-size: 1.05rem;
+  color: #f1f5f9;
+}
+
+.dn-ui-quickbar p {
+  margin: 4px 0 0;
+  font-size: 0.84rem;
+  color: #8b98a9;
+}
+
+.dn-switch-pill {
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px solid #334155;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: #263345;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.dn-switch-pill.active {
+  background: #00e65c;
+  border-color: #00e65c;
+  color: #041208;
+}
+
+.dn-ui-check-list {
+  background: #131c29;
+  border: 1px solid #223044;
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+
+.dn-ui-check-header {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  margin-bottom: 12px;
+}
+
+.dn-ui-check-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.88rem;
+}
+
+.dn-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dn-dot.err {
+  background: #ff5555;
+  box-shadow: 0 0 8px rgba(255, 85, 85, 0.75);
+}
+
+.dn-dot.ok {
+  background: #00e65c;
+  box-shadow: 0 0 8px rgba(0, 230, 92, 0.7);
+}
+
+.dn-row-name {
+  width: 64px;
+  flex-shrink: 0;
+  color: #f1f5f9;
+}
+
+.dn-row-msg {
+  flex: 1;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.err-text {
+  color: #ff7b7b;
+  font-weight: 600;
+}
+
+.ok-text {
+  color: #7ef0a7;
+}
+
+.dn-row-btn {
+  padding: 4px 12px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #e2e8f0 !important;
+  text-decoration: none !important;
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+
+.dn-row-btn:hover {
+  border-color: #00e65c;
+}
+
 .dn-section {
   padding: 4rem 0 1rem;
 }
+
 .dn-section-header {
   text-align: center;
   margin-bottom: 2.5rem;
 }
+
 .dn-eyebrow {
   display: inline-block;
-  font-family: monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.8rem;
-  letter-spacing: 0.15em;
-  color: #00ff66;
+  letter-spacing: 0.12em;
+  color: #7ef0a7;
   margin-bottom: 0.5rem;
 }
+
 .dn-section-header h2 {
   font-size: 2rem;
   font-weight: 800;
   margin: 0 0 0.6rem;
   border: none;
 }
+
 .dn-section-header p {
   color: #8b98a9;
   margin: 0;
 }
 
-/* 痛点对比 */
-.dn-compare-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 20px;
-}
-.dn-compare-card {
-  background: #0e141f;
-  border: 1px solid #1e293b;
-  border-radius: 14px;
-  overflow: hidden;
-}
-.dn-compare-bad {
-  padding: 14px 18px;
-  background: rgba(239, 68, 68, 0.08);
-  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
-  color: #fca5a5;
-  font-size: 0.88rem;
-  font-weight: 600;
-}
-.dn-compare-good {
-  padding: 18px;
-}
-.dn-compare-good h4 {
-  margin: 0 0 8px;
-  color: #00ff66;
-  font-size: 1.05rem;
-}
-.dn-compare-good p {
-  margin: 0;
-  font-size: 0.9rem;
-  color: #9ba7b4;
-  line-height: 1.6;
-}
-
-/* Bento 六大模块 */
-.dn-bento-grid {
+.dn-bench-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: 20px;
 }
-.dn-bento-card {
-  background: linear-gradient(180deg, #101722 0%, #0b1018 100%);
+
+.dn-bench-card,
+.dn-pain-card,
+.dn-bento-card,
+.dn-safety-item,
+.dn-ack-card,
+.dn-time-node {
+  background: #0e141f;
   border: 1px solid #1e2a3a;
-  border-radius: 16px;
+  border-radius: 12px;
+}
+
+.dn-bench-card {
+  padding: 24px;
+}
+
+.dn-bench-card h3 {
+  margin: 0 0 6px;
+  font-size: 1.2rem;
+}
+
+.dn-bench-sub {
+  font-size: 0.82rem;
+  color: #7d8997;
+  margin: 0 0 20px;
+}
+
+.dn-bar-group {
+  margin-bottom: 16px;
+}
+
+.dn-bar-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.86rem;
+  margin-bottom: 6px;
+}
+
+.dn-bar-label strong:last-child {
+  white-space: nowrap;
+}
+
+.dn-bar-track {
+  height: 10px;
+  background: #162030;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.dn-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.dn-bar-100 { width: 100%; }
+.dn-bar-95 { width: 95%; }
+.dn-bar-86 { width: 86%; }
+.fill-best { background: #22c55e; }
+.fill-mid { background: #38bdf8; }
+.fill-bad { background: #ef4444; }
+.dn-green { color: #7ef0a7; }
+.dn-cyan { color: #7dd3fc; }
+.dn-red { color: #fca5a5; }
+
+.dn-bench-foot {
+  margin: 16px 0 0;
+  font-size: 0.82rem;
+  color: #94a3b8;
+  line-height: 1.65;
+}
+
+.dn-highlight-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #9ba7b4;
+  font-size: 0.9rem;
+  line-height: 1.75;
+}
+
+.dn-highlight-list li {
+  margin-bottom: 12px;
+}
+
+.dn-highlight-list strong {
+  color: #e6edf3;
+}
+
+.dn-pain-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.dn-pain-card {
+  padding: 22px;
+}
+
+.dn-pain-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: rgba(0, 230, 92, 0.1);
+  border: 1px solid rgba(0, 230, 92, 0.22);
+  color: #7ef0a7;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  font-weight: 800;
+  margin-bottom: 14px;
+}
+
+.dn-pain-card h3 {
+  margin: 0 0 10px;
+  font-size: 1.08rem;
+}
+
+.dn-pain-card p {
+  margin: 0 0 14px;
+  color: #94a3b8;
+  font-size: 0.88rem;
+  line-height: 1.68;
+}
+
+.dn-pain-note {
+  display: block;
+  color: #7d8997;
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.dn-bento-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.dn-bento-card {
   padding: 24px;
   transition: transform 0.2s ease, border-color 0.2s ease;
 }
+
 .dn-bento-card:hover {
-  transform: translateY(-4px);
-  border-color: rgba(0, 255, 102, 0.45);
+  transform: translateY(-3px);
+  border-color: rgba(0, 230, 92, 0.4);
 }
+
 .dn-bento-badge {
   display: inline-block;
-  font-family: monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.75rem;
   padding: 3px 10px;
   border-radius: 6px;
-  background: rgba(0, 184, 255, 0.1);
-  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  color: #7dd3fc;
   margin-bottom: 12px;
 }
+
 .dn-bento-card h3 {
   margin: 0 0 10px;
-  font-size: 1.2rem;
+  font-size: 1.18rem;
 }
+
 .dn-bento-card p {
   font-size: 0.92rem;
   color: #94a3b8;
-  line-height: 1.65;
+  line-height: 1.68;
   margin-bottom: 16px;
 }
+
 .dn-tag-list {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
+
 .dn-tag {
   font-size: 0.76rem;
   padding: 4px 10px;
@@ -593,86 +922,62 @@ const acknowledgements = [
   border: 1px solid #233248;
 }
 
-/* 安全背书区 */
 .dn-safety-box {
   margin-top: 3rem;
-  padding: 3rem 2rem;
-  background: linear-gradient(135deg, rgba(0, 255, 102, 0.04) 0%, rgba(0, 184, 255, 0.04) 100%);
-  border: 1px solid rgba(0, 255, 102, 0.2);
-  border-radius: 20px;
+  padding: 3rem 0 1rem;
+  border-top: 1px solid rgba(0, 230, 92, 0.16);
+  border-bottom: 1px solid rgba(0, 230, 92, 0.16);
 }
+
 .dn-safety-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 18px;
 }
+
 .dn-safety-item {
-  background: rgba(11, 16, 24, 0.8);
-  border: 1px solid #1e293b;
   padding: 20px;
-  border-radius: 14px;
 }
+
 .dn-safety-num {
-  font-family: monospace;
-  font-size: 1.4rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.35rem;
   font-weight: 800;
-  color: #00ff66;
+  color: #7ef0a7;
   margin-bottom: 8px;
 }
+
 .dn-safety-item h4 {
   margin: 0 0 8px;
-  font-size: 1.02rem;
+  font-size: 1rem;
 }
+
 .dn-safety-item p {
   margin: 0;
   font-size: 0.88rem;
   color: #94a3b8;
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
-/* 时间轴 */
-.dn-timeline {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
-}
-.dn-time-node {
-  background: #0e141f;
-  border-left: 3px solid #00ff66;
-  padding: 16px 20px;
-  border-radius: 0 12px 12px 0;
-}
-.dn-ver {
-  font-family: monospace;
-  font-weight: 700;
-  color: #00ff66;
-  font-size: 1rem;
-}
-.dn-time-node p {
-  margin: 8px 0 0;
-  font-size: 0.88rem;
-  color: #94a3b8;
-}
-
-/* 社区致谢墙 */
 .dn-ack-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 14px;
 }
+
 .dn-ack-card {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
   background: #0f1622;
-  border: 1px solid #1e2a3a;
-  border-radius: 12px;
 }
+
 .dn-ack-card.is-highlight {
-  border-color: rgba(255, 190, 11, 0.45);
-  background: linear-gradient(135deg, rgba(255, 190, 11, 0.08), #0f1622);
+  border-color: rgba(250, 204, 21, 0.4);
+  background: #151a1d;
 }
+
 .dn-ack-card img {
   width: 46px;
   height: 46px;
@@ -680,24 +985,54 @@ const acknowledgements = [
   object-fit: cover;
   border: 2px solid #28374d;
 }
+
 .dn-ack-info {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
+
 .dn-ack-info strong {
   font-size: 0.95rem;
   color: #f1f5f9;
 }
+
 .dn-ack-info span {
   font-size: 0.76rem;
   color: #8b98a9;
+  line-height: 1.45;
 }
 
-/* 二维码弹窗 */
+.dn-timeline {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.dn-time-node {
+  border-left: 3px solid #00e65c;
+  padding: 16px 20px;
+  border-radius: 0 10px 10px 0;
+}
+
+.dn-ver {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  color: #7ef0a7;
+  font-size: 1rem;
+}
+
+.dn-time-node p {
+  margin: 8px 0 0;
+  font-size: 0.88rem;
+  color: #94a3b8;
+  line-height: 1.65;
+}
+
 .dn-modal-mask {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.75);
+  background: rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
@@ -705,30 +1040,71 @@ const acknowledgements = [
   z-index: 999;
   padding: 1rem;
 }
+
 .dn-modal-card {
   background: #101722;
   border: 1px solid #28374d;
-  border-radius: 16px;
+  border-radius: 12px;
   padding: 28px;
   max-width: 380px;
   width: 100%;
   text-align: center;
 }
+
 .dn-modal-card h3 {
   margin: 0 0 8px;
 }
+
 .dn-modal-card p {
   font-size: 0.85rem;
   color: #94a3b8;
   margin-bottom: 16px;
 }
+
 .dn-modal-card img {
   width: 240px;
   height: 240px;
   object-fit: contain;
   margin: 0 auto 20px;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fff;
   padding: 8px;
+}
+
+@media (max-width: 720px) {
+  .dn-landing {
+    padding: 1.25rem 1rem 4rem;
+  }
+
+  .dn-hero {
+    padding-top: 1.5rem;
+  }
+
+  .dn-hero-title {
+    font-size: 2.25rem;
+  }
+
+  .dn-section-header h2 {
+    font-size: 1.65rem;
+  }
+
+  .dn-ui-quickbar,
+  .dn-ui-check-row {
+    align-items: flex-start;
+  }
+
+  .dn-ui-quickbar,
+  .dn-ui-check-row {
+    flex-direction: column;
+  }
+
+  .dn-row-name {
+    width: auto;
+  }
+
+  .dn-row-btn {
+    width: 100%;
+    text-align: center;
+  }
 }
 </style>

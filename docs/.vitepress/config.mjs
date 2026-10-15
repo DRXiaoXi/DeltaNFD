@@ -6,8 +6,8 @@ const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`
 
 export default defineConfig({
   lang: 'zh-CN',
-  title: 'DeltaNFD',
-  description: '专为《三角洲行动》打造的硬核系统调优与环境修复引擎',
+  title: '三角帧不掉洲 (DeltaNFD)',
+  description: 'UP主「逐梦之子-晓夕」开源制作 · 专为《三角洲行动》打造的免费系统调优与环境修复工具',
   base: base,
   appearance: 'force-dark', // 强制启用战术暗黑模式
   head: [
@@ -16,7 +16,7 @@ export default defineConfig({
   ],
   themeConfig: {
     logo: '/assets/logo.png',
-    siteTitle: 'DeltaNFD',
+    siteTitle: '三角帧不掉洲 · DeltaNFD',
     nav: [
       { text: '首页', link: '/' },
       { text: '快速上手', link: '/guide/quick-start' },
@@ -43,8 +43,8 @@ export default defineConfig({
       { icon: 'github', link: 'https://github.com/xlht4106/deltanfd' }
     ],
     footer: {
-      message: '基于 GPL-3.0 开源许可发布 · 纯系统级合法调优 · 全链路可逆可回滚',
-      copyright: 'Copyright © 2025-2026 DeltaNFD Contributors'
+      message: '基于 GPL-3.0-only 永久免费开源 · 纯系统级合法调优 · 六后端按需隔离 · 全操作可追踪可回滚',
+      copyright: 'Copyright © 2025-2026 逐梦之子-晓夕 & DeltaNFD Contributors'
     },
     search: {
       provider: 'local',
