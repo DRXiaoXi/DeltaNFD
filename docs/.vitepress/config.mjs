@@ -38,15 +38,18 @@ export default defineConfig({
     sidebar: {
       '/guide/': [
         {
-          text: '使用指南',
+          text: '📖 使用与排障指南',
           items: [
-            { text: '快速上手与环境整备', link: '/guide/quick-start' }
+            { text: '🚀 快速上手与全模块指南', link: '/guide/quick-start' },
+            { text: '🔌 拓展插件使用与开发规范', link: '/guide/plugin-dev' }
           ]
         },
         {
-          text: '开发者生态',
+          text: '🔗 常用资源直达',
           items: [
-            { text: '插件开发与 UI 规范', link: '/guide/plugin-dev' }
+            { text: '⚡ 夸克网盘下载 (提取码: A691)', link: 'https://pan.quark.cn/s/ea7f97614465' },
+            { text: '📺 B站 14分钟演示视频', link: 'https://www.bilibili.com/video/BV1AWHW6hEBE/' },
+            { text: '🐙 GitHub 最新发行版', link: 'https://github.com/DRXiaoXi/DeltaNFD/releases/latest' }
           ]
         }
       ]
@@ -83,7 +86,7 @@ export default defineConfig({
       next: '下一篇'
     },
     outline: {
-      label: '本页目录',
+      label: '本页目录导航',
       level: [2, 3]
     }
   }
