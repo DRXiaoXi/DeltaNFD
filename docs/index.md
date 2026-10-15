@@ -5,40 +5,59 @@ sidebar: false
 ---
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
 
-const version = ref('Beta0.9192')
-const downloadUrl = ref('https://github.com/DRXiaoXi/DeltaNFD/releases/latest')
 const releasesUrl = 'https://github.com/DRXiaoXi/DeltaNFD/releases'
 const bilibiliUrl = 'https://space.bilibili.com/630440925'
 const showQrModal = ref(false)
 const demoFixed = ref(false)
 
+// 首屏主按钮：静态文案不写死版本号，能连上 GitHub API 时再补上最新一条发行的标签
+const downloadTextId = 'dnfd-download-text'
+const releaseCacheKey = 'dnfd_latest_release_tag'
+const releasesApiUrl = 'https://api.github.com/repos/DRXiaoXi/DeltaNFD/releases?per_page=1'
+
 onMounted(async () => {
+  const downloadTextEl = document.getElementById(downloadTextId)
+  if (!downloadTextEl) return
+
+  // 1. 同一个会话里探测过一次就直接复用，避免反复请求触发 GitHub API 限流
   try {
-    const res = await fetch(withBase('/update.json'))
-    if (!res.ok) return
-
-    const data = await res.json()
-    const rawVersion = data.displayVersion || data.version || data.Version || data.latestVersion || data.tag_name
-    if (rawVersion) {
-      const normalized = String(rawVersion).trim()
-      version.value = /^(v|beta)/i.test(normalized) ? normalized : `v${normalized}`
+    const cachedTag = sessionStorage.getItem(releaseCacheKey)
+    if (cachedTag) {
+      downloadTextEl.textContent = `前往 Releases 下载 (${cachedTag})`
+      return
     }
+  } catch (_) {
+    // 隐私模式下 sessionStorage 不可用时忽略缓存，继续实时探测
+  }
 
-    const installer = Array.isArray(data.installers)
-      ? data.installers.find(item => item && item.url)
-      : null
-    if (installer?.url) {
-      downloadUrl.value = installer.url
-    } else if (data.releasePageUrl) {
-      downloadUrl.value = data.releasePageUrl
-    } else {
-      const fallback = data.url || data.Url || data.downloadUrl || data.installerUrl
-      if (fallback) downloadUrl.value = fallback
-    }
-  } catch (_) {}
+  // 2. 带 3.5 秒超时的动态版本探测；读 /releases 列表，Pre-release 预发布版同样能取到
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 3500)
+
+  try {
+    const response = await fetch(releasesApiUrl, {
+      signal: controller.signal,
+      headers: { Accept: 'application/vnd.github.v3+json' }
+    })
+    clearTimeout(timeoutId)
+    if (!response.ok) return
+
+    const releases = await response.json()
+    const latest = Array.isArray(releases) ? releases[0] : null
+    const rawTag = latest && !latest.draft ? String(latest.tag_name || latest.name || '').trim() : ''
+    if (!rawTag) return
+
+    downloadTextEl.textContent = `前往 Releases 下载 (${rawTag})`
+    try {
+      sessionStorage.setItem(releaseCacheKey, rawTag)
+    } catch (_) {}
+  } catch (_) {
+    // 3. 国内网络连不上 GitHub API（超时、限流、被拦截）时静默降级，保留通用文案
+    clearTimeout(timeoutId)
+  }
 })
 
 const painPoints = [
@@ -140,8 +159,8 @@ const acknowledgements = [
       针对《三角洲行动》优化痛点多、玩家排查无门的现状，B 站 UP 主<strong>「逐梦之子-晓夕」</strong>将整套硬核排障经验浓缩成这款开源工具。集 <strong>着色器 / ACE / 运行库环境体检</strong>、<strong>帧格运行时稳帧</strong>、<strong>AMD 双 CCD 独占调度</strong>、<strong>网吧免重启显卡伪装</strong> 与 <strong>跨游戏进程调度</strong> 于一体，拒绝粗制滥造的“AI 许愿圈米工具”。
     </p>
     <div class="dn-cta-group">
-      <a class="dn-btn dn-btn-primary" :href="downloadUrl" target="_blank" rel="noopener">
-        <span>立即免费下载 ({{ version }})</span>
+      <a class="dn-btn dn-btn-primary" :href="releasesUrl" target="_blank" rel="noopener">
+        <span id="dnfd-download-text">前往 Releases 下载最新版</span>
       </a>
       <a href="https://pan.quark.cn/s/ea7f97614465" rel="noopener" target="_blank" class="dn-btn dn-btn-secondary dnfd-btn-quark">
         <span>⚡ 夸克网盘下载 (提取码: A691)</span>

@@ -29,8 +29,7 @@ export default defineConfig({
         text: '📦 下载与发行版',
         items: [
           { text: '⚡ 夸克网盘下载 (提取码: A691)', link: 'https://pan.quark.cn/s/ea7f97614465' },
-          { text: '🐙 GitHub 最新发行版 (DRXiaoXi)', link: 'https://github.com/DRXiaoXi/DeltaNFD/releases/latest' },
-          { text: '📜 历史发行版与校验码', link: 'https://github.com/DRXiaoXi/DeltaNFD/releases' },
+          { text: '🐙 GitHub Releases (版本发行页)', link: 'https://github.com/DRXiaoXi/DeltaNFD/releases' },
           { text: '🔧 本站文档与 Fork 源码 (xlht4106)', link: 'https://github.com/xlht4106/deltanfd' }
         ]
       }
@@ -49,7 +48,7 @@ export default defineConfig({
           items: [
             { text: '⚡ 夸克网盘下载 (提取码: A691)', link: 'https://pan.quark.cn/s/ea7f97614465' },
             { text: '📺 B站 14分钟演示视频', link: 'https://www.bilibili.com/video/BV1AWHW6hEBE/' },
-            { text: '🐙 GitHub 最新发行版', link: 'https://github.com/DRXiaoXi/DeltaNFD/releases/latest' }
+            { text: '🐙 GitHub Releases (版本发行页)', link: 'https://github.com/DRXiaoXi/DeltaNFD/releases' }
           ]
         }
       ]
