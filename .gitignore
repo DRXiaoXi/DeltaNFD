@@ -80,8 +80,8 @@ src/DeltaNFD/Assets/background.png
 
 # ---------- 前端文档站 ----------
 node_modules/
-/docs/.vitepress/cache/
-/docs/public/
+/web/.vitepress/cache/
+/web/public/
 
 # ---------- ZCode 工作区 ----------
 .zcode/

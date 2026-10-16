@@ -9,6 +9,7 @@ export default defineConfig({
   title: '三角帧不掉洲 (DeltaNFD)',
   description: 'UP主「逐梦之子-晓夕」开源制作 · 专为《三角洲行动》打造的免费系统调优与环境修复工具',
   base: base,
+  srcExclude: ['README.md'], // web/README.md 仅为工程说明，不发布为页面
   appearance: 'force-dark', // 强制启用战术暗黑模式
   head: [
     ['link', { rel: 'icon', href: `${base}favicon.ico` }],

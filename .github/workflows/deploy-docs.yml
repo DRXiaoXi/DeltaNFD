@@ -6,7 +6,7 @@ on:
       - main
       - master
     paths:
-      - 'docs/**'
+      - 'web/**'
       - 'update.json'
       - 'src/DeltaNFD/Assets/**'
       - '.github/workflows/deploy-docs.yml'
@@ -41,7 +41,7 @@ jobs:
           node-version: 24
 
       - name: 4. 安装前端依赖并打包网页
-        working-directory: ./docs
+        working-directory: ./web
         env:
           # 自动获取当前仓库的 Pages 子路径（如 /deltanfd/），防止大小写不一致导致样式 404
           VITEPRESS_BASE: ${{ steps.pages.outputs.base_path }}/
@@ -52,7 +52,7 @@ jobs:
       - name: 5. 上传静态网页构建产物
         uses: actions/upload-pages-artifact@v5
         with:
-          path: docs/.vitepress/dist
+          path: web/.vitepress/dist
 
   deploy:
     environment:
