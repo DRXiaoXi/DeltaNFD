@@ -9,6 +9,7 @@ namespace DeltaNFD.Views;
 
 public sealed partial class DashboardPage : Page
 {
+    public Visibility RuntimeFeatureVisibility => ReleaseFeatures.RuntimeUiEnabled ? Visibility.Visible : Visibility.Collapsed;
     public DashboardViewModel ViewModel { get; } = new();
 
     public DashboardPage()

@@ -53,6 +53,8 @@ public sealed class UpdateManifest
     public string ReleasePageUrl { get; set; } = "";
     public string Notes { get; set; } = "";
     public List<UpdateInstallerInfo>? Installers { get; set; }
+    /// <summary>文件级更新清单；文件更新失败时自动尝试完整安装包。</summary>
+    public DeltaNFD.Updates.FileUpdateReference? FileUpdate { get; set; }
 }
 
 /// <summary>更新来源与网络参数（Assets\UpdateConfig.json，可随安装目录直接修改）。</summary>
@@ -60,6 +62,8 @@ public sealed class UpdateConfig
 {
     public int SchemaVersion { get; set; } = 1;
     public List<string>? ManifestUrls { get; set; }
+    /// <summary>内测专用来源；空列表沿用 ManifestUrls，保留旧自定义配置行为。</summary>
+    public List<string> InternalManifestUrls { get; set; } = [];
     public List<string>? AllowedHosts { get; set; }
     /// <summary>旧配置字段，保留读取兼容；启动检查不再使用。</summary>
     public int AutoCheckThrottleHours { get; set; } = 6;
@@ -91,6 +95,7 @@ public sealed class UpdateCheckResult
 /// <summary>下载进度快照。</summary>
 public sealed class UpdateProgressInfo
 {
+    public string Stage { get; init; } = "";
     public long BytesReceived { get; init; }
     public long TotalBytes { get; init; }
     public double BytesPerSecond { get; init; }
@@ -105,7 +110,9 @@ public sealed class UpdateDownloadResult
 {
     public bool Success { get; init; }
     public string Message { get; init; } = "";
+    /// <summary>完整安装包路径，或 IsIncremental 时已验证的 files.json 路径。</summary>
     public string InstallerPath { get; init; } = "";
+    public bool IsIncremental { get; init; }
 
     public static UpdateDownloadResult Ok(string path, string message) =>
         new() { Success = true, InstallerPath = path, Message = message };
@@ -120,10 +127,12 @@ public sealed class UpdateLaunchResult
     public bool Success { get; init; }
     public string Message { get; init; } = "";
     public string LogPath { get; init; } = "";
+    /// <summary>文件更新器已停止且尚未替换文件或已完成回滚，可以尝试整包。</summary>
+    public bool CanFallbackToFull { get; init; }
 }
 
 /// <summary>
-/// 自动更新服务：读取远端更新清单、比对版本、下载并校验安装包、把安装交给 Inno Setup。
+/// 自动更新服务：比对文件并交给独立更新器，不适用时使用完整 Inno Setup 安装包。
 /// 注意：实现只依赖 BCL（不引用 WinUI 类型），以便只读冒烟测试直接编译验证。
 /// </summary>
 public interface IUpdateService
@@ -140,7 +149,7 @@ public interface IUpdateService
     /// <summary>安装目录（当前进程基目录）。</summary>
     string InstallDirectory { get; }
 
-    /// <summary>下载根目录（%LOCALAPPDATA%\Delta NFD\update）。</summary>
+    /// <summary>完整包下载根目录；文件更新另外使用仅管理员/System 可写的 ProgramData 会话。</summary>
     string UpdateRootDirectory { get; }
 
     /// <summary>手动下载兜底的发布页面地址（清单取不到时给用户点）。</summary>
@@ -166,13 +175,19 @@ public interface IUpdateService
     /// <summary>每次请求均检查更新；manual=true 忽略自动检查开关。安装位置与校验要求仍生效。</summary>
     Task<UpdateCheckResult> CheckAsync(bool manual, CancellationToken cancellationToken = default);
 
-    /// <summary>下载并校验清单里的安装包；逐个地址回退，校验不过不落盘。</summary>
+    /// <summary>下载并校验变化文件；不可用时下载完整安装包，遵循用户所选服务器。</summary>
     Task<UpdateDownloadResult> DownloadAsync(
         UpdateManifest manifest,
         IProgress<UpdateProgressInfo>? progress = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>登记待更新标记并以静默模式启动安装程序（调用方随后应退出应用）。</summary>
+    Task<UpdateDownloadResult> DownloadFullFallbackAsync(UpdateManifest manifest,
+        IProgress<UpdateProgressInfo>? progress = null, CancellationToken cancellationToken = default);
+
+    /// <summary>验证更新器保存的一次性失败续接记录；只在本次更新失败重启时使用。</summary>
+    Task<UpdateManifest> ResumeFullFallbackAsync(string session, string nonce, CancellationToken cancellationToken = default);
+
+    /// <summary>交给独立文件更新器或静默安装器，通过现有协调流程安全退出应用。</summary>
     Task<UpdateLaunchResult> LaunchInstallerAsync(UpdateManifest manifest, string installerPath);
 
     /// <summary>清理已下载的安装包与历史版本目录（升级成功后调用）。</summary>

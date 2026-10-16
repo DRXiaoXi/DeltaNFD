@@ -44,7 +44,7 @@ internal static class BackendStartupChecks
                 {
                     BackendModules.Ace => [BackendCommands.AceScan, BackendCommands.AceCoreCheck],
                     BackendModules.Gpu => [BackendCommands.GpuDriverStatus],
-                    BackendModules.Runtime => [BackendCommands.RuntimeStatus, BackendCommands.Vc14Scan, BackendCommands.Vc14Preview],
+                    BackendModules.Runtime => [BackendCommands.RuntimeStatus, BackendCommands.Vc14Scan, BackendCommands.Vc14Preview, BackendCommands.RuntimeFileUseScan],
                     BackendModules.CpuFrame => [BackendCommands.CpuFrameStatus],
                     BackendModules.Procman => [BackendCommands.ProcmanStatus],
                     BackendModules.System => [BackendCommands.SystemShaderStatus, BackendCommands.SystemShaderDiagnose],
@@ -60,6 +60,36 @@ internal static class BackendStartupChecks
                 }
                 if (spec.Id == BackendModules.Runtime)
                 {
+                    using (var fileUseTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(45)))
+                    {
+                        Check(!BackendModules.IsMutating(spec.Id, BackendCommands.RuntimeFileUseScan), "full file-use scan remains read-only");
+                        var response = await client.InvokeAsync(BackendCommands.RuntimeFileUseScan,
+                            new RuntimeFileUseScanArgs { Scope = RuntimeFileUseScope.FullRepair }, null, fileUseTimeout.Token);
+                        var fullFileUse = response.Data?.Deserialize<RuntimeFileUseScan>(BackendJson.SerializerOptions);
+                        Check(response.Status == BackendResultStatuses.Ok && fullFileUse is { Success: true, Scope: RuntimeFileUseScope.FullRepair },
+                            "full file-use scan succeeds through actual backend protocol");
+                        Check(fullFileUse!.Message.Contains("2005–2013") && fullFileUse.SnapshotId.Length > 0,
+                            "full scan reports extended fixed scope and supplies approval snapshot");
+                    }
+                    foreach (var legacyStrong in new[] { false, true })
+                    {
+                        Check(!BackendModules.IsMutating(spec.Id, BackendCommands.RuntimeHighFpsPreview), "full repair preview remains read-only");
+                        using var fullPreviewTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+                        var response = await client.InvokeAsync(BackendCommands.RuntimeHighFpsPreview,
+                            new RuntimeHighFpsArgs { StrongMode = legacyStrong }, null, fullPreviewTimeout.Token);
+                        var full = response.Data?.Deserialize<RuntimeHighFpsPreview>(BackendJson.SerializerOptions);
+                        Check(response.Status == BackendResultStatuses.Ok && full is not null, "full repair preview passed actual protocol");
+                        Check(legacyStrong ? !full!.CanRepair && full.Blocker.Contains("已移除")
+                            : full!.StrongMode == false && !full.Blocker.Contains("必须在安全模式"), "full repair rejects legacy strong and allows optional normal-mode uninstall");
+                    }
+                    foreach (var mode in new[] { Vc14RepairMode.UninstallOnly, Vc14RepairMode.InstallOnly })
+                    {
+                        using var previewTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+                        var stage = await client.InvokeAsync(BackendCommands.Vc14Preview,
+                            new Vc14RepairArgs { Mode = mode, AllowTemporaryInstaller = mode == Vc14RepairMode.UninstallOnly }, null, previewTimeout.Token);
+                        Check(stage.Status == BackendResultStatuses.Ok && stage.Data is not null,
+                            "stage " + mode + " passed real read-only preview protocol");
+                    }
                     foreach (var retired in new[] { BackendCommands.RuntimeRepair, BackendCommands.RuntimeCompatibilityRepair,
                         BackendCommands.RuntimeRedistUninstall, BackendCommands.RuntimeRedistUninstallAll })
                     {

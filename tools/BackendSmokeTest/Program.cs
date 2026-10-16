@@ -1,5 +1,164 @@
 using DeltaNFD.Services;
 
+if (args is ["--vc14-ownership-checks", var ownershipRoot])
+{
+    try { Vc14OwnershipChecks.Run(ownershipRoot); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+if (args is ["--vc14-dependency-log-replay", var logRoot, var ownershipSource])
+{
+    try { Vc14DependencyChecks.Replay(logRoot, ownershipSource); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--vc14-dependency-log-replay", var logReplayRoot])
+{
+    try { Vc14DependencyChecks.Replay(logReplayRoot); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--vc14-file-repair-checks", var fileRepairRoot])
+{
+    try { await Vc14FileRepairChecks.RunAsync(fileRepairRoot); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--vc14-bundle-identity-checks", var originalRoot])
+{
+    try { Vc14BundleIdentityChecks.Run(originalRoot); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Length == 3 && args[0] is "--alpha-full-download-live" or "--alpha-full-download-direct")
+{
+    try { await AlphaUpgradeChecks.RetryFullAsync(args[1], args[2], args[0] == "--alpha-full-download-direct"); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Length == 3 && args[0] == "--alpha-upgrade-live")
+{
+    try { await AlphaUpgradeChecks.RunAsync(args[1], args[2]); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+if (args.Length == 3 && args[0] == "--runtime-ui-layout")
+{
+    try { if (AlphaUpgradeChecks.RuntimeEnabled(args[1]) != bool.Parse(args[2])) throw new Exception("Feature metadata mismatch"); Console.WriteLine("Runtime UI metadata verified: " + args[2]); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Length is 1 or 2 && args[0] == "--official-cpp-checks")
+{
+    try { await OfficialCppChecks.RunAsync(args.Length == 2 ? args[1] : null); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--safe-installer-native-readonly"])
+{
+    try
+    {
+        var state = new SafeInstallerWindowsPlatform().Capture();
+        Console.WriteLine($"Native Installer read-only query: mode={state.Mode}; exists={state.ServiceExists}; state={state.ServiceState}; identityAvailable={state.ServicePid > 0}. No writes or service control executed.");
+    }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--safe-installer-checks"])
+{
+    try { await SafeInstallerChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--vc14-staged-checks"])
+{
+    try { await Vc14StagedChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--advanced-startup-checks"])
+{
+    try { await AdvancedStartupChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--runtime-file-use-checks"])
+{
+    try { await RuntimeFileUseChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+if (args is ["--runtime-file-use-native-readonly"])
+{
+    try
+    {
+        var scan = await RuntimeFileUseMaintenance.ScanAsync(default);
+        Console.WriteLine($"Native Restart Manager: success={scan.Success}, processes={scan.Processes.Count}, selectable={scan.Processes.Count(p => p.CanClose)}. Read-only; no process closing.");
+        if (!scan.Success) throw new Exception(scan.Message);
+    }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--file-update-checks"])
+{
+    try { await FileUpdateChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Length == 3 && args[0] == "--file-update-layout-checks")
+{
+    try
+    {
+        var inventory = DeltaNFD.Updates.FileUpdateRules.Read(File.ReadAllBytes(args[1]), DeltaNFD.Updates.FileUpdateRules.Hash(args[1]));
+        if (DeltaNFD.Updates.FileTransaction.Changed(args[2], inventory).Count != 0) throw new InvalidDataException("Generated inventory does not match published layout.");
+        Console.WriteLine($"Generated file inventory matches all {inventory.Files.Count} deployed files; strict product validation passed.");
+    }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Length == 3 && args[0] == "--update-server-simulation")
+{
+    try { await UpdateServerSimulationChecks.RunAsync(args[1], args[2]); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.FirstOrDefault() == "--runtime-alpha-uninstall-checks")
+{
+    try { await DeltaNFD.Tests.AlphaRestore.RuntimeUnifiedUninstallChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.FirstOrDefault() == "--runtime-highfps-checks")
+{
+    try { await RuntimeHighFpsChecks.RunAsync(args.Length > 1 ? args[1] : null); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+
+if (args.Length is 1 or 2 && args[0] == "--bug-feedback-checks")
+{
+    try { await BugFeedbackChecks.RunAsync(args.Length == 2 ? args[1] : null); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args.Contains("--vc14-checks") || args.Contains("--vc14-readonly"))
 {
     try { if (args.Contains("--vc14-readonly")) Vc14DetectionChecks.ReadOnly(); else Vc14DetectionChecks.Run(); }
@@ -227,6 +386,13 @@ if (args.Contains("--procman-core-checks", StringComparer.Ordinal))
 if (args.Length is 4 or 5 && args[0] == "--deployment-install-fixture")
 {
     try { Environment.ExitCode = await DeploymentInstallFixture.RunAsync(args[1], args[2], args[3], args.Length == 5 ? int.Parse(args[4]) : 0); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--update-source-fallback-checks"))
+{
+    try { await UpdateSourceFallbackChecks.RunAsync(); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }

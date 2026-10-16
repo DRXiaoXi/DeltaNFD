@@ -29,6 +29,10 @@ public static class BackendCommands
 
     // ---- 运行库（模块 runtime）----
     public const string RuntimeStatus = "runtime.status";
+    public const string RuntimeFileUseScan = "runtime.file-use.scan";
+    public const string RuntimeFileUseClose = "runtime.file-use.close";
+    public const string RuntimeHighFpsPreview = "runtime.high-fps.preview";
+    public const string RuntimeHighFpsRepair = "runtime.high-fps.repair";
     public const string Vc14Scan = "runtime.vc14.scan";
     public const string Vc14Preview = "runtime.vc14.preview";
     public const string Vc14Repair = "runtime.vc14.repair";
@@ -233,6 +237,10 @@ public static class BackendModules
                 new Dictionary<string, TimeSpan>(StringComparer.Ordinal)
                 {
                     [BackendCommands.RuntimeStatus] = TwoMinutes,
+                    [BackendCommands.RuntimeFileUseScan] = TwoMinutes,
+                    [BackendCommands.RuntimeFileUseClose] = TwoMinutes,
+                    [BackendCommands.RuntimeHighFpsPreview] = TimeSpan.FromMinutes(5),
+                    [BackendCommands.RuntimeHighFpsRepair] = TimeSpan.FromMinutes(150),
                     [BackendCommands.Vc14Scan] = TwoMinutes,
                     [BackendCommands.Vc14Preview] = TwoMinutes,
                     [BackendCommands.Vc14Repair] = TimeSpan.FromMinutes(42),
@@ -387,6 +395,7 @@ public static class BackendModules
         BackendCommands.GpuSpoofStatus, BackendCommands.GpuWatchEvaluate,
         BackendCommands.GpuDriverStatus, BackendCommands.GpuDriverRead, BackendCommands.GpuReconcile,
         BackendCommands.RuntimeStatus, BackendCommands.RuntimeReconcile, BackendCommands.Vc14Scan, BackendCommands.Vc14Preview,
+        BackendCommands.RuntimeHighFpsPreview, BackendCommands.RuntimeFileUseScan,
                 BackendCommands.CpuFrameStatus, BackendCommands.CpuFrameReconcile,
         BackendCommands.CpuFrameTopology, BackendCommands.CpuFrameAffinityCheck,
         BackendCommands.CpuFrameAffinityPending, BackendCommands.CpuFrameMemoryLimitDetect,

@@ -83,7 +83,7 @@
                         <FontIcon Glyph="&#xE72E;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Tag="runtime" Content="运行库">
+                <NavigationViewItem x:Name="RuntimeNavigationItem" Tag="runtime" Content="运行库">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE90F;" />
                     </NavigationViewItem.Icon>

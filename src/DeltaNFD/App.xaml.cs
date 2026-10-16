@@ -10,6 +10,7 @@ public partial class App : Application
 {
     public static MainWindow? MainWindow { get; private set; }
     internal static bool ExitAlreadyPrepared { get; set; }
+    internal static (string Session, string Nonce)? PendingFileFallback { get; private set; }
 
     /// <summary>默认主题色（天空蓝，与 App.xaml 内置资源一致）。</summary>
     public static readonly Windows.UI.Color DefaultAccent = Windows.UI.Color.FromArgb(255, 0x5E, 0xB0, 0xFF);
@@ -63,6 +64,15 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         var commandLine = Environment.GetCommandLineArgs();
+        if (commandLine.Length == 4 && commandLine[1] == "--resume-file-update-fallback")
+            PendingFileFallback = (commandLine[2], commandLine[3]);
+        if (commandLine.Length == 4 && commandLine[1] == "--verify-file-update")
+        {
+            ExitAlreadyPrepared = true;
+            // Boot verification deliberately precedes settings, frame services and backend startup.
+            Environment.Exit(FileUpdateHealth.Verify(commandLine[2], commandLine[3]));
+            return;
+        }
         if (commandLine.Contains("--prepare-deployment", StringComparer.Ordinal)
             || commandLine.Contains("--restore-runtime-guard-for-uninstall", StringComparer.Ordinal))
         {
@@ -89,8 +99,8 @@ public partial class App : Application
         Log.Info("主窗口启动");
         var mainWindow = new MainWindow();
         MainWindow = mainWindow;
-        _ = ServiceLocator.Frame;
-        if (AppSettingsStore.Read().GamePriorityEnabled)
+        if (PendingFileFallback is null) _ = ServiceLocator.Frame;
+        if (PendingFileFallback is null && AppSettingsStore.Read().GamePriorityEnabled)
         {
             _ = ServiceLocator.GameProcess;
         }

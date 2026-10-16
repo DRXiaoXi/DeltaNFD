@@ -45,10 +45,33 @@ internal sealed class BackendRuntimeGuardService : IRuntimeGuardService
 
     public async Task<Vc14Scan> Scan14Async() => RequireData<Vc14Scan>(
         await InvokeAsync(BackendCommands.Vc14Scan, new { }, null, CancellationToken.None), "14.x 检测");
-    public async Task<Vc14ReinstallPreview> Preview14RepairAsync() => RequireData<Vc14ReinstallPreview>(
-        await InvokeAsync(BackendCommands.Vc14Preview, new { }, null, CancellationToken.None), "14.x 全量重装预览");
-    public async Task<OperationResult> Repair14Async(string fingerprint, IProgress<string>? progress, CancellationToken token)
-        => Map(await InvokeAsync(BackendCommands.Vc14Repair, new Vc14RepairArgs { Fingerprint = fingerprint }, progress, token), "14.x 全量重装");
+    public async Task<RuntimeFileUseScan> ScanFileUseAsync(CancellationToken token, RuntimeFileUseScope scope = RuntimeFileUseScope.Vc14) => RequireData<RuntimeFileUseScan>(
+        await InvokeAsync(BackendCommands.RuntimeFileUseScan, new RuntimeFileUseScanArgs { Scope = scope }, null, token), "运行库文件占用检测");
+    public async Task<RuntimeFileUseCloseResult> CloseFileUseAsync(RuntimeFileUseCloseArgs args, CancellationToken token) => RequireData<RuntimeFileUseCloseResult>(
+        await InvokeAsync(BackendCommands.RuntimeFileUseClose, args, null, token), "处理运行库文件占用");
+    public async Task<Vc14ReinstallPreview> Preview14RepairAsync(Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false) => RequireData<Vc14ReinstallPreview>(
+        await InvokeAsync(BackendCommands.Vc14Preview, new Vc14RepairArgs { Mode = mode, AllowTemporaryInstaller = allowTemporaryInstaller }, null, CancellationToken.None), "14.x 阶段预览");
+    public async Task<OperationResult> Repair14Async(string fingerprint, IProgress<string>? progress, CancellationToken token, Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false)
+        => Map(await InvokeAsync(BackendCommands.Vc14Repair, new Vc14RepairArgs { Fingerprint = fingerprint, Mode = mode, AllowTemporaryInstaller = allowTemporaryInstaller }, progress, token), "14.x 阶段修复");
+    public async Task<OperationResult> RestoreTemporaryInstallerAsync()
+    {
+        // Reconcile control is usable after an uncertain repair; native recovery still checks MSI/children.
+        var caller = new BackendCaller(BackendModules.Runtime);
+        try
+        {
+            var result = await caller.InvokeReconcileAsync(BackendCommands.RuntimeRecover, new RecoverArgs { Scope = "safe-installer" }, null, CancellationToken.None);
+            var outcome = RequireData<RecoverOutcome>(result, "恢复临时 Installer 设置");
+            return new OperationResult { Success = outcome.Success && outcome.Verified, Message = outcome.Message, OutcomeUnknown = !outcome.Verified };
+        }
+        finally { if (!await caller.ResetAsync()) throw new InvalidOperationException("恢复后端退出未确认，证据保留。"); }
+    }
+
+    public async Task<RuntimeHighFpsPreview> PreviewHighFpsAsync(bool strongMode) => RequireData<RuntimeHighFpsPreview>(
+        await InvokeAsync(BackendCommands.RuntimeHighFpsPreview, new RuntimeHighFpsArgs { StrongMode = strongMode }, null, CancellationToken.None), "全量修复预览");
+
+    public async Task<OperationResult> RepairHighFpsAsync(string fingerprint, bool strongMode, IProgress<string>? progress, CancellationToken token)
+        => Map(await InvokeAsync(BackendCommands.RuntimeHighFpsRepair,
+            new RuntimeHighFpsArgs { StrongMode = strongMode, Fingerprint = fingerprint }, progress, token), "全量修复");
 
     public async Task<OperationResult> EnableAsync()
     {

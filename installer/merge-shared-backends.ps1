@@ -8,7 +8,7 @@ $source = (Resolve-Path -LiteralPath $SourceLayout).Path
 $destinationPath = [IO.Path]::GetFullPath($Destination)
 if (Test-Path -LiteralPath $destinationPath) { throw 'Destination must not exist; existing layouts are never overwritten.' }
 if ($destinationPath.StartsWith($source.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Destination must be outside source layout.' }
-$components = @('Backends/ace','Backends/gpu','Backends/runtime','Backends/system','Backends/cpuframe','Backends/procman')
+$components = @('Backends/ace','Backends/gpu','Backends/runtime','Backends/system','Backends/cpuframe','Backends/procman','Backends/updater')
 $files = @{}
 foreach ($component in $components) {
     $directory = Join-Path $source $component

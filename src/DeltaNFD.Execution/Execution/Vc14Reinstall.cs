@@ -8,22 +8,34 @@ using Microsoft.Win32;
 namespace DeltaNFD.Services;
 
 /// <summary>单个安装/卸载步骤结果；3010/1641 视为需要重启。</summary>
-public sealed record Vc14StepResult(int? ExitCode, bool Unknown = false, string Detail = "")
+public sealed record Vc14StepResult(int? ExitCode, bool Unknown = false, string Detail = "", bool PostcheckPassed = true)
 {
-    public bool Success => !Unknown && ExitCode is 0 or 3010;
+    public bool Success => !Unknown && PostcheckPassed && ExitCode is 0 or 3010;
     public bool Reboot => ExitCode is 3010 or 1641;
 }
 
 public interface IVc14ReinstallEnvironment
 {
+    SafeInstallerPreparation? TemporaryInstaller() => null;
+    void PrepareTemporaryInstaller(string fingerprint, CancellationToken token) => throw new NotSupportedException();
+    OperationResult RestoreTemporaryInstaller() => OperationResult.Ok("");
+    bool IsSafeMode => false;
+    IReadOnlyList<Vc14RemovalPlanItem> Plan(Vc14Scan scan) => Vc14Reinstall.BuildRemovalPlan(scan);
+    OperationResult Cleanup(Vc14Scan scan, IProgress<string>? progress, CancellationToken token) => Vc14ResidueCleanup.Run(scan, this, progress, token);
+    Vc14Continuation? PendingInstall() => null;
+    void SavePendingInstall(Vc14Continuation record) => throw new NotSupportedException("此执行环境不支持分阶段恢复记录。");
+    void CompletePendingInstall() { }
     Vc14Scan Scan();
     string? Blocker();
     void VerifyBaselines();
     void VerifyInstalled();
+    void VerifyInstalled(string arch) => VerifyInstalled();
     string DiagnosticsDirectory { get; }
     void Trace(string stage, object value);
     Task<Vc14StepResult> RemoveAsync(Vc14RemovalPlanItem item, IProgress<string>? progress, CancellationToken token);
     Task<Vc14StepResult> InstallAsync(string arch, IProgress<string>? progress, CancellationToken token);
+    Task<Vc14StepResult> ForceFileRepairAsync(string arch, IProgress<string>? progress, CancellationToken token)
+        => throw new IOException("当前执行环境不支持14.42原始MSI文件重装。");
 }
 
 /// <summary>
@@ -31,7 +43,7 @@ public interface IVc14ReinstallEnvironment
 /// （含未知包装，按其登记的卸载命令执行），再安装内置 2015–2022 14.42.34433 基线并复检。
 /// 颜色规则是项目游戏兼容性策略；重装不代表已验证帧率改善。
 /// </summary>
-public static class Vc14Reinstall
+public static partial class Vc14Reinstall
 {
     public const string BaselineVersion = "14.42.34433.0";
     internal static readonly IReadOnlyDictionary<string, string> BaselineHashes = new Dictionary<string, string>
@@ -47,7 +59,7 @@ public static class Vc14Reinstall
     };
 
     /// <summary>枚举全部 14.x 登记（MSI 产品、Burn 包装、仅登记卸载命令的未知条目），生成卸载计划。</summary>
-    internal static IReadOnlyList<Vc14RemovalPlanItem> BuildRemovalPlan(Vc14Scan scan)
+    internal static IReadOnlyList<Vc14RemovalPlanItem> BuildRemovalPlan(Vc14Scan scan, bool verifyDependencies = true)
     {
         var plan = new List<Vc14RemovalPlanItem>();
         // 去重按 Hive+View+Key 三段：不同位置的相同键名（HKLM/HKCU、32/64 视图）是不同登记，
@@ -56,9 +68,11 @@ public static class Vc14Reinstall
         foreach (var product in scan.Products)
         {
             if (!Vc14BetaUninstall.InScope(product.Name, product.Version, product.Architecture)) continue;
+            var dependency = verifyDependencies ? Vc14DependencyPolicy.Read(product) : null;
             plan.Add(new(product.Code, product.Architecture, product.Name, product.Version, "msi", product.Code,
-                "msiexec /x " + product.Code, "已核验 MSI 登记：" + product.Name + " · " + product.Version,
-                product.Role, product.UpgradeCode));
+                "msiexec /x " + product.Code + (dependency?.Clients.Count > 0 ? "；仅放行核验过的自身包装引用：" + string.Join("；", dependency.Clients) : ""),
+                "已核验 MSI 登记：" + product.Name + " · " + product.Version,
+                product.Role, product.UpgradeCode, Command: dependency?.Argument ?? "", DependencyFingerprint: dependency?.Fingerprint ?? ""));
             covered.Add("msi:" + product.Code);
         }
         foreach (var (hive, view) in Vc14Catalog.RegistryViews())
@@ -118,6 +132,9 @@ public static class Vc14Reinstall
                 var cache = key?.GetValue("BundleCachePath") as string;
                 var uninstall = Vc14BetaUninstall.PreferredCommand(key?.GetValue("QuietUninstallString") as string ?? "",
                     key?.GetValue("UninstallString") as string ?? "");
+                if (string.IsNullOrWhiteSpace(cache) && !string.IsNullOrWhiteSpace(uninstall)
+                    && !Vc14BetaUninstall.IsMsiCommand(uninstall) && !Vc14BetaUninstall.IsUnsupportedScript(uninstall))
+                    cache = Vc14Catalog.ResolveUninstallExecutable(uninstall); // Still requires Microsoft/version/architecture verification below.
                 if (Vc14BetaUninstall.IsMsiCommand(uninstall))
                 {
                     try
@@ -125,8 +142,12 @@ public static class Vc14Reinstall
                         var target = Vc14BetaUninstall.MsiTarget(uninstall, Vc14Catalog.ReadAny)
                             ?? throw new IOException("登记的 MSI 产品已不安装；转入残留清理评估。");
                         if (!plan.Any(p => p.Kind == "msi" && p.Key.Equals(target.Code, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            var dependency = verifyDependencies ? Vc14DependencyPolicy.Read(target) : null;
                             plan.Add(new(target.Code, target.Architecture, target.Name, target.Version, "msi", target.Code,
-                                "Beta0.9：msiexec /x 产品码", "登记命令中的产品码已重新核验为 14.x。", target.Role, target.UpgradeCode));
+                                "Beta0.9：msiexec /x 产品码", "登记命令中的产品码已重新核验为 14.x。", target.Role, target.UpgradeCode,
+                                Command: dependency?.Argument ?? "", DependencyFingerprint: dependency?.Fingerprint ?? ""));
+                        }
                     }
                     catch (Exception ex) { plan.Add(new(keyName, architecture, name, version, "unknown", keyName, "保留不处理", ex.Message)); }
                     continue;
@@ -135,7 +156,8 @@ public static class Vc14Reinstall
                 {
                     plan.Add(new(keyName, architecture, name, version, "bundle", cache!,
                         "Beta0.9：cmd /c 执行包装卸载命令", "已核验微软签名包装缓存：" + cache,
-                        Command: uninstall, Hive: hive.ToString(), View: view.ToString()));
+                        Command: uninstall, Hive: hive.ToString(), View: view.ToString(),
+                        CacheSha256: Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(cache!)))));
                     continue;
                 }
                 if (Guid.TryParse(keyName, out var code) && BaselineBundles.Values.Any(b => b.Equals(keyName, StringComparison.OrdinalIgnoreCase)))
@@ -159,43 +181,93 @@ public static class Vc14Reinstall
                         keyName, "无法处理", "无法处理：缺少可执行的卸载命令（或命令指向的程序不存在），且身份未经核验；卸载完成后将由残留清理阶段评估。"));
             }
         }
-        return [.. plan.OrderBy(p => p.Kind switch { "msi" => 0, "bundle" => 1, "registry" => 2, _ => 3 })
-            .ThenBy(p => p.Architecture).ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)];
+        return PreferVerifiedBundles(plan);
     }
 
     internal static string Fingerprint(IReadOnlyList<Vc14RemovalPlanItem> plan) => Convert.ToHexString(SHA256.HashData(
         Encoding.UTF8.GetBytes(JsonSerializer.Serialize(plan.Select(p =>
-            new { p.Key, p.Kind, p.Identity, p.Version, p.Role, p.UpgradeCode, p.Name, p.Architecture, p.Command, p.Hive, p.View }).ToArray()))));
+            new { p.Key, p.Kind, p.Identity, p.Version, p.Role, p.UpgradeCode, p.Name, p.Architecture, p.Command, p.Hive, p.View, p.DependencyFingerprint,
+                p.CacheSha256, p.BundleChildren }).ToArray()))));
 
-    public static Vc14ReinstallPreview Preview(IVc14ReinstallEnvironment environment)
+    public static Vc14ReinstallPreview Preview(IVc14ReinstallEnvironment environment, Vc14RepairMode mode = Vc14RepairMode.Full)
     {
         var scan = environment.Scan();
         var blocker = environment.Blocker();
+        if (!Enum.IsDefined(mode)) blocker ??= "未知的 14.x 修复阶段。";
+        if (environment.IsSafeMode && mode != Vc14RepairMode.UninstallOnly)
+            blocker ??= "安全模式仅支持单独卸载阶段；安装和完整重装请返回正常模式执行。";
         try { environment.VerifyBaselines(); } catch (Exception ex) { blocker ??= ex.Message; }
         if (blocker is null && scan.Issues.Count > 0)
             blocker = "14.x 检测存在问题，暂不能重装：\n" + string.Join("\n", scan.Issues);
-        var plan = BuildRemovalPlan(scan);
-        if (blocker is null && plan.Count == 0)
-            blocker = "未发现任何 C++ 14.x 登记，无需重装。";
-        return new(scan, plan, Fingerprint(plan), blocker is null, blocker ?? "");
+        IReadOnlyList<Vc14RemovalPlanItem> plan;
+        Vc14Continuation? pending;
+        try
+        {
+            pending = environment.PendingInstall();
+            plan = mode == Vc14RepairMode.InstallOnly ? [] : environment.Plan(scan);
+            if (mode == Vc14RepairMode.InstallOnly)
+            {
+                if (pending is null && !scan.IsMissing) blocker ??= "没有待安装记录，请先预览完整重装或执行单独卸载阶段。";
+                if (scan.Products.Any(p => !Vc14Catalog.SameVersion(p.Version, BaselineVersion)))
+                    blocker ??= "旧 14.x 组件仍在，不能跳过卸载直接安装。请核对或继续卸载阶段。";
+            }
+        }
+        catch (Exception ex) { return new(scan, [], "", false, "卸载前依赖核验未通过：" + ex.Message); }
+        if (blocker is null && plan.Count == 0 && mode == Vc14RepairMode.UninstallOnly)
+            blocker = "未发现可卸载的 C++ 14.x 登记。如需补装，请返回正常模式，选择预览并全量重装 14.x 或安装 14.42。";
+        if (blocker is null && plan.Count == 0 && mode == Vc14RepairMode.Full && !scan.IsMissing)
+            blocker = "检测到 14.x 组件但未生成卸载计划，请重新检测，不能跳过未确认的组件直接安装。";
+        var temporary = environment.TemporaryInstaller();
+        if (temporary is { Required: true, CanEnable: false }) blocker ??= temporary.Detail;
+        return new(scan, plan, StageFingerprint(plan, mode, pending, scan, temporary), blocker is null, blocker ?? "") { TemporaryInstaller = temporary };
     }
 
-    public static async Task<OperationResult> RunAsync(IVc14ReinstallEnvironment environment, string fingerprint, IProgress<string>? progress, CancellationToken token)
+    public static async Task<OperationResult> RunAsync(IVc14ReinstallEnvironment environment, string fingerprint, IProgress<string>? progress, CancellationToken token,
+        Vc14RepairMode mode = Vc14RepairMode.Full)
     {
-        var changed = false; var reboot = false; var logs = environment.DiagnosticsDirectory;
+        var attempted = false;
+        var result = await RunCoreAsync(environment, fingerprint, progress, token, mode, () => attempted = true);
+        if (!attempted) return result;
+        OperationResult restored;
+        try { restored = environment.RestoreTemporaryInstaller(); }
+        catch (Exception ex) { restored = new() { Message = "临时 Installer 恢复失败，记录保留：" + ex.Message, OutcomeUnknown = true }; }
+        return new OperationResult
+        {
+            Success = result.Success && restored.Success, IsPartial = result.IsPartial || !restored.Success,
+            OutcomeUnknown = result.OutcomeUnknown || !restored.Success, RequiresReboot = result.RequiresReboot,
+            DiagnosticsDirectory = result.DiagnosticsDirectory, Message = result.Message + "\n" + restored.Message,
+        };
+    }
+
+    private static async Task<OperationResult> RunCoreAsync(IVc14ReinstallEnvironment environment, string fingerprint, IProgress<string>? progress, CancellationToken token,
+        Vc14RepairMode mode, Action preparing)
+    {
+        var changed = false; var attempted = false; var reboot = false; var logs = environment.DiagnosticsDirectory;
         OperationResult Fail(string text, bool unknown = false) => new()
         {
             Success = false, IsPartial = changed && !unknown, OutcomeUnknown = unknown, RequiresReboot = reboot,
             DiagnosticsDirectory = logs,
-            Message = text + (changed ? "\n已执行部分卸载或安装，请核对结果；不会继续后续步骤或强杀安装器。" : "\n未执行卸载或安装。"),
+            Message = text + (changed ? "\n已尝试执行运行库操作，实际变更以日志和复检为准；不会继续后续步骤或强杀安装器。"
+                : attempted ? "\n已调用安装器，但安装服务未能执行事务；未确认卸载或安装变更。" : "\n未执行卸载或安装。"),
         };
         try
         {
             token.ThrowIfCancellationRequested();
-            var preview = Preview(environment);
+            var preview = Preview(environment, mode);
             if (!preview.CanRepair) return Fail(preview.Blocker);
             if (fingerprint != preview.Fingerprint) return Fail("14.x 登记清单已变化，请重新预览确认。");
             environment.Trace("confirmed-plan", new { Count = preview.RemovalPlan.Count, preview.Fingerprint });
+            if (preview.TemporaryInstaller is { Required: true } temporary)
+            {
+                if (mode != Vc14RepairMode.UninstallOnly) return Fail("临时 Installer 仅用于安全模式单独卸载。");
+                preparing();
+                environment.PrepareTemporaryInstaller(temporary.Fingerprint, token);
+            }
+            if (mode != Vc14RepairMode.InstallOnly || environment.PendingInstall() is null)
+            {
+                var pending = environment.PendingInstall() ?? new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow);
+                environment.SavePendingInstall(pending with { UninstallVerified = false });
+            }
 
             // 阶段一：逐项卸载全部可移除的 14.x 登记（含未知包装）。
             var handledInf = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -208,23 +280,53 @@ public static class Vc14Reinstall
                 if (current.Issues.Count > 0) return Fail("检测出现问题，已停止：" + string.Join("\n", current.Issues));
                 if (environment.Blocker() is { } blocked) return Fail(blocked);
                 progress?.Report("卸载 14.x：" + item.Name + "（" + item.Architecture + "）");
-                changed = true;
+                attempted = true;
                 var step = await environment.RemoveAsync(item, progress, token);
+                changed |= step.ExitCode is not (1601 or 1652);
                 reboot |= step.Reboot;
-                environment.Trace("remove-result", new { item.Key, item.Kind, step.ExitCode, step.Unknown, step.Detail });
+                environment.Trace("remove-result", new { item.Key, item.Kind, step.ExitCode, step.Unknown, step.PostcheckPassed, step.Detail });
                 if (!step.Success || step.Reboot)
                     return Fail("14.x 卸载未完成或需要重启：" + item.Name + "\n" + step.Detail, step.Unknown);
+                if (item.BundleChildren?.Count > 0)
+                {
+                    var checkedBundle = environment.Scan();
+                    if (checkedBundle.Issues.Count > 0 || item.BundleChildren.Any(c => checkedBundle.Products.Any(p => p.Code == c.Product.Code)))
+                        return Fail("微软包装已退出，但其 MSI 子组件仍在或状态无法确认，未继续后续步骤：" + item.Name);
+                }
+                if (item.Kind == "msi")
+                {
+                    var afterRemoval = environment.Scan();
+                    environment.Trace("remove-postcheck", afterRemoval);
+                    if (afterRemoval.Issues.Count > 0 || afterRemoval.Products.Any(p => p.Code.Equals(item.Key, StringComparison.OrdinalIgnoreCase)))
+                        return Fail("卸载进程返回成功，但 MSI 组件仍在或状态无法确认，已停止后续卸载和安装：" + item.Name);
+                }
             }
 
             // 阶段二：确认无 14.x MSI 组件残留后，先受控清理残留登记再安装基线
             // （旧版工具留下的 v14/2026 包装登记会阻止基线安装，即 MSI 1638 的成因之一）。
             var cleared = environment.Scan();
-            if (cleared.Products.Count > 0)
+            if (cleared.Issues.Count > 0) return Fail("卸载后扫描未确认，未启动安装：" + string.Join("；", cleared.Issues));
+            if (cleared.Products.Count > 0 && mode != Vc14RepairMode.InstallOnly)
                 return Fail("仍有 14.x MSI 组件未卸载完成，未启动安装：" + string.Join("; ", cleared.Products.Select(p => p.Name)));
-            var residue = Vc14ResidueCleanup.Run(cleared, environment, progress, token);
+            var residue = mode == Vc14RepairMode.InstallOnly && cleared.Products.Count > 0
+                ? OperationResult.Ok("基线部分已安装，保留登记并以原包修复；无可清理项。")
+                : environment.Cleanup(cleared, progress, token);
             environment.Trace("residue-cleanup-result", new { residue.Success, residue.Message });
             if (!residue.Success && !residue.Message.Contains("无可清理"))
                 return Fail("残留登记清理未完成，已停止（不会带着阻止安装的残留登记继续装基线）：\n" + residue.Message);
+            if (cleared.Products.Count == 0)
+            {
+                var verifiedAbsent = environment.Scan();
+                if (verifiedAbsent.Issues.Count > 0 || verifiedAbsent.Products.Count > 0)
+                    return Fail("清理后未能确认 14.x 组件缺失，已停止安装。请重新预览。");
+                var pending = environment.PendingInstall() ?? throw new IOException("14.x 待安装记录缺失。");
+                environment.SavePendingInstall(pending with { UninstallVerified = true });
+            }
+            if (mode == Vc14RepairMode.UninstallOnly)
+            {
+                return new OperationResult { Success = true, DiagnosticsDirectory = logs,
+                    Message = "14.x 卸载阶段已复检完成，尚未安装 14.42，不代表完整修复完成。\n待安装记录已保留。请手动重启回正常模式，打开运行库页，点击“继续安装 14.42”并重新确认；不会自动重启或续跑。" };
+            }
             environment.VerifyBaselines();
             foreach (var arch in new[] { "x64", "x86" })
             {
@@ -235,6 +337,8 @@ public static class Vc14Reinstall
                 var step = await environment.InstallAsync(arch, progress, token);
                 reboot |= step.Reboot;
                 environment.Trace("install-result", new { arch, step.ExitCode, step.Unknown, step.Detail });
+                if (step.ExitCode == 1638)
+                    return Fail(arch + " 的 14.42 安装被其他已登记版本阻止（1638），可能仍有组件或包装登记未处理，未继续后续安装。\n" + step.Detail);
                 if (!step.Success || step.Reboot)
                     return Fail(arch + " 基线安装未完成或需要重启。\n" + step.Detail, step.Unknown);
                 var installed = environment.Scan();
@@ -245,41 +349,25 @@ public static class Vc14Reinstall
                         + "若旧包装登记仍存在，安装器可能跳过组件，请核对日志后重试。");
             }
 
-            // 阶段三：最终复检（MSI 登记与系统 DLL 实际版本）。
-            // MSI 登记齐全但 DLL 版本未对齐时（更高版本文件曾由范围外产品持有，MSI 不降级覆盖文件），
-            // 对失败架构执行原包 /repair 强制恢复文件版本，再复检一次。
+            // 阶段三：实际文件复检；普通修复后仍为错误版本时最多一次原始MSI强制文件重装。
             var after = environment.Scan();
             var complete = after.Issues.Count == 0 && after.Products.Count == 4 && Vc14Catalog.Families.All(f =>
                 after.Products.Count(p => p.Architecture == f.Arch && p.Role == f.Role && Vc14Catalog.SameVersion(p.Version, BaselineVersion)) == 1);
             if (!complete) return Fail("安装后未确认 x64/x86 的四个 14.42 基线组件，不能报告修复成功。");
-            try { environment.VerifyInstalled(); }
-            catch (Exception dllMismatch)
-            {
-                progress?.Report("系统 DLL 版本未对齐，执行原包修复以恢复文件版本…");
-                changed = true;
-                foreach (var arch in new[] { "x64", "x86" })
-                {
-                    token.ThrowIfCancellationRequested();
-                    if (environment.Blocker() is { } blocked) return Fail(blocked);
-                    var repair = await environment.InstallAsync(arch, progress, token); // 已登记包装时即 /repair
-                    reboot |= repair.Reboot;
-                    environment.Trace("dll-align-repair", new { arch, repair.ExitCode, repair.Unknown, repair.Detail });
-                    if (!repair.Success || repair.Reboot)
-                        return Fail(arch + " 文件版本对齐修复未完成或需要重启。\n" + repair.Detail, repair.Unknown);
-                }
-                try { environment.VerifyInstalled(); }
-                catch
-                {
-                    return Fail("MSI 登记已是 14.42，但系统 DLL 实际版本仍未对齐（更高版本文件可能被其他产品持有）。"
-                        + "原包 /repair 后仍未恢复，不能报告修复成功。\n" + dllMismatch.Message);
-                }
-                after = environment.Scan();
-            }
+            var recovery = await Vc14FileRecovery.RunAsync(environment, progress, token);
+            reboot |= recovery.Reboot;
+            if (!recovery.Success || recovery.Reboot) return Fail("14.42文件恢复未完成或需要重启。\n" + recovery.Detail, recovery.Unknown);
+            after = environment.Scan();
+            if (after.Issues.Count != 0 || after.Products.Count != 4 || Vc14Catalog.Families.Any(f =>
+                after.Products.Count(p => p.Architecture == f.Arch && p.Role == f.Role && Vc14Catalog.SameVersion(p.Version, BaselineVersion)) != 1))
+                return Fail("文件恢复后的14.42组件身份已变化，保留待安装记录。");
             environment.Trace("verified-after", after);
+            environment.CompletePendingInstall();
 
             var skipped = preview.RemovalPlan.Where(p => !p.CanRemove).ToArray();
             return new OperationResult { Success = true, DiagnosticsDirectory = logs,
-                Message = "已卸载全部检测到的可移除 C++ 14.x 登记，并安装/复检 2015–2022 x64/x86 " + BaselineVersion + "。"
+                Message = (preview.RemovalPlan.Any(p => p.CanRemove) ? "已卸载全部检测到的可移除 C++ 14.x 登记，并安装/复检 "
+                    : "本次未执行运行库卸载，已安装/修复并复检 ") + "2015–2022 x64/x86 " + BaselineVersion + "。"
                     + (residue.Success && !residue.Message.Contains("无可清理") ? "\n" + residue.Message : "")
                     + (skipped.Length > 0 ? "\n以下登记在重装阶段保留（未构成安装阻碍）：\n" + string.Join("\n", skipped.Select(p => p.Name + " · " + p.Detail)) : "")
                     + (after.HasAbnormal || after.HasWarning ? "\n仍有其他包装登记或兼容性提醒，请核对详情。" : "")
@@ -290,8 +378,22 @@ public static class Vc14Reinstall
     }
 }
 
-internal sealed class Vc14ReinstallEnvironment : IVc14ReinstallEnvironment
+internal sealed class Vc14ReinstallEnvironment(bool allowTemporaryInstaller = false) : IVc14ReinstallEnvironment
 {
+    private bool _temporaryAttempted;
+    private SafeInstallerEngine SafeInstaller => new(new SafeInstallerWindowsPlatform(), new SafeInstallerFileStore(root));
+    public SafeInstallerPreparation? TemporaryInstaller() => allowTemporaryInstaller && IsSafeMode && !_temporaryAttempted ? SafeInstaller.Preview() : null;
+    public void PrepareTemporaryInstaller(string fingerprint, CancellationToken token)
+    {
+        if (!allowTemporaryInstaller || !IsSafeMode) throw new IOException("未授权临时启用 Installer。");
+        _temporaryAttempted = true;
+        SafeInstaller.Enable(fingerprint, confirmed: true, token);
+    }
+    public OperationResult RestoreTemporaryInstaller() => SafeInstaller.Restore();
+    public bool IsSafeMode => Vc14InstallerReadiness.IsSafeMode;
+    public Vc14Continuation? PendingInstall() => new Vc14ContinuationStore(root).Read();
+    public void SavePendingInstall(Vc14Continuation record) => new Vc14ContinuationStore(root).Save(record);
+    public void CompletePendingInstall() => new Vc14ContinuationStore(root).Complete();
     private readonly string root = AppDataPaths.Root;
     private readonly string logs = Path.Combine(Log.LogDirectory, "vc14-reinstall-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8]);
     public string DiagnosticsDirectory => logs;
@@ -306,6 +408,10 @@ internal sealed class Vc14ReinstallEnvironment : IVc14ReinstallEnvironment
         if (!ElevationHelper.IsElevated) return ElevationHelper.NotElevatedMessage;
         if (System.Runtime.InteropServices.RuntimeInformation.OSArchitecture != System.Runtime.InteropServices.Architecture.X64)
             return "此修复只支持 x64 Windows 的 x86/x64 C++ 组件。";
+        if (!_temporaryAttempted && (File.Exists(Path.Combine(root, "safe-installer-active.json")) || Directory.Exists(Path.Combine(root, "safe-installer-active.json"))))
+            return "上次临时 Installer 设置仍待恢复，请先点击“恢复临时 Installer 设置”。";
+        if (Vc14InstallerReadiness.Check() is { } installer
+            && TemporaryInstaller() is not { Required: true, CanEnable: true }) return installer;
         var pending = new RuntimeInstallationReview(root).InspectPending(RuntimeInstallationReview.InstallerBusy(), out var ended);
         if (pending is not null || ended) return pending ?? "上次安装结果待核对，请先核对未完成操作。";
         if (RuntimeInstallationReview.InstallerBusy()) return "Windows Installer 仍在执行事务，请结束后重试。";
@@ -325,17 +431,19 @@ internal sealed class Vc14ReinstallEnvironment : IVc14ReinstallEnvironment
                 throw new IOException("内置 14.42 原包校验失败：" + item.Key);
         }
     }
-    public void VerifyInstalled()
+    public void VerifyInstalled() { VerifyInstalled("x64"); VerifyInstalled("x86"); }
+    public void VerifyInstalled(string arch)
     {
-        foreach (var arch in new[] { "x64", "x86" })
+        if (arch is not ("x64" or "x86")) throw new IOException("DLL校验架构无效。");
         {
             var system = Environment.GetFolderPath(arch == "x64" ? Environment.SpecialFolder.System : Environment.SpecialFolder.SystemX86);
             foreach (var dll in arch == "x64" ? new[] { "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll" } : new[] { "msvcp140.dll", "vcruntime140.dll" })
             {
                 var file = Path.Combine(system, dll);
                 var version = FileVersionInfo.GetVersionInfo(file);
+                if (version.FileVersion is null) throw new IOException("DLL版本无法读取：" + file);
                 if (version.FileMajorPart != 14 || version.FileMinorPart != 42 || version.FileBuildPart != 34433)
-                    throw new IOException(arch + " " + dll + " 实际版本未确认是 14.42.34433，不能报告修复成功。");
+                    throw new Vc14DllVersionMismatch(arch, dll, version.FileVersion);
             }
         }
     }
@@ -356,22 +464,48 @@ internal sealed class Vc14ReinstallEnvironment : IVc14ReinstallEnvironment
                 || !current.UpgradeCode.Equals(item.UpgradeCode, StringComparison.OrdinalIgnoreCase)
                 || !Vc14Catalog.SameVersion(current.Version, item.Version))
                 throw new IOException("待卸载 MSI 身份已变化：" + item.Name);
+            var dependency = Vc14DependencyPolicy.Read(current);
+            if (string.IsNullOrEmpty(item.DependencyFingerprint) || dependency.Fingerprint != item.DependencyFingerprint || dependency.Argument != item.Command)
+                throw new IOException("MSI 共享依赖或包装身份已变化，请重新预览；未执行卸载。");
+            Trace("verified-uninstall-dependencies", dependency);
             var info = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "msiexec.exe"))
                 { UseShellExecute = false, CreateNoWindow = true };
-            foreach (var argument in new[] { "/x", item.Key, "/qn", "/norestart", "/L*V", NewLog(item.Key.Trim('{', '}')) })
+            var installerLog = NewLog(item.Key.Trim('{', '}'));
+            foreach (var argument in new[] { "/x", item.Key, "/qn", "/norestart", "/L*V", installerLog })
                 info.ArgumentList.Add(argument);
-            return Vc14BetaUninstall.MsiResult(await RunProcessAsync(info, progress, token, TimeSpan.FromMinutes(5)));
+            if (dependency.Clients.Count > 0) info.ArgumentList.Add(dependency.Argument);
+            Trace("verified-uninstall-command", new { current, Arguments = info.ArgumentList.ToArray() });
+            var result = Vc14BetaUninstall.MsiResult(await RunProcessAsync(info, progress, token, TimeSpan.FromMinutes(5)));
+            var verified = Vc14DependencyPolicy.VerifyRemoval(result, () => Vc14Catalog.ReadAny(item.Key), () => Vc14DependencyPolicy.ReadInstallerLog(installerLog));
+            Trace("msi-removal-postcheck", verified);
+            return verified;
         }
         if (item.Kind == "bundle")
         {
             if (!Vc14PackageTrust.Verify(item.Identity, item.Version, item.Architecture))
                 throw new IOException("包装缓存身份已变化，未执行卸载。");
-            var registered = RegisteredBundleCommand(item);
-            var command = string.IsNullOrWhiteSpace(registered)
-                ? Vc14BetaUninstall.CachedBundleCommand(item.Identity, NewLog("bundle-" + item.Key.Trim('{', '}')))
-                : Vc14BetaUninstall.ResolveCommand(registered);
-            var info = Vc14BetaUninstall.Shell(command);
-            return await RunProcessAsync(info, progress, token, TimeSpan.FromMinutes(10));
+            if (string.IsNullOrEmpty(item.CacheSha256)
+                || Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(item.Identity))) != item.CacheSha256)
+                throw new IOException("包装缓存字节已变化，请重新预览。");
+            RegisteredBundleCommand(item); // Recheck the exact registration before using the trusted cache directly.
+            foreach (var child in item.BundleChildren ?? [])
+            {
+                if (Vc14Catalog.ReadAny(child.Product.Code) is not { } current || current != child.Product)
+                    throw new IOException("包装的 MSI 子组件身份已变化，请重新预览。");
+                var dependency = Vc14DependencyPolicy.Read(current);
+                if (dependency.Fingerprint != child.DependencyFingerprint || dependency.Argument != child.DependencyArgument)
+                    throw new IOException("包装子组件的共享依赖已变化，请重新预览。");
+            }
+            var info = Vc14Reinstall.BuildBundleUninstall(item.Identity, NewLog("bundle" + item.Key.Trim('{', '}')));
+            Trace("verified-bundle-uninstall", new { item.Key, item.Identity, item.CacheSha256, item.BundleChildren, Arguments = info.ArgumentList.ToArray() });
+            var result = await RunProcessAsync(info, progress, token, TimeSpan.FromMinutes(10));
+            if (!result.Success || result.Reboot) return result;
+            using var hive = RegistryKey.OpenBaseKey(Enum.Parse<RegistryHive>(item.Hive), Enum.Parse<RegistryView>(item.View));
+            using var remaining = hive.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\" + item.Key);
+            if (remaining is not null) return result with { PostcheckPassed = false, Detail = result.Detail + "；微软包装登记仍在，未确认卸载成功。" };
+            if ((item.BundleChildren ?? []).Any(c => Vc14Catalog.ReadAny(c.Product.Code) is not null))
+                return result with { PostcheckPassed = false, Detail = result.Detail + "；微软包装的 MSI 子组件仍在，未确认卸载成功。" };
+            return result;
         }
         if (item.Kind == "registry")
         {
@@ -423,6 +557,38 @@ internal sealed class Vc14ReinstallEnvironment : IVc14ReinstallEnvironment
         return RunProcessAsync(info, progress, token, TimeSpan.FromMinutes(10));
     }
 
+    public async Task<Vc14StepResult> ForceFileRepairAsync(string arch, IProgress<string>? progress, CancellationToken token)
+    {
+        if (IsSafeMode) throw new IOException("强制文件重装需正常模式。");
+        VerifyBaselines();
+        if (!Vc14PackageTrust.Verify(Baseline(arch), Vc14Reinstall.BaselineVersion, arch))
+            throw new IOException("14.42微软原包签名未通过核验。");
+        var sourceRoot = Path.Combine(BackendEnvironment.AssetsRoot, "Vc14FileRepair14.42");
+        var sources = Vc14FileRepairSource.Verify(sourceRoot, arch);
+        foreach (var source in sources.OrderBy(p => p.Role == "Minimum" ? 0 : 1))
+        {
+            token.ThrowIfCancellationRequested();
+            if (Blocker() is { } blocker) return new(null, Detail: blocker, PostcheckPassed: false);
+            var held = new List<FileStream>();
+            try
+            {
+                // Keep every original media file read-only and protected from replacement until msiexec exits.
+                foreach (var file in source.Files)
+                    held.Add(new FileStream(AlphaRestore.OfficialCppCatalog.Resolve(sourceRoot, file.Path), FileMode.Open, FileAccess.Read, FileShare.Read));
+                _ = Vc14FileRepairSource.Verify(sourceRoot, arch);
+                Vc14FileRepairSource.ValidateInstalled(source, Vc14Catalog.ReadAny(source.Code));
+                var command = Vc14FileRepairSource.BuildCommand(sourceRoot, source, NewLog("force-file-" + arch + "-" + source.Role));
+                Trace("verified-force-file-command", new { source.Architecture, source.Role, source.Code, source.Files, Arguments = command.ArgumentList.ToArray() });
+                var result = await RunProcessAsync(command, progress, token, TimeSpan.FromMinutes(5));
+                Trace("force-file-msi-result", new { source.Code, Result = result });
+                if (!result.Success || result.Reboot) return result;
+                Vc14FileRepairSource.ValidateInstalled(source, Vc14Catalog.ReadAny(source.Code));
+            }
+            finally { foreach (var file in held) file.Dispose(); }
+        }
+        return new(0, Detail: arch + "原始MSI忽略文件版本重装已执行，仍须复检实际DLL。");
+    }
+
     private static bool BaselineBundleRegistered(string arch)
     {
         if (!Vc14Reinstall.BaselineBundles.TryGetValue(arch, out var id)) throw new ArgumentException("不支持的原包架构。");
@@ -433,7 +599,13 @@ internal sealed class Vc14ReinstallEnvironment : IVc14ReinstallEnvironment
             if (key is null) continue;
             var version = key.GetValue("BundleVersion") as string ?? "";
             if (!Vc14Catalog.SameVersion(version, Vc14Reinstall.BaselineVersion))
+            {
+                // An interrupted Burn registration can contain only Installed/Resume. Do not
+                // get past dependency preview only to reject the same signed original at install.
+                if (string.IsNullOrWhiteSpace(version) && Vc14DependencyPolicy.HasVerifiedBaselineOwners(arch,
+                    Vc14DependencyPolicy.ReadOwners(id, arch), Vc14DependencyPolicy.VerifyPinnedBaseline(arch))) return true;
                 throw new IOException("已登记的 14.42 包装版本异常：" + arch + " · " + version);
+            }
             return true;
         }
         return false;
@@ -442,8 +614,8 @@ internal sealed class Vc14ReinstallEnvironment : IVc14ReinstallEnvironment
     private string NewLog(string label)
     {
         Directory.CreateDirectory(logs);
-        var safe = string.Concat(label.TakeWhile(char.IsLetterOrDigit));
-        return Path.Combine(logs, (safe.Length > 0 ? safe : "installer") + ".log");
+        var safe = string.Concat(label.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_'));
+        return Path.Combine(logs, (safe.Length > 0 ? safe : "installer") + "-" + Guid.NewGuid().ToString("N")[..8] + ".log");
     }
 
     /// <summary>启动安装/卸载进程并等待退出；全程写入活动事务记录，崩溃后可由核对入口复核，不强杀。</summary>

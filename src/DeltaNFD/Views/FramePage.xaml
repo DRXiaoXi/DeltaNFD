@@ -299,7 +299,7 @@
                                     <StackPanel Spacing="2" VerticalAlignment="Center">
                                         <TextBlock Text="前台游戏优先调度" FontWeight="SemiBold" FontSize="13" />
                                         <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" FontSize="11"
-                                                   Text="启用前台程序优先的处理器调度策略（0x1A）：短时间片 + 前台高加速，游戏获得更多 CPU 时间片，后台任务自动让路。对应系统优化·调整里的「前台游戏优先调度」。" />
+                                                   Text="将 Windows 处理器调度设为长、固定时间片（Win32PrioritySeparation=0x1A），量子不随前后台状态调整。CPU 争用时可能减少同优先级线程轮转，但不单独提高游戏进程优先级或保证帧率提升。对应系统优化·调整里的「前台游戏优先调度」。" />
                                     </StackPanel>
                                     <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
                                                   IsOn="{x:Bind PrioritySelected, Mode=TwoWay}"

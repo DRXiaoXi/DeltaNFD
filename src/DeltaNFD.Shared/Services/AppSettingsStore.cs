@@ -3,6 +3,8 @@ using System.Text.Json;
 namespace DeltaNFD.Services;
 
 public enum UpdateChannel { Internal, Public }
+public enum UpdateServer { Automatic, GitHub, SelfHosted }
+public enum UpdateMode { ChangedFiles, FullInstaller }
 
 /// <summary>
 /// 全部功能开关的共享持久化仓库（%APPDATA%\Delta NFD\settings.json）。
@@ -188,21 +190,13 @@ public sealed class AppSettings
 
     /// <summary>默认保留旧版接收 Alpha 的行为；公测仅接收 Beta / Release。</summary>
     public UpdateChannel UpdateChannel { get; set; } = UpdateChannel.Internal;
+    /// <summary>更新来源；未配置时使用自建服务器，已有选择保持。</summary>
+    public UpdateServer UpdateServer { get; set; } = UpdateServer.SelfHosted;
+    /// <summary>仅替换变化文件为默认，也可从所选服务器下载完整安装包。</summary>
+    public UpdateMode UpdateMode { get; set; } = UpdateMode.ChangedFiles;
     /// <summary>已处理的安装批次，防止每次启动覆盖用户后来选择的通道。</summary>
     public string UpdateChannelInstallationId { get; set; } = "";
     public string UpdateChannelAlphaInstallationId { get; set; } = "";
-
-    /// <summary>
-    /// GitHub 加速开关：关 = 始终直连官方源；开 = 先探测官方源，连不上自动切换加速镜像。
-    /// 探测结果会缓存一段时间，避免每次启动都重复探测。
-    /// </summary>
-    public bool GitHubAccelerateEnabled { get; set; }
-
-    /// <summary>加速模式自动探测结果（-1 = 未知待探测，0 = 直连可用，1 = 官方源不可达需加速）。</summary>
-    public int GitHubDirectStatus { get; set; } = -1;
-
-    /// <summary>上次探测 GitHub 连通性的 UTC 时间。</summary>
-    public DateTime? GitHubDirectCheckedUtc { get; set; }
 
     /// <summary>上次发起更新检查的 UTC 诊断时间；不再阻止每次启动检查。</summary>
     public DateTime? LastUpdateCheckUtc { get; set; }

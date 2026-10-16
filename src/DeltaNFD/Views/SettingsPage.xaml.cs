@@ -17,6 +17,7 @@ public sealed class AccentOption
 
 public sealed partial class SettingsPage : Page
 {
+    public Visibility LimitedUpdateTestVisibility => ReleaseFeatures.RuntimeUiEnabled ? Visibility.Collapsed : Visibility.Visible;
     private async void ReviewBackendOperations_Click(object sender, RoutedEventArgs e)
     {
         try { await BackendReviewFlow.RunAsync(XamlRoot); }
@@ -102,6 +103,7 @@ public sealed partial class SettingsPage : Page
         };
         Unloaded += (_, _) =>
         {
+            _feedbackCancellation?.Cancel();
             ServiceLocator.GameTarget.Changed -= OnGameTargetChanged;
             BackgroundManager.Changed -= OnBackgroundChanged;
             Update.Detach();

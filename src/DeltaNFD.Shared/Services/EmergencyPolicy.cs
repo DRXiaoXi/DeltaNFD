@@ -41,6 +41,7 @@ public static class EmergencyPolicyVerifier
     public static bool CanBlock(string command) => command is
         BackendCommands.AceClean or BackendCommands.AceCoreClean or BackendCommands.RuntimeRepair or BackendCommands.RuntimeCompatibilityRepair
         or BackendCommands.RuntimeRedistUninstall or BackendCommands.RuntimeGuardEnable or BackendCommands.Vc14Repair or BackendCommands.Vc14LegacyClean
+        or BackendCommands.RuntimeHighFpsRepair or BackendCommands.RuntimeFileUseClose
         or BackendCommands.CpuFrameDwmRestart or BackendCommands.CpuFrameMemoryClean
         or BackendCommands.SystemCleanupRun or BackendCommands.SystemCleanupShaderCache or BackendCommands.SystemShaderRecoveryClean;
 

@@ -24,11 +24,54 @@ internal static class Vc14DetectionChecks
             && Vc14Catalog.Classify("Visual C++ Library CRT ARM64 Appx Package", "14.51.36247", installedMsi: false, products: noProducts) == Vc14Severity.Normal,
             "Appx package must stay out of banners");
         Check(Vc14Catalog.IsAppxPackage("Visual C++ Library CRT Desktop Appx Package"), "Appx detection changed");
-        // 主页聚合一致性：Appx/残留 Notice 不得触发 HasAbnormal/HasWarning（主页与运行库页共用该聚合）。
-        var bannerFreeScan = new Vc14Scan([], [new Vc14Notice("Visual C++ Library CRT Desktop Appx Package", "14.44.35208", "x86", Vc14Severity.Normal, "系统组件包")], []);
-        Check(!bannerFreeScan.HasAbnormal && !bannerFreeScan.HasWarning, "Appx notice must not set dashboard warning");
-        var orphanNoticeScan = new Vc14Scan([], [new Vc14Notice("Microsoft Visual C++ 2026 Redistributable (x64)", "14.51.36247.0", "x64", Vc14Severity.Warning, "残留")], []);
-        Check(!orphanNoticeScan.HasAbnormal && orphanNoticeScan.HasWarning, "orphan notice must be warning-level only");
+        foreach (var name in new[] { "Visual C++ Library CRT Appx Resource Package", "Visual C++ Library CRT Desktop Appx Resource Package",
+            "Visual C++ Library CRT ARM64 Appx Resource Package" })
+        {
+            Check(Vc14Catalog.IsAppxPackage(name) && Vc14Catalog.Classify(name, "14.44.35208", false, noProducts) == Vc14Severity.Normal,
+                "Appx Resource package remains outside Win32 detection warnings");
+            Check(!Vc14BetaUninstall.InScope(name, "14.44.35208", "x86"), "Appx Resource package never becomes a Win32 uninstall target");
+        }
+        Check(!Vc14Catalog.IsAppxPackage("Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.51.36247 Appx Resource Package"),
+            "Appx text appended to real release CRT cannot bypass identity checks");
+        var compatLog = "APPCOMPAT: (GetFileInstallState) Altered install mode for shared redist file targeting `C:\\Windows\\system32\\`\n"
+            + "Disallowing installation of component: {F5E98D96-3C7F-37D7-821F-E4BB03D4384B} since the same component with higher versioned keyfile exists";
+        var explanation = Vc14Diagnostics.ExplainDllMismatch(new[] { compatLog }, "actual 14.51 DLL");
+        Check(explanation.Contains("APPCOMPAT") && explanation.Contains("actual 14.51 DLL") && explanation.Contains("不能报告修复成功"),
+            "logs3 compatibility block is distinct from ordinary process/file use");
+        Check(!Vc14Diagnostics.ExplainDllMismatch(new[] { "installer exit 0" }, "mismatch").Contains("APPCOMPAT"),
+            "without actual compatibility markers do not guess an OS policy block");
+        // Missing Win32 CRT is red only after a completed scan. Notices are not proof of presence.
+        var baseline = new Vc14Entry("{A}", "Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.42.34433", "14.42.34433", "x64", "Minimum", "{U}");
+        var appxNotice = new Vc14Notice("Visual C++ Library CRT Desktop Appx Package", "14.44.35208", "x86", Vc14Severity.Normal, "系统组件包");
+        var orphanNotice = new Vc14Notice("Microsoft Visual C++ 2026 Redistributable (x64)", "14.51.36247.0", "x64", Vc14Severity.Warning, "残留");
+        var emptyScan = new Vc14Scan([], [], []);
+        Check(emptyScan.IsMissing && emptyScan.HasAbnormal && !emptyScan.HasWarning, "complete empty scan is red missing");
+        Check(emptyScan.AbnormalTitle.Contains("缺少") && emptyScan.GetAbnormalNotices().Single().Detail.Contains("无法启动"), "missing title/action describe launch risk");
+        Check(emptyScan.GetAbnormalNotices().Single().Detail.Contains("14.42"), "missing guidance uses the pinned baseline");
+        var appxOnly = new Vc14Scan([], [appxNotice], []);
+        Check(appxOnly.IsMissing && appxOnly.HasAbnormal && !appxOnly.HasWarning, "Appx alone cannot hide missing Win32 runtime");
+        var orphanOnly = new Vc14Scan([], [orphanNotice], []);
+        Check(orphanOnly.IsMissing && orphanOnly.HasAbnormal && orphanOnly.HasWarning, "orphan only has missing red and separate residue yellow");
+        var uncertain = new Vc14Scan([], [], ["读取失败"]);
+        Check(!uncertain.IsMissing && !uncertain.HasAbnormal && uncertain.HasWarning && !uncertain.GetAbnormalNotices().Any(), "failed scan stays unknown not missing red");
+        var uncertainOrphan = new Vc14Scan([], [orphanNotice], ["MSI 缓存身份未核对"]);
+        Check(!uncertainOrphan.IsMissing && !uncertainOrphan.HasAbnormal && uncertainOrphan.HasWarning, "unverified identity cannot prove absence");
+        var healthy = new Vc14Scan([baseline], [appxNotice], []);
+        Check(!healthy.IsMissing && !healthy.HasAbnormal && !healthy.HasWarning, "Appx is harmless when verified CRT exists");
+        var orphanWithBaseline = new Vc14Scan([baseline], [orphanNotice], []);
+        Check(!orphanWithBaseline.IsMissing && !orphanWithBaseline.HasAbnormal && orphanWithBaseline.HasWarning, "orphan itself remains yellow only");
+        foreach (var arch in new[] { "x64", "x86" })
+        {
+            var available = new Vc14Scan([baseline with { Architecture = arch }], [], []);
+            Check(!available.IsMissing && !available.HasAbnormal, "one verified architecture is presence, no new partial-architecture rule: " + arch);
+        }
+        var incompatible = new Vc14Scan([baseline with { Version = "14.51.36247" }],
+            [new("Microsoft Visual C++ v14", "14.51.36247", "x64", Vc14Severity.Abnormal, "兼容性提醒")], []);
+        Check(!incompatible.IsMissing && incompatible.HasAbnormal && incompatible.AbnormalTitle.Contains("兼容性"), "existing incompatible version retains original red reason");
+        var json = System.Text.Json.JsonSerializer.Serialize(emptyScan);
+        var received = System.Text.Json.JsonSerializer.Deserialize<Vc14Scan>(json)!;
+        Check(received.IsMissing && received.HasAbnormal && received.GetAbnormalNotices().Single().Severity == Vc14Severity.Abnormal, "backend JSON roundtrip preserves missing diagnosis");
+        Check(System.Text.Json.JsonSerializer.Deserialize<Vc14Scan>(System.Text.Json.JsonSerializer.Serialize(uncertain)) is { IsMissing: false, HasAbnormal: false, HasWarning: true }, "backend JSON roundtrip preserves unknown diagnosis");
         // 残留清理门禁（纯函数部分）：名称形态与 CanClean 规则。
         Check(Vc14ResidueCleanup.OrphanNamePattern.IsMatch("Microsoft Visual C++ 2026 Redistributable (x64)")
             && Vc14ResidueCleanup.OrphanNamePattern.IsMatch("Microsoft Visual C++ 2015-2022 Redistributable (x86) - 14.44.35211")
@@ -125,6 +168,7 @@ internal static class Vc14DetectionChecks
         Check(fingerprint != Vc14Reinstall.Fingerprint(plan), "fingerprint ignores plan items");
         Console.WriteLine($"VC14 reinstall checks: {count} checks passed.");
         Vc14BetaUninstallChecks.Run();
+        Vc14DependencyChecks.Run();
     }
     internal static void ReadOnly()
     {

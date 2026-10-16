@@ -18,7 +18,8 @@ internal static class Vc14Catalog
         ("x86", "Additional", "{C78B8E51-0C65-377E-85D1-282F689FE505}"),
     ];
     /// <summary>Appx CRT 系统组件包（由 Windows 管理，不能也不应卸载）。</summary>
-    internal static bool IsAppxPackage(string name) => name.Contains("Appx Package", StringComparison.OrdinalIgnoreCase);
+    internal static bool IsAppxPackage(string name) => Regex.IsMatch(name,
+        @"^Visual C\+\+ Library CRT (?:(?:ARM64|X64|X86) )?(?:Desktop )?Appx (?:Resource )?Package$", RegexOptions.IgnoreCase);
     /// <summary>红色只由真实安装的 14.x MSI 组件驱动；包装/残留登记最高 Warning，
     /// 但与已核验同架构同版本 MSI 组件对应的包装登记（如基线 14.42 Burn 包装）为 Normal。</summary>
     internal static Vc14Severity Classify(string name, string version, bool installedMsi, IReadOnlyList<Vc14Entry> products)
@@ -74,7 +75,7 @@ internal static class Vc14Catalog
         }
         // MSI 家族动态发现：2026 等新产品线使用固定四家族之外的升级码，
         // 仅靠 Families 枚举会漏掉其 MSI（导致 14.42 降级安装被拒，退出码 1638）。
-        foreach (var discovered in DiscoverMsiProducts(products.Select(p => p.Code).ToHashSet(StringComparer.OrdinalIgnoreCase)))
+        foreach (var discovered in DiscoverMsiProducts(products.Select(p => p.Code).ToHashSet(StringComparer.OrdinalIgnoreCase), issues))
         {
             try
             {
@@ -147,7 +148,7 @@ internal static class Vc14Catalog
     /// 动态发现固定四家族之外的 14.x release CRT MSI（如 2026 产品线的新升级码）。
     /// 枚举登记中 WindowsInstaller=1 的 14.x 条目，从缓存 LocalPackage 只读解析身份并核验。
     /// </summary>
-    internal static IEnumerable<Vc14Entry> DiscoverMsiProducts(HashSet<string> knownCodes)
+    internal static IEnumerable<Vc14Entry> DiscoverMsiProducts(HashSet<string> knownCodes, ICollection<string>? issues = null)
     {
         foreach (var (hiveName, view) in RegistryViews())
         {
@@ -166,7 +167,12 @@ internal static class Vc14Catalog
                 if (sub.GetValue("WindowsInstaller") is not 1) continue;
                 Vc14Entry? entry;
                 try { entry = ReadDiscovered(keyName, name, version); }
-                catch { continue; } // 身份无法核验的登记不纳入；包装路径会以 Notice 展示
+                catch (Exception ex)
+                {
+                    // Failure to validate a candidate is unknown, not proof that no CRT is installed.
+                    issues?.Add("动态 MSI 登记待核对：" + name + "：" + ex.Message);
+                    continue;
+                }
                 if (entry is not null) yield return entry;
             }
         }
@@ -176,49 +182,12 @@ internal static class Vc14Catalog
     private static Vc14Entry? ReadDiscovered(string code, string registeredName, string registeredVersion)
         => ReadAny(code);
 
-    internal static string? DependencyIssue(IReadOnlyList<Vc14Entry> products) => CheckDependencies(products, null);
-    internal static IReadOnlyList<string> ApprovedClients(Vc14Entry entry)
-    {
-        var clients = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (CheckDependencies([entry], clients) is { } error) throw new IOException(error);
-        return clients.Order(StringComparer.OrdinalIgnoreCase).ToArray();
-    }
-    private static string? CheckDependencies(IReadOnlyList<Vc14Entry> products, HashSet<string>? approved)
+    internal static IReadOnlyList<string> ApprovedClients(Vc14Entry entry) => Vc14DependencyPolicy.Read(entry).Clients;
+    internal static string? DependencyIssue(IReadOnlyList<Vc14Entry> products)
     {
         try
         {
-            foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
-            {
-                using var hive = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
-                using var root = hive.OpenSubKey(@"SOFTWARE\Classes\Installer\Dependencies");
-                foreach (var key in root?.GetSubKeyNames() ?? [])
-                {
-                    if (!Regex.IsMatch(key, @"^Microsoft\.VS\.VC_Runtime(?:Minimum|Additional)(?:VSU)?_(?:amd64|x86),v14$", RegexOptions.IgnoreCase)) continue;
-                    using var provider = root!.OpenSubKey(key);
-                    var code = provider?.GetValue("") as string;
-                    var product = products.FirstOrDefault(p => p.Code.Equals(code, StringComparison.OrdinalIgnoreCase));
-                    if (product is null) continue;
-                    using var dependents = provider!.OpenSubKey("Dependents");
-                    foreach (var client in dependents?.GetSubKeyNames() ?? [])
-                    {
-                        var known = false;
-                        foreach (var arpView in new[] { RegistryView.Registry64, RegistryView.Registry32 })
-                        {
-                            using var arpHive = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, arpView);
-                            using var arp = arpHive.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\" + client);
-                            var name = arp?.GetValue("DisplayName") as string ?? "";
-                            var version = arp?.GetValue("DisplayVersion") as string ?? "";
-                            var publisher = arp?.GetValue("Publisher") as string ?? "";
-                            known |= Guid.TryParse(client, out _) && publisher.Equals("Microsoft Corporation", StringComparison.OrdinalIgnoreCase)
-                                && Regex.IsMatch(name, @"^Microsoft Visual C\+\+ (?:2015-2022|2015-2019|2015|2017|2019|2022|2026|v14) Redistributable \(" + product.Architecture + @"\)(?: - 14\..*)?$", RegexOptions.IgnoreCase)
-                                && (SameVersion(version, product.Version) || SameVersion(version, "14.42.34433.0"))
-                                && Vc14PackageTrust.Verify(arp!.GetValue("BundleCachePath") as string, version, product.Architecture);
-                        }
-                        if (!known) return "14.x 组件存在无法核验的共享依赖，已保留组件，未执行卸载：" + key + "；引用：" + client;
-                        approved?.Add(Guid.Parse(client).ToString("B"));
-                    }
-                }
-            }
+            foreach (var product in products) _ = Vc14DependencyPolicy.Read(product);
             return null;
         }
         catch (Exception ex) { return "共享依赖无法核对，未执行卸载：" + ex.Message; }

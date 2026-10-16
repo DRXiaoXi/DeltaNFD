@@ -15,6 +15,10 @@ internal static class RuntimeCommands
         Handlers = new Dictionary<string, Func<BackendCommandContext, Task<BackendResult>>>(StringComparer.Ordinal)
         {
             [BackendCommands.RuntimeStatus] = StatusAsync,
+            [BackendCommands.RuntimeFileUseScan] = FileUseScanAsync,
+            [BackendCommands.RuntimeFileUseClose] = FileUseCloseAsync,
+            [BackendCommands.RuntimeHighFpsPreview] = HighFpsPreviewAsync,
+            [BackendCommands.RuntimeHighFpsRepair] = HighFpsRepairAsync,
             [BackendCommands.Vc14Scan] = VcScanAsync,
             [BackendCommands.Vc14Preview] = VcPreviewAsync,
             [BackendCommands.Vc14Repair] = VcRepairAsync,
@@ -48,6 +52,16 @@ internal static class RuntimeCommands
             context.ReportProgress("正在确认旧安装事务结束并归档核对记录…", null, "recover");
             var reviewed = await RuntimeLegacyInstallationReview.ReviewAsync();
             return BackendResult.Ok("runtime.recover", reviewed.Message, reviewed);
+        }
+        if (scope == "safe-installer")
+        {
+            var restored = await Vc14Maintenance.RestoreTemporaryInstallerAsync();
+            return BackendResult.Ok(BackendCommands.RuntimeRecover, restored.Message, new RecoverOutcome
+            {
+                Scope = scope, Success = restored.Success, Verified = restored.Success, Message = restored.Message,
+                VerifiedSnapshot = new ReconcileSnapshot { Module = BackendModules.Runtime, Complete = restored.Success,
+                    Summary = restored.Message, RecoveryScopes = [new() { Id = scope, Available = !restored.Success, Description = "恢复临时 Installer 设置" }] },
+            });
         }
         if (scope != "guard")
             return BackendResult.Failed("runtime.recover", $"未知恢复范围“{args.Scope}”，已拒绝执行。");
@@ -115,15 +129,34 @@ internal static class RuntimeCommands
 
     private static async Task<BackendResult> VcScanAsync(BackendCommandContext context) =>
         BackendResult.Ok(BackendCommands.Vc14Scan, "14.x 兼容性检测完成", await Vc14Maintenance.ScanAsync());
+    private static async Task<BackendResult> FileUseScanAsync(BackendCommandContext context) =>
+        BackendResult.Ok(BackendCommands.RuntimeFileUseScan, "运行库文件占用检测", await RuntimeFileUseMaintenance.ScanAsync(context.CancellationToken, context.ArgsAs<RuntimeFileUseScanArgs>().Scope));
+    private static async Task<BackendResult> FileUseCloseAsync(BackendCommandContext context) =>
+        BackendResult.Ok(BackendCommands.RuntimeFileUseClose, "运行库占用进程处理完成", await RuntimeFileUseMaintenance.CloseAsync(
+            context.ArgsAs<RuntimeFileUseCloseArgs>(), context.CancellationToken));
 
-    private static async Task<BackendResult> VcPreviewAsync(BackendCommandContext context) =>
-        BackendResult.Ok(BackendCommands.Vc14Preview, "14.x 全量重装预览", await Vc14Maintenance.PreviewAsync());
+    private static async Task<BackendResult> HighFpsPreviewAsync(BackendCommandContext context) =>
+        BackendResult.Ok(BackendCommands.RuntimeHighFpsPreview, "全量修复预览",
+            await RuntimeHighFpsMaintenance.PreviewAsync(context.ArgsAs<RuntimeHighFpsArgs>().StrongMode));
+
+    private static async Task<BackendResult> HighFpsRepairAsync(BackendCommandContext context)
+    {
+        var args = context.ArgsAs<RuntimeHighFpsArgs>();
+        return Wrap(BackendCommands.RuntimeHighFpsRepair, await RuntimeHighFpsMaintenance.RepairAsync(
+            args.Fingerprint, args.StrongMode, new Progress<string>(s => context.ReportProgress(s, null, "high-fps-repair")), context.CancellationToken));
+    }
+
+    private static async Task<BackendResult> VcPreviewAsync(BackendCommandContext context)
+    {
+        var args = context.ArgsAs<Vc14RepairArgs>();
+        return BackendResult.Ok(BackendCommands.Vc14Preview, "14.x 阶段预览", await Vc14Maintenance.PreviewAsync(args.Mode, args.AllowTemporaryInstaller));
+    }
 
     private static async Task<BackendResult> VcRepairAsync(BackendCommandContext context)
     {
         var args = context.ArgsAs<Vc14RepairArgs>();
         var progress = new Progress<string>(s => context.ReportProgress(s, null, "vc14-repair"));
-        return Wrap(BackendCommands.Vc14Repair, await Vc14Maintenance.RepairAsync(args.Fingerprint, progress, context.CancellationToken));
+        return Wrap(BackendCommands.Vc14Repair, await Vc14Maintenance.RepairAsync(args.Fingerprint, progress, context.CancellationToken, args.Mode, args.AllowTemporaryInstaller));
     }
 
     private static async Task<BackendResult> VcLegacyCleanAsync(BackendCommandContext context) =>

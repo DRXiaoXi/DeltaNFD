@@ -70,6 +70,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        RuntimeNavigationItem.Visibility = ReleaseFeatures.RuntimeUiEnabled ? Visibility.Visible : Visibility.Collapsed;
         Services.Backends.BackendAttention.Changed += OnBackendAttention;
         Closed += (_, _) => Services.Backends.BackendAttention.Changed -= OnBackendAttention;
         ServiceLocator.GameTarget.Changed += OnGameTargetChanged;
@@ -117,8 +118,9 @@ public sealed partial class MainWindow : Window
             CreateTrayIcon();
         }
 
-        // 默认选中主页并导航
-        NavView.SelectedItem = NavView.MenuItems[0];
+        // A failed update resumes visibly on Settings, without starting game/background automation.
+        if (App.PendingFileFallback is not null) NavigateByTag("settings");
+        else NavView.SelectedItem = NavView.MenuItems[0];
 
         // 背景图：启动应用一次，并监听设置页的实时变更
         ApplyBackgroundImage();
@@ -240,6 +242,13 @@ public sealed partial class MainWindow : Window
         }
 
         _startupInitializationStarted = true;
+        if (App.PendingFileFallback is { } fallback)
+        {
+            _announcementChecked = true;
+            if (ContentFrame.Content is SettingsPage settings)
+                await settings.Update.ResumeFullFallbackAsync(fallback.Session, fallback.Nonce);
+            return;
+        }
         Services.Backends.BackendAttention.RefreshPersisted();
 
         var retiredRecovery = await OfflineModeRetirement.RecoverAsync();
@@ -984,14 +993,16 @@ public sealed partial class MainWindow : Window
     public void ActivateFromSecondLaunch() => RestoreFromTray();
 
     private bool _deploymentInProgress, _factoryResetInProgress;
-    internal async Task<DeploymentHandover> PrepareDeploymentAsync(bool uninstall)
+    internal Task<DeploymentHandover> PrepareDeploymentAsync(bool uninstall) => PrepareDeploymentAsync(uninstall, null);
+
+    internal async Task<DeploymentHandover> PrepareDeploymentAsync(bool uninstall, string? purpose)
     {
         if (_pluginExitInProgress || _deploymentInProgress || _factoryResetInProgress) throw new InvalidOperationException("正在处理退出或配置重置，请稍后重试安装/卸载。");
         _deploymentInProgress = true;
         if (Content is UIElement root) root.IsHitTestVisible = false;
         try
         {
-            var result = await DeploymentHandover.PrepareAsync(uninstall);
+            var result = await DeploymentHandover.PrepareAsync(uninstall, purpose);
             if (result.Ready) return result;
             _deploymentInProgress = false;
             if (Content is UIElement content) content.IsHitTestVisible = true;
@@ -1003,6 +1014,12 @@ public sealed partial class MainWindow : Window
             if (Content is UIElement content) content.IsHitTestVisible = true;
             throw;
         }
+    }
+
+    internal void CancelDeploymentPreparation()
+    {
+        _deploymentInProgress = false;
+        if (Content is UIElement content) content.IsHitTestVisible = true;
     }
 
     internal void ExitForDeployment()
@@ -1141,6 +1158,7 @@ public sealed partial class MainWindow : Window
     /// <summary>按导航 tag 跳转页面（主页等处的「去处理」快速跳转按钮用），并同步导航栏选中项。</summary>
     public void NavigateByTag(string tag)
     {
+        if (tag == "runtime" && !ReleaseFeatures.RuntimeUiEnabled) tag = "settings";
         var target = EnumerateNavItems().FirstOrDefault(i => i.Tag?.ToString() == tag);
         if (target is not null)
         {
@@ -1164,6 +1182,8 @@ public sealed partial class MainWindow : Window
         {
             return;
         }
+        if (item.Tag?.ToString() == "runtime" && !ReleaseFeatures.RuntimeUiEnabled)
+        { NavigateByTag("settings"); return; }
 
         if (ServiceLocator.GameTarget.IsCustom && item.Tag?.ToString() is "shader" or "ace")
         {

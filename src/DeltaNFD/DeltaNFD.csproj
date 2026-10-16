@@ -26,14 +26,16 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 
     <DefaultLanguage>zh-CN</DefaultLanguage>
-    <Version>0.9192</Version>
+    <Version>0.9195</Version>
     <!-- 日志头/程序集读取的显示版本（与关于卡 VersionText 保持一致） -->
-    <InformationalVersion>Beta0.9192</InformationalVersion>
+    <InformationalVersion>Alpha0.9195</InformationalVersion>
+    <RuntimeUiEnabled Condition="'$(RuntimeUiEnabled)' == ''">true</RuntimeUiEnabled>
     <!-- 应用图标（exe / 任务栏 / 托盘共用；托盘经 ExtractIconExW 从 exe 提取） -->
     <ApplicationIcon>Assets\DeltaNFD.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
+    <AssemblyMetadata Include="RuntimeUiEnabled" Value="$(RuntimeUiEnabled)" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
@@ -54,6 +56,7 @@
   <ItemGroup>
     <ProjectReference Include="..\DeltaNFD.Contracts\DeltaNFD.Contracts.csproj" />
     <ProjectReference Include="..\DeltaNFD.Shared\DeltaNFD.Shared.csproj" />
+    <ProjectReference Include="..\DeltaNFD.UpdateCore\DeltaNFD.UpdateCore.csproj" />
   </ItemGroup>
 
   <!-- The WinUI-free helper is built separately below, with isolated restore/intermediate paths. -->
@@ -90,8 +93,31 @@
   <!-- 自动更新来源与网络参数（发布后可在安装目录直接改，无需重编译） -->
   <ItemGroup>
     <Content Include="Assets\UpdateConfig.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\installer\DeploymentControl.ps1" Link="Tools\DeploymentControl.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\Vc14Baseline14.42\*.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\Vc14OwnershipOriginals\*.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Remove="Assets\RuntimeHighFps\**\*" />
+    <None Remove="Assets\RuntimeHighFps\**\*" />
+    <HighFpsPayload Include="Assets\RuntimeHighFps\**\*" Exclude="Assets\RuntimeHighFps\2005\**\*;Assets\RuntimeHighFps\2008\**\*;Assets\RuntimeHighFps\2010\**\*;Assets\RuntimeHighFps\2012\**\*;Assets\RuntimeHighFps\2013\**\*" />
+    <Content Remove="Assets\RuntimeCppOfficial\**\*" />
+    <None Remove="Assets\RuntimeCppOfficial\**\*" />
+    <OfficialCppPayload Include="Assets\RuntimeCppOfficial\**\*" />
+    <Content Remove="Assets\Vc14FileRepair14.42\**\*" />
+    <None Remove="Assets\Vc14FileRepair14.42\**\*" />
+    <Vc14RepairPayload Include="Assets\Vc14FileRepair14.42\**\*" />
   </ItemGroup>
+
+  <!-- MSI 的 WinSxS 路径不能进入 WinUI PRI 的区域限定符索引。 -->
+  <Target Name="CopyHighFpsPayloadToBuild" AfterTargets="Build" Condition="'$(IsDesignTimeBuild)' != 'true'">
+    <Copy SourceFiles="@(HighFpsPayload)" DestinationFiles="@(HighFpsPayload->'$(OutDir)Assets\RuntimeHighFps\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(OfficialCppPayload)" DestinationFiles="@(OfficialCppPayload->'$(OutDir)Assets\RuntimeCppOfficial\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(Vc14RepairPayload)" DestinationFiles="@(Vc14RepairPayload->'$(OutDir)Assets\Vc14FileRepair14.42\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyHighFpsPayloadToPublish" AfterTargets="Publish">
+    <Copy SourceFiles="@(HighFpsPayload)" DestinationFiles="@(HighFpsPayload->'$(PublishDir)Assets\RuntimeHighFps\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(OfficialCppPayload)" DestinationFiles="@(OfficialCppPayload->'$(PublishDir)Assets\RuntimeCppOfficial\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(Vc14RepairPayload)" DestinationFiles="@(Vc14RepairPayload->'$(PublishDir)Assets\Vc14FileRepair14.42\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
 
   <!-- 无省电电源计划（CPU实验室导入用，显示名「无省电释放模式」） -->
   <ItemGroup>
@@ -106,6 +132,9 @@
 
 <!-- 前后端分离 C2/C3：把各官方后端 EXE 随构建复制到输出目录 Backends\<模块>\ 下（BackendPaths 的部署约定）。 -->
   <ItemGroup>
+    <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.FileUpdater\DeltaNFD.FileUpdater.csproj">
+      <ModuleFolder>updater</ModuleFolder>
+    </OfficialBackend>
     <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.Backend.Ace\DeltaNFD.Backend.Ace.csproj">
       <ModuleFolder>ace</ModuleFolder>
     </OfficialBackend>

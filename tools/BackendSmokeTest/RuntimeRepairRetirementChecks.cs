@@ -39,7 +39,7 @@ internal static class RuntimeRepairRetirementChecks
             Check(execution.GetType("DeltaNFD.Services.RuntimeLegacyInstallationReview") is not null, "legacy review removed");
             var unexpected = execution.GetTypes().Where(t => t.Namespace == "DeltaNFD.Services"
                 && t.Name.StartsWith("Runtime", StringComparison.Ordinal) && !t.Name.StartsWith("RuntimeGuard", StringComparison.Ordinal)
-                && t.Name is not ("RuntimeInstallationReview" or "RuntimeLegacyInstallationReview")).Select(t => t.Name).ToArray();
+                && t.Name is not ("RuntimeInstallationReview" or "RuntimeLegacyInstallationReview" or "RuntimeHighFpsMaintenance")).Select(t => t.Name).ToArray();
             Check(unexpected.Length == 0, "unexpected runtime execution types: " + string.Join(", ", unexpected));
             foreach (var asset in new[] { "VCRedistRepair", "VCRedistRepair_unpacked", "DirectXRepair", "DirectXRepair_unpacked",
                 "VCRedist2015-2022-x64.exe", "VCRedist2015-2022-x86.exe", "VCRedistRepair.exe", "DotNetRepair" })

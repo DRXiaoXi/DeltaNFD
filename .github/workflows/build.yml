@@ -19,6 +19,9 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Prepare pinned historical C++ ownership evidence (download and verify only)
+        run: ./tools/prepare-vc14-ownership.ps1
+
       - name: Build main app (x64)
         run: dotnet build src/DeltaNFD/DeltaNFD.csproj -c Release -p:Platform=x64
 
@@ -33,10 +36,26 @@ jobs:
 
       - name: Runtime repair retirement and retained protection checks
         run: |
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --vc14-ownership-checks src/DeltaNFD/Assets/Vc14OwnershipOriginals
+          if ($LASTEXITCODE -ne 0) { throw "Historical C++ ownership evidence regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --official-cpp-checks
+          if ($LASTEXITCODE -ne 0) { throw "Official C++ package regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-highfps-checks
+          if ($LASTEXITCODE -ne 0) { throw "High-FPS repair regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-alpha-uninstall-checks
+          if ($LASTEXITCODE -ne 0) { throw "Legacy C++ uninstall safety regression" }
           dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-repair-retirement-checks
           if ($LASTEXITCODE -ne 0) { throw "Retired runtime capabilities detected" }
           dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --vc14-checks
           if ($LASTEXITCODE -ne 0) { throw "VC14 reinstall policy regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --vc14-staged-checks
+          if ($LASTEXITCODE -ne 0) { throw "VC14 staged repair regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --safe-installer-checks
+          if ($LASTEXITCODE -ne 0) { throw "Temporary safe-mode Installer regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-file-use-checks
+          if ($LASTEXITCODE -ne 0) { throw "Runtime file-use consent regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --advanced-startup-checks
+          if ($LASTEXITCODE -ne 0) { throw "Advanced startup consent regression" }
           dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-guard-recovery-scope-checks
           if ($LASTEXITCODE -ne 0) { throw "Protection recovery regression" }
 
@@ -47,6 +66,14 @@ jobs:
             dotnet run --project tools/BackendSmokeTest -c Release --no-build -- $check
             if ($LASTEXITCODE -ne 0) { throw "Feature regression failed: $check" }
           }
+
+      - name: Bug feedback client and private receiver contract checks
+        run: |
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --bug-feedback-checks _buildcheck/feedback-client-fixture.zip
+          if ($LASTEXITCODE -ne 0) { throw "Feedback client regression" }
+          $env:FEEDBACK_CLIENT_FIXTURE = [IO.Path]::GetFullPath('_buildcheck/feedback-client-fixture.zip')
+          python -m unittest discover -s server/feedback -p test_feedback.py -v
+          if ($LASTEXITCODE -ne 0) { throw "Feedback server regression" }
 
       - name: ACE registry, cleanup scope and update responsiveness checks (isolated, offline)
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --external-fix-regression-checks
@@ -157,6 +184,13 @@ jobs:
 
       - name: Auto-update logic checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --update-checks
+
+      - name: File update transaction and publisher checks (isolated, offline)
+        run: |
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --file-update-checks
+          if ($LASTEXITCODE -ne 0) { throw "File update regression" }
+          python -m unittest discover -s tools -p test_make_file_update.py -v
+          if ($LASTEXITCODE -ne 0) { throw "File update publisher regression" }
 
       # 只读冒烟测试（枚举显卡 / 读取状态），不修改系统
       - name: Runtime guard recovery logic and temporary ACL checks

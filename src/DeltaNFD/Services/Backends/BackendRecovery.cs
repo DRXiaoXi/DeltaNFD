@@ -15,7 +15,8 @@ internal static class BackendRecovery
             || snapshot is { Complete: true } && snapshot.Module == BackendModules.Ace);
     internal static bool IsRuntimeInstallation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.Runtime
         && review.Command is BackendCommands.RuntimeRepair or BackendCommands.RuntimeCompatibilityRepair
-            or BackendCommands.RuntimeRedistUninstall or BackendCommands.RuntimeRedistUninstallAll or BackendCommands.Vc14Repair or BackendCommands.Vc14LegacyClean;
+            or BackendCommands.RuntimeRedistUninstall or BackendCommands.RuntimeRedistUninstallAll or BackendCommands.Vc14Repair or BackendCommands.Vc14LegacyClean
+            or BackendCommands.RuntimeHighFpsRepair;
     private static bool CanRestoreCpuRecord(string command) => BackendModules.IsReadOnly(BackendModules.CpuFrame, command)
         || command is BackendCommands.CpuFrameMonitorStart or BackendCommands.CpuFrameMonitorStop
         or BackendCommands.CpuFramePriorityApply or BackendCommands.CpuFrameAffinityApply
@@ -29,6 +30,7 @@ internal static class BackendRecovery
     internal static IReadOnlyList<RecoveryScope> RecoveryChoices(BackendUnconfirmedStore.Review review, ReconcileSnapshot? snapshot)
     {
         var module = review.Module;
+        if (module == BackendModules.Runtime && review.Command == BackendCommands.RuntimeFileUseClose) return [];
         if (module == BackendModules.Procman && review.Command == BackendCommands.ProcmanMemoryTrim) return [];
         if (snapshot is null || !snapshot.Complete || snapshot.Module != module) return [];
         if (module == BackendModules.Runtime)

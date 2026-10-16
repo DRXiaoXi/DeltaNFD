@@ -21,6 +21,8 @@
     <ScrollViewer HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled">
         <StackPanel MaxWidth="1080" Padding="28,20,28,32" Spacing="16">
             <TextBlock Text="主页" Style="{StaticResource PageTitleStyle}"/>
+            <InfoBar IsOpen="{x:Bind ViewModel.IsLimitedTestBuild}" IsClosable="False" Severity="Informational"
+                     Title="更新测试版" Message="运行库功能将在 Alpha0.9194 完整版开放，请到设置中检查更新。" />
             <Border x:Name="BrandPanel" Background="{ThemeResource HomeBrandBrush}" CornerRadius="8" Padding="28" MinHeight="220">
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -104,7 +106,7 @@
                                 Visibility="{x:Bind ActionVisibility(ViewModel.AceHealthState), Mode=OneWay}" VerticalAlignment="Center"/>
                     </Grid>
 
-                    <Grid ColumnSpacing="10" Padding="0,6">
+                    <Grid ColumnSpacing="10" Padding="0,6" Visibility="{x:Bind RuntimeFeatureVisibility}">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{x:Bind StatusBrush(ViewModel.RuntimeHealthState), Mode=OneWay}"/>
                         <TextBlock Grid.Column="1" Text="运行库" Width="80" FontWeight="SemiBold" VerticalAlignment="Center"/>

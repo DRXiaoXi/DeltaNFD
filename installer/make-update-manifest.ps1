@@ -18,10 +18,8 @@
     -MinimumSupportedVersion  clients below this version are forced to update
     -Mandatory            force the update even if the user skipped that version
     -MirrorUrl            one or more extra https download urls (same bytes, same hash)
-    -MirrorFirst          try the mirror urls BEFORE the primary github url. Needed for the
-                          "weaknet-boost" plugin: its accelerated source config makes the host
-                          read this manifest through a gh-proxy prefix, and the host only uses
-                          the accelerator for the download if the mirror entry comes first.
+    -MirrorFirst          legacy output ordering only; current clients always prefer GitHub
+                          and fall back to the self-hosted server after failure.
     -OutFile              default: <repo root>\update.json
 
   IMPORTANT (project rule, see HANDOFF section 11.2): keep this script body pure ASCII.
@@ -169,8 +167,8 @@ if ($notes.Length -eq 0) {
 Write-Host ""
 Write-Host "Publish checklist:"
 Write-Host "  1. Upload the installer to the GitHub Release for tag $ReleaseTag"
-Write-Host "  2. Commit and push update.json to the main branch (this is the url clients read)"
-Write-Host "     https://raw.githubusercontent.com/DRXiaoXi/DeltaNFD/main/update.json"
+Write-Host "  2. Upload the same installer to the self-hosted server and verify size + sha256"
+Write-Host "     Then atomically replace https://deltaxiaoxi.xin/updates/update.json"
 Write-Host "  3. Optionally attach the same update.json to the release as a fixed asset name"
 Write-Host "  4. Verify the live path: dotnet run --project tools\BackendSmokeTest -- --update-live"
 Write-Host ""
@@ -179,6 +177,6 @@ Write-Host "  * Clients only update when the manifest version is HIGHER than the
 Write-Host "  * Clients on a build without the updater (0.82.0 or older) need one manual install first."
 Write-Host "  * Every mirror host must be added to src\DeltaNFD\Assets\UpdateConfig.json -> allowedHosts,"
 Write-Host "    otherwise the client refuses to download from it."
-Write-Host "  * To let the weaknet-boost plugin actually accelerate the download, pass -MirrorFirst"
-Write-Host "    (mirror url first) and list the accelerator host (for example gh-proxy.com) in allowedHosts."
+Write-Host "  * Current clients use GitHub directly, then the self-hosted server on failure."
+Write-Host "    GitHub acceleration proxies are no longer supported."
 Write-Host "  * The client always verifies sha256 + size before running the installer."

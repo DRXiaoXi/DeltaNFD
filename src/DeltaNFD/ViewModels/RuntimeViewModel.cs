@@ -6,11 +6,14 @@ namespace DeltaNFD.ViewModels;
 /// <summary>运行库防护、14.x 兼容性检测与全量重装（卸载全部 14.x 后安装内置 14.42 基线）。</summary>
 public partial class RuntimeViewModel : ObservableObject
 {
+    public Task<RuntimeFileUseScan> ScanFileUseAsync(CancellationToken token, RuntimeFileUseScope scope = RuntimeFileUseScope.Vc14) => _guard.ScanFileUseAsync(token, scope);
+    public Task<RuntimeFileUseCloseResult> CloseFileUseAsync(RuntimeFileUseCloseArgs args, CancellationToken token) => _guard.CloseFileUseAsync(args, token);
     public static RuntimeViewModel Current { get; } = new();
     private readonly IRuntimeGuardService _guard = ServiceLocator.Guard;
     [ObservableProperty] private bool repairIsBusy;
     [ObservableProperty] private string repairStatusText = "修复前将预览全部 14.x 卸载清单；请先关闭运行库防护。";
     [ObservableProperty] private string abnormalText = "";
+    [ObservableProperty] private string abnormalTitle = "C++ 14.x 运行库异常";
     [ObservableProperty] private string warningText = "";
     public bool HasAbnormal => AbnormalText.Length > 0;
     public bool HasWarning => WarningText.Length > 0;
@@ -22,9 +25,13 @@ public partial class RuntimeViewModel : ObservableObject
         OnPropertyChanged(nameof(GuardModeEnabled));
         OnPropertyChanged(nameof(GuardCleanupEnabled));
     }
-    public Task<Vc14ReinstallPreview> PreviewRepairAsync() => _guard.Preview14RepairAsync();
-    public Task<OperationResult> RepairAsync(string fingerprint, CancellationToken token)
-        => _guard.Repair14Async(fingerprint, new Progress<string>(s => RepairStatusText = s), token);
+    public Task<Vc14ReinstallPreview> PreviewRepairAsync(Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false) => _guard.Preview14RepairAsync(mode, allowTemporaryInstaller);
+    public Task<RuntimeHighFpsPreview> PreviewHighFpsAsync(bool strongMode) => _guard.PreviewHighFpsAsync(strongMode);
+    public Task<OperationResult> RepairHighFpsAsync(string fingerprint, bool strongMode, CancellationToken token)
+        => _guard.RepairHighFpsAsync(fingerprint, strongMode, new Progress<string>(s => RepairStatusText = s), token);
+    public Task<OperationResult> RepairAsync(string fingerprint, CancellationToken token, Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false)
+        => _guard.Repair14Async(fingerprint, new Progress<string>(s => RepairStatusText = s), token, mode, allowTemporaryInstaller);
+    public Task<OperationResult> RestoreTemporaryInstallerAsync() => _guard.RestoreTemporaryInstallerAsync();
     [ObservableProperty] private string installedText = "尚未读取安装登记。";
     [ObservableProperty] private bool guardIsEnabled;
     [ObservableProperty] private bool guardIsBusy;
@@ -121,7 +128,8 @@ public partial class RuntimeViewModel : ObservableObject
         {
             var scan = await _guard.Scan14Async();
             string Format(Vc14Notice n) => n.Name + " · " + n.Architecture + " · " + n.Version + "\n" + n.Detail;
-            AbnormalText = string.Join("\n\n", scan.Notices.Where(n => n.Severity == Vc14Severity.Abnormal).Select(Format));
+            AbnormalTitle = scan.AbnormalTitle;
+            AbnormalText = string.Join("\n\n", scan.GetAbnormalNotices().Select(Format));
             WarningText = string.Join("\n\n", scan.Notices.Where(n => n.Severity == Vc14Severity.Warning).Select(Format).Concat(scan.Issues));
         }
         catch (Exception ex) { AbnormalText = ""; WarningText = "14.x 检测未完成，不能视为正常：" + ex.Message; }

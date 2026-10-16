@@ -16,13 +16,21 @@ internal static class DeploymentHandoverChecks
                 s.GameAffinityRuleEnabled = false; s.SingleCcdExcludeCpu0Enabled = false; s.DualCcdImmediateEnabled = false; });
             using (var permit = await DeploymentHandover.PrepareAsync(uninstall: true))
             {
-                check(permit.Ready && permit.ExitCode == 0, "部署：无历史记录时完整恢复并排空后允许卸载");
+                check(permit.Ready && permit.ExitCode == 0, "部署：无历史记录时完整恢复并排空后允许卸载：" + permit.Detail);
                 var blocked = false;
                 try { BackendOperationGate.Check(); } catch (InvalidOperationException) { blocked = true; }
                 check(blocked, "部署：成功许可持有门禁，退出前不再接收官方请求");
                 check(BackendSessions.Snapshot().All(c => c.ExitConfirmed), "部署：恢复产生的新后端也已确认退出");
             }
             BackendOperationGate.Check();
+
+            var installerRecord = Path.Combine(AppDataPaths.Root, "safe-installer-active.json");
+            File.WriteAllText(installerRecord, "{fixture pending evidence}");
+            using (var permit = await DeploymentHandover.PrepareAsync(uninstall: false))
+                check(!permit.Ready && permit.Detail.Contains("临时 Installer") && File.Exists(installerRecord), "临时 Installer 恢复记录阻止更新且保留证据");
+            using (var permit = await DeploymentHandover.PrepareAsync(uninstall: true))
+                check(!permit.Ready && File.Exists(installerRecord), "临时 Installer 恢复记录阻止卸载/重置丢失证据");
+            File.Delete(installerRecord); // Isolated fixture only.
 
             foreach (var module in new[] { BackendModules.Runtime, BackendModules.Ace })
             {
@@ -59,6 +67,18 @@ internal static class DeploymentHandoverChecks
             using (var permit = await DeploymentHandover.PrepareAsync(uninstall: true))
                 check(permit.Ready && permit.ExitCode == 10, "部署：失败后可重试完整恢复，仍保留不属于防护恢复范围的运行库证据");
             await BackendLifecycle.AcknowledgeCurrentStateAsync(BackendUnconfirmedStore.ReviewAll().Single(r => r.Module == BackendModules.Runtime));
+
+            // Advanced startup uses the non-uninstall path: no guard/system recovery writes.
+            Environment.SetEnvironmentVariable("DELTANFD_TEST_DEPLOYMENT_RECOVERY", "failed");
+            using (var permit = await DeploymentHandover.PrepareAsync(false, "进入高级启动"))
+            {
+                check(permit.Ready, "高级启动：仅排空执行者，不触发卸载恢复或关闭防护");
+                var gated = false;
+                try { BackendOperationGate.Check(); } catch (InvalidOperationException) { gated = true; }
+                check(gated, "高级启动：排空成功后持续封锁新操作");
+            }
+            BackendOperationGate.Check();
+            Environment.SetEnvironmentVariable("DELTANFD_TEST_DEPLOYMENT_RECOVERY", "ok");
 
             using (var current = Process.GetCurrentProcess())
             {
