@@ -9,8 +9,9 @@ namespace DeltaNFD.Services;
 public sealed record Vc14ResidueItem(
     string HiveName, string ViewName, string KeyName, string Name, string Version, string Kind, string Detail)
 {
-    /// <summary>inf-legacy=固定 v14 INF 包装；orphan=孤儿显示登记；keep=保留不处理。</summary>
-    public bool CanClean => Kind is "inf-legacy" or "orphan";
+    /// <summary>inf-legacy=固定 INF 包装；orphan=包装孤儿；msi-orphan=失效 MSI 显示项；keep=保留。</summary>
+    public bool CanClean => Kind is "inf-legacy" or "orphan" or "msi-orphan";
+    public string RegistrationFingerprint { get; init; } = "";
 }
 
 /// <summary>
@@ -43,6 +44,8 @@ internal static class Vc14ResidueCleanup
         "BundleCachePath", "BundleVersion", "ParentKeyName", "WindowsInstaller", "SystemComponent",
         "EstimatedSize", "Comments", "Contact", "Language",
     };
+    private static readonly HashSet<string> MsiValueNames = new(StringComparer.OrdinalIgnoreCase)
+        { "AuthorizedCDFPrefix", "Readme", "Size", "VersionMajor", "VersionMinor", "HelpTelephone" };
     // 孤儿登记名称正则：微软 VC++ 可再发行包装（2015-2022/2026/v14 等形态）。
     internal static readonly Regex OrphanNamePattern =
         new(@"^Microsoft Visual C\+\+ (?:2015-2022|2015-2019|2015|2017|2019|2022|2026|v14) Redistributable \((x64|x86|arm64)\)(?: - 14\..*)?$",
@@ -76,6 +79,7 @@ internal static class Vc14ResidueCleanup
                     continue;
                 }
                 if (DescribeLegacyInf(hiveName, viewName, keyName, key, name, version) is { } legacy) { items.Add(legacy); continue; }
+                if (DescribeMsiOrphan(hiveName, viewName, keyName, key, name, version, scan) is { } msi) { items.Add(msi); continue; }
                 items.Add(DescribeOrphan(hiveName, viewName, keyName, key, name, version, scan));
             }
         }
@@ -158,20 +162,39 @@ internal static class Vc14ResidueCleanup
     }
 
     /// <summary>键值形状核验：无子键、值名在白名单内、无超大值（>8KB）。</summary>
-    internal static bool ShapeIsSimple(RegistryKey key, out string detail)
+    internal static bool ShapeIsSimple(RegistryKey key, out string detail, bool msiRegistration = false)
     {
         if (key.SubKeyCount != 0) { detail = "登记键含子键，形状异常，保留不处理。"; return false; }
         foreach (var valueName in key.GetValueNames())
         {
-            if (!AllowedValueNames.Contains(valueName)) { detail = "登记含白名单外的值名（" + valueName + "），保留不处理。"; return false; }
-            if (key.GetValueKind(valueName) is RegistryValueKind.String or RegistryValueKind.ExpandString
-                && key.GetValue(valueName, "", RegistryValueOptions.DoNotExpandEnvironmentNames) is string text
-                && text.Length > 8192)
+            if (!AllowedValueNames.Contains(valueName) && !(msiRegistration && MsiValueNames.Contains(valueName))) { detail = "登记含白名单外的值名（" + valueName + "），保留不处理。"; return false; }
+            var value = key.GetValue(valueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+            if (value is null || value is string text && text.Length > 8192
+                || value is byte[] binary && binary.Length > 8192
+                || value is string[] list && list.Sum(s => s.Length) > 8192)
             { detail = "登记值超大（" + valueName + "），保留不处理。"; return false; }
         }
         detail = "";
         return true;
     }
+
+    private static Vc14ResidueItem? DescribeMsiOrphan(string hive, string view, string keyName, RegistryKey key,
+        string name, string version, Vc14Scan scan)
+    {
+        if (!Vc14MsiOrphans.IsCandidate(name)) return null;
+        var simple = ShapeIsSimple(key, out _, true);
+        return Vc14MsiOrphans.Describe(new(hive, view, keyName, name, version, key.GetValue("Publisher") as string ?? "",
+            key.GetValue("WindowsInstaller"), key.GetValue("UninstallString") as string ?? "",
+            key.GetValue("QuietUninstallString") as string ?? "", simple, simple ? RegistrationFingerprint(key) : ""),
+            scan, Vc14MsiOrphans.ReadAbsence);
+    }
+
+    internal static string RegistrationFingerprint(RegistryKey key) => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(
+        key.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase).Select(n => new
+        { Name = n, Kind = key.GetValueKind(n).ToString(), Value = key.GetValue(n, null, RegistryValueOptions.DoNotExpandEnvironmentNames) }))));
+
+    internal static string Fingerprint(IReadOnlyList<Vc14ResidueItem> items) => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(
+        items.OrderBy(i => i.HiveName, StringComparer.Ordinal).ThenBy(i => i.ViewName, StringComparer.Ordinal).ThenBy(i => i.KeyName, StringComparer.Ordinal))));
 
     /// <summary>INF 形状哈希：去注释、压空白、四个动态数据字段替换为占位后取 SHA256。</summary>
     internal static string InfShape(string path)
@@ -218,14 +241,19 @@ internal static class Vc14ResidueCleanup
     /// （在基线安装前执行——残留登记会阻止基线安装，即 MSI 1638 的成因之一）。
     /// 每项：重读核验 → 备份 → 删除 → 复扫确认。任何一步失败即停止并保留证据。
     /// </summary>
-    internal static OperationResult Run(Vc14Scan clearedScan, IVc14ReinstallEnvironment environment, IProgress<string>? progress, CancellationToken token)
+    internal static OperationResult Run(Vc14Scan clearedScan, IVc14ReinstallEnvironment environment, IProgress<string>? progress, CancellationToken token,
+        string? confirmedMsiFingerprint = null)
     {
         var logs = Path.Combine(Log.LogDirectory, "vc14-residue-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8]);
+        var mutationAttempted = false;
         try
         {
             token.ThrowIfCancellationRequested();
+            if (clearedScan.Issues.Count > 0) throw new IOException("MSI 检测未完成，不能清理显示登记。");
             var survey = Survey(clearedScan);
-            var cleanable = survey.Where(i => i.CanClean).ToList();
+            var cleanable = survey.Where(i => confirmedMsiFingerprint is null ? i.CanClean : i.Kind == "msi-orphan").ToList();
+            if (confirmedMsiFingerprint is not null && Fingerprint(cleanable) != confirmedMsiFingerprint)
+                throw new IOException("失效显示登记清单已变化，请重新预览确认。");
             foreach (var item in survey.Where(i => !i.CanClean))
                 Log.Info("14.x 残留保留：" + item.Name + "；" + item.Detail);
             if (cleanable.Count == 0)
@@ -240,16 +268,42 @@ internal static class Vc14ResidueCleanup
                     return Partial(cleaned, logs, "Windows Installer 事务仍忙，已停止后续清理。");
                 progress?.Report("清理残留登记：" + item.Name);
                 // 删除前重读：登记仍存在且结论不变才继续。
-                var current = Survey(clearedScan);
+                var freshScan = environment.Scan();
+                if (freshScan.Issues.Count > 0 || Vc14Catalog.Fingerprint(freshScan) != Vc14Catalog.Fingerprint(clearedScan))
+                    return Partial(cleaned, logs, "MSI 状态在清理期间发生变化，已停止。");
+                var current = Survey(freshScan);
                 if (current.FirstOrDefault(i => i.HiveName == item.HiveName && i.ViewName == item.ViewName && i.KeyName == item.KeyName)
-                    is not { } recheck || recheck.Kind != item.Kind)
+                    is not { } recheck || recheck != item)
                     return Partial(cleaned, logs, "登记状态在清理期间发生变化，已停止：" + item.Name);
                 // 备份目录含 Hive/View，防止 HKLM/HKCU 或 32/64 视图下的同名键互相覆盖。
                 var backupDirectory = Path.Combine(logs, item.HiveName + "-" + item.ViewName + "-" + item.KeyName);
                 Directory.CreateDirectory(backupDirectory);
+                if (item.Kind == "msi-orphan")
+                {
+                    Vc14ResidueItem? Observe()
+                    {
+                        token.ThrowIfCancellationRequested();
+                        var state = environment.Scan();
+                        if (state.Issues.Count > 0 || Vc14Catalog.Fingerprint(state) != Vc14Catalog.Fingerprint(clearedScan))
+                            throw new IOException("MSI 状态在清理期间发生变化，已停止。");
+                        return Survey(state).FirstOrDefault(i => i.HiveName == item.HiveName && i.ViewName == item.ViewName && i.KeyName == item.KeyName);
+                    }
+                    Vc14MsiOrphans.CleanLeaf(item, Observe, () => BackupRegistration(item, backupDirectory), () => DeleteRegistration(item),
+                        () => RuntimeInstallationReview.InstallerBusy() || environment.Blocker() is not null, () => mutationAttempted = true);
+                    cleaned.Add(item.Name + " · " + item.Version);
+                    Log.Info("14.x 失效 MSI 显示登记已清理：" + item.Name + "；备份：" + backupDirectory);
+                    continue;
+                }
                 BackupRegistration(item, backupDirectory);
+                if (RuntimeInstallationReview.InstallerBusy() || environment.Blocker() is { })
+                    return Partial(cleaned, logs, "备份后安装事务或防护状态变化，已停止清理。");
+                var backedUpScan = environment.Scan();
+                if (backedUpScan.Issues.Count > 0 || Vc14Catalog.Fingerprint(backedUpScan) != Vc14Catalog.Fingerprint(clearedScan)
+                    || Survey(backedUpScan).FirstOrDefault(i => i.HiveName == item.HiveName && i.ViewName == item.ViewName && i.KeyName == item.KeyName) != item)
+                    return Partial(cleaned, logs, "备份后登记身份变化，未删除：" + item.Name);
                 if (item.Kind == "inf-legacy" && !BackupLegacyInf(item, backupDirectory))
                     return Partial(cleaned, logs, "INF 备份失败，已停止：" + item.Name);
+                mutationAttempted = true;
                 if (!DeleteRegistration(item) || !DeleteLegacyInf(item))
                     return Partial(cleaned, logs, "登记或 INF 删除未确认，已停止：" + item.Name);
                 // 删后复扫：登记未再现。
@@ -271,7 +325,7 @@ internal static class Vc14ResidueCleanup
         }
         catch (Exception ex)
         {
-            return new OperationResult { Success = false, DiagnosticsDirectory = logs,
+            return new OperationResult { Success = false, IsPartial = mutationAttempted, DiagnosticsDirectory = logs,
                 Message = "残留清理已停止：" + ex.Message + "；备份保留在：" + logs };
         }
 
@@ -291,8 +345,15 @@ internal static class Vc14ResidueCleanup
         var values = key.GetValueNames().OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
             .Select(n => new { Name = n, Kind = key.GetValueKind(n).ToString(), Value = key.GetValue(n, "", RegistryValueOptions.DoNotExpandEnvironmentNames) })
             .ToArray();
-        File.WriteAllText(Path.Combine(backupDirectory, "registration.json"), JsonSerializer.Serialize(
-            new { item.HiveName, item.ViewName, item.KeyName, Values = values }, new JsonSerializerOptions { WriteIndented = true }));
+        if (item.Kind == "msi-orphan" && Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(values))) != item.RegistrationFingerprint)
+            throw new IOException("待备份的登记值与已确认快照不一致，未删除。");
+        var data = JsonSerializer.SerializeToUtf8Bytes(new { item.HiveName, item.ViewName, item.KeyName, Values = values },
+            new JsonSerializerOptions { WriteIndented = true });
+        var destination = Path.Combine(backupDirectory, "registration.json");
+        using (var file = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        { file.Write(data); file.Flush(true); }
+        if (!SHA256.HashData(File.ReadAllBytes(destination)).SequenceEqual(SHA256.HashData(data)))
+            throw new IOException("登记备份回读未通过，未删除登记。");
     }
 
     private static bool BackupLegacyInf(Vc14ResidueItem item, string backupDirectory)
@@ -317,6 +378,13 @@ internal static class Vc14ResidueCleanup
         using var hive = RegistryKey.OpenBaseKey(Enum.Parse<RegistryHive>(item.HiveName), Enum.Parse<RegistryView>(item.ViewName));
         using var root = hive.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", writable: true)
             ?? throw new IOException("Uninstall 根键无法打开写入：" + item.HiveName);
+        if (item.Kind == "msi-orphan")
+        {
+            using var leaf = root.OpenSubKey(item.KeyName);
+            if (leaf is null || RegistrationFingerprint(leaf) != item.RegistrationFingerprint || !ShapeIsSimple(leaf, out _, true)
+                || !Vc14MsiOrphans.ReadAbsence(item.KeyName).ConfirmedAbsent)
+                throw new IOException("删除前 MSI 显示登记或安装上下文已变化，未删除。");
+        }
         root.DeleteSubKey(item.KeyName, throwOnMissingSubKey: false);
         using var check = root.OpenSubKey(item.KeyName);
         return check is null;

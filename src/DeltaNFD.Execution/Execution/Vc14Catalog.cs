@@ -59,23 +59,27 @@ internal static class Vc14Catalog
     internal static Vc14Scan Scan()
     {
         var products = new List<Vc14Entry>(); var notices = new List<Vc14Notice>(); var issues = new List<string>();
+        var diagnostics = new Vc14MsiDiagnosticSession();
         foreach (var family in Families)
         {
+            string? readingCode = null;
             try
             {
                 foreach (var code in Related(family.Upgrade))
                 {
-                    var p = Read(code, family.Arch, family.Role, family.Upgrade);
+                    readingCode = code;
+                    var p = Read(code, family.Arch, family.Role, family.Upgrade, diagnostics, "升级家族 " + family.Arch + " " + family.Role);
+                    readingCode = null;
                     if (p is null) continue;
                     products.Add(p);
                     notices.Add(new(p.Name, p.Version, p.Architecture, Classify(p.Name, p.Version), "已核对 MSI 身份；此颜色为兼容性规则，不等于 DLL 损坏或已验证掉帧。"));
                 }
             }
-            catch (Exception ex) { issues.Add(family.Arch + " " + family.Role + "：" + ex.Message); }
+            catch (Exception ex) { diagnostics.AddIssue(issues, family.Arch + " " + family.Role, ex, readingCode); }
         }
         // MSI 家族动态发现：2026 等新产品线使用固定四家族之外的升级码，
         // 仅靠 Families 枚举会漏掉其 MSI（导致 14.42 降级安装被拒，退出码 1638）。
-        foreach (var discovered in DiscoverMsiProducts(products.Select(p => p.Code).ToHashSet(StringComparer.OrdinalIgnoreCase), issues))
+        foreach (var discovered in DiscoverMsiProducts(products.Select(p => p.Code).ToHashSet(StringComparer.OrdinalIgnoreCase), issues, diagnostics))
         {
             try
             {
@@ -109,13 +113,14 @@ internal static class Vc14Catalog
                     }
                     var associated = products.Any(p => p.Architecture == arch && SameVersion(p.Version, version));
                     if (associated) notices.Add(new(name, version, arch, Classify(name, version, false, products), "同版本安装包装登记；不作为单独卸载对象。"));
-                    else notices.Add(new(name, version, arch, Classify(name, version, false, products), "安装登记；当前关联组件未确认，可能是残留。不会据此猜测卸载产品码。"));
+                    else notices.Add(new(name, version, arch, Classify(name, version, false, products), "安装登记；当前关联组件未确认，可能是残留。可用“仅清理失效登记”核验 MSI 显示项；不会据此猜测卸载产品码。"));
                 }
             }
             catch (Exception ex) { issues.Add("安装包装登记读取失败：" + ex.Message); }
         }
         return new(products.DistinctBy(p => p.Code, StringComparer.OrdinalIgnoreCase).ToArray(),
-            notices.DistinctBy(n => n.Name + n.Version + n.Architecture).ToArray(), issues);
+            notices.DistinctBy(n => n.Name + n.Version + n.Architecture).ToArray(), issues)
+        { MsiStateDiagnostics = diagnostics.Results, MsiStateDiagnosticsTruncated = diagnostics.Truncated };
     }
     internal static bool SameVersion(string a, string b) => Version.TryParse(a, out var x) && Version.TryParse(b, out var y)
         && x.Major == y.Major && x.Minor == y.Minor && Math.Max(0, x.Build) == Math.Max(0, y.Build) && Math.Max(0, x.Revision) == Math.Max(0, y.Revision);
@@ -148,7 +153,8 @@ internal static class Vc14Catalog
     /// 动态发现固定四家族之外的 14.x release CRT MSI（如 2026 产品线的新升级码）。
     /// 枚举登记中 WindowsInstaller=1 的 14.x 条目，从缓存 LocalPackage 只读解析身份并核验。
     /// </summary>
-    internal static IEnumerable<Vc14Entry> DiscoverMsiProducts(HashSet<string> knownCodes, ICollection<string>? issues = null)
+    internal static IEnumerable<Vc14Entry> DiscoverMsiProducts(HashSet<string> knownCodes, ICollection<string>? issues = null,
+        Vc14MsiDiagnosticSession? diagnostics = null)
     {
         foreach (var (hiveName, view) in RegistryViews())
         {
@@ -166,21 +172,18 @@ internal static class Vc14Catalog
                 if (!name.Contains("Visual C++ v14", StringComparison.OrdinalIgnoreCase) && (!Version.TryParse(version, out var parsed) || parsed.Major != 14)) continue;
                 if (sub.GetValue("WindowsInstaller") is not 1) continue;
                 Vc14Entry? entry;
-                try { entry = ReadDiscovered(keyName, name, version); }
+                try { entry = ReadAnyWithDiagnostics(keyName, diagnostics, "动态登记 " + hiveName + "/" + view + "/" + keyName); }
                 catch (Exception ex)
                 {
                     // Failure to validate a candidate is unknown, not proof that no CRT is installed.
-                    issues?.Add("动态 MSI 登记待核对：" + name + "：" + ex.Message);
+                    if (diagnostics is null) issues?.Add("动态 MSI 登记待核对：" + name + "：" + ex.Message);
+                    else diagnostics.AddIssue(issues, "动态 MSI 登记待核对：" + name, ex, keyName);
                     continue;
                 }
                 if (entry is not null) yield return entry;
             }
         }
     }
-
-    /// <summary>从 MSI 登记读取并核验动态发现的产品；非微软 release CRT 返回 null。</summary>
-    private static Vc14Entry? ReadDiscovered(string code, string registeredName, string registeredVersion)
-        => ReadAny(code);
 
     internal static IReadOnlyList<string> ApprovedClients(Vc14Entry entry) => Vc14DependencyPolicy.Read(entry).Clients;
     internal static string? DependencyIssue(IReadOnlyList<Vc14Entry> products)
@@ -192,43 +195,62 @@ internal static class Vc14Catalog
         }
         catch (Exception ex) { return "共享依赖无法核对，未执行卸载：" + ex.Message; }
     }
-    internal static Vc14Entry? Read(string code, string arch, string role, string upgrade)
+    internal static Vc14Entry? Read(string code, string arch, string role, string upgrade,
+        Vc14MsiDiagnosticSession? diagnostics = null, string source = "执行前固定家族核对")
     {
         var state = MsiQueryProductStateW(code);
-        if (state == -1) return null;
-        if (state != 5) throw new IOException("产品安装状态未确认：" + code);
-        var name = Product(code, "InstalledProductName"); var version = Product(code, "VersionString");
-        var publisher = Product(code, "Publisher"); var cache = Product(code, "LocalPackage");
-        if (!File.Exists(cache)) throw new IOException("缓存 MSI 缺失：" + code);
-        var p = new Vc14Entry(code, name, version, arch, role, upgrade);
-        Validate(p, Property(cache, "ProductCode"), Property(cache, "ProductName"), Property(cache, "ProductVersion"),
-            Property(cache, "Manufacturer"), Architecture(cache), Property(cache, "UpgradeCode"));
-        if (!publisher.Equals("Microsoft Corporation", StringComparison.OrdinalIgnoreCase)) throw new IOException("已安装发布者不符。");
-        return p;
+        if (!RequireInstalledState(code, state, diagnostics, source)) return null;
+        try
+        {
+            var name = Product(code, "InstalledProductName"); var version = Product(code, "VersionString");
+            var publisher = Product(code, "Publisher"); var cache = Product(code, "LocalPackage");
+            if (!File.Exists(cache)) throw new IOException("缓存 MSI 缺失：" + code);
+            var p = new Vc14Entry(code, name, version, arch, role, upgrade);
+            Validate(p, Property(cache, "ProductCode"), Property(cache, "ProductName"), Property(cache, "ProductVersion"),
+                Property(cache, "Manufacturer"), Architecture(cache), Property(cache, "UpgradeCode"));
+            if (!publisher.Equals("Microsoft Corporation", StringComparison.OrdinalIgnoreCase)) throw new IOException("已安装发布者不符。");
+            return p;
+        }
+        catch { diagnostics?.Observe(code, state, source, expand: true); throw; }
     }
 
     /// <summary>不要求固定升级家族的产品读取：按缓存 MSI 核验产品码/名称/版本/发布者/架构/升级码。
     /// 供卸载前复核动态发现的家族（如 2026 产品线）使用；身份不符抛异常，未安装返回 null。</summary>
-    internal static Vc14Entry? ReadAny(string code)
+    internal static Vc14Entry? ReadAny(string code) => ReadAnyWithDiagnostics(code, null, "执行前动态家族核对");
+
+    private static Vc14Entry? ReadAnyWithDiagnostics(string code, Vc14MsiDiagnosticSession? diagnostics, string source)
     {
         var state = MsiQueryProductStateW(code);
-        if (state == -1) return null;
-        if (state != 5) throw new IOException("产品安装状态未确认：" + code);
-        var name = Product(code, "InstalledProductName"); var version = Product(code, "VersionString");
-        var publisher = Product(code, "Publisher"); var cache = Product(code, "LocalPackage");
-        if (!File.Exists(cache)) throw new IOException("缓存 MSI 缺失：" + code);
-        var cacheCode = Property(cache, "ProductCode"); var cacheName = Property(cache, "ProductName");
-        var cacheVersion = Property(cache, "ProductVersion"); var cachePublisher = Property(cache, "Manufacturer");
-        var cacheArchitecture = Architecture(cache); var cacheUpgrade = Property(cache, "UpgradeCode");
-        if (!Guid.TryParse(code, out var parsed) || parsed == Guid.Empty || !Guid.TryParse(cacheCode, out var cached) || parsed != cached
-            || !name.Equals(cacheName, StringComparison.OrdinalIgnoreCase) || !version.Equals(cacheVersion, StringComparison.OrdinalIgnoreCase)
-            || !publisher.Equals("Microsoft Corporation", StringComparison.OrdinalIgnoreCase)
-            || !cachePublisher.Equals("Microsoft Corporation", StringComparison.OrdinalIgnoreCase)
-            || !Version.TryParse(version, out var parsedVersion) || parsedVersion.Major != 14
-            || !Regex.IsMatch(name, @"^Microsoft Visual C\+\+ (?:2015|2017|2019|2022|2026|v14) " + cacheArchitecture + @" (Minimum|Additional) Runtime - 14\.", RegexOptions.IgnoreCase))
-            throw new InvalidDataException("MSI 的身份、版本、架构或发布者不属于可核验的微软 C++ 14.x 可再发行组件。");
-        var role = name.Contains(" Additional ", StringComparison.OrdinalIgnoreCase) ? "Additional" : "Minimum";
-        return new Vc14Entry(code, name, version, cacheArchitecture, role, cacheUpgrade);
+        if (!RequireInstalledState(code, state, diagnostics, source)) return null;
+        try
+        {
+            var name = Product(code, "InstalledProductName"); var version = Product(code, "VersionString");
+            var publisher = Product(code, "Publisher"); var cache = Product(code, "LocalPackage");
+            if (!File.Exists(cache)) throw new IOException("缓存 MSI 缺失：" + code);
+            var cacheCode = Property(cache, "ProductCode"); var cacheName = Property(cache, "ProductName");
+            var cacheVersion = Property(cache, "ProductVersion"); var cachePublisher = Property(cache, "Manufacturer");
+            var cacheArchitecture = Architecture(cache); var cacheUpgrade = Property(cache, "UpgradeCode");
+            if (!Guid.TryParse(code, out var parsed) || parsed == Guid.Empty || !Guid.TryParse(cacheCode, out var cached) || parsed != cached
+                || !name.Equals(cacheName, StringComparison.OrdinalIgnoreCase) || !version.Equals(cacheVersion, StringComparison.OrdinalIgnoreCase)
+                || !publisher.Equals("Microsoft Corporation", StringComparison.OrdinalIgnoreCase)
+                || !cachePublisher.Equals("Microsoft Corporation", StringComparison.OrdinalIgnoreCase)
+                || !Version.TryParse(version, out var parsedVersion) || parsedVersion.Major != 14
+                || !Regex.IsMatch(name, @"^Microsoft Visual C\+\+ (?:2015|2017|2019|2022|2026|v14) " + cacheArchitecture + @" (Minimum|Additional) Runtime - 14\.", RegexOptions.IgnoreCase))
+                throw new InvalidDataException("MSI 的身份、版本、架构或发布者不属于可核验的微软 C++ 14.x 可再发行组件。");
+            var role = name.Contains(" Additional ", StringComparison.OrdinalIgnoreCase) ? "Additional" : "Minimum";
+            return new Vc14Entry(code, name, version, cacheArchitecture, role, cacheUpgrade);
+        }
+        catch { diagnostics?.Observe(code, state, source, expand: true); throw; }
+    }
+
+    // Preserve the original decision exactly: -1 returns no product; 5 proceeds to identity checks;
+    // every other state still throws. Context evidence must never grant installation/removal permission.
+    internal static bool RequireInstalledState(string code, int state, Vc14MsiDiagnosticSession? diagnostics, string source)
+    {
+        var observation = diagnostics?.Observe(code, state, source);
+        if (state == -1) return false;
+        if (state == 5) return true;
+        throw new Vc14MsiStateException(observation ?? Vc14MsiStateDiagnostics.Capture(code, state, new Vc14MsiDiagnosticWindowsPlatform()));
     }
 
     /// <summary>拆分登记的卸载命令：正确处理带引号的可执行路径（如 "C:\目录\uninstall.exe" /quiet）。

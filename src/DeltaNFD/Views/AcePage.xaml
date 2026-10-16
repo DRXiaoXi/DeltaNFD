@@ -11,6 +11,45 @@
                 <TextBlock Text="AntiCheatExpert 反作弊组件管理，等效官方卸载程序" Style="{StaticResource PageSubtitleStyle}" />
             </StackPanel>
 
+            <!-- ACE-CORE 冗余检测 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="ACE-CORE 冗余检测" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                       Text="检测 C:\Program Files\AntiCheatExpert 下的 ACE-CORE 系列 .sys 驱动文件：只有 1 个为正常，出现 2 个及以上即为多版本冗余残留，会导致反作弊异常。" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <ProgressRing Width="24" Height="24"
+                                          IsActive="{x:Bind ViewModel.CoreCheckBusy, Mode=OneWay}"
+                                          Foreground="{StaticResource AppAccentBrush}" />
+                            <Button Content="{x:Bind ViewModel.CoreCheckButtonText, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanCheckCore, Mode=OneWay}"
+                                    Click="CheckCoreButton_Click" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Text="{x:Bind ViewModel.CoreCheckText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               FontFamily="Consolas" />
+                    <TextBlock Text="仅清理 C:\Program Files\AntiCheatExpert 及其子目录内的 ACE-CORE*.sys 文件，保留 ACE 服务、注册表、其他文件和游戏目录。适合先尝试清理驱动残留。"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <Button Content="{x:Bind ViewModel.CoreCleanButtonText, Mode=OneWay}"
+                            IsEnabled="{x:Bind ViewModel.CoreCleanEnabled, Mode=OneWay}"
+                            Click="CleanCoreFilesButton_Click" />
+                    <TextBlock Text="{x:Bind ViewModel.CoreCleanupResultText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                               AutomationProperties.LiveSetting="Polite" />
+                </StackPanel>
+            </Border>
+
             <!-- 扫描结果 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
@@ -144,45 +183,6 @@
                                     Click="FixVirtButton_Click" />
                         </StackPanel>
                     </Grid>
-                </StackPanel>
-            </Border>
-
-            <!-- ACE-CORE 冗余检测 -->
-            <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Spacing="10">
-                    <Grid ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="ACE-CORE 冗余检测" Style="{StaticResource SectionTitleStyle}" />
-                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                       Text="检测 C:\Program Files\AntiCheatExpert 下的 ACE-CORE 系列 .sys 驱动文件：只有 1 个为正常，出现 2 个及以上即为多版本冗余残留，会导致反作弊异常。" />
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                            <ProgressRing Width="24" Height="24"
-                                          IsActive="{x:Bind ViewModel.CoreCheckBusy, Mode=OneWay}"
-                                          Foreground="{StaticResource AppAccentBrush}" />
-                            <Button Content="{x:Bind ViewModel.CoreCheckButtonText, Mode=OneWay}"
-                                    IsEnabled="{x:Bind ViewModel.CanCheckCore, Mode=OneWay}"
-                                    Click="CheckCoreButton_Click" />
-                        </StackPanel>
-                    </Grid>
-
-                    <TextBlock Text="{x:Bind ViewModel.CoreCheckText, Mode=OneWay}"
-                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                               FontFamily="Consolas" />
-                    <TextBlock Text="仅清理 C:\Program Files\AntiCheatExpert 及其子目录内的 ACE-CORE*.sys 文件，保留 ACE 服务、注册表、其他文件和游戏目录。适合先尝试清理驱动残留。"
-                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
-                    <Button Content="{x:Bind ViewModel.CoreCleanButtonText, Mode=OneWay}"
-                            IsEnabled="{x:Bind ViewModel.CoreCleanEnabled, Mode=OneWay}"
-                            Click="CleanCoreFilesButton_Click" />
-                    <TextBlock Text="{x:Bind ViewModel.CoreCleanupResultText, Mode=OneWay}"
-                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
-                               AutomationProperties.LiveSetting="Polite" />
                 </StackPanel>
             </Border>
 

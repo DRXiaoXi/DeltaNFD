@@ -22,6 +22,9 @@ public interface IVc14ReinstallEnvironment
     bool IsSafeMode => false;
     IReadOnlyList<Vc14RemovalPlanItem> Plan(Vc14Scan scan) => Vc14Reinstall.BuildRemovalPlan(scan);
     OperationResult Cleanup(Vc14Scan scan, IProgress<string>? progress, CancellationToken token) => Vc14ResidueCleanup.Run(scan, this, progress, token);
+    IReadOnlyList<Vc14ResidueItem> Residues(Vc14Scan scan) => Vc14ResidueCleanup.Survey(scan);
+    OperationResult CleanupRegistrations(Vc14Scan scan, IReadOnlyList<Vc14ResidueItem> confirmed, IProgress<string>? progress, CancellationToken token)
+        => Vc14ResidueCleanup.Run(scan, this, progress, token, Vc14ResidueCleanup.Fingerprint(confirmed));
     Vc14Continuation? PendingInstall() => null;
     void SavePendingInstall(Vc14Continuation record) => throw new NotSupportedException("此执行环境不支持分阶段恢复记录。");
     void CompletePendingInstall() { }
@@ -191,6 +194,7 @@ public static partial class Vc14Reinstall
 
     public static Vc14ReinstallPreview Preview(IVc14ReinstallEnvironment environment, Vc14RepairMode mode = Vc14RepairMode.Full)
     {
+        if (mode == Vc14RepairMode.RegistrationCleanup) return Vc14RegistrationCleanup.Preview(environment);
         var scan = environment.Scan();
         var blocker = environment.Blocker();
         if (!Enum.IsDefined(mode)) blocker ??= "未知的 14.x 修复阶段。";
@@ -225,6 +229,8 @@ public static partial class Vc14Reinstall
     public static async Task<OperationResult> RunAsync(IVc14ReinstallEnvironment environment, string fingerprint, IProgress<string>? progress, CancellationToken token,
         Vc14RepairMode mode = Vc14RepairMode.Full)
     {
+        if (mode == Vc14RepairMode.RegistrationCleanup)
+            return Vc14RegistrationCleanup.Run(environment, fingerprint, progress, token);
         var attempted = false;
         var result = await RunCoreAsync(environment, fingerprint, progress, token, mode, () => attempted = true);
         if (!attempted) return result;
@@ -659,7 +665,7 @@ internal sealed class Vc14ReinstallEnvironment(bool allowTemporaryInstaller = fa
             var archive = Path.Combine(root, "runtime-repair-history");
             Directory.CreateDirectory(archive);
             File.Move(active, Path.Combine(archive, id + "-exit-" + process.ExitCode + ".json"));
-            return new(process.ExitCode, false, "退出码 " + process.ExitCode + "；日志：" + logs);
+            return Vc14InstallerErrors.Explain(new(process.ExitCode, false, "退出码 " + process.ExitCode + "；日志：" + logs), info, logs);
         }
         catch (Exception ex)
         {

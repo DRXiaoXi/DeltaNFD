@@ -41,6 +41,7 @@ public partial class DashboardViewModel : ObservableObject
     public bool CanRefreshHealth => !IsHealthScanning;
     public bool RuntimeUiEnabled => ReleaseFeatures.RuntimeUiEnabled;
     public bool IsLimitedTestBuild => !RuntimeUiEnabled;
+    public string RuntimeActionText => RuntimeHealthState == DashboardHealthState.Disabled ? "检测设置" : "去处理";
 
     public string HealthSummary => DashboardHealthPresentation.Summary(IsHealthScanning, ShaderHealthState, AceHealthState, RuntimeHealthState);
     [ObservableProperty] private string targetName = "三角洲";
@@ -70,7 +71,24 @@ public partial class DashboardViewModel : ObservableObject
 
     partial void OnShaderHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
     partial void OnAceHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
-    partial void OnRuntimeHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
+    partial void OnRuntimeHealthStateChanged(DashboardHealthState value)
+    { OnPropertyChanged(nameof(HealthSummary)); OnPropertyChanged(nameof(RuntimeActionText)); }
+
+    public void RefreshRuntimeDetectionPreference()
+    {
+        RuntimeDetectionPreference.Shared.Reload();
+        if (!RuntimeUiEnabled) return;
+        if (!RuntimeDetectionPreference.Shared.Enabled)
+        {
+            RuntimeHealthState = DashboardHealthState.Disabled;
+            RuntimeStatusText = "运行库检测已关闭，可在运行库页重新开启。";
+        }
+        else if (RuntimeHealthState == DashboardHealthState.Disabled)
+        {
+            RuntimeHealthState = DashboardHealthState.Information;
+            RuntimeStatusText = "运行库检测已开启，等待重新检测。";
+        }
+    }
     partial void OnIsHealthScanningChanged(bool value)
     { OnPropertyChanged(nameof(CanRefreshHealth)); OnPropertyChanged(nameof(HealthSummary)); }
 
@@ -131,6 +149,7 @@ public partial class DashboardViewModel : ObservableObject
     /// <summary>刷新主页组件状态；调用真实页面后端使用的同一组扫描服务。</summary>
     public async Task RefreshHealthAsync()
     {
+        RefreshRuntimeDetectionPreference();
         if (IsHealthScanning)
         {
             return;
@@ -140,6 +159,7 @@ public partial class DashboardViewModel : ObservableObject
         ShaderCacheNeedsAttention = false;
         ShaderHealthState = AceHealthState = RuntimeHealthState = DashboardHealthState.Checking;
         ShaderStatusText = AceStatusText = RuntimeStatusText = "检测中…";
+        RefreshRuntimeDetectionPreference();
 
         try
         {
@@ -250,8 +270,27 @@ public partial class DashboardViewModel : ObservableObject
 
     private async Task LoadRuntimeHealthAsync()
     {
-        var status = await ServiceLocator.Guard.GetStatusAsync();
-        var scan = await ServiceLocator.Guard.Scan14Async();
+        var preference = RuntimeDetectionPreference.Shared;
+        var read = await preference.ReadAsync(async () =>
+        {
+            var snapshot = preference.Capture();
+            var status = await ServiceLocator.Guard.GetStatusAsync();
+            if (!preference.IsCurrent(snapshot)) throw new OperationCanceledException();
+            var scan = await ServiceLocator.Guard.Scan14Async();
+            return (Status: status, Scan: scan);
+        });
+        if (!preference.IsCurrent(read.Snapshot))
+        {
+            RefreshRuntimeDetectionPreference();
+            if (preference.Enabled)
+            {
+                RuntimeHealthState = DashboardHealthState.Information;
+                RuntimeStatusText = "检测设置已变化，请刷新组件状态重新检测。";
+            }
+            return;
+        }
+        if (read.Error is { } error) throw error;
+        var (status, scan) = read.Value;
         RuntimeHealthState = scan.HasAbnormal ? DashboardHealthState.Abnormal : scan.HasWarning || status.GuardIssue.Length > 0 || status.IfeoRestorePending || status.Ue4RestorePending || status.Ue4PrereqDenied || status.IfeoManagedCount > 0 && !status.IfeoApplied
             ? DashboardHealthState.Warning : DashboardHealthState.Normal;
         RuntimeStatusText = scan.IsMissing ? "缺少 C++ 14.x 运行库，可能导致三角洲无法启动；请进入运行库页安装 14.42"

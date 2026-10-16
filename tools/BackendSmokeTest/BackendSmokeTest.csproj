@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>BackendSmokeTest</RootNamespace>
     <!-- 与产品同版本：官方后端客户端（已链接进本测试）按 AppVersion 校验后端版本。 -->
-    <Version>0.9195</Version>
-    <InformationalVersion>Alpha0.9195</InformationalVersion>
+    <Version>0.9200</Version>
+    <InformationalVersion>Beta0.92</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -49,6 +49,7 @@
     <Compile Include="..\..\src\DeltaNFD\Services\OfflineHelperCompletion.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\OfflineHelperDeadline.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\CpuTopologyService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\CpuCacheRelationshipReader.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\OfflineCpuSetScheduler.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\OfflineCpuSetRecovery.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\FrameTweaksService.cs" />
@@ -78,6 +79,9 @@
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginDiagnostics.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginHistoryQuery.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\DashboardHealthPresentation.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\RuntimeDetectionPreference.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\RuntimeRepairGuidance.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\GpuSpoofPendingRecovery.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\DashboardShaderHealth.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\PluginManagerService.cs" />
     <!--

@@ -12,6 +12,18 @@ internal static class UpdateChannelChecks
         AppSettingsStore.Update(s => s.UpdateServer = UpdateServer.Automatic);
         var count = 0;
         void Check(bool condition, string message) { if (!condition) throw new Exception(message); count++; }
+        var beta92Path = Path.Combine(root, "beta092-defaults.json");
+        UpdateChannelInstallation.Apply(beta92Path, new("beta092", "Beta0.92", ""));
+        Check(AppSettingsStore.Read(beta92Path) is { UpdateChannel: UpdateChannel.Public,
+            UpdateServer: UpdateServer.SelfHosted, UpdateMode: UpdateMode.ChangedFiles },
+            "Beta0.92新安装默认公测、自建服务器、替换文件");
+        AppSettingsStore.Update(beta92Path, s => { s.UpdateServer = UpdateServer.GitHub; s.UpdateMode = UpdateMode.FullInstaller; });
+        UpdateChannelInstallation.Apply(beta92Path, new("beta092-reinstall", "Beta0.92", ""));
+        Check(AppSettingsStore.Read(beta92Path) is { UpdateServer: UpdateServer.GitHub, UpdateMode: UpdateMode.FullInstaller },
+            "Beta0.92重新安装保留用户手选来源和方式");
+        Check(UpdateService.TryParseVersion("0.9200", out var beta92Numeric)
+            && UpdateService.CompareVersions(beta92Numeric, new Version(0, 9199)) > 0,
+            "Beta0.92内部数值0.9200必须高于旧Alpha0.9199");
         var config = UpdateService.LoadConfig(null);
         config.ManifestUrls = [GitHubReleaseSource.ReleasesUrl];
         var service = new UpdateService(config);

@@ -2,7 +2,7 @@ namespace DeltaNFD.ViewModels;
 
 public enum DashboardHealthState
 {
-    Checking, Normal, Information, Warning, Abnormal, NotApplicable, Failed,
+    Checking, Normal, Information, Warning, Abnormal, NotApplicable, Failed, Disabled,
 }
 
 public static class DashboardHealthPresentation
@@ -16,6 +16,7 @@ public static class DashboardHealthPresentation
         DashboardHealthState.Abnormal => "异常",
         DashboardHealthState.NotApplicable => "不适用",
         DashboardHealthState.Failed => "检测失败",
+        DashboardHealthState.Disabled => "已关闭",
         _ => "状态未知",
     };
 
@@ -28,6 +29,7 @@ public static class DashboardHealthPresentation
         if (abnormal > 0) return warning > 0 ? $"{abnormal} 项异常 · {warning} 项提醒" : $"{abnormal} 项异常";
         if (warning > 0) return $"{warning} 项提醒";
         if (states.Contains(DashboardHealthState.Information)) return "存在组件提示";
+        if (states.Contains(DashboardHealthState.Disabled)) return "部分组件检测已关闭";
         if (states.Contains(DashboardHealthState.NotApplicable)) return "部分组件不适用";
         return states.Length > 0 && states.All(s => s == DashboardHealthState.Normal) ? "组件检测正常" : "组件状态未确认";
     }

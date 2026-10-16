@@ -15,12 +15,50 @@ public partial class RuntimeViewModel : ObservableObject
     [ObservableProperty] private string abnormalText = "";
     [ObservableProperty] private string abnormalTitle = "C++ 14.x 运行库异常";
     [ObservableProperty] private string warningText = "";
+    [ObservableProperty] private string detectionStatusText = "尚未检测。";
+    [ObservableProperty] private string manualRepairGuidanceText = "";
+    public bool HasManualRepairGuidance => ManualRepairGuidanceText.Length > 0;
+    public bool RuntimeDetectionEnabled => RuntimeDetectionPreference.Shared.Enabled;
+    public bool CanChangeRuntimeDetection => !RepairIsBusy;
+    partial void OnManualRepairGuidanceTextChanged(string value) => OnPropertyChanged(nameof(HasManualRepairGuidance));
+
+    public void SynchronizeRuntimeDetectionPreference()
+    {
+        RuntimeDetectionPreference.Shared.Reload();
+        OnPropertyChanged(nameof(RuntimeDetectionEnabled));
+        if (!RuntimeDetectionEnabled)
+        {
+            AbnormalText = WarningText = "";
+            DetectionStatusText = "运行库检测已关闭，不再显示兼容性红黄提醒；可随时重新开启。";
+        }
+    }
+
+    public async Task SetRuntimeDetectionEnabledAsync(bool enabled)
+    {
+        RuntimeDetectionPreference.Shared.SetEnabled(enabled);
+        SynchronizeRuntimeDetectionPreference();
+        if (enabled) await RefreshCompatibilityAsync();
+    }
+
+    public string RecordRepairResult(OperationResult result, bool cancelled = false)
+    {
+        ManualRepairGuidanceText = RuntimeRepairGuidance.ForResult(result, cancelled);
+        return RuntimeRepairGuidance.DialogText(RuntimeRepairGuidance.OriginalText(result), ManualRepairGuidanceText);
+    }
+
+    public void RecordRepairBlocker(string blocker)
+    {
+        RepairStatusText = blocker;
+        RecordRepairResult(OperationResult.Fail(blocker));
+    }
+
     public bool HasAbnormal => AbnormalText.Length > 0;
     public bool HasWarning => WarningText.Length > 0;
     partial void OnAbnormalTextChanged(string value) => OnPropertyChanged(nameof(HasAbnormal));
     partial void OnWarningTextChanged(string value) => OnPropertyChanged(nameof(HasWarning));
     partial void OnRepairIsBusyChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanChangeRuntimeDetection));
         OnPropertyChanged(nameof(GuardToggleEnabled));
         OnPropertyChanged(nameof(GuardModeEnabled));
         OnPropertyChanged(nameof(GuardCleanupEnabled));
@@ -124,15 +162,29 @@ public partial class RuntimeViewModel : ObservableObject
         if (GuardIsEnabled && externalOther > 0) GuardStatusText += $"；另有 {externalOther} 项其他程序的 Debugger";
         if (status.CanRepairLegacyUe4Acl) GuardStatusText += "；UE4 前置包残留旧版拒绝执行权限，关闭防护或强制清理时自动移除";
         if (status.GuardIssue.Length > 0) GuardStatusText += "；" + status.GuardIssue + "（可用「强制清理拦截」重置）";
-        try
+        await RefreshCompatibilityAsync();
+    }
+
+    private async Task RefreshCompatibilityAsync()
+    {
+        SynchronizeRuntimeDetectionPreference();
+        if (RuntimeDetectionEnabled) DetectionStatusText = "正在检测运行库…";
+        var read = await RuntimeDetectionPreference.Shared.ReadAsync(() => _guard.Scan14Async());
+        if (!RuntimeDetectionPreference.Shared.IsCurrent(read.Snapshot)) return;
+        if (read.Error is { } error)
         {
-            var scan = await _guard.Scan14Async();
+            AbnormalText = "";
+            WarningText = "14.x 检测未完成，不能视为正常：" + error.Message;
+            DetectionStatusText = "检测未完成，可手动刷新重试。";
+        }
+        else if (read.Value is { } scan)
+        {
             string Format(Vc14Notice n) => n.Name + " · " + n.Architecture + " · " + n.Version + "\n" + n.Detail;
             AbnormalTitle = scan.AbnormalTitle;
             AbnormalText = string.Join("\n\n", scan.GetAbnormalNotices().Select(Format));
             WarningText = string.Join("\n\n", scan.Notices.Where(n => n.Severity == Vc14Severity.Warning).Select(Format).Concat(scan.Issues));
+            DetectionStatusText = "最近检测 " + DateTime.Now.ToString("HH:mm:ss");
         }
-        catch (Exception ex) { AbnormalText = ""; WarningText = "14.x 检测未完成，不能视为正常：" + ex.Message; }
     }
 
     public async Task<OperationResult?> ChangeGuardModeAsync(int index)

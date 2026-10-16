@@ -55,6 +55,7 @@ internal static class Vc14Diagnostics
                             Publisher = Text("Publisher"), BundleVersion = Text("BundleVersion"), BundleCachePath = Text("BundleCachePath"),
                             UninstallString = Text("UninstallString"), QuietUninstallString = Text("QuietUninstallString"),
                             WindowsInstaller = key?.GetValue("WindowsInstaller"),
+                            MsiDiagnosticStateCode = scan.MsiStateDiagnostics.FirstOrDefault(p => p.ProductCode.Equals(keyName, StringComparison.OrdinalIgnoreCase))?.StateCode,
                             VerifiedProductCode = scan.Products.FirstOrDefault(p => p.Code.Equals(keyName, StringComparison.OrdinalIgnoreCase))?.Code });
                         if (registrations.Count >= 256) { errors.Add("登记证据达到 256 项上限，后续项未收集。"); break; }
                     }
@@ -74,9 +75,11 @@ internal static class Vc14Diagnostics
             }
             // One latest snapshot avoids creating a directory on every homepage refresh.
             var report = Path.Combine(Log.LogDirectory, "vc14-detection-latest.json");
-            Write(report, new { CapturedUtc = DateTimeOffset.UtcNow, ProductVersion = FileVersionInfo.GetVersionInfo(typeof(Vc14Diagnostics).Assembly.Location).ProductVersion,
+            Write(report, new { MsiStateDiagnosticsVersion = 1, MsiDiagnosticCoverage = Vc14MsiStateDiagnostics.Limitations,
+                CapturedUtc = DateTimeOffset.UtcNow, ProductVersion = FileVersionInfo.GetVersionInfo(typeof(Vc14Diagnostics).Assembly.Location).ProductVersion,
                 Scan = scan, Registrations = registrations, CoreDlls = dlls, EvidenceIssues = errors });
-            Log.Info($"14.x 检测：已核验组件 {scan.Products.Count}，登记提醒 {scan.Notices.Count}，待核对 {scan.Issues.Count}；报告：{report}");
+            Log.Info($"14.x 检测：已核验组件 {scan.Products.Count}，登记提醒 {scan.Notices.Count}，待核对 {scan.Issues.Count}，MSI 状态诊断 {scan.MsiStateDiagnostics.Count} 项"
+                + (scan.MsiStateDiagnosticsTruncated ? "（诊断达到上限，未收集完整）" : "") + $"；报告：{report}");
             foreach (var issue in scan.Issues) Log.Warn("14.x 组件待核对：" + issue);
             return report;
         }

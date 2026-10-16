@@ -21,6 +21,7 @@ public sealed partial class RuntimePage : Page
     private async void Repair14_Click(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.GuardCleanupEnabled) return;
+        ViewModel.ManualRepairGuidanceText = "";
         var mode = ((sender as Button)?.Tag as string) switch
         {
             "uninstall" or "full-uninstall" => Vc14RepairMode.UninstallOnly,
@@ -37,17 +38,17 @@ public sealed partial class RuntimePage : Page
         {
             ViewModel.RepairStatusText = "正在核对 14.x 登记、安装原包和事务状态…";
             var preview = await ViewModel.PreviewRepairAsync(mode, allowTemporary);
-            if (!preview.CanRepair) { ViewModel.RepairStatusText = preview.Blocker; return; }
+            if (!preview.CanRepair) { ViewModel.RecordRepairBlocker(preview.Blocker); return; }
             if (mode != Vc14RepairMode.InstallOnly && preview.RemovalPlan.Any(p => p.CanRemove)
                 && !await ChooseRuntimeEnvironmentAsync(cancellation.Token, async () =>
             {
                 var current = await ViewModel.PreviewRepairAsync(mode, allowTemporary);
-                if (!current.CanRepair) ViewModel.RepairStatusText = current.Blocker;
+                if (!current.CanRepair) ViewModel.RecordRepairBlocker(current.Blocker);
                 return current.CanRepair;
             })) return;
             if (!await HandleRuntimeFileUseAsync(cancellation.Token)) return;
             preview = await ViewModel.PreviewRepairAsync(mode, allowTemporary);
-            if (!preview.CanRepair) { ViewModel.RepairStatusText = preview.Blocker; return; }
+            if (!preview.CanRepair) { ViewModel.RecordRepairBlocker(preview.Blocker); return; }
             var list = string.Join("\n", preview.RemovalPlan.Select(p =>
                 p.Name + " · " + p.Architecture + " · " + p.Version + "（" + (p.CanRemove ? p.Kind switch
                     { "msi" => "已核验 14.x MSI", "bundle" => "已核验包装", "inf" => "已核验旧 14.x INF", _ => "登记卸载命令" } : "保留不处理") + "）\n  " + p.Method));
@@ -93,22 +94,29 @@ public sealed partial class RuntimePage : Page
             { ViewModel.RepairStatusText = "已取消，未执行卸载或安装。"; return; }
             if (installerConsent is not null && installerConsent.IsChecked != true) return;
             var result = await ViewModel.RepairAsync(preview.Fingerprint, cancellation.Token, mode, allowTemporary);
-            var stageMessage = fullUninstallStage
-                ? result.Message + "\n\n这是全量修复的 V14 卸载阶段。恢复临时 Installer 设置后，请手动重启回正常模式，再点击“预览全量修复”重新确认；2005–2013 与其他组件尚未安装，不会自动续跑。"
-                : result.Message;
+            var stageMessage = fullUninstallStage && result.Success
+                ? RuntimeRepairGuidance.OriginalText(result) + "\n\n这是全量修复的 V14 卸载阶段。恢复临时 Installer 设置后，请手动重启回正常模式，再点击“预览全量修复”重新确认；2005–2013 与其他组件尚未安装，不会自动续跑。"
+                : RuntimeRepairGuidance.OriginalText(result);
             ViewModel.RepairStatusText = stageMessage;
+            ViewModel.RecordRepairResult(result, cancellation.IsCancellationRequested);
             await new ContentDialog { XamlRoot = XamlRoot, Title = result.Success
                     ? mode == Vc14RepairMode.UninstallOnly ? "卸载阶段完成，等待正常模式安装" : "14.x 安装及复检完成" : "14.x 操作未完成",
-                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = stageMessage, TextWrapping = TextWrapping.Wrap } },
+                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = RuntimeRepairGuidance.DialogText(stageMessage, ViewModel.ManualRepairGuidanceText), TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } },
                 CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
         }
-        catch (Exception ex) { ViewModel.RepairStatusText = "操作未完成：" + ex.Message; await ShowRuntimeExceptionAsync(ex); }
+        catch (Exception ex)
+        {
+            ViewModel.RepairStatusText = "操作未完成：" + ex.Message;
+            ViewModel.RecordRepairResult(new OperationResult { Message = ViewModel.RepairStatusText, OutcomeUnknown = true }, cancellation.IsCancellationRequested || ex is OperationCanceledException);
+            await ShowRuntimeExceptionAsync(ex);
+        }
         finally { _repairCancellation = null; ViewModel.RepairIsBusy = false; if (!_startupExitPending) await ViewModel.LoadGuardAsync(); }
     }
 
     public RuntimePage()
     {
         if (!ReleaseFeatures.RuntimeUiEnabled) throw new InvalidOperationException("此测试版未开放运行库，请更新到完整版。");
+        ViewModel.SynchronizeRuntimeDetectionPreference();
         InitializeComponent(); _ = ViewModel.LoadGuardAsync();
     }
 
@@ -138,6 +146,7 @@ public sealed partial class RuntimePage : Page
     private async void RepairHighFps_Click(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.GuardCleanupEnabled) return;
+        ViewModel.ManualRepairGuidanceText = "";
         if (AdvancedStartupRestart.IsSafeMode)
         {
             var proceed = false;
@@ -161,16 +170,16 @@ public sealed partial class RuntimePage : Page
         {
             ViewModel.RepairStatusText = "正在校验全量修复资源与处理清单…";
             var preview = await ViewModel.PreviewHighFpsAsync(false);
-            if (!preview.CanRepair) { ViewModel.RepairStatusText = preview.Blocker; return; }
+            if (!preview.CanRepair) { ViewModel.RecordRepairBlocker(preview.Blocker); return; }
             if (preview.HasUninstallSteps && !await ChooseRuntimeEnvironmentAsync(cancellation.Token, async () =>
             {
                 var current = await ViewModel.PreviewHighFpsAsync(false);
-                if (!current.CanRepair) ViewModel.RepairStatusText = current.Blocker;
+                if (!current.CanRepair) ViewModel.RecordRepairBlocker(current.Blocker);
                 return current.CanRepair;
             }, fullRepair: true)) return;
             if (!await HandleRuntimeFileUseAsync(cancellation.Token, RuntimeFileUseScope.FullRepair)) return;
             preview = await ViewModel.PreviewHighFpsAsync(false);
-            if (!preview.CanRepair) { ViewModel.RepairStatusText = preview.Blocker; return; }
+            if (!preview.CanRepair) { ViewModel.RecordRepairBlocker(preview.Blocker); return; }
             var description = (preview.HasUninstallSteps ? "将在当前环境受控卸载清单中的 V14，优先使用已核验的微软原包装并复检。" : "已核对无待卸载项或仅需继续补装已核验的 14.42 基线。")
                 + "C++ 2005–2013 不先卸载，使用十个微软 x86/x64 原包逐包安装或修复。另处理 VSTO 与旧 VC/VB 辅助组件，最后安装你提供的 14.42 双架构基线。已核验的较新旧版 C++ 组件保留，不盲目降级。"
                 + "\n14.42普通原包修复后DLL仍是错误版本时，会自动尝试一次忽略文件版本的原始MSI重装，并再次检查实际DLL。";
@@ -188,12 +197,18 @@ public sealed partial class RuntimePage : Page
             if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary || cancellation.IsCancellationRequested)
             { ViewModel.RepairStatusText = "已取消，未执行修复。"; return; }
             var result = await ViewModel.RepairHighFpsAsync(preview.Fingerprint, false, cancellation.Token);
-            ViewModel.RepairStatusText = result.Message;
+            ViewModel.RepairStatusText = RuntimeRepairGuidance.OriginalText(result);
+            var resultText = ViewModel.RecordRepairResult(result, cancellation.IsCancellationRequested);
             await new ContentDialog { XamlRoot = XamlRoot, Title = result.Success ? "修复及复检完成" : "修复未完成",
-                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = result.Message, TextWrapping = TextWrapping.Wrap } },
+                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = resultText, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } },
                 CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
         }
-        catch (Exception ex) { ViewModel.RepairStatusText = "操作未完成：" + ex.Message; await ShowRuntimeExceptionAsync(ex); }
+        catch (Exception ex)
+        {
+            ViewModel.RepairStatusText = "操作未完成：" + ex.Message;
+            ViewModel.RecordRepairResult(new OperationResult { Message = ViewModel.RepairStatusText, OutcomeUnknown = true }, cancellation.IsCancellationRequested || ex is OperationCanceledException);
+            await ShowRuntimeExceptionAsync(ex);
+        }
         finally { _repairCancellation = null; ViewModel.RepairIsBusy = false; if (!_startupExitPending) await ViewModel.LoadGuardAsync(); }
     }
     private async void RefreshGuard_Click(object sender, RoutedEventArgs e) => await ViewModel.LoadGuardAsync();

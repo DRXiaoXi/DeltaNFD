@@ -100,7 +100,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
     public string DwmStatusText => !FrameSrv.DwmRestartOnGameStart ? "未启用"
         : FrameSrv.IsGameRunning ? "已选择 · 目标正在运行" : "已启用 · 等待目标启动";
     public string ResponseStatusText => FrameFeatureState.Describe(FrameSrv.ResponseBoostEnabled,
-        FrameSrv.ResponseBoostCoreParkingEnabled || FrameSrv.ResponseBoostEcoQosEnabled || FrameSrv.ResponseBoostTimerEnabled,
+        FrameSrv.ResponseBoostTimerEnabled,
         FrameSrv.FrameModeEnabled);
     public string ForegroundStatusText => FrameFeatureState.Describe(FrameSrv.ForegroundBoostEnabled,
         FrameSrv.ForegroundResponsivenessEnabled || FrameSrv.ForegroundPriorityEnabled, FrameSrv.FrameModeEnabled);
@@ -109,16 +109,6 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
         FrameSrv.FrameModeEnabled);
 
     // 绑定回写可能由界面刷新触发；父功能关闭或帧格激活时不覆盖保存的子选项。
-    public bool CoreParkingSelected
-    {
-        get => FrameFeatureState.IsSelected(FrameSrv.ResponseBoostEnabled, FrameSrv.ResponseBoostCoreParkingEnabled);
-        set { if (SubTogglesEditable) FrameSrv.ResponseBoostCoreParkingEnabled = value; }
-    }
-    public bool EcoQosSelected
-    {
-        get => FrameFeatureState.IsSelected(FrameSrv.ResponseBoostEnabled, FrameSrv.ResponseBoostEcoQosEnabled);
-        set { if (SubTogglesEditable) FrameSrv.ResponseBoostEcoQosEnabled = value; }
-    }
     public bool TimerSelected
     {
         get => FrameFeatureState.IsSelected(FrameSrv.ResponseBoostEnabled, FrameSrv.ResponseBoostTimerEnabled);
@@ -153,7 +143,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
     private static readonly string[] FeaturePresentationProperties =
     {
         nameof(DwmStatusText), nameof(ResponseStatusText), nameof(ForegroundStatusText), nameof(PowerSaveStatusText),
-        nameof(CoreParkingSelected), nameof(EcoQosSelected), nameof(TimerSelected),
+        nameof(TimerSelected),
         nameof(ResponsivenessSelected), nameof(PrioritySelected), nameof(NicSelected), nameof(UsbSelected),
         nameof(PcieSelected),
         nameof(SubTogglesEditable), nameof(ForegroundSubTogglesEditable), nameof(PowerSaveSubTogglesEditable),
@@ -193,8 +183,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
 
         if (e.PropertyName is null or "" or nameof(IFrameService.FeaturesEditable) or nameof(IFrameService.FrameModeEnabled)
             or nameof(IFrameService.IsGameRunning) or nameof(IFrameService.DwmRestartOnGameStart)
-            or nameof(IFrameService.ResponseBoostEnabled) or nameof(IFrameService.ResponseBoostCoreParkingEnabled)
-            or nameof(IFrameService.ResponseBoostEcoQosEnabled) or nameof(IFrameService.ResponseBoostTimerEnabled)
+            or nameof(IFrameService.ResponseBoostEnabled) or nameof(IFrameService.ResponseBoostTimerEnabled)
             or nameof(IFrameService.ForegroundBoostEnabled) or nameof(IFrameService.ForegroundResponsivenessEnabled)
             or nameof(IFrameService.ForegroundPriorityEnabled) or nameof(IFrameService.PowerSaveLatencyEnabled)
             or nameof(IFrameService.NicPowerSavingOffEnabled) or nameof(IFrameService.UsbSuspendOffEnabled)

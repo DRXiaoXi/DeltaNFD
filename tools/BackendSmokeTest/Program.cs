@@ -1,5 +1,68 @@
 using DeltaNFD.Services;
 
+if (args is ["--vc14-msi-state-checks"])
+{
+    try { Vc14MsiStateChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--vc14-msi-state-native-readonly"])
+{
+    try { Vc14MsiStateChecks.ReadNative(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--ccd-model-checks"])
+{
+    try { CcdModelChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--gpu-spoof-recovery-checks"])
+{
+    try { await GpuSpoofRecoveryChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--runtime-detection-preference-checks"])
+{
+    try { await RuntimeDetectionPreferenceChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--vc14-registration-checks"])
+{
+    try { await Vc14RegistrationChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--vc14-registration-log-replay", var registrationSnapshot, var registryErrorLog])
+{
+    try { Vc14RegistrationChecks.Replay(registrationSnapshot, registryErrorLog); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--vc14-registration-native-readonly"])
+{
+    try
+    {
+        var evidence = Vc14MsiOrphans.ReadAbsence(Guid.NewGuid().ToString("B"));
+        if (!evidence.ConfirmedAbsent && ElevationHelper.IsElevated) throw new IOException("Native absence query not confirmed: " + evidence.Detail);
+        Console.WriteLine(evidence.ConfirmedAbsent
+            ? "Native MSI absence query passed in all requested contexts. Read only; no registry or service writes."
+            : "Native MSI query remained unconfirmed in this non-elevated host and correctly denies cleanup: " + evidence.Detail + ". Read only; no registry or service writes.");
+    }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args is ["--vc14-ownership-checks", var ownershipRoot])
 {
     try { Vc14OwnershipChecks.Run(ownershipRoot); }
@@ -1137,27 +1200,10 @@ Console.WriteLine("=== DefenderGuard 预检状态（只读） ===");
     }
 }
 
-// 加速系统响应模式原语只读验证（PDH 停靠计数轮询 3 秒 + 定时器分辨率读取）
+// 系统定时器分辨率只读验证
 Console.WriteLine();
 Console.WriteLine("=== 加速系统响应模式原语（只读验证） ===");
 Console.WriteLine($"当前系统定时器分辨率：{DeltaNFD.Native.ProcessPerf.QueryTimerResolutionMs():0.###} ms");
-var loop = new DeltaNFD.Native.CoreParkingLoop();
-int? lastParked = null;
-var observed = 0;
-loop.Start(p =>
-{
-    if (p != lastParked)
-    {
-        lastParked = p;
-        observed++;
-        Console.WriteLine($"  停靠核心数：{p}");
-    }
-});
-await Task.Delay(3000);
-loop.Stop();
-Console.WriteLine($"核心常驻轮询环运行 3 秒，停靠计数变化 {observed} 次（0 次说明停靠数稳定，机制仍在轮询）");
-Console.WriteLine();
-
 // CPU 集（软亲和性）自检：对本测试进程设置默认集 → 读回 → 还原为全部核心
 Console.WriteLine("=== CPU 集（软亲和性）原语自检（本进程，结束前还原） ===");
 {

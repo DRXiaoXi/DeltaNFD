@@ -143,12 +143,22 @@ internal static class CpuFrameStatusChecks
                 new CpuFrameToggleArgs { Enabled = false }, null, CancellationToken.None);
             Check(prioOff.Status == BackendResultStatuses.Ok, "priority.apply(false) 无目标时安全返回 ok");
 
-            var boostOn = await client.InvokeAsync(BackendCommands.CpuFrameBoostApply,
-                new CpuFrameBoostArgs { CoreParking = true, EcoQos = false, Timer = false }, null, CancellationToken.None);
-            Check(boostOn.Status == BackendResultStatuses.Ok, "boost.apply 核心常驻可开启（后端自身轮询，不写系统）");
+            foreach (var retired in new[] {
+                new CpuFrameBoostArgs { CoreParking = true, Timer = true },
+                new CpuFrameBoostArgs { EcoQos = true, Timer = true },
+                new CpuFrameBoostArgs { CoreParking = true, EcoQos = true, Timer = true } })
+            {
+                var refused = await client.InvokeAsync(BackendCommands.CpuFrameBoostApply, retired, null, CancellationToken.None);
+                Check(refused.Status == BackendResultStatuses.Failed && refused.Message.Contains("已移除"),
+                    "旧协议开启退休功能时明确拒绝整个请求");
+                var after = await client.InvokeAsync(BackendCommands.CpuFrameStatus, new { }, null, CancellationToken.None);
+                Check(after.Status == BackendResultStatuses.Ok && after.Data is not null &&
+                    !BackendJson.Deserialize<CpuFrameStatusSnapshot>(after.Data.Value).TimerActive,
+                    "退休请求被拒绝后不会顺带启动计时器");
+            }
             var boostOff = await client.InvokeAsync(BackendCommands.CpuFrameBoostApply,
                 new CpuFrameBoostArgs { CoreParking = false, EcoQos = false, Timer = false }, null, CancellationToken.None);
-            Check(boostOff.Status == BackendResultStatuses.Ok, "boost.apply 可关闭");
+            Check(boostOff.Status == BackendResultStatuses.Ok, "旧协议的关闭请求继续接受");
 
             // 6) 目标切换：后端在下一次 tick 同步新目标并自增代次（重新复核路径）。
             var notRunning = Path.Combine(root, "not-running-target.exe");
@@ -165,6 +175,17 @@ internal static class CpuFrameStatusChecks
             }
             Check(switched is not null, "目标切换后后端代次自增并改为新路径");
             Check(!switched!.GameRunning, "新目标无匹配进程时报告未运行（不把偏好当生效）");
+
+            var timerWaiting = await client.InvokeAsync(BackendCommands.CpuFrameBoostApply,
+                new CpuFrameBoostArgs { Timer = true }, null, CancellationToken.None);
+            Check(timerWaiting.Status == BackendResultStatuses.Ok, "计时器可配置为随游戏启动，不把等待状态当失败");
+            var waitingStatus = await client.InvokeAsync(BackendCommands.CpuFrameStatus, new { }, null, CancellationToken.None);
+            Check(waitingStatus.Status == BackendResultStatuses.Ok && waitingStatus.Data is not null &&
+                !BackendJson.Deserialize<CpuFrameStatusSnapshot>(waitingStatus.Data.Value).TimerActive,
+                "无目标游戏时仍不请求定时器");
+            Check((await client.InvokeAsync(BackendCommands.CpuFrameBoostApply,
+                new CpuFrameBoostArgs { Timer = false }, null, CancellationToken.None)).Status == BackendResultStatuses.Ok,
+                "仅计时器的新请求可正常关闭");
 
             // 7) 断线：杀掉后端进程后调用必须如实失败，不能折算成功。
             // Only disconnect the process launched by this isolated test. Never enumerate and

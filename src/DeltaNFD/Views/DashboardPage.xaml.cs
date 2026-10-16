@@ -27,6 +27,7 @@ public sealed partial class DashboardPage : Page
         _attached = true;
         ServiceLocator.GameTarget.Changed += OnTargetChanged;
         ViewModel.RefreshTargetDisplay();
+        ViewModel.RefreshRuntimeDetectionPreference();
         ViewModel.StartOptimizationScan();
     }
 
@@ -86,7 +87,7 @@ public sealed partial class DashboardPage : Page
             : Microsoft.UI.Text.FontWeights.Normal;
 
     public Visibility ActionVisibility(DashboardHealthState state) =>
-        state is DashboardHealthState.Warning or DashboardHealthState.Abnormal or DashboardHealthState.Failed
+        state is DashboardHealthState.Warning or DashboardHealthState.Abnormal or DashboardHealthState.Failed or DashboardHealthState.Disabled
             ? Visibility.Visible
             : Visibility.Collapsed;
 

@@ -3,8 +3,25 @@ namespace DeltaNFD.Services;
 public enum Vc14Severity { Normal, Warning, Abnormal }
 public sealed record Vc14Entry(string Code, string Name, string Version, string Architecture, string Role, string UpgradeCode);
 public sealed record Vc14Notice(string Name, string Version, string Architecture, Vc14Severity Severity, string Detail);
+/// <summary>只读诊断信息，不构成 MSI 身份、健康状态或可删除登记的证明。</summary>
+public sealed record Vc14MsiPropertyDiagnostic(string Property, uint? ReturnCode, string Result, string Value)
+{
+    public bool ValueTruncated { get; init; }
+}
+public sealed record Vc14MsiInstanceDiagnostic(uint Context, string ContextName, string UserContext,
+    IReadOnlyList<Vc14MsiPropertyDiagnostic> Properties);
+public sealed record Vc14MsiContextDiagnostic(string Scope, uint ContextMask, uint? ReturnCode, string Result,
+    bool Complete, IReadOnlyList<Vc14MsiInstanceDiagnostic> Instances, string Detail);
+public sealed record Vc14MsiStateDiagnostic(string ProductCode, int StateCode, string StateName, string StateMeaning,
+    DateTimeOffset CapturedUtc, IReadOnlyList<Vc14MsiContextDiagnostic> Contexts, string Summary, string Limitations)
+{
+    public IReadOnlyList<string> Sources { get; init; } = [];
+    public IReadOnlyList<int> ObservedStateCodes { get; init; } = [];
+}
 public sealed record Vc14Scan(IReadOnlyList<Vc14Entry> Products, IReadOnlyList<Vc14Notice> Notices, IReadOnlyList<string> Issues)
 {
+    public IReadOnlyList<Vc14MsiStateDiagnostic> MsiStateDiagnostics { get; init; } = [];
+    public bool MsiStateDiagnosticsTruncated { get; init; }
     // An incomplete scan cannot prove absence. ARP wrappers and Appx notices do not prove installed CRTs.
     public bool IsMissing => Products.Count == 0 && Issues.Count == 0;
     public string AbnormalTitle => IsMissing ? "缺少 C++ 14.x 运行库" : "14.x 兼容性异常：已安装 14.51 或 Visual C++ v14 组件";
@@ -17,7 +34,7 @@ public sealed record Vc14Scan(IReadOnlyList<Vc14Entry> Products, IReadOnlyList<V
         foreach (var notice in Notices.Where(n => n.Severity == Vc14Severity.Abnormal)) yield return notice;
     }
 }
-public enum Vc14RepairMode { Full, UninstallOnly, InstallOnly }
+public enum Vc14RepairMode { Full, UninstallOnly, InstallOnly, RegistrationCleanup }
 public sealed class Vc14RepairArgs
 {
     public string Fingerprint { get; set; } = "";

@@ -31,6 +31,7 @@ public sealed class AppSettings
 
     /// <summary>临时显卡伪装的注册表路径（登录还原用）。</summary>
     public string TempSpoofRestorePath { get; set; } = "";
+    public string TempSpoofRestoreId { get; set; } = "";
 
     // ---- 帧格：电源计划锁定 ----
     /// <summary>帧格功能：开启一键帧格模式时锁定电源计划（游戏期间防止被修改），退出时解除。</summary>
@@ -46,13 +47,7 @@ public sealed class AppSettings
     /// <summary>总开关：帧格页「加速系统响应模式」。</summary>
     public bool FrameResponseBoostEnabled { get; set; }
 
-    /// <summary>子开关①：核心常驻（PDH 停放状态轮询 + 亲和性轮转，防核心停放），默认开。</summary>
-    public bool FrameResponseBoostCoreParkingEnabled { get; set; } = true;
-
-    /// <summary>子开关②：游戏进程禁用电源限制（EcoQoS off），默认开。</summary>
-    public bool FrameResponseBoostEcoQosEnabled { get; set; } = true;
-
-    /// <summary>子开关③：帧格+游戏运行期间系统定时器 0.5ms，默认开。</summary>
+    /// <summary>帧格和游戏运行期间系统定时器 0.5ms，默认开。</summary>
     public bool FrameResponseBoostTimerEnabled { get; set; } = true;
 
     // ---- 帧格：内存清理（实验性；清空待备内存列表） ----
@@ -152,6 +147,9 @@ public sealed class AppSettings
 
     // ---- 运行库保护 ----
     public bool RuntimeGuardEnabled { get; set; }
+
+    /// <summary>主页及运行库页的兼容性检测；不改变防护，也不跳过手动修复的安全核验。</summary>
+    public bool RuntimeDetectionEnabled { get; set; } = true;
 
     // ---- 一键优化（真实执行的步骤开关） ----
     public bool OptimizeCleanProcesses { get; set; } = true;
@@ -306,6 +304,18 @@ public static class AppSettingsStore
         }
     }
 
+    /// <summary>恢复核对不能把损坏、不可读或空配置当作没有待恢复任务。</summary>
+    public static AppSettings ReadRequired(string? path = null)
+    {
+        path = Path.GetFullPath(path ?? DefaultPath);
+        lock (Gate)
+        {
+            if (!File.Exists(path)) return new AppSettings();
+            using var stream = File.OpenRead(path);
+            return JsonSerializer.Deserialize<AppSettings>(stream) ?? throw new IOException("设置文件为空，无法核对恢复状态。");
+        }
+    }
+
     /// <summary>线程安全地读出 → 修改 → 原子写回。</summary>
     public static void Update(Action<AppSettings> mutate) => Update(DefaultPath, mutate);
 
@@ -332,6 +342,15 @@ public static class AppSettingsStore
     }
 
     public static void Update(string path, Action<AppSettings> mutate)
+        => UpdateCore(path, mutate, required: false);
+
+    /// <summary>恢复收尾等事务使用：配置损坏或保存失败时抛出，不得宣称完成。</summary>
+    public static void UpdateRequired(string path, Action<AppSettings> mutate)
+        => UpdateCore(path, mutate, required: true);
+
+    public static void UpdateRequired(Action<AppSettings> mutate) => UpdateRequired(DefaultPath, mutate);
+
+    private static void UpdateCore(string path, Action<AppSettings> mutate, bool required)
     {
         path = Path.GetFullPath(path);
         var digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(path.ToUpperInvariant())));
@@ -345,16 +364,22 @@ public static class AppSettingsStore
         {
             if (ResetWriteBlocks.ContainsKey(path)) throw new InvalidOperationException("恢复出厂设置期间暂停配置写入，请等待工具关闭后重新打开。");
             Cache.Remove(path); // Writers must reload under the cross-process lease, not modify an old snapshot.
-            var settings = ReadCore(path);
+            var settings = required && File.Exists(path)
+                ? JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? throw new IOException("设置文件为空，未覆盖原配置。")
+                : ReadCore(path);
             mutate(settings);
             var saved = AppSettings.Save(path, settings);
             if (saved)
             {
+                if (required && !JsonSerializer.SerializeToUtf8Bytes(settings).SequenceEqual(
+                    JsonSerializer.SerializeToUtf8Bytes(JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)))))
+                    throw new IOException("设置保存后的回读核验失败，请保留恢复记录。");
                 Cache[path] = (settings.Copy(), GetStamp(path));
             }
             else
             {
                 Cache.Remove(path);
+                if (required) throw new IOException("无法保存设置，恢复收尾未完成；请检查数据目录权限后重试。");
             }
         }
         }

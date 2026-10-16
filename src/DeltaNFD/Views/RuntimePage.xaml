@@ -7,10 +7,28 @@
                 <TextBlock Text="运行库" Style="{StaticResource PageTitleStyle}" />
                 <TextBlock Text="C++ 14.x 兼容性检测、V14 单独修复、全量修复与安装器防护。" Style="{StaticResource PageSubtitleStyle}" TextWrapping="Wrap" />
             </StackPanel>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <ToggleSwitch Header="运行库检测" OnContent="检测已开启" OffContent="检测已关闭"
+                                  IsOn="{x:Bind ViewModel.RuntimeDetectionEnabled, Mode=OneWay}" Toggled="RuntimeDetection_Toggled"
+                                  IsEnabled="{x:Bind ViewModel.CanChangeRuntimeDetection, Mode=OneWay}" />
+                    <TextBlock Text="关闭后，主页和本页停止运行库兼容性检测及红黄提醒；设置会保存。运行库防护保持原状，手动修复仍会核验身份、依赖和安装结果。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <TextBlock Text="{x:Bind ViewModel.DetectionStatusText, Mode=OneWay}" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
             <InfoBar IsOpen="{x:Bind ViewModel.HasAbnormal, Mode=OneWay}" IsClosable="False" Severity="Error"
                      Title="{x:Bind ViewModel.AbnormalTitle, Mode=OneWay}" Message="{x:Bind ViewModel.AbnormalText, Mode=OneWay}" />
             <InfoBar IsOpen="{x:Bind ViewModel.HasWarning, Mode=OneWay}" IsClosable="False" Severity="Warning"
                      Title="版本提醒或登记待核对" Message="{x:Bind ViewModel.WarningText, Mode=OneWay}" />
+            <InfoBar IsOpen="{x:Bind ViewModel.HasManualRepairGuidance, Mode=OneWay}" IsClosable="False" Severity="Warning"
+                     Title="手动处理与检测设置">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="{x:Bind ViewModel.ManualRepairGuidanceText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                    <Button Content="打开 Windows 已安装的应用" Click="OpenInstalledApps_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" />
+                    <Button Content="打开 14.42 原包文件夹" Click="OpenBaselineFolder_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" />
+                    <TextBlock Text="原包：vc_redist.x64.exe 与 vc_redist.x86.exe。此处只打开文件夹，需你手动确认并运行安装器。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </InfoBar>
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
                     <TextBlock Text="C++ 14.x 全量重装" Style="{StaticResource SectionTitleStyle}" />
@@ -24,6 +42,8 @@
                     <StackPanel Spacing="8">
                         <Button Content="仅卸载 14.x，稍后在正常模式安装" Tag="uninstall" Click="Repair14_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" />
                         <Button Content="继续安装 14.42" Tag="install" Click="Repair14_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" />
+                        <Button Content="预览并仅清理失效登记" Click="CleanupRegistrations_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" />
+                        <TextBlock Text="运行库已修复但仍有旧版本提醒时，可单独核对并清理失效显示登记；保留已安装组件，每项先备份再处理。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                         <Button Content="恢复临时 Installer 设置" Click="RestoreInstaller_Click" />
                         <TextBlock Text="分阶段操作：卸载后回正常模式手动安装。安全模式下可在确认窗口勾选临时启用 Windows Installer；执行后恢复原值，中断时可手动核对恢复。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                     </StackPanel>

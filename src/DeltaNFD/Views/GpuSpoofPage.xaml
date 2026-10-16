@@ -178,10 +178,10 @@
 
                     <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right" Margin="0,10,0,0">
                         <Button Content="恢复原始型号"
-                                Click="RestoreButton_Click" />
+                                Click="RestoreButton_Click" IsEnabled="{x:Bind ViewModel.CanRefresh, Mode=OneWay}" />
                         <Button Style="{StaticResource AccentButtonStyle}"
                                 Content="{x:Bind ViewModel.PrimaryActionText, Mode=OneWay}"
-                                Click="SpoofButton_Click" />
+                                Click="SpoofButton_Click" IsEnabled="{x:Bind ViewModel.CanRefresh, Mode=OneWay}" />
                         <ProgressRing Width="28" Height="28"
                                       IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
                                       Foreground="{StaticResource AppAccentBrush}"
@@ -191,6 +191,13 @@
             </Border>
 
             <!-- 说明 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="临时还原收尾" FontWeight="SemiBold" />
+                    <TextBlock Text="型号已恢复，却仍提示等待还原且没有备份时，可核对待还原目标并完成记录收尾。不会修改显卡型号或驱动。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <Button Content="核对并完成临时还原收尾" Click="CompletePendingRestore_Click" IsEnabled="{x:Bind ViewModel.CanRefresh, Mode=OneWay}" />
+                </StackPanel>
+            </Border>
             <Border Style="{StaticResource CardBorderStyle}" Padding="20,14">
                 <StackPanel Spacing="6">
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"

@@ -50,6 +50,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "VC14 reinstall policy regression" }
           dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --vc14-staged-checks
           if ($LASTEXITCODE -ne 0) { throw "VC14 staged repair regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --vc14-registration-checks
+          if ($LASTEXITCODE -ne 0) { throw "VC14 stale registration and Installer error regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --vc14-msi-state-checks
+          if ($LASTEXITCODE -ne 0) { throw "VC14 MSI state diagnostics regression" }
+            dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-detection-preference-checks
+            if ($LASTEXITCODE -ne 0) { throw "Runtime detection preference and manual guidance regression" }
+            dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --gpu-spoof-recovery-checks
+            if ($LASTEXITCODE -ne 0) { throw "GPU spoof restore completion regression" }
+            & "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -ExecutionPolicy Bypass -File tools/Repair-GpuSpoofPending.ps1 -SelfTest
+            if ($LASTEXITCODE -ne 0) { throw "GPU spoof pending recovery script regression" }
           dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --safe-installer-checks
           if ($LASTEXITCODE -ne 0) { throw "Temporary safe-mode Installer regression" }
           dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-file-use-checks
@@ -109,6 +119,9 @@ jobs:
 
       - name: GPU spoof driver-change warning checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --gpu-spoof-watch-checks
+
+      - name: AMD CCD model and legacy Windows topology checks (read-only fixtures)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --ccd-model-checks
 
       - name: Shader SM5 fallback and SM6 priority checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --shader-path-checks

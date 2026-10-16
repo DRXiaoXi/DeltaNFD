@@ -113,7 +113,7 @@
                         <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.RuntimeStatusText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                    Foreground="{x:Bind StatusBrush(ViewModel.RuntimeHealthState), Mode=OneWay}"
                                    FontWeight="{x:Bind WeightFor(ViewModel.RuntimeHealthState), Mode=OneWay}" VerticalAlignment="Center"/>
-                        <Button Grid.Column="3" Tag="runtime" Click="JumpButton_Click" Content="去处理" Padding="12,5"
+                        <Button Grid.Column="3" Tag="runtime" Click="JumpButton_Click" Content="{x:Bind ViewModel.RuntimeActionText, Mode=OneWay}" Padding="12,5"
                                 Visibility="{x:Bind ActionVisibility(ViewModel.RuntimeHealthState), Mode=OneWay}" VerticalAlignment="Center"/>
                     </Grid>
 

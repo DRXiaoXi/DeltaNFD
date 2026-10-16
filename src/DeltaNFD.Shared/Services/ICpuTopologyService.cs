@@ -78,6 +78,9 @@ public sealed class CpuTopology
     /// <summary>AMD：CCD 数量；无法判定或非 AMD 为 0。</summary>
     public required int CcdCount { get; init; }
 
+    /// <summary>精确型号表中的出厂 CCD 数量；0 表示未收录，不代表本机可用的调度分组。</summary>
+    public int ModelCcdCount { get; init; }
+
     public CcdDetectionSource CcdDetectionSource { get; init; }
 
     public required List<CcdInfo> Ccds { get; init; }

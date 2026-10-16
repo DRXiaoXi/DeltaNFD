@@ -220,6 +220,8 @@
                         <ProgressRing x:Name="FeedbackProgressRing" Width="22" Height="22" IsActive="False" />
                     </StackPanel>
                     <TextBlock x:Name="FeedbackStatusText" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite" />
+                    <InfoBar x:Name="FeedbackResultBar" IsOpen="False" IsClosable="True"
+                             AutomationProperties.LiveSetting="Assertive" />
                 </StackPanel>
             </Border>
 
@@ -674,34 +676,29 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1" CornerRadius="8" Padding="14">
                         <StackPanel Spacing="7">
-                            <TextBlock Text="【是否想更低成本调用主流大模型？】" FontWeight="SemiBold" TextWrapping="Wrap" />
-                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                <TextBlock Text="网站传送门：" VerticalAlignment="Center" />
-                                <HyperlinkButton Content="www.lynshen.org" NavigateUri="https://www.lynshen.org/"
-                                                 Padding="0" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <TextBlock Text="✨全场国产模型低至 0.55x" TextWrapping="Wrap" />
-                            <TextBlock Text="GLM-5.3-Flash、DeepSeek-V4.1-Flash 低至 0.2x" TextWrapping="Wrap" />
-                            <TextBlock Text="GPT 全系模型也低至 0.2x" TextWrapping="Wrap" />
-                            <TextBlock Text="kimi 限时0.2x" TextWrapping="Wrap" />
-                            <TextBlock Text="【充值时输入优惠码 65NEF55V】 🪧还可再享 5% 充值优惠"
-                                       TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                            <TextBlock Text="【是否想更低成本调用Astra？】" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True">
+                                <Run Text="网站传送门：" /><Hyperlink NavigateUri="https://www.lynshen.org/"><Run Text="www.lynshen.org" /></Hyperlink>
+                            </TextBlock>
+                            <TextBlock Text="✨GPT全系模型低至 0.06x" TextWrapping="Wrap" />
+                            <TextBlock Text="Claude 全系模型也低至 0.0821x" TextWrapping="Wrap" />
+                            <TextBlock Text="DeepSeekV4.1Flash也低至0.4x" TextWrapping="Wrap" />
+                            <TextBlock Text="这简直就是在白送token" TextWrapping="Wrap" />
+                            <TextBlock Text="而且还有超值套餐选购，最高可以获得1.86倍的API积分利用率" TextWrapping="Wrap" />
+                            <TextBlock Text="【充值时输入优惠码 65NEF55V】" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                            <TextBlock Text="🪧还可再享 5% 充值优惠" TextWrapping="Wrap" />
+                            <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True">
+                                <Run Text="如果质疑模型纯净程度，可以使用" /><Hyperlink NavigateUri="https://lm.ikale.io/"><Run Text="lm.ikale.io" /></Hyperlink><Run Text="网站检测模型指纹来判断" />
+                            </TextBlock>
                             <TextBlock Text="✨交流群【1124358530】" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                <TextBlock Text="【邀请码】" VerticalAlignment="Center" />
-                                <HyperlinkButton Content="点击注册" NavigateUri="https://www.lynshen.org/login?mode=register&amp;invite=65NEF55V"
-                                                 Padding="0" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <TextBlock Text="【同时有 Lynshen Agent [Aogiri] 客户端，支持大部分主流操作系统】"
+                            <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True">
+                                <Run Text="【邀请码】" /><Hyperlink NavigateUri="https://www.lynshen.org/login?mode=register&amp;invite=65NEF55V"><Run Text="https://www.lynshen.org/login?mode=register&amp;invite=65NEF55V" /></Hyperlink>
+                            </TextBlock>
+                            <TextBlock Text="【同时有Lynshen Agent[Aogiri]客户端支持大部分主流操作系统】"
                                        FontWeight="SemiBold" TextWrapping="Wrap" />
                             <TextBlock Text="Windows，MacOS Intel/MacOS Apple，Linux Deb，Linux rpm，Linux AppImage"
                                        TextWrapping="Wrap" />
-                            <TextBlock Text="【同时支持兼容 Codex CLI、Claude Code CLI 后端，支持迁移历史对话、Skills 和 MCP 进行无缝切换】"
-                                       TextWrapping="Wrap" />
-                            <TextBlock Text="【模型具有】" FontWeight="SemiBold" TextWrapping="Wrap" />
-                            <TextBlock Text="DeepSeek-V4.1-Flash&#xA;claude-fable-5&#xA;claude-fable-5-1&#xA;claude-opus-4-6&#xA;claude-opus-4-7&#xA;claude-opus-4-8&#xA;claude-opus-5&#xA;claude-opus-5-5&#xA;claude-sonnet-5&#xA;chat-gpt-6-sol&#xA;chat-gpt-6-astra&#xA;chat-gpt-6.1-sol&#xA;chat-gpt-5.6-sol&#xA;chat-gpt-6-luna&#xA;glm-5.3&#xA;glm-5.3-flash&#xA;kimi-k3"
-                                       TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-                            <TextBlock Text="Aogiri 客户端进入公测阶段，新用户首次使用客户端可获得 7 天国模免费套餐（限时活动）。"
+                            <TextBlock Text="【同时支持兼容codex cli claude-codecli后端，支持迁移历史对话，skills和MCP 进行无缝切换】"
                                        TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>

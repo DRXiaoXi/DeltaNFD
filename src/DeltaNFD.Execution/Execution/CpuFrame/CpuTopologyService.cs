@@ -24,7 +24,6 @@ public sealed class CpuTopologyService : ICpuTopologyService
     private const int RelationCache = 2;
     private const int RelationGroup = 4;
     private const int RelationProcessorDie = 5;
-    private const int CacheLevelL3 = 3;
 
     // ---------------- GetTopologyAsync ----------------
 
@@ -68,14 +67,15 @@ public sealed class CpuTopologyService : ICpuTopologyService
         var hasHt = cores.Any(c => c.Smt);
         var logicalProcessors = cores.Sum(c => c.LogicalProcessors.Count);
 
+        var ccdModel = isAmd ? AmdCcdModelCatalog.Find(cpuName) : null;
         var (ccds, ccdSource) = isAmd
-            ? CcdTopologyDetector.Detect(detectedCores, dieEntries, l3Entries)
+            ? CcdTopologyDetector.Detect(detectedCores, dieEntries, l3Entries, ccdModel)
             : (new List<CcdInfo>(), CcdDetectionSource.Unknown);
         var isMultiCcd = isAmd && ccds.Count >= 2;
 
         var allMask = GetSingleGroupAffinityMask(detectedCores, groupLpCounts);
 
-        var ccdAdvice = BuildCcdAdvice(isAmd, ccds, ccdSource);
+        var ccdAdvice = BuildCcdAdvice(isAmd, ccds, ccdSource, ccdModel, groupLpCounts.Count);
         
         // 计算物理核心数量：P核心数量 = P核心掩码的逻辑线程数 ÷ 2（支持超线程）
         // E核心数量 = E核心掩码的逻辑线程数 ÷ 1（不支持超线程）
@@ -94,6 +94,7 @@ public sealed class CpuTopologyService : ICpuTopologyService
             IsHybrid = isHybrid, PCoreCount = pCoreCount, ECoreCount = eCoreCount,
             HasHyperThreading = hasHt,
             IsAmd = isAmd, IsAmdMultiCcd = isMultiCcd, CcdCount = isAmd ? ccds.Count : 0,
+            ModelCcdCount = ccdModel?.CcdCount ?? 0,
             Ccds = ccds, CcdAdvice = ccdAdvice, CcdDetectionSource = ccdSource,
             AllMask = allMask,
             PCoreMask = hybrid.PCoreMask,
@@ -996,12 +997,9 @@ public sealed class CpuTopologyService : ICpuTopologyService
 
         WalkTopology(RelationCache, (buffer, offset, size) =>
         {
-            if (size < 56 || Marshal.ReadByte(buffer, offset + 8) != CacheLevelL3 ||
-                (ushort)Marshal.ReadInt16(buffer, offset + 38) != 1) return;
-            l3Entries.Add(new CpuDomain(
-                (ushort)Marshal.ReadInt16(buffer, offset + 48),
-                (ulong)Marshal.ReadInt64(buffer, offset + 40),
-                Marshal.ReadInt32(buffer, offset + 12)));
+            var record = new byte[size];
+            Marshal.Copy(buffer + offset, record, 0, size);
+            if (CpuCacheRelationshipReader.TryReadL3(record, out var domain)) l3Entries.Add(domain);
         });
 
         WalkTopology(RelationGroup, (buffer, offset, size) =>
@@ -1020,13 +1018,17 @@ public sealed class CpuTopologyService : ICpuTopologyService
         return new TopologyData(cores, groupLpCounts, l3Entries, dieEntries);
     }
 
-    private static string BuildCcdAdvice(bool isAmd, List<CcdInfo> ccds, CcdDetectionSource source)
+    internal static string BuildCcdAdvice(bool isAmd, List<CcdInfo> ccds, CcdDetectionSource source, AmdCcdModel? model, int groupCount = 1)
     {
         if (!isAmd) return "非 AMD 处理器，CCD 判定不适用。";
-        if (ccds.Count == 0) return "未能可靠识别 CCD 结构，相关双 CCD 调度不可用。";
+        var design = model is null ? "" : $"{model.Name} 为双 CCD 设计（型号表）。";
+        if (ccds.Count == 0) return design + "尚未确认本机 CCD 的核心分组，双 CCD 调度暂不可用。请核对 BIOS 核心设置、Windows 版本及虚拟化环境后重新检测。";
         var sourceText = source == CcdDetectionSource.ProcessorDie ? "处理器 Die 拓扑" : "L3 覆盖掩码兜底";
-        if (ccds.Count == 1) return $"单 CCD 设计（{ccds[0].CoreCount} 核，L3 {ccds[0].L3CacheMb:0} MB；依据：{sourceText}）。";
+        if (ccds.Count == 1) return design + $"当前仅确认 1 个可用 CCD（{ccds[0].CoreCount} 核，L3 {ccds[0].L3CacheMb:0} MB；依据：{sourceText}），双 CCD 调度暂不可用。";
         var ccdText = string.Join("；", ccds.Select(c => $"CCD{c.Index}（{c.CoreCount} 核，L3 {c.L3CacheMb:0} MB）"));
-        return $"检测到 {ccds.Count} 个 CCD（依据：{sourceText}）：{ccdText}。可通过核心锁定把游戏绑定到指定 CCD。";
+        return design + $"已确认 {ccds.Count} 个 CCD 的核心分组（依据：{sourceText}）：{ccdText}。" +
+            (ccds.Count == 2 && groupCount == 1 && ccds.All(c => c.Group == 0)
+                ? "可通过双 CCD 调度把游戏绑定到指定 CCD。"
+                : "当前双 CCD 调度仅支持单处理器组内的两个 CCD，此布局暂不可用。");
     }
 }

@@ -21,6 +21,30 @@ internal static class BugFeedbackChecks
             Check(BugFeedbackService.Validate(input with { Area = "未知" }).Length > 0, "未知模块拒绝");
             Check(BugFeedbackService.Validate(input with { Description = "短" }).Length > 0, "描述过短拒绝");
             Check(BugFeedbackService.Validate(input with { Contact = new string('a', 201) }).Length > 0, "联系方式长度受限");
+            var videoInput = input with { Title = "v14安装不上", Description = "没做什么" };
+            var videoIssues = BugFeedbackService.ValidateFields(videoInput);
+            Check(videoIssues is [{ Field: BugFeedbackField.Description }], "视频案例准确定位描述框");
+            Check(videoIssues[0].Message.Contains("当前 4 个字") && videoIssues[0].Message.Contains("还差 6 个字"), "视频案例明确当前字数与差额");
+            Check(BugFeedbackService.DescriptionProgress(videoInput.Description).Contains("4/8000") &&
+                BugFeedbackService.DescriptionProgress(videoInput.Description).Contains("还差 6 字"), "输入时显示同一计数规则");
+            var allIssues = BugFeedbackService.ValidateFields(input with { Title = "", Area = "", Description = "", Contact = new string('x', 201) });
+            Check(allIssues.Select(i => i.Field).SequenceEqual(new[] { BugFeedbackField.Title, BugFeedbackField.Area, BugFeedbackField.Description, BugFeedbackField.Contact }),
+                "一次列出全部错误，并按表单顺序确定焦点");
+            Check(allIssues.All(i => i.Message.Length > 0), "每个字段都有具体说明");
+            Check(BugFeedbackService.Validate(input with { Title = "  两字  ", Description = "  一二三四五六七八九十  " }) == "", "去除首尾空白后达到最小长度可提交");
+            Check(BugFeedbackService.ValidateFields(input with { Description = "一二三四五六七八九" }) is [{ Field: BugFeedbackField.Description }], "九字仍拦截");
+            Check(BugFeedbackService.ValidateFields(input with { Description = new string('中', 8000) }).Count == 0, "描述长度上限可提交");
+            Check(BugFeedbackService.ValidateFields(input with { Description = new string('中', 8001) }) is [{ Field: BugFeedbackField.Description }], "超长描述给出字段错误");
+            Check(BugFeedbackService.ValidateFields(input with { Title = new string('中', 101) }) is [{ Field: BugFeedbackField.Title }], "超长标题给出字段错误");
+            Check(BugFeedbackService.CharacterCount("  😀😀😀😀😀  ") == 5, "计数使用Unicode字符，与服务器字符数一致");
+            Check(BugFeedbackService.ValidateFields(input with { Description = "😀😀😀😀😀" }) is [{ Field: BugFeedbackField.Description }], "不能将五个代理对字符误当十字");
+            Check(BugFeedbackService.ValidateFields(input with { Description = "😀😀😀😀😀😀😀😀😀😀" }).Count == 0, "十个Unicode字符可提交");
+            Check(BugFeedbackService.DescriptionProgress("   ").Contains("0/8000") &&
+                BugFeedbackService.DescriptionProgress("一二三四五六七八九十").Contains("还差") == false, "补足字数后清除差额提示");
+            var blockedBeforeRead = false;
+            try { BugFeedbackService.Prepare(videoInput, root); }
+            catch (ArgumentException ex) { blockedBeforeRead = ex.Message == videoIssues[0].Message; }
+            Check(blockedBeforeRead, "不合格内容在收集日志或提交前拦截，并使用同一错误说明");
             var redacted = BugFeedbackService.Redact("机器：TestPC · 用户：Alice · 管理员：是\nC:\\Users\\Alice\\private\\file.log\ntoken=super-secret\npassword: secret");
             Check(!redacted.Contains("Alice") && !redacted.Contains("TestPC") && !redacted.Contains("super-secret"), "路径、机器名和凭据去除");
             Check(redacted.Contains("private") && redacted.Contains("管理员"), "保留排障上下文");
@@ -63,10 +87,23 @@ internal static class BugFeedbackChecks
                 using var rejected = new HttpClient(new Handler(_ => Task.FromResult(new HttpResponseMessage(status))));
                 Check(!(await BugFeedbackService.SubmitAsync(package, rejected, CancellationToken.None)).Success, "错误和重定向不冒充成功：" + status);
             }
+            foreach (var (status, detail) in new[]
+            {
+                (HttpStatusCode.BadRequest, "重新填写"), (HttpStatusCode.Forbidden, "联系作者"),
+                (HttpStatusCode.TooManyRequests, "一分钟"), (HttpStatusCode.RequestEntityTooLarge, "取消附带日志"),
+            })
+            {
+                using var rejected = new HttpClient(new Handler(_ => Task.FromResult(new HttpResponseMessage(status))));
+                var failure = await BugFeedbackService.SubmitAsync(package, rejected, CancellationToken.None);
+                Check(!failure.Success && failure.Message.Contains(detail), "失败原因包含可执行下一步：" + status);
+            }
             using var badReceipt = new HttpClient(new Handler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"status\":\"accepted\",\"receipt\":\"wrong\"}") })));
             Check(!(await BugFeedbackService.SubmitAsync(package, badReceipt, CancellationToken.None)).Success, "错误回执拒绝");
             using var canceled = new HttpClient(new Handler(_ => throw new OperationCanceledException()));
             Check(!(await BugFeedbackService.SubmitAsync(package, canceled, CancellationToken.None)).Success, "取消结果保留未知，不伪报成功");
+            using var disconnected = new HttpClient(new Handler(_ => throw new HttpRequestException()));
+            var networkFailure = await BugFeedbackService.SubmitAsync(package, disconnected, CancellationToken.None);
+            Check(!networkFailure.Success && networkFailure.Message.Contains("网络连接失败") && networkFailure.Message.Contains("同一编号"), "网络失败解释原因并保留同编号重试语义");
             if (fixturePath is not null) { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(fixturePath))!); File.WriteAllBytes(fixturePath, package.Archive); }
             Console.WriteLine($"Bug feedback client: {count} checks passed; synthetic logs and mock HTTP only. No real feedback uploaded.");
         }

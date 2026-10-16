@@ -11,6 +11,8 @@ namespace DeltaNFD.Services;
 public sealed record BugFeedbackInput(string Title, string Area, string Description, string Contact, bool IncludeLogs);
 public sealed record BugFeedbackPackage(Guid RequestId, byte[] Archive, string Preview, int LogCount);
 public sealed record BugFeedbackResult(bool Success, string Message, string Receipt = "");
+public enum BugFeedbackField { Title, Area, Description, Contact }
+public sealed record BugFeedbackValidationIssue(BugFeedbackField Field, string Message);
 
 /// <summary>只在玩家确认后发送。预览与发送使用同一份不可变快照；不上传配置、系统文件或任意附件。</summary>
 public static class BugFeedbackService
@@ -18,17 +20,41 @@ public static class BugFeedbackService
     public const string Endpoint = "https://deltaxiaoxi.xin/api/feedback";
     public const int MaximumArchiveBytes = 4 * 1024 * 1024;
     internal const int MaximumLogBytes = 256 * 1024;
+    public const int MinimumTitleCharacters = 2;
+    public const int MaximumTitleCharacters = 100;
+    public const int MinimumDescriptionCharacters = 10;
+    public const int MaximumDescriptionCharacters = 8000;
     public static readonly string[] Areas = ["运行库", "内存回收", "后台抑制", "帧格", "ACE相关", "着色器", "NVIDIA设置", "进程管理", "自动更新", "其他"];
     private static readonly HttpClient Client = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(90) };
 
-    public static string Validate(BugFeedbackInput input)
+    public static int CharacterCount(string text) => text.Trim().EnumerateRunes().Count();
+
+    public static string DescriptionProgress(string text)
     {
-        if (input.Title.Trim().EnumerateRunes().Count() is < 2 or > 100) return "请填写 2–100 字的问题标题。";
-        if (!Areas.Contains(input.Area)) return "请选择问题所在模块。";
-        if (input.Description.Trim().EnumerateRunes().Count() is < 10 or > 8000) return "请用 10–8000 字描述操作步骤、实际结果和预期结果。";
-        if (input.Contact.Length > 200) return "联系方式请控制在 200 字以内，也可以留空。";
-        return "";
+        var count = CharacterCount(text);
+        return $"已填写 {count}/{MaximumDescriptionCharacters} 字（首尾空白不计）" +
+            (count < MinimumDescriptionCharacters ? $"，至少需要 {MinimumDescriptionCharacters} 字，还差 {MinimumDescriptionCharacters - count} 字。" : "。");
     }
+
+    public static IReadOnlyList<BugFeedbackValidationIssue> ValidateFields(BugFeedbackInput input)
+    {
+        var issues = new List<BugFeedbackValidationIssue>();
+        var titleCount = CharacterCount(input.Title);
+        if (titleCount < MinimumTitleCharacters)
+            issues.Add(new(BugFeedbackField.Title, $"问题标题至少需要 {MinimumTitleCharacters} 个字，当前 {titleCount} 个字。请概括遇到的问题。"));
+        else if (titleCount > MaximumTitleCharacters)
+            issues.Add(new(BugFeedbackField.Title, $"问题标题最多 {MaximumTitleCharacters} 个字，当前 {titleCount} 个字。请缩短标题。"));
+        if (!Areas.Contains(input.Area)) issues.Add(new(BugFeedbackField.Area, "请选择问题所在模块；不确定时可以选择“其他”。"));
+        var descriptionCount = CharacterCount(input.Description);
+        if (descriptionCount < MinimumDescriptionCharacters)
+            issues.Add(new(BugFeedbackField.Description, $"问题描述至少需要 {MinimumDescriptionCharacters} 个字，当前 {descriptionCount} 个字，还差 {MinimumDescriptionCharacters - descriptionCount} 个字。请补充操作步骤、实际结果和预期结果。"));
+        else if (descriptionCount > MaximumDescriptionCharacters)
+            issues.Add(new(BugFeedbackField.Description, $"问题描述最多 {MaximumDescriptionCharacters} 个字，当前 {descriptionCount} 个字。请删减后再试。"));
+        if (input.Contact.Length > 200) issues.Add(new(BugFeedbackField.Contact, "联系方式最多 200 字，请缩短或留空。"));
+        return issues;
+    }
+
+    public static string Validate(BugFeedbackInput input) => ValidateFields(input).FirstOrDefault()?.Message ?? "";
 
     public static BugFeedbackPackage Prepare(BugFeedbackInput input) => Prepare(input, Log.LogDirectory);
 
@@ -129,6 +155,8 @@ public static class BugFeedbackService
             }
             return new(false, response.StatusCode switch
             {
+                HttpStatusCode.BadRequest => "服务器拒绝了反馈格式或内容（HTTP 400）。请重新填写并生成预览；仍然失败时请联系作者。",
+                HttpStatusCode.Forbidden => "服务器拒绝访问（HTTP 403）。请稍后重试，持续出现时请联系作者。",
                 HttpStatusCode.NotFound or HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable => "反馈服务暂不可用，请稍后重试。",
                 HttpStatusCode.TooManyRequests => "提交较频繁，请稍等一分钟后重试。",
                 HttpStatusCode.RequestEntityTooLarge => "反馈包超过服务器限制，请取消附带日志后重新提交。",
