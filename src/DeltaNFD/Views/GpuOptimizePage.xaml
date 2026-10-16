@@ -1,0 +1,201 @@
+<Page
+    x:Class="DeltaNFD.Views.GpuOptimizePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer>
+        <StackPanel MaxWidth="1080" Padding="28,20,28,32" Spacing="16">
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="显卡优化" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="针对三角洲行动的驱动级设置建议，降低延迟、稳住帧数" Style="{StaticResource PageSubtitleStyle}" />
+            </StackPanel>
+
+            <InfoBar IsOpen="{x:Bind ViewModel.IsApplyInfoVisible, Mode=OneWay}"
+                     Severity="Success"
+                     Title="应用成功"
+                     Message="{x:Bind ViewModel.ApplyResultText, Mode=OneWay}"
+                     IsClosable="True"
+                     CloseButtonClick="ApplyInfoBar_CloseButtonClick" />
+
+            <!-- GPU 信息卡 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="24">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Spacing="8" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Border Width="44" Height="44" CornerRadius="10" Background="{StaticResource AppAccentChipBrush}">
+                                <TextBlock Text="Δ" FontSize="22" FontWeight="Bold"
+                                           Foreground="{StaticResource AppAccentBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind ViewModel.GpuModel, Mode=OneWay}"
+                                           FontSize="18" FontWeight="SemiBold" />
+                                <TextBlock Text="{x:Bind ViewModel.GpuSpecText, Mode=OneWay}"
+                                           Style="{StaticResource CardDescStyle}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Border Style="{StaticResource ChipBorderStyle}"
+                                    Background="{ThemeResource ControlFillColorDefaultBrush}">
+                                <TextBlock FontSize="11" Opacity="0.8">
+                                    <Run Text="驱动版本 " /><Run Text="{x:Bind ViewModel.DriverVersion, Mode=OneWay}" FontWeight="SemiBold" />
+                                </TextBlock>
+                            </Border>
+                            <Border Style="{StaticResource ChipBorderStyle}" Background="{StaticResource AppAccentChipBrush}">
+                                <TextBlock Text="已针对游戏优化" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource AppAccentBrush}" />
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+                        <ProgressRing Width="64" Height="64" IsIndeterminate="False"
+                                      Value="{x:Bind ViewModel.Temperature, Mode=OneWay}" Maximum="100"
+                                      Foreground="{StaticResource AppAccentBrush}" />
+                        <TextBlock Text="{x:Bind ViewModel.TemperatureText, Mode=OneWay}"
+                                   FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                        <TextBlock Text="核心温度" FontSize="11" Opacity="0.55" HorizontalAlignment="Center" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Spacing="6" VerticalAlignment="Center">
+                        <ProgressRing Width="64" Height="64" IsIndeterminate="False"
+                                      Value="{x:Bind ViewModel.Usage, Mode=OneWay}" Maximum="100"
+                                      Foreground="{StaticResource AppAccentBrush}" />
+                        <TextBlock Text="{x:Bind ViewModel.UsageText, Mode=OneWay}"
+                                   FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                        <TextBlock Text="当前占用" FontSize="11" Opacity="0.55" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 优化设置 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="4">
+                    <Grid Margin="0,0,0,8">
+                        <TextBlock Text="优化设置" Style="{StaticResource SectionTitleStyle}" VerticalAlignment="Center" />
+                        <Button Content="恢复推荐方案" HorizontalAlignment="Right"
+                                Command="{x:Bind ViewModel.ApplyRecommendedCommand}" />
+                    </Grid>
+
+                    <!-- 低延迟模式 -->
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="低延迟模式" FontWeight="SemiBold" />
+                            <TextBlock Text="Ultra 低延迟可显著降低操作输入延迟，推荐「超极速」" Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" MinWidth="150" VerticalAlignment="Center"
+                                  ItemsSource="{x:Bind ViewModel.LowLatencyOptions}"
+                                  SelectedIndex="{x:Bind ViewModel.LowLatencyIndex, Mode=TwoWay}" />
+                    </Grid>
+
+                    <!-- 电源管理模式 -->
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="电源管理模式" FontWeight="SemiBold" />
+                            <TextBlock Text="「最高性能优先」避免游戏中降压降频导致掉帧" Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" MinWidth="150" VerticalAlignment="Center"
+                                  ItemsSource="{x:Bind ViewModel.PowerModeOptions}"
+                                  SelectedIndex="{x:Bind ViewModel.PowerModeIndex, Mode=TwoWay}" />
+                    </Grid>
+
+                    <!-- 着色器缓存 -->
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="着色器缓存大小" FontWeight="SemiBold" />
+                            <TextBlock Text="更大的缓存减少地图加载时的编译卡顿" Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" MinWidth="150" VerticalAlignment="Center"
+                                  ItemsSource="{x:Bind ViewModel.ShaderCacheOptions}"
+                                  SelectedIndex="{x:Bind ViewModel.ShaderCacheIndex, Mode=TwoWay}" />
+                    </Grid>
+
+                    <!-- 线程优化 -->
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="线程优化" FontWeight="SemiBold" />
+                            <TextBlock Text="多核 CPU 建议保持「自动」即可" Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" MinWidth="150" VerticalAlignment="Center"
+                                  ItemsSource="{x:Bind ViewModel.ThreadOptOptions}"
+                                  SelectedIndex="{x:Bind ViewModel.ThreadOptIndex, Mode=TwoWay}" />
+                    </Grid>
+
+                    <!-- 垂直同步 -->
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="垂直同步" FontWeight="SemiBold" />
+                            <TextBlock Text="关闭后帧数不受刷新率限制（配合低延迟模式更流畅）" Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" IsOn="{x:Bind ViewModel.VerticalSync, Mode=TwoWay}"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <!-- 数字振动 -->
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="数字振动" FontWeight="SemiBold" />
+                            <TextBlock Text="提高画面饱和度，暗部敌人更容易辨认（55% ~ 65% 推荐）" Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock Text="{x:Bind ViewModel.VibranceText, Mode=OneWay}" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" MinWidth="44" TextAlignment="Right" />
+                            <Slider Width="180" Minimum="0" Maximum="100" StepFrequency="1"
+                                    Value="{x:Bind ViewModel.DigitalVibrance, Mode=TwoWay}"
+                                    VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right" Margin="0,10,0,0">
+                        <Button Style="{StaticResource AccentButtonStyle}"
+                                Content="应用设置"
+                                Command="{x:Bind ViewModel.ApplySettingsCommand}" />
+                        <ProgressRing Width="28" Height="28"
+                                      IsActive="{x:Bind ViewModel.IsApplying, Mode=OneWay}"
+                                      Foreground="{StaticResource AppAccentBrush}"
+                                      VerticalAlignment="Center" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 说明 -->
+            <Border Style="{StaticResource CardBorderStyle}" Padding="20,14">
+                <TextBlock Text="演示说明：当前版本的显卡设置为模拟应用，正式版将通过显卡驱动接口（NVIDIA App / AMD Adrenalin）写入真实配置。"
+                           Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

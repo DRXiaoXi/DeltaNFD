@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DeltaNFD.Views.PluginEntryPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:DeltaNFD.Views">
+
+    <!--
+        侧栏独立入口：只导航并渲染已验证的声明式界面，与管理页共享同一份宿主状态与配置。
+        打开本页不启动、不重连、不移交、不恢复、不调用后端；离开本页不停止持续插件。
+    -->
+    <ScrollViewer>
+        <StackPanel MaxWidth="1080" Padding="28,20,28,32" Spacing="16">
+
+            <StackPanel Spacing="4">
+                <TextBlock x:Name="EntryTitleText" Text="插件入口" Style="{StaticResource PageTitleStyle}" TextWrapping="Wrap" />
+                <TextBlock x:Name="EntrySubtitleText" Style="{StaticResource PageSubtitleStyle}" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="插件状态" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock x:Name="EntryMetaText" Style="{StaticResource CardDescStyle}"
+                               TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                    <TextBlock x:Name="EntryStateText" Style="{StaticResource CardDescStyle}"
+                               TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="打开插件管理…" Click="OpenManagement_Click"
+                                AutomationProperties.Name="打开插件管理页" />
+                        <Button x:Name="RefreshButton" Content="刷新状态" Click="Refresh_Click"
+                                AutomationProperties.Name="刷新插件状态" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="插件界面" Style="{StaticResource SectionTitleStyle}" />
+                    <local:PluginDeclarativeView x:Name="DeclarativeView" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

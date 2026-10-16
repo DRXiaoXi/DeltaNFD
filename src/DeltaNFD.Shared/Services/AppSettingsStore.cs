@@ -1,0 +1,363 @@
+using System.Text.Json;
+
+namespace DeltaNFD.Services;
+
+public enum UpdateChannel { Internal, Public }
+public enum UpdateServer { Automatic, GitHub, SelfHosted }
+public enum UpdateMode { ChangedFiles, FullInstaller }
+
+/// <summary>
+/// 全部功能开关的共享持久化仓库（%APPDATA%\Delta NFD\settings.json）。
+/// 各服务都通过这里读写整份设置，避免各自为政互相覆盖字段。
+/// </summary>
+public sealed class AppSettings
+{
+    internal AppSettings Copy() => (AppSettings)MemberwiseClone();
+    // ---- 帧格 ----
+    public bool DwmRestartOnGameStart { get; set; }
+    public bool GpuSpoofEnabled { get; set; }
+    public string GpuSpoofApplyMode { get; set; } = "Reboot";
+    public string GpuSpoofRegistryPath { get; set; } = "";
+    public string GpuSpoofFakeName { get; set; } = "";
+    public bool FrameModeActive { get; set; }
+    /// <summary>帧格功能选项；只有此开关和 FrameModeActive 同时开启才执行。</summary>
+    public bool FrameBackgroundSuppressionEnabled { get; set; }
+    public bool FrameAutomaticMemoryEnabled { get; set; }
+
+    // ---- 显卡伪装：临时重启生效的登录还原登记 ----
+    /// <summary>true = 重启后登录时需要还原原显卡型号。</summary>
+    public bool TempSpoofRestorePending { get; set; }
+    public string GpuSpoofWatchJson { get; set; } = "[]";
+
+    /// <summary>临时显卡伪装的注册表路径（登录还原用）。</summary>
+    public string TempSpoofRestorePath { get; set; } = "";
+
+    // ---- 帧格：电源计划锁定 ----
+    /// <summary>帧格功能：开启一键帧格模式时锁定电源计划（游戏期间防止被修改），退出时解除。</summary>
+    public bool FramePowerLockEnabled { get; set; }
+
+    /// <summary>帧格电源锁定要锁定的目标计划 GUID；空 = 锁定开启时的当前计划（不切换）。</summary>
+    public string FramePowerLockTargetGuid { get; set; } = "";
+
+    /// <summary>帧格开启电源锁定时记住的用户原电源计划 GUID（退出时还原）。</summary>
+    public string FramePowerPreviousSchemeGuid { get; set; } = "";
+
+    // ---- 帧格：加速系统响应模式（不改电源计划，运行时行为零残留） ----
+    /// <summary>总开关：帧格页「加速系统响应模式」。</summary>
+    public bool FrameResponseBoostEnabled { get; set; }
+
+    /// <summary>子开关①：核心常驻（PDH 停放状态轮询 + 亲和性轮转，防核心停放），默认开。</summary>
+    public bool FrameResponseBoostCoreParkingEnabled { get; set; } = true;
+
+    /// <summary>子开关②：游戏进程禁用电源限制（EcoQoS off），默认开。</summary>
+    public bool FrameResponseBoostEcoQosEnabled { get; set; } = true;
+
+    /// <summary>子开关③：帧格+游戏运行期间系统定时器 0.5ms，默认开。</summary>
+    public bool FrameResponseBoostTimerEnabled { get; set; } = true;
+
+    // ---- 帧格：内存清理（实验性；清空待备内存列表） ----
+    /// <summary>帧格功能：内存清理（standby list 清空），帧格激活时自动触发 + 手动执行；实验性功能默认关。</summary>
+    public bool FrameMemoryCleanEnabled { get; set; }
+
+    /// <summary>游戏内自动清理开关：三角洲运行期间内存占用达到阈值时自动清空，默认开。</summary>
+    public bool FrameMemoryCleanGameAutoEnabled { get; set; } = true;
+
+    /// <summary>游戏内自动清理阈值：系统内存占用百分比（30–95），达到即触发清理，默认 80。</summary>
+    public int FrameMemoryCleanThresholdPercent { get; set; } = 80;
+
+    // ---- 帧格：前台加速响应（调度参数临时改写，退出帧格自动还原） ----
+    /// <summary>总开关：帧格页「前台加速响应」。</summary>
+    public bool FrameForegroundBoostEnabled { get; set; }
+
+    /// <summary>子开关①：系统后台资源预留 20%→10%（SystemResponsiveness=0x0A），默认开。</summary>
+    public bool FrameForegroundResponsivenessEnabled { get; set; } = true;
+
+    /// <summary>子开关②：前台游戏优先调度（Win32PrioritySeparation=0x1A），默认开。</summary>
+    public bool FrameForegroundPriorityEnabled { get; set; } = true;
+
+    // ---- 帧格：降低省电延迟（网卡/USB 省电临时关闭，退出帧格自动还原） ----
+    /// <summary>总开关：帧格页「降低省电延迟」。</summary>
+    public bool FramePowerSaveLatencyEnabled { get; set; }
+
+    /// <summary>子开关①：网卡省电全禁（物理网卡 EnablePowerManagement=0 + PnPCapabilities=24），默认开。</summary>
+    public bool FrameNicPowerSavingOffEnabled { get; set; } = true;
+
+    /// <summary>子开关②：关闭 USB 选择性暂停（全局 DisableSelectiveSuspend=1 + 电源计划 AC/DC），默认开。</summary>
+    public bool FrameUsbSuspendOffEnabled { get; set; } = true;
+
+    /// <summary>子开关③：关闭 PCIe 省电（电源计划「PCI Express → 链接状态电源管理」ASPM 设为关闭），默认开。</summary>
+    public bool FramePcieAspmOffEnabled { get; set; } = true;
+    public string FramePowerLockedSchemeGuid { get; set; } = "";
+    public bool FramePowerRestorePending { get; set; }
+
+    // ---- 旧版帧格显卡伪装迁移标记（保留以清理升级前的用户配置） ----
+    /// <summary>旧版是否保存过临时帧格伪装配置；新版本启动时会清除并必要时还原原型号。</summary>
+    public bool GpuSpoofFrameConfigured { get; set; }
+
+    // ---- 帧格：双CCD 调度（实验室页登记为帧格生效后的帧格侧开关） ----
+    /// <summary>帧格功能：双CCD 调度（帧格生效登记存在时）是否随帧格模式自动应用，默认开。</summary>
+    public bool DualCcdFrameEnabled { get; set; } = true;
+
+    // ---- 双CCD 专属调度（实验室页；帧格生效模式随帧格开关自动启停） ----
+    public int DualCcdGameCcdIndex { get; set; }
+    public int DualCcdApplyModeIndex { get; set; }
+
+    /// <summary>双CCD「立即生效」是否已启用；应用重启后按所选 CCD 重新应用。</summary>
+    public bool DualCcdImmediateEnabled { get; set; }
+
+    /// <summary>单CCD 排除 CPU0 规则是否已启用；应用重启后重新登记并持续应用。</summary>
+    public bool SingleCcdExcludeCpu0Enabled { get; set; }
+
+    /// <summary>双CCD调度已登记为「帧格生效」：帧格模式开启时自动应用、退出时自动撤销。</summary>
+    public bool DualCcdArmed { get; set; }
+
+    // ---- 拓展插件：脱机自主运行例外（规范第 8 节）----
+    /// <summary>总开关：允许已单独授权的插件在脱机模式自主驻留（默认 false；开启时脱机为“非零进程”）。</summary>
+    public bool AllowPluginsInOfflineMode { get; set; }
+
+    // ---- 游戏进程 ----
+    public bool GamePriorityEnabled { get; set; }
+    public bool CustomGameModeEnabled { get; set; }
+    public string CustomGameExecutablePath { get; set; } = "";
+
+    // ---- 常规设置 ----
+    public bool CloseToTrayEnabled { get; set; }
+
+    /// <summary>用户选择“下次不再询问”后，关闭窗口时不再提示开启后台驻留。</summary>
+    public bool SuppressBackgroundRunPrompt { get; set; }
+
+    // ---- 外观：自定义背景 ----
+    /// <summary>背景图片模式总开关：false = 不使用任何背景图（Mica 云母背景），且界面锁定深色主题。</summary>
+    public bool BackgroundImageEnabled { get; set; } = true;
+
+    /// <summary>自定义背景图的完整路径；空 = 使用内置 Assets\background.*。</summary>
+    public string BackgroundPath { get; set; } = "";
+
+    /// <summary>背景图上的暗色遮罩不透明度（0~1，默认 55%）。</summary>
+    public double BackgroundDimOpacity { get; set; } = 0.55;
+
+    // ---- 外观：主题 ----
+    /// <summary>应用明暗主题索引：0 浅色 / 1 深色 / 2 跟随系统。</summary>
+    public int AppThemeIndex { get; set; } = 1;
+
+    /// <summary>工具主题色（#RRGGBB，空 = 默认天空蓝 #5EB0FF）。</summary>
+    public string AccentColor { get; set; } = "#5EB0FF";
+
+    // ---- 三角洲游戏目录 ----
+    /// <summary>手动指定的三角洲安装根目录；空 = 自动识别（WeGame 注册表 + 常见路径扫描）。</summary>
+    public string GameRootOverride { get; set; } = "";
+
+    /// <summary>用户登记的三角洲安装根目录列表（可包含多份安装），与 GameRootOverride 并存并合并去重。</summary>
+    public List<string> GameInstallRoots { get; set; } = new();
+
+    // ---- 运行库保护 ----
+    public bool RuntimeGuardEnabled { get; set; }
+
+    // ---- 一键优化（真实执行的步骤开关） ----
+    public bool OptimizeCleanProcesses { get; set; } = true;
+    public bool OptimizeTrimMemory { get; set; } = true;
+    public bool OptimizeUltimatePower { get; set; }
+
+    // ---- 电源 ----
+    /// <summary>动态导入的卓越性能计划 GUID（切换时缓存）。</summary>
+    public string UltimatePowerSchemeGuid { get; set; } = "";
+
+    // ---- 实验室：无省电电源计划 ----
+    /// <summary>已导入的无省电电源计划 GUID（导入时缓存）。历史键名，保持兼容不改。</summary>
+    public string AtlasPowerSchemeGuid { get; set; } = "";
+
+    // ---- 实验室：处理器场景 ----
+    /// <summary>实验室场景选择：0=自动检测（本机）1=Intel 2=AMD 单CCD 3=AMD 双CCD。
+    /// 读取端只做钳制（非法回退 0），禁止再做旧格式映射（每次启动重映射曾导致选择逐次降级）。</summary>
+    public int LabScenarioIndex { get; set; }
+
+    // ---- 实验室：CPU 亲和性规则（Process Lasso 风格，仅三角洲进程） ----
+    /// <summary>启用 CPU 亲和性规则：三角洲运行期间持续保持硬锁核到规则掩码，默认关。</summary>
+    public bool GameAffinityRuleEnabled { get; set; }
+
+    /// <summary>CPU 亲和性规则掩码（位 n = CPU n 允许运行）；0 = 未设置（视为全核）。</summary>
+    public ulong GameAffinityRuleMask { get; set; }
+
+    /// <summary>已展示过公告的版本标识（与 MainWindow.CurrentAnnouncementVersion 比对，不同则再次弹公告）。</summary>
+    public string AnnouncementVersionSeen { get; set; } = "";
+
+    // ---- 自动更新（只提醒，下载与安装都必须用户确认） ----
+    /// <summary>启动后自动检查更新（关闭后仍可在设置页手动「检查更新」）。</summary>
+    public bool AutoUpdateCheckEnabled { get; set; } = true;
+
+    /// <summary>独立于整包更新提示：启动及运行期间接收已签名的紧急算法策略。</summary>
+    public bool EmergencyPolicyEnabled { get; set; } = true;
+
+    /// <summary>默认保留旧版接收 Alpha 的行为；公测仅接收 Beta / Release。</summary>
+    public UpdateChannel UpdateChannel { get; set; } = UpdateChannel.Internal;
+    /// <summary>更新来源；未配置时使用自建服务器，已有选择保持。</summary>
+    public UpdateServer UpdateServer { get; set; } = UpdateServer.SelfHosted;
+    /// <summary>仅替换变化文件为默认，也可从所选服务器下载完整安装包。</summary>
+    public UpdateMode UpdateMode { get; set; } = UpdateMode.ChangedFiles;
+    /// <summary>已处理的安装批次，防止每次启动覆盖用户后来选择的通道。</summary>
+    public string UpdateChannelInstallationId { get; set; } = "";
+    public string UpdateChannelAlphaInstallationId { get; set; } = "";
+
+    /// <summary>上次发起更新检查的 UTC 诊断时间；不再阻止每次启动检查。</summary>
+    public DateTime? LastUpdateCheckUtc { get; set; }
+
+    /// <summary>旧版跳过记录，保留设置兼容；现在每次启动及手动检查均不屏蔽新版提醒。</summary>
+    public string SkippedUpdateVersion { get; set; } = "";
+
+    /// <summary>已登记待安装的版本号（非空 = 更新流程已启动；升级后用它与当前版本比对判断成败）。</summary>
+    public string PendingUpdateVersion { get; set; } = "";
+
+    /// <summary>待安装版本的显示文本（如 OpenAlphaV0.83）。</summary>
+    public string PendingUpdateDisplayVersion { get; set; } = "";
+
+    /// <summary>已下载并通过校验的安装包完整路径（升级成功后按此清理）。</summary>
+    public string PendingUpdateInstallerPath { get; set; } = "";
+
+    public static AppSettings Load(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                using var stream = File.OpenRead(path);
+                var settings = JsonSerializer.Deserialize<AppSettings>(stream) ?? new AppSettings();
+                settings.BackgroundPath = AppDataPaths.RemapLegacyPath(settings.BackgroundPath);
+                return settings;
+            }
+        }
+        catch
+        {
+            // 损坏时返回默认
+        }
+
+        return new AppSettings();
+    }
+
+    public static bool Save(string path, AppSettings settings)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            var tempPath = path + ".tmp";
+            using (var stream = File.Create(tempPath))
+            {
+                JsonSerializer.Serialize(stream, settings);
+            }
+
+            File.Move(tempPath, path, overwrite: true);
+            return true;
+        }
+        catch
+        {
+            // 保存失败不影响功能运行
+            return false;
+        }
+    }
+}
+
+/// <summary>带锁的共享设置访问点（服务直接引用 <see cref="AppSettingsStore.Shared"/>）。</summary>
+public static class AppSettingsStore
+{
+    public static readonly string DefaultPath = Path.Combine(AppDataPaths.Root, "settings.json");
+
+    private static readonly object Gate = new();
+    private static readonly Dictionary<string, int> ResetWriteBlocks = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, (AppSettings Settings, (DateTime LastWriteUtc, long Length, bool Exists) Stamp)> Cache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private static (DateTime LastWriteUtc, long Length, bool Exists) GetStamp(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            return info.Exists ? (info.LastWriteTimeUtc, info.Length, true) : (default, 0, false);
+        }
+        catch
+        {
+            return (default, 0, false);
+        }
+    }
+
+    private static AppSettings ReadCore(string path)
+    {
+        var stamp = GetStamp(path);
+        if (!Cache.TryGetValue(path, out var cached) || cached.Stamp != stamp)
+        {
+            cached = (AppSettings.Load(path), GetStamp(path));
+            Cache[path] = cached;
+        }
+
+        return cached.Settings.Copy();
+    }
+
+    /// <summary>线程安全地读取一份设置快照。</summary>
+    public static AppSettings Read() => Read(DefaultPath);
+
+    public static AppSettings Read(string path)
+    {
+        lock (Gate)
+        {
+            return ReadCore(Path.GetFullPath(path));
+        }
+    }
+
+    /// <summary>线程安全地读出 → 修改 → 原子写回。</summary>
+    public static void Update(Action<AppSettings> mutate) => Update(DefaultPath, mutate);
+
+    /// <summary>恢复出厂设置期间阻止本进程旧服务回写配置；后端恢复完成后由重置事务写入，成功后持有至退出。</summary>
+    public static IDisposable BlockWritesForReset(string path)
+    {
+        path = Path.GetFullPath(path);
+        lock (Gate) ResetWriteBlocks[path] = ResetWriteBlocks.GetValueOrDefault(path) + 1;
+        return new ResetWriteLease(path);
+    }
+
+    private sealed class ResetWriteLease(string path) : IDisposable
+    {
+        private int _disposed;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            lock (Gate)
+            {
+                if (ResetWriteBlocks[path] == 1) ResetWriteBlocks.Remove(path);
+                else ResetWriteBlocks[path]--;
+            }
+        }
+    }
+
+    public static void Update(string path, Action<AppSettings> mutate)
+    {
+        path = Path.GetFullPath(path);
+        var digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(path.ToUpperInvariant())));
+        using var mutex = new Mutex(false, @"Global\DeltaNFD.Settings." + digest);
+        var acquired = false;
+        try
+        {
+            try { acquired = mutex.WaitOne(TimeSpan.FromSeconds(30)); } catch (AbandonedMutexException) { acquired = true; }
+            if (!acquired) throw new IOException("另一进程正在保存设置，请稍后重试。");
+        lock (Gate)
+        {
+            if (ResetWriteBlocks.ContainsKey(path)) throw new InvalidOperationException("恢复出厂设置期间暂停配置写入，请等待工具关闭后重新打开。");
+            Cache.Remove(path); // Writers must reload under the cross-process lease, not modify an old snapshot.
+            var settings = ReadCore(path);
+            mutate(settings);
+            var saved = AppSettings.Save(path, settings);
+            if (saved)
+            {
+                Cache[path] = (settings.Copy(), GetStamp(path));
+            }
+            else
+            {
+                Cache.Remove(path);
+            }
+        }
+        }
+        finally { if (acquired) mutex.ReleaseMutex(); }
+    }
+}

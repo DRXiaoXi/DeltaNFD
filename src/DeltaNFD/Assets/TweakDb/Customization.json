@@ -1,0 +1,803 @@
+[
+  {
+    "Name": "WebSearchApp",
+    "Description": "WebSearchAppDesc",
+    "IconPath": "SearchWeb",
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Level": 1,
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+        "Key": "DisableSearchBoxSuggestions",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Search",
+        "Key": "BingSearchEnabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "SearchAppMainMenu",
+    "Description": "SearchAppMainMenuDesc",
+    "IconPath": "HomeSearchOutline",
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [ "W10" ],
+    "Level": 1,
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\SearchSettings",
+        "Key": "IsDynamicSearchBoxEnabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "SuggestedAppsStartMenu",
+    "Description": "SuggestedAppsStartMenuDesc",
+    "IconPath": "TableBorder",
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [ "W11" ],
+    "Level": 1,
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SystemPaneSuggestionsEnabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "SuggestedAppsStartMenu",
+    "Description": "SuggestedAppsStartMenuDesc",
+    "IconPath": "TableBorder",
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [ "W10" ],
+    "Level": 1,
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\PolicyManager\\current\\device\\Start",
+        "Key": "HideRecommendedSection",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+        "Key": "HideRecommendedSection",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\PolicyManager\\current\\device\\Education",
+        "Key": "IsEducationEnvironment",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "WindowsCopilot",
+    "Description": "WindowsCopilotDesc",
+    "IconPath": "RobotDeadOutline",
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [ "W10" ],
+    "Level": 1,
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsCopilot",
+        "Key": "TurnOffWindowsCopilot",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsAI",
+        "Key": "DisableAIDataAnalysis",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "NewsAndInterests",
+    "Description": "NewsAndInterestsDesc",
+    "IconPath": "Newspaper",
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [ "W11" ],
+    "Level": 1,
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Dsh",
+        "Key": "AllowNewsAndInterests",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Feeds",
+        "Key": "EnableFeeds",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Feeds",
+        "Key": "EnShellFeedsTaskbarViewMode",
+        "ValueFormat": "HEX",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "34a748f9"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "9d402d"
+          }
+        ]
+      }
+    ]
+  },
+  //{
+  //  "Name": "RemoveFonts",
+  //  "Description": "RemoveFontsDesc",
+  //  "IconPath": "Newspaper",
+  //  "Arguments": [ "LEVEL" ],
+  //  "NoSupport": [],
+  //  "Level": 2,
+  //  "Type": "DOUBLE",
+  //  "Tweaks": [
+  //    {
+  //      "TweakType": "EMBEDDEDTWEAK",
+  //      "Path": "REMOVEFONTS",
+  //      "Key": "",
+  //      "Values": [
+  //        {
+  //          "ValueTypes": [ "BEST", "OFF" ],
+  //          "Value": "JustForCheck"
+  //        }
+  //      ]
+  //    },
+  //    {
+  //      "TweakType": "CHECK",
+  //      "Path": "REMOVEFONTS",
+  //      "Key": "",
+  //      "Values": []
+  //    }
+  //  ]
+  //},
+  {
+    "Name": "W11Widgets",
+    "Description": "W11WidgetsDesc",
+    "IconPath": "WidgetsOutline",
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [ "W10" ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Policies\\Microsoft\\Dsh",
+        "Key": "AllowNewsAndInterests",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ],
+    "Level": 2
+  },
+  {
+    "Name": "setskeyboardshift",
+    "Description": "setskeyboardshiftdesc",
+    "IconPath": "Keyboard",
+    "Arguments": [ "VISIBLETWEAKS" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKCU\\Control Panel\\Accessibility\\StickyKeys",
+        "Key": "Flags",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "506"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "510"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKCU\\Control Panel\\Accessibility\\Keyboard Response",
+        "Key": "Flags",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "122"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "126"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKCU\\Control Panel\\Accessibility\\ToggleKeys",
+        "Key": "Flags",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
+            "Value": "58"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "62"
+          }
+        ]
+      }
+    ],
+    "Level": 0
+  },
+  {
+    "Name": "TrackDocs1",
+    "Description": "TrackDocs1Desc",
+    "IconPath": "ClipboardTextClockOutline",
+    "Arguments": [ "VISIBLETWEAKS" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer",
+        "Key": "ShowRecent",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer",
+        "Key": "ShowFrequent",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ],
+    "Level": 0
+  },
+  {
+    "Name": "TrackDocs2",
+    "Description": "TrackDocs2Desc",
+    "IconPath": "History",
+    "Arguments": [ "VISIBLETWEAKS" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+        "Key": "Start_TrackDocs",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ],
+    "Level": 0
+  },
+  {
+    "Name": "ContextMenuDelay",
+    "Description": "ContextMenuDelayDesc",
+    "IconPath": "ClipboardTextClock",
+    "Arguments": [ "VISIBLETWEAKS" ],
+    "NoSupport": [],
+    "Type": "MULTI",
+    "Tweaks": [
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKEY_CURRENT_USER\\Control Panel\\Desktop",
+        "Key": "MenuShowDelay",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "OPTIMAL" ],
+            "Value": "20"
+          },
+          {
+            "ValueTypes": [ "DEFAULT" ],
+            "Value": "400"
+          }
+        ]
+      }
+    ],
+    "Level": 0
+  },
+  {
+    "Name": "MobSync",
+    "Description": "MobSyncDesc",
+    "IconPath": "Sync",
+    "Arguments": [ "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\SettingSync\\Groups\\AppSync",
+        "Key": "Enabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\SettingSync\\Groups\\Accessibility",
+        "Key": "Enabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\SettingSync\\Groups\\Personalization",
+        "Key": "Enabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\SettingSync\\Groups\\BrowserSettings",
+        "Key": "Enabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\SettingSync\\Groups\\Windows",
+        "Key": "Enabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\mobsync.exe",
+        "Key": "Debugger",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "systray.exe"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ],
+    "Level": 1
+  },
+  {
+    "Name": "ShowChatW11",
+    "Description": "ShowChatW11Desc",
+    "IconPath": "ForumOutline",
+    "Arguments": [ "VISIBLETWEAKS" ],
+    "NoSupport": [ "W10" ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+        "Key": "TaskbarMn",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ],
+    "Level": 0
+  },
+  //{
+  //  "Name": "NumlockOnStartUp",
+  //  "Description": "NumlockOnStartUpDesc",
+  //  "IconPath": "Numeric0Box",
+  //  "Arguments": [ "VISIBLETWEAKS" ],
+  //  "NoSupport": [],
+  //  "Type": "DOUBLE",
+  //  "Tweaks": [
+  //    {
+  //      "TweakType": "REG",
+  //      "Path": "HKEY_CURRENT_USER\\Control Panel\\Keyboard",
+  //      "Key": "InitialKeyboardIndicators",
+  //      "ValueFormat": "HEX",
+  //      "Values": [
+  //        {
+  //          "ValueTypes": [ "BEST", "ON" ],
+  //          "Value": "80000002"
+  //        },
+  //        {
+  //          "ValueTypes": [ "DEFAULT", "OFF" ],
+  //          "Value": "0"
+  //        }
+  //      ]
+  //    }
+  //  ],
+  //  "Level": 0
+  //},
+  {
+    "Name": "WallpaperCompression",
+    "IconPath": "ImageSizeSelectLarge",
+    "Arguments": [ "VISIBLETWEAKS" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Control Panel\\Desktop",
+        "Key": "JPEGImportQuality",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "100"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ],
+    "Level": 0
+  },
+  {
+    "Name": "Spotlight",
+    "IconPath": "ImageText",
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent",
+        "Key": "DisableWindowsSpotlightFeatures",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent",
+        "Key": "DisableWindowsSpotlightWindowsWelcomeExperience",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent",
+        "Key": "DisableWindowsSpotlightOnActionCenter",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent",
+        "Key": "DisableWindowsSpotlightOnSettings",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent",
+        "Key": "DisableThirdPartySuggestions",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\HideDesktopIcons\\NewStartPanel",
+        "Key": "{2cc5ca98-6485-489a-920e-b3e88a6ccce3}",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ],
+    "Level": 0
+  },
+  {
+    "Name": "DynamicLightsW11",
+    "Description": "DynamicLightsW11Desc",
+    "IconPath": "TelevisionAmbientLight",
+    "Arguments": [ "VISIBLETWEAKS" ],
+    "NoSupport": [ "W10" ],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\Software\\Microsoft\\Lighting",
+        "Key": "AmbientLightingEnabled",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_CURRENT_USER\\Software\\Microsoft\\Lighting",
+        "Key": "ControlledByForegroundApp",
+        "Values": [
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "BEST", "OFF" ],
+            "Value": "0"
+          }
+        ]
+      }
+    ],
+    "Level": 0
+  },
+  //{
+  //  "Name": "ReplaceDWM",
+  //  "Description": "ReplaceDWM",
+  //  "IconPath": "EmoticonDeadOutline",
+  //  "Arguments": [ "TRUSTED"],
+  //  "NoSupport": [],
+  //  "Type": "DOUBLE",
+  //  "Tweaks": [
+  //    {
+  //      "TweakType": "EMBEDDEDTWEAK",
+  //      "Path": "DWMOFFTWEAK",
+  //      "Key": "",
+  //      "Values": [
+  //        {
+  //          "ValueTypes": [ "BEST", "OFF" ],
+  //          "Value": "JustForCheck"
+  //        }
+  //      ]
+  //    },
+  //    {
+  //      "TweakType": "CHECK",
+  //      "Path": "DEFENDER",
+  //      "Key": "",
+  //      "Values": []
+  //    }
+  //  ]
+  //}
+]

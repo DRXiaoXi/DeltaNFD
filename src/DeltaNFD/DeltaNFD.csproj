@@ -1,0 +1,199 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>DeltaNFD</RootNamespace>
+    <AssemblyName>DeltaNFD</AssemblyName>
+    <AssemblyTitle>Delta NFD</AssemblyTitle>
+    <Product>Delta No FPS Drops</Product>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <Platforms>x86;x64;ARM64</Platforms>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x86'">win-x86</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x64'">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
+
+    <UseWinUI>true</UseWinUI>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- 非打包部署：无需 MSIX 签名，构建后直接运行 exe -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+
+    <DefaultLanguage>zh-CN</DefaultLanguage>
+    <Version>0.9193</Version>
+    <!-- 日志头/程序集读取的显示版本（与关于卡 VersionText 保持一致） -->
+    <InformationalVersion>Alpha0.9193</InformationalVersion>
+    <RuntimeUiEnabled Condition="'$(RuntimeUiEnabled)' == ''">true</RuntimeUiEnabled>
+    <!-- 应用图标（exe / 任务栏 / 托盘共用；托盘经 ExtractIconExW 从 exe 提取） -->
+    <ApplicationIcon>Assets\DeltaNFD.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="RuntimeUiEnabled" Value="$(RuntimeUiEnabled)" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- 磁盘介质检测（MSFT_PhysicalDisk，虚拟内存盘符的机械盘/固态判定） -->
+    <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\LICENSE" Link="DELTA-NFD-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\COPYRIGHT" Link="COPYRIGHT" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\licenses\GPL-3.0.txt" Link="licenses\GPL-3.0.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 前后端分离 C1：前端只引用无执行实现的合同程序集，绝不引用执行库。 -->
+  <!-- T6：共享基础设施（Native/Services）物理移入 DeltaNFD.Shared，前端改为项目引用。 -->
+  <ItemGroup>
+    <ProjectReference Include="..\DeltaNFD.Contracts\DeltaNFD.Contracts.csproj" />
+    <ProjectReference Include="..\DeltaNFD.Shared\DeltaNFD.Shared.csproj" />
+    <ProjectReference Include="..\DeltaNFD.UpdateCore\DeltaNFD.UpdateCore.csproj" />
+  </ItemGroup>
+
+  <!-- The WinUI-free helper is built separately below, with isolated restore/intermediate paths. -->
+
+  <!-- 隔离构建时也不要把旧 obj 目录中的生成代码当作项目源码。 -->
+  <ItemGroup>
+    <Compile Remove="obj\**\*.cs" />
+    <Page Remove="obj\**\*.xaml" />
+  </ItemGroup>
+
+  <!-- 扩展优化库 优化数据库（JSON，随程序输出） -->
+  <ItemGroup>
+    <Content Include="Assets\TweakDb\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 背景图（随程序输出；自 OpenAlphaV0.83 起安装包必须内置，见 HANDOFF §33.7）。
+       注意：IncludeBundledBackground=false 只用于排查问题的临时构建，发布构建不要传。 -->
+  <ItemGroup>
+    <Content Include="Assets\background.*" Condition="'$(IncludeBundledBackground)' != 'false'" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 应用图标（exe/任务栏/托盘）+ 应用内 logo（标题栏 / 关于卡） -->
+  <ItemGroup>
+  <Content Include="Assets\DeltaNFD.png" CopyToOutputDirectory="PreserveNewest" />
+  <Content Include="Assets\FeedbackGroupQr.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 设置页致谢头像 -->
+  <ItemGroup>
+    <Content Include="Assets\Acknowledgements\*.jpg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Acknowledgements\*.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 自动更新来源与网络参数（发布后可在安装目录直接改，无需重编译） -->
+  <ItemGroup>
+    <Content Include="Assets\UpdateConfig.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\installer\DeploymentControl.ps1" Link="Tools\DeploymentControl.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\Vc14Baseline14.42\*.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Remove="Assets\RuntimeHighFps\**\*" />
+    <None Remove="Assets\RuntimeHighFps\**\*" />
+    <HighFpsPayload Include="Assets\RuntimeHighFps\**\*" Exclude="Assets\RuntimeHighFps\2005\**\*;Assets\RuntimeHighFps\2008\**\*;Assets\RuntimeHighFps\2010\**\*;Assets\RuntimeHighFps\2012\**\*;Assets\RuntimeHighFps\2013\**\*" />
+    <Content Remove="Assets\RuntimeCppOfficial\**\*" />
+    <None Remove="Assets\RuntimeCppOfficial\**\*" />
+    <OfficialCppPayload Include="Assets\RuntimeCppOfficial\**\*" />
+  </ItemGroup>
+
+  <!-- MSI 的 WinSxS 路径不能进入 WinUI PRI 的区域限定符索引。 -->
+  <Target Name="CopyHighFpsPayloadToBuild" AfterTargets="Build" Condition="'$(IsDesignTimeBuild)' != 'true'">
+    <Copy SourceFiles="@(HighFpsPayload)" DestinationFiles="@(HighFpsPayload->'$(OutDir)Assets\RuntimeHighFps\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(OfficialCppPayload)" DestinationFiles="@(OfficialCppPayload->'$(OutDir)Assets\RuntimeCppOfficial\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyHighFpsPayloadToPublish" AfterTargets="Publish">
+    <Copy SourceFiles="@(HighFpsPayload)" DestinationFiles="@(HighFpsPayload->'$(PublishDir)Assets\RuntimeHighFps\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(OfficialCppPayload)" DestinationFiles="@(OfficialCppPayload->'$(PublishDir)Assets\RuntimeCppOfficial\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- 无省电电源计划（CPU实验室导入用，显示名「无省电释放模式」） -->
+  <ItemGroup>
+    <Content Include="Assets\NoPowerSave-Scheme.pow" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Retired repair assets must not leak from an old local checkout into a new build. -->
+  <ItemGroup>
+    <Content Remove="Assets\DotNetRepair\**\*;Assets\VCRedistRepair\**\*;Assets\DirectXRepair\**\*;Assets\VCRedist2015-2022-*.exe;Assets\VCRedistRepair.exe" />
+    <None Remove="Assets\DotNetRepair\**\*;Assets\VCRedistRepair\**\*;Assets\DirectXRepair\**\*;Assets\VCRedist2015-2022-*.exe;Assets\VCRedistRepair.exe" />
+  </ItemGroup>
+
+<!-- 前后端分离 C2/C3：把各官方后端 EXE 随构建复制到输出目录 Backends\<模块>\ 下（BackendPaths 的部署约定）。 -->
+  <ItemGroup>
+    <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.FileUpdater\DeltaNFD.FileUpdater.csproj">
+      <ModuleFolder>updater</ModuleFolder>
+    </OfficialBackend>
+    <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.Backend.Ace\DeltaNFD.Backend.Ace.csproj">
+      <ModuleFolder>ace</ModuleFolder>
+    </OfficialBackend>
+    <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.Backend.Gpu\DeltaNFD.Backend.Gpu.csproj">
+      <ModuleFolder>gpu</ModuleFolder>
+    </OfficialBackend>
+    <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.Backend.Runtime\DeltaNFD.Backend.Runtime.csproj">
+      <ModuleFolder>runtime</ModuleFolder>
+    </OfficialBackend>
+    <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.Backend.SystemMaintenance\DeltaNFD.Backend.SystemMaintenance.csproj">
+      <ModuleFolder>system</ModuleFolder>
+    </OfficialBackend>
+    <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.Backend.CpuFrame\DeltaNFD.Backend.CpuFrame.csproj">
+      <ModuleFolder>cpuframe</ModuleFolder>
+    </OfficialBackend>
+    <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.Backend.Procman\DeltaNFD.Backend.Procman.csproj">
+      <ModuleFolder>procman</ModuleFolder>
+    </OfficialBackend>
+  </ItemGroup>
+
+  <Target Name="CopyOfficialBackendsToBuildOutput" AfterTargets="Build"
+          Condition="'$(IsDesignTimeBuild)' != 'true'"
+          Outputs="$(OutDir)Backends\%(OfficialBackend.ModuleFolder)\.build-stamp">
+    <MSBuild Projects="%(OfficialBackend.Identity)"
+             Targets="Restore;Build"
+             Properties="Configuration=$(Configuration);Platform=x64;SelfContained=true;NuGetAudit=$(NuGetAudit)"
+             RemoveProperties="TargetFramework;RuntimeIdentifier;TargetPlatformVersion;TargetPlatformMinVersion;BaseIntermediateOutputPath;BaseOutputPath;MSBuildProjectExtensionsPath;IntermediateOutputPath;OutputPath;OutDir" />
+    <MSBuild Projects="%(OfficialBackend.Identity)"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration);Platform=x64;SelfContained=true"
+             RemoveProperties="TargetFramework;RuntimeIdentifier;TargetPlatformVersion;TargetPlatformMinVersion;BaseIntermediateOutputPath;BaseOutputPath;MSBuildProjectExtensionsPath;IntermediateOutputPath;OutputPath;OutDir">
+      <Output TaskParameter="TargetOutputs" ItemName="_OfficialBackendTargetPath" />
+    </MSBuild>
+    <PropertyGroup>
+      <_OfficialBackendRoot>@(_OfficialBackendTargetPath->'%(RootDir)%(Directory)')</_OfficialBackendRoot>
+      <_OfficialBackendDest>$(OutDir)Backends\%(OfficialBackend.ModuleFolder)</_OfficialBackendDest>
+    </PropertyGroup>
+    <ItemGroup>
+      <_OfficialBackendFile Include="$(_OfficialBackendRoot)*" />
+    </ItemGroup>
+    <MakeDir Directories="$(_OfficialBackendDest)" Condition="'@(_OfficialBackendFile)' != ''" />
+    <Copy SourceFiles="@(_OfficialBackendFile)"
+          DestinationFolder="$(_OfficialBackendDest)"
+          SkipUnchangedFiles="true" Condition="'@(_OfficialBackendFile)' != ''" />
+  </Target>
+
+  <!--
+    自包含发布布局：只有显式传 -p:PublishSelfContainedComponents=true 时才把六个官方后端
+    发布到发布目录。每个子项目使用各自隔离的 ArtifactsPath（不用共享中间目录），
+    因此不会互相覆盖 assets/deps。默认关闭，不影响普通 build / 调试发布。
+  -->
+  <PropertyGroup>
+    <PublishSelfContainedComponents Condition="'$(PublishSelfContainedComponents)' == ''">false</PublishSelfContainedComponents>
+    <PublishComponentsArtifactsPath Condition="'$(PublishComponentsArtifactsPath)' == ''">$(BaseIntermediateOutputPath)official-components</PublishComponentsArtifactsPath>
+  </PropertyGroup>
+
+  <Target Name="PublishOfficialBackendsToPublish" AfterTargets="Publish"
+          Condition="'$(IsDesignTimeBuild)' != 'true' and '$(PublishSelfContainedComponents)' == 'true'">
+    <MSBuild Projects="%(OfficialBackend.Identity)"
+             Targets="Restore;Publish"
+             BuildInParallel="false"
+             Properties="Configuration=$(Configuration);Platform=x64;SelfContained=true;UseArtifactsOutput=true;ArtifactsPath=$(PublishComponentsArtifactsPath);PublishDir=$(PublishDir)Backends\%(OfficialBackend.ModuleFolder)\;NuGetAudit=$(NuGetAudit)"
+             RemoveProperties="TargetFramework;TargetPlatformVersion;TargetPlatformMinVersion;BaseIntermediateOutputPath;BaseOutputPath;MSBuildProjectExtensionsPath;IntermediateOutputPath;OutputPath;OutDir" />
+  </Target>
+
+  <!-- Offline mode removed: no helper is built, copied or published. -->
+
+</Project>

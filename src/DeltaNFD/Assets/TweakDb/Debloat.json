@@ -1,0 +1,275 @@
+[
+  {
+    "Name": "MSTeams",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "MSTeams", "Values": [] }
+    ]
+  },
+  {
+    "Name": "TeamsConsumer",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "MicrosoftTeams", "Values": [] }
+    ]
+  },
+  {
+    "Name": "Copilot",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.Copilot", "Values": [] }
+    ]
+  },
+  {
+    "Name": "Clipchamp",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Clipchamp.Clipchamp", "Values": [] }
+    ]
+  },
+  {
+    "Name": "Disney",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "*Disney*", "Values": [] }
+    ]
+  },
+  {
+    "Name": "Spotify",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "SpotifyAB.SpotifyMusic", "Values": [] }
+    ]
+  },
+  {
+    "Name": "Cortana",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.549981C3F5F10", "Values": [] }
+    ]
+  },
+  {
+    "Name": "XboxConsoleCompanion",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.XboxApp", "Values": [] }
+    ]
+  },
+  {
+    "Name": "MailCalendar",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "microsoft.windowscommunicationsapps", "Values": [] }
+    ]
+  },
+  {
+    "Name": "Paint3D",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.MicrosoftPaint3D", "Values": [] }
+    ]
+  },
+  {
+    "Name": "Tips",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.Getstarted", "Values": [] }
+    ]
+  },
+  {
+    "Name": "FilmsTV",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.ZuneVideo", "Values": [] }
+    ]
+  },
+  {
+    "Name": "Family",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "MicrosoftCorporationII.MicrosoftFamily", "Values": [] }
+    ]
+  },
+  {
+    "Name": "MixedRealityPortal",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.MixedReality.Portal", "Values": [] }
+    ]
+  },
+  {
+    "Name": "DevHome",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.DevHome", "Values": [] }
+    ]
+  },
+  {
+    "Name": "BingWeather",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.BingWeather", "Values": [] }
+    ]
+  },
+  {
+    "Name": "BingNews",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.BingNews", "Values": [] }
+    ]
+  },
+  {
+    "Name": "BingSearch",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.BingSearch", "Values": [] }
+    ]
+  },
+  {
+    "Name": "OutlookForWindows",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.OutlookForWindows", "Values": [] }
+    ]
+  },
+  {
+    "Name": "GetHelp",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.GetHelp", "Values": [] }
+    ]
+  },
+  {
+    "Name": "Viewer3D",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.Microsoft3DViewer", "Values": [] }
+    ]
+  },
+  {
+    "Name": "OfficeHub",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.MicrosoftOfficeHub", "Values": [] }
+    ]
+  },
+  {
+    "Name": "Solitaire",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.MicrosoftSolitaireCollection", "Values": [] }
+    ]
+  },
+  {
+    "Name": "StickyNotes",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.MicrosoftStickyNotes", "Values": [] }
+    ]
+  },
+  {
+    "Name": "OneNote",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.Office.OneNote", "Values": [] }
+    ]
+  },
+  {
+    "Name": "People",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.People", "Values": [] }
+    ]
+  },
+  {
+    "Name": "PowerAutomate",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.PowerAutomateDesktop", "Values": [] }
+    ]
+  },
+  {
+    "Name": "Skype",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.SkypeApp", "Values": [] }
+    ]
+  },
+  {
+    "Name": "ToDo",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.Todos", "Values": [] }
+    ]
+  },
+  {
+    "Name": "AlarmsClock",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.WindowsAlarms", "Values": [] }
+    ]
+  },
+  {
+    "Name": "Camera",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.WindowsCamera", "Values": [] }
+    ]
+  },
+  {
+    "Name": "FeedbackHub",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.WindowsFeedbackHub", "Values": [] }
+    ]
+  },
+  {
+    "Name": "Maps",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.WindowsMaps", "Values": [] }
+    ]
+  },
+  {
+    "Name": "SoundRecorder",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.WindowsSoundRecorder", "Values": [] }
+    ]
+  },
+  {
+    "Name": "HandwritingEN",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "CMD",
+        "Path": "Language.Handwriting.en-US",
+        "Values": [
+          { "ValueTypes": [ "BEST", "ON" ], "Value": "powershell -NoProfile -Command \"Get-WindowsCapability -Online | Where-Object { $_.Name -like 'Language.Handwriting*en-US*' -and $_.State -eq 'Installed' } | Remove-WindowsCapability -Online\"" },
+          { "ValueTypes": [ "DEFAULT", "OFF" ], "Value": "powershell -NoProfile -Command \"Get-WindowsCapability -Online | Where-Object { $_.Name -like 'Language.Handwriting*en-US*' -and $_.State -ne 'Installed' } | Add-WindowsCapability -Online\"" }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "YourPhone",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      { "TweakType": "APPX", "Path": "Microsoft.YourPhone", "Values": [] }
+    ]
+  },
+  {
+    "Name": "OneDrive",
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "CMD",
+        "Path": "OneDriveUninstall",
+        "Values": [
+          { "ValueTypes": [ "BEST", "ON" ], "Value": "cmd /d /c \"if exist \\\"%SystemRoot%\\System32\\OneDriveSetup.exe\\\" (\\\"%SystemRoot%\\System32\\OneDriveSetup.exe\\\" /uninstall) else if exist \\\"%SystemRoot%\\SysWOW64\\OneDriveSetup.exe\\\" (\\\"%SystemRoot%\\SysWOW64\\OneDriveSetup.exe\\\" /uninstall)\"" },
+          { "ValueTypes": [ "DEFAULT", "OFF" ], "Value": "" }
+        ]
+      }
+    ]
+  }
+]

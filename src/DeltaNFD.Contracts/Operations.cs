@@ -1,0 +1,59 @@
+namespace DeltaNFD.Services;
+
+/// <summary>
+/// 后端操作的统一结果：失败时通过 <see cref="Message"/> 说明原因，不向 UI 层抛异常。
+/// （自前后端分离 C1 起，本类型位于合同程序集 DeltaNFD.Contracts，前端与后端共用；命名空间保持不变。）
+/// </summary>
+public sealed class OperationResult
+{
+    private string _diagnosticsDirectory = "";
+    /// <summary>本次操作的诊断目录；空值表示使用主程序日志。前端打开前校验本地日志范围。</summary>
+    public string DiagnosticsDirectory { get => _diagnosticsDirectory; init => _diagnosticsDirectory = value; }
+
+    public OperationResult WithDiagnostics(string directory)
+    {
+        var copy = (OperationResult)MemberwiseClone();
+        copy._diagnosticsDirectory = directory;
+        return copy;
+    }
+
+    public bool Success { get; init; }
+
+    /// <summary>只完成了部分操作，不能作为完整成功展示。</summary>
+    public bool IsPartial { get; init; }
+
+    public string Message { get; init; } = "";
+
+    /// <summary>安全跳过且未修改；不是执行失败，也不计作已应用。</summary>
+    public bool IsSkipped { get; init; }
+    /// <summary>安装等操作尚未确认结束，必须保留证据并阻止重复执行。</summary>
+    public bool OutcomeUnknown { get; init; }
+
+    /// <summary>需要注销登录才能生效（显卡型号伪装）。</summary>
+    public bool RequiresLogoff { get; init; }
+
+    /// <summary>需要重启才能生效（内核隔离 / VBS / 内存压缩 / 分页合并 / 预读取）。</summary>
+    public bool RequiresReboot { get; init; }
+
+    /// <summary>
+    /// 台式机重载显卡后需要使用者在 1 分钟内确认显示器亮屏；
+    /// 超时未确认由 UI 层触发自动重启以恢复显示。
+    /// </summary>
+    public bool RequiresDisplayConfirm { get; init; }
+
+    public static OperationResult Ok(string message, bool requiresLogoff = false, bool requiresReboot = false, bool requiresDisplayConfirm = false)
+        => new()
+        {
+            Success = true,
+            Message = message,
+            RequiresLogoff = requiresLogoff,
+            RequiresReboot = requiresReboot,
+            RequiresDisplayConfirm = requiresDisplayConfirm
+        };
+
+    public static OperationResult Fail(string message)
+        => new() { Success = false, Message = message };
+
+    public static OperationResult Skip(string message)
+        => new() { Success = true, IsSkipped = true, Message = message };
+}

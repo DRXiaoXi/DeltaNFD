@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>DeltaNFD.OfflineHelper</RootNamespace>
+    <AssemblyName>DeltaNFD.OfflineHelper</AssemblyName>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseAppHost>true</UseAppHost>
+    <Version>0.9193</Version>
+    <InformationalVersion>Alpha0.9193</InformationalVersion>
+    <WindowsPackageType>None</WindowsPackageType>
+  </PropertyGroup>
+
+  <!--
+    前后端分离 C5：脱机助手引用后端库（DeltaNFD.Execution）与合同程序集，不再自编译
+    共享基础设施副本；只保留执行库尚未纳管的脱机专用源文件。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\DeltaNFD.Contracts\DeltaNFD.Contracts.csproj" />
+    <ProjectReference Include="..\DeltaNFD.Shared\DeltaNFD.Shared.csproj" />
+    <ProjectReference Include="..\DeltaNFD.Execution\DeltaNFD.Execution.csproj" />
+  </ItemGroup>
+
+  <!-- 仅链接执行库尚未编译的脱机专用源代码。CPU 拓扑/CCD 检测已由执行库承载。 -->
+  <ItemGroup>
+    <Compile Include="..\DeltaNFD\Services\OfflineHelperSession.cs" Link="Services\OfflineHelperSession.cs" />
+    <Compile Include="..\DeltaNFD\Services\OfflineHelperCompletion.cs" Link="Services\OfflineHelperCompletion.cs" />
+    <Compile Include="..\DeltaNFD\Services\OfflineHelperDeadline.cs" Link="Services\OfflineHelperDeadline.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="obj\**\*.cs" />
+  </ItemGroup>
+</Project>

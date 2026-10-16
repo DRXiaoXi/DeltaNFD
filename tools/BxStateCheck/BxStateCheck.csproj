@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>BxStateCheck</RootNamespace>
+  </PropertyGroup>
+
+  <!-- 临时工具：逐项评估扩展优化库全部条目的状态，找出仍为“未知”的项。只读，不做任何修改。 -->
+  <ItemGroup>
+    <Compile Include="..\..\src\DeltaNFD\Services\TweakDb\BxCatalog.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\TweakDb\BxService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\AppSettingsStore.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\AppDataPaths.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\ElevationHelper.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Log.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OperationResult.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\PowerService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\IPowerService.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\src\DeltaNFD\Assets\TweakDb\**\*.json" CopyToOutputDirectory="PreserveNewest" LinkBase="Assets\TweakDb\" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,132 @@
+namespace DeltaNFD.Services;
+
+/// <summary>
+/// 按需创建的共享服务定位器：页面 ViewModel 从这里取服务。
+/// </summary>
+public static class ServiceLocator
+{
+    public static GameTargetService GameTarget => GameTargetService.Default;
+    static ServiceLocator()
+    {
+        GameTarget.RuntimeBlockers = () =>
+        {
+            var reasons = new List<string>();
+            if (AppSettingsStore.Read().FramePowerRestorePending ||
+                File.Exists(Path.Combine(AppDataPaths.Root, "frame_power_scheme_snapshot.json")))
+                reasons.Add("帧格电源设置待恢复");
+            if (FrameLazy.IsValueCreated && FrameLazy.Value.FrameModeActive) reasons.Add("帧格模式");
+            if (CpuFrameStatusState.DualCcdSchedulingActive || CpuFrameStatusState.SingleCcdExcludeActive
+                || CpuFrameStatusState.DualCcdSchedulingActive || CpuFrameStatusState.SingleCcdExcludeActive) reasons.Add("CPU 调度");
+            return reasons;
+        };
+    }
+    private static readonly Lazy<ISystemOptimizer> SystemOptimizerLazy = new(() => new RealSystemOptimizer());
+    private static readonly Lazy<IGpuOptimizer> GpuOptimizerLazy = new(() => new MockGpuOptimizer());
+    private static readonly Lazy<IGpuSpoofService> GpuSpoofLazy = new(() => new Backends.BackendGpuSpoofService());
+    private static readonly Lazy<ISystemTweakService> SystemTweaksLazy = new(() => new Backends.BackendSystemTweakService());
+    private static readonly Lazy<IFrameService> FrameLazy = new(() => new FrameService());
+    private static readonly Lazy<IGameProcessService> GameProcessLazy = new(() => new GameProcessService());
+    private static readonly Lazy<IPowerService> PowerLazy = new(() => new Backends.BackendPowerService());
+    private static readonly Lazy<ICleanupService> CleanupLazy = new(() => new Backends.BackendCleanupService());
+    private static readonly Lazy<IAdvancedTweakService> AdvancedTweaksLazy = new(() => new Backends.BackendAdvancedTweakService());
+    private static readonly Lazy<IRuntimeGuardService> GuardLazy = new(() => new Backends.BackendRuntimeGuardService());
+    private static readonly Lazy<IAceService> AceLazy = new(() => new Backends.BackendAceService());
+    private static readonly Lazy<IShaderService> ShaderLazy = new(() => new Backends.BackendShaderService());
+    private static readonly Lazy<IAppControlService> AppControlLazy = new(() => new AppControlService());
+    private static readonly Lazy<ICpuTopologyService> CpuLazy = new(() => new Backends.BackendCpuTopologyService());
+    private static readonly Lazy<TweakDb.IBxService> BxLazy = new(() => new Backends.BackendBxService());
+    private static readonly Lazy<IDefenderGuardService> DefenderGuardLazy = new(() => new Backends.BackendDefenderGuardService());
+    private static readonly Lazy<INvProfileService> NvProfileLazy = new(() => new Backends.BackendNvProfileService());
+    private static readonly Lazy<IPagefileService> PagefileLazy = new(() => new Backends.BackendPagefileService());
+    private static readonly Lazy<GameProcessMonitor> GameMonitorLazy = new(() => new GameProcessMonitor());
+    private static readonly Lazy<IUpdateService> UpdateLazy = new(() => new UpdateService());
+    private static readonly Lazy<PluginManagerService> PluginsLazy = new(() =>
+    {
+        var manager = PluginManagerService.Default;
+        manager.RuntimeIsBusy = id => PluginRuntimeLazy is { IsValueCreated: true } && PluginRuntimeLazy.Value.IsRunning(id);
+        return manager;
+    });
+    private static readonly Lazy<Plugins.PluginRuntimeService> PluginRuntimeLazy = new(() =>
+        new Plugins.PluginRuntimeService(PluginsLazy.Value.Backups, PluginsLazy.Value.Handoffs, PluginsLazy.Value.DataRoot,
+            PluginsLazy.Value.Authorizations, PluginsLazy.Value) { BuiltinResourceOwners = PluginBuiltinResourceOwners });
+
+    private static IReadOnlyDictionary<string, string> PluginBuiltinResourceOwners()
+    {
+        var s = AppSettingsStore.Read();
+        var owners = new Dictionary<string, string>();
+        if (s.GameAffinityRuleEnabled || s.SingleCcdExcludeCpu0Enabled || s.DualCcdImmediateEnabled ||
+            (s.FrameModeActive && s.DualCcdArmed && s.DualCcdFrameEnabled))
+        { owners["cpu.affinity"] = "CPU 锁核 / CCD 调度"; owners["cpu.sets"] = "CPU 锁核 / CCD 调度"; }
+        if (s.GamePriorityEnabled) owners["process.priority"] = "自动优先级";
+        if (s.FramePowerRestorePending || (s.FrameModeActive && s.FramePowerLockEnabled)) owners["power.scheme"] = "帧格电源锁定 / 待恢复";
+        if (s.FrameModeActive && s.FramePowerSaveLatencyEnabled) owners["power.setting"] = "帧格降低省电延迟";
+        if (s.FrameModeActive && s.FrameResponseBoostEnabled && s.FrameResponseBoostTimerEnabled) owners["timer.resolution"] = "帧格计时器";
+        if (s.FrameModeActive && s.DwmRestartOnGameStart) owners["dwm.restart"] = "帧格 DWM";
+        if (s.RuntimeGuardEnabled) owners["runtime.redist"] = "运行库防护";
+        return owners;
+    }
+
+    internal static GameProcessMonitor GameMonitor => GameMonitorLazy.Value;
+
+    /// <summary>系统优化器（真实实现：进程/内存/电源/游戏提权）。</summary>
+    public static ISystemOptimizer SystemOptimizer => SystemOptimizerLazy.Value;
+
+    public static IGpuOptimizer GpuOptimizer => GpuOptimizerLazy.Value;
+
+    /// <summary>显卡型号伪装（真实后端，写注册表 DeviceDesc，需管理员）。</summary>
+    public static IGpuSpoofService GpuSpoof => GpuSpoofLazy.Value;
+
+    /// <summary>系统精简优化：Hyper-V/VBS / 内存压缩 / 分页合并 / 预读取 / 游戏微调（真实后端，需管理员）。</summary>
+    public static ISystemTweakService SystemTweaks => SystemTweaksLazy.Value;
+
+    /// <summary>帧格：游戏运行期间的自动化帧数保障（一键帧格模式 / 三角洲启动时重启 DWM）。</summary>
+    public static IFrameService Frame => FrameLazy.Value;
+
+    /// <summary>游戏进程优化：自动提权 / 真实进程扫描与清理 / 内存整理。</summary>
+    public static IGameProcessService GameProcess => GameProcessLazy.Value;
+
+    /// <summary>电源管理：电源计划切换 / 休眠开关。</summary>
+    public static IPowerService Power => PowerLazy.Value;
+
+    /// <summary>系统垃圾清理。</summary>
+    public static ICleanupService Cleanup => CleanupLazy.Value;
+
+    /// <summary>高级（高危）优化：遥测 / 安全 / 更新 分组开关。</summary>
+    public static IAdvancedTweakService AdvancedTweaks => AdvancedTweaksLazy.Value;
+
+    /// <summary>运行库保护：阻止三角洲静默安装 VC++ 14.x 运行库。</summary>
+    public static IRuntimeGuardService Guard => GuardLazy.Value;
+
+    /// <summary>ACE 相关：反作弊组件清理。</summary>
+    public static IAceService Ace => AceLazy.Value;
+
+    /// <summary>着色器维护：N 卡驱动体检 + PSOCache 旧着色器清理。</summary>
+    public static IShaderService Shader => ShaderLazy.Value;
+
+    /// <summary>应用级控制：开机自启、关闭到托盘。</summary>
+    public static IAppControlService AppControl => AppControlLazy.Value;
+
+    /// <summary>CPU 拓扑检测与核心锁定（实验室）。</summary>
+    public static ICpuTopologyService Cpu => CpuLazy.Value;
+
+    /// <summary>扩展优化库引擎（系统优化子栏目：注册表/服务/任务 + 全局备份恢复）。</summary>
+    public static TweakDb.IBxService Bx => BxLazy.Value;
+
+    /// <summary>Defender 预检/收尾（只读状态查询与恢复方向执行由系统维护后端完成）。</summary>
+    public static IDefenderGuardService DefenderGuard => DefenderGuardLazy.Value;
+
+    /// <summary>NVIDIA 显卡设置（NVAPI DRS 针对三角洲的驱动级设置 + nvdrsdb 只读锁定）。</summary>
+    public static INvProfileService NvProfile => NvProfileLazy.Value;
+
+    /// <summary>虚拟内存（页面文件）设置：状态读取 / 固定大小设置 / 恢复系统托管。</summary>
+    public static IPagefileService Pagefile => PagefileLazy.Value;
+
+    /// <summary>自动更新：检查 update.json / 下载并校验安装包 / 交给 Inno Setup 静默安装。</summary>
+    public static IUpdateService Update => UpdateLazy.Value;
+
+    /// <summary>拓展插件管理（导入/授权/卸载；不启动插件后端进程）。</summary>
+    public static PluginManagerService Plugins => PluginsLazy.Value;
+
+    /// <summary>拓展插件运行时（按操作启动后端、单请求串行、超时取消与 stop 排空）。</summary>
+    public static Plugins.PluginRuntimeService PluginRuntime => PluginRuntimeLazy.Value;
+}

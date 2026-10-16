@@ -1,0 +1,205 @@
+<Page
+    x:Class="DeltaNFD.Views.AcePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer>
+        <StackPanel MaxWidth="1080" Padding="28,20,28,32" Spacing="16">
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="ACE 相关" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="AntiCheatExpert 反作弊组件管理，等效官方卸载程序" Style="{StaticResource PageSubtitleStyle}" />
+            </StackPanel>
+
+            <!-- 扫描结果 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="组件扫描" Style="{StaticResource SectionTitleStyle}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="重新扫描" VerticalAlignment="Center"
+                                IsEnabled="{x:Bind ViewModel.CleanRefreshEnabled, Mode=OneWay}"
+                                Click="RefreshButton_Click" />
+                    </Grid>
+
+                    <TextBlock Text="{x:Bind ViewModel.ScanSummary, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+
+                    <InfoBar IsOpen="{x:Bind ViewModel.DetectionPaused, Mode=OneWay}"
+                             Severity="Informational"
+                             Title="已暂停 ACE 检测"
+                             Message="{x:Bind ViewModel.DetectionPauseText, Mode=OneWay}"
+                             IsClosable="False" />
+
+                    <InfoBar IsOpen="{x:Bind ViewModel.HasBlockers, Mode=OneWay}"
+                             Severity="Warning"
+                             Title="检测到阻止清理的进程"
+                             Message="{x:Bind ViewModel.BlockingText, Mode=OneWay}"
+                             IsClosable="False" />
+
+                    <TextBlock Text="{x:Bind ViewModel.ServicesText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <TextBlock Text="{x:Bind ViewModel.PathsText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <TextBlock Text="{x:Bind ViewModel.RegistryText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- 一键清除 -->
+            <InfoBar IsOpen="{x:Bind ViewModel.CleanupNeedsReview, Mode=OneWay}"
+                     Severity="Warning" Title="上次 ACE 清理需要核对"
+                     Message="{x:Bind ViewModel.CleanupReviewMessage, Mode=OneWay}" IsClosable="False">
+                <InfoBar.ActionButton>
+                    <Button Content="核对上次清理" Click="ReviewCleanupButton_Click"
+                            IsEnabled="{x:Bind ViewModel.CleanRefreshEnabled, Mode=OneWay}" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="一键清除 ACE" FontWeight="SemiBold" />
+                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                   Text="等效 ACE 官方卸载程序：结束 ACE 进程 → SDDL 接管并删除全部 ACE 服务 → 清理注册表（卸载项/AppDataLow）→ 删除安装目录与游戏目录内 AntiCheatExpert 文件夹。" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <ProgressRing Width="24" Height="24"
+                                      IsActive="{x:Bind ViewModel.IsCleaning, Mode=OneWay}"
+                                      Foreground="{StaticResource AppAccentBrush}" />
+                        <Button Style="{StaticResource AccentButtonStyle}"
+                                Content="{x:Bind ViewModel.CleanButtonText, Mode=OneWay}"
+                                IsEnabled="{x:Bind ViewModel.CleanEnabled, Mode=OneWay}"
+                                Click="CleanButton_Click" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 虚拟化环境检测 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="虚拟化环境检测" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                       Text="检查固件 CPU 虚拟化、Windows 当前内核 DMA 保护和 Hypervisor / VBS 运行状态。组件安装与引导配置单独提醒，无法查询的项目标为未知；检测结果不代表 ACE 通过保证。" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <ProgressRing Width="24" Height="24"
+                                          IsActive="{x:Bind ViewModel.VirtCheckBusy, Mode=OneWay}"
+                                          Foreground="{StaticResource AppAccentBrush}" />
+                            <Button Content="{x:Bind ViewModel.VirtCheckButtonText, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanCheckVirt, Mode=OneWay}"
+                                    Click="CheckVirtButton_Click" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Text="{x:Bind ViewModel.VirtSummaryText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="硬件环境（BIOS / 固件层）" FontWeight="SemiBold" />
+                        <TextBlock Text="{x:Bind ViewModel.HardwareCheckText, Mode=OneWay}"
+                                   Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                   FontFamily="Consolas" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="系统环境（Windows 层）" FontWeight="SemiBold" />
+                        <TextBlock Text="{x:Bind ViewModel.SystemCheckText, Mode=OneWay}"
+                                   Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                   FontFamily="Consolas" />
+                    </StackPanel>
+
+                    <!-- 一键修复系统层冲突（复用「系统优化」的关闭 Hyper-V / VBS 流程） -->
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{x:Bind ViewModel.VirtFixText, Mode=OneWay}"
+                                   Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                   VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <ProgressRing Width="20" Height="20"
+                                          IsActive="{x:Bind ViewModel.VirtFixBusy, Mode=OneWay}"
+                                          Foreground="{StaticResource AppAccentBrush}" />
+                            <Button Content="{x:Bind ViewModel.VirtFixButtonText, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanFixVirt, Mode=OneWay}"
+                                    Click="FixVirtButton_Click" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ACE-CORE 冗余检测 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="ACE-CORE 冗余检测" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                       Text="检测 C:\Program Files\AntiCheatExpert 下的 ACE-CORE 系列 .sys 驱动文件：只有 1 个为正常，出现 2 个及以上即为多版本冗余残留，会导致反作弊异常。" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <ProgressRing Width="24" Height="24"
+                                          IsActive="{x:Bind ViewModel.CoreCheckBusy, Mode=OneWay}"
+                                          Foreground="{StaticResource AppAccentBrush}" />
+                            <Button Content="{x:Bind ViewModel.CoreCheckButtonText, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.CanCheckCore, Mode=OneWay}"
+                                    Click="CheckCoreButton_Click" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Text="{x:Bind ViewModel.CoreCheckText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               FontFamily="Consolas" />
+                    <TextBlock Text="仅清理 C:\Program Files\AntiCheatExpert 及其子目录内的 ACE-CORE*.sys 文件，保留 ACE 服务、注册表、其他文件和游戏目录。适合先尝试清理驱动残留。"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <Button Content="{x:Bind ViewModel.CoreCleanButtonText, Mode=OneWay}"
+                            IsEnabled="{x:Bind ViewModel.CoreCleanEnabled, Mode=OneWay}"
+                            Click="CleanCoreFilesButton_Click" />
+                    <TextBlock Text="{x:Bind ViewModel.CoreCleanupResultText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                               AutomationProperties.LiveSetting="Polite" />
+                </StackPanel>
+            </Border>
+
+            <!-- 说明 -->
+            <Border Style="{StaticResource CardBorderStyle}" Padding="20,14">
+                <StackPanel Spacing="6">
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· 三角洲进程运行时，本页的组件扫描与 ACE-CORE 冗余检测会整体暂停：完全不读取 ACE 服务、目录与注册表项，避免在反作弊运行期间触碰其组件。游戏退出后自动恢复，也可手动点「重新扫描」。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· sguard64.exe（反作弊守卫）或游戏本体运行时，本功能会拒绝执行——请先完全退出游戏（含后台 sguard64 进程）。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="·「一键清除 ACE」会将被占用的文件登记为重启后删除；「仅清理 ACE-CORE SYS」会保留被占用的文件并显示原因，供退出游戏后重试。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="· 清理后请先通过游戏启动器执行普通修复，补齐 ACE 组件，再启动游戏。" />
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

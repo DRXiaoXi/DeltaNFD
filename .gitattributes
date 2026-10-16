@@ -1,0 +1,20 @@
+# Windows 默认 CRLF，仓库统一 LF 由 git 处理换行转换
+* text=auto
+
+# 源码文件强制 LF 入库
+*.cs text eol=lf
+*.xaml text eol=lf
+*.csproj text eol=lf
+*.sln text eol=crlf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.manifest text eol=lf
+
+# 二进制文件
+*.png binary
+*.ico binary
+
+# 固定哈希的修复脚本和清单保持原始 CRLF 字节。
+src/DeltaNFD/Assets/RuntimeHighFps/Installer.cmd -text
+src/DeltaNFD/Assets/RuntimeHighFps/payload_manifest_sha256.csv -text

@@ -1,0 +1,1635 @@
+[
+  {
+    "Name": "TaskFlighting",
+    "IconPath": "AbTesting",
+    "Description": "TaskFlightingDesc",
+    "Level": 5,
+    "Arguments": [
+      "PRO",
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Flighting\\OneSettings\\RefreshCache",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Flighting\\FeatureConfig\\BootstrapUsageDataReporting",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Flighting\\FeatureConfig\\UsageDataFlushing",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Flighting\\FeatureConfig\\ReconcileFeatures",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Flighting\\FeatureConfig\\UsageDataReporting",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Flighting\\FeatureConfig\\UsageDataReceiver",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "TaskAnalize",
+    "IconPath": "Update",
+    "Description": "TaskAnalizeDesc",
+    "Level": 5,
+    "Arguments": [
+      "PRO",
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Power Efficiency Diagnostics\\AnalyzeSystem",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\RAC\\RacTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\AppListBackup\\Backup",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Mobile Broadband Accounts\\MNO Metadata Parser",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "TaskDiagonsis",
+    "IconPath": "Wrench",
+    "Description": "TaskDiagonsisDesc",
+    "Level": 5,
+    "Arguments": [
+      "PRO",
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Chkdsk\\ProactiveScan",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Diagnosis\\RecommendedTroubleshootingScanner",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Diagnosis\\Scheduled",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\DiskDiagnostic\\Microsoft-Windows-DiskDiagnosticDataCollector",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\DiskDiagnostic\\Microsoft-Windows-DiskDiagnosticResolver",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\DiskFootprint\\Diagnostics",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\DiskFootprint\\StorageSense",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\MemoryDiagnostic\\RunFullMemoryDiagnostic",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\MemoryDiagnostic\\ProcessMemoryDiagnosticEvents",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Power Efficiency Diagnostics\\AnalyzeSystem",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\BrokerInfrastructure\\BgTaskRegistrationMaintenanceTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Server Manager\\ServerManager",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\ApplicationData\\appuriverifierdaily",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\ApplicationData\\appuriverifierinstall",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\WindowsColorSystem\\Calibration Loader",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  //{
+  //  "Name": "TaskNetCompiler",
+  //  "IconPath": "DotNet",
+  //  "Description": "TaskNetCompilerDesc",
+  //  "Level": 2,
+  //  "Arguments": [
+  //    "PRO",
+  //    "VISIBLETWEAKS", "LEVEL"
+  //  ],
+  //  "NoSupport": [],
+  //  "Type": "DOUBLE",
+  //  "Tweaks": [
+  //    {
+  //      "TweakType": "TASK",
+  //      "Path": "Microsoft\\Windows\\.NET Framework\\.NET Framework NGEN v4.0.30319",
+  //      "Key": "",
+  //      "Values": [
+  //        {
+  //          "ValueTypes": [
+  //            "DEFAULT",
+  //            "ON"
+  //          ],
+  //          "Value": "Enable"
+  //        },
+  //        {
+  //          "ValueTypes": [
+  //            "BEST",
+  //            "OFF",
+  //            "OPTIMAL"
+  //          ],
+  //          "Value": "Disable"
+  //        }
+  //      ]
+  //    },
+  //    {
+  //      "TweakType": "TASK",
+  //      "Path": "Microsoft\\Windows\\.NET Framework\\.NET Framework NGEN v4.0.30319 64",
+  //      "Key": "",
+  //      "Values": [
+  //        {
+  //          "ValueTypes": [
+  //            "DEFAULT",
+  //            "ON"
+  //          ],
+  //          "Value": "Enable"
+  //        },
+  //        {
+  //          "ValueTypes": [
+  //            "BEST",
+  //            "OFF",
+  //            "OPTIMAL"
+  //          ],
+  //          "Value": "Disable"
+  //        }
+  //      ]
+  //    },
+  //    {
+  //      "TweakType": "TASK",
+  //      "Path": "Microsoft\\Windows\\.NET Framework\\.NET Framework NGEN v4.0.30319 64 Critical",
+  //      "Key": "",
+  //      "Values": [
+  //        {
+  //          "ValueTypes": [
+  //            "DEFAULT",
+  //            "ON"
+  //          ],
+  //          "Value": "Enable"
+  //        },
+  //        {
+  //          "ValueTypes": [
+  //            "BEST",
+  //            "OFF",
+  //            "OPTIMAL"
+  //          ],
+  //          "Value": "Disable"
+  //        }
+  //      ]
+  //    },
+  //    {
+  //      "TweakType": "TASK",
+  //      "Path": "Microsoft\\Windows\\.NET Framework\\.NET Framework NGEN v4.0.30319 Critical",
+  //      "Key": "",
+  //      "Values": [
+  //        {
+  //          "ValueTypes": [
+  //            "DEFAULT",
+  //            "ON"
+  //          ],
+  //          "Value": "Enable"
+  //        },
+  //        {
+  //          "ValueTypes": [
+  //            "BEST",
+  //            "OFF",
+  //            "OPTIMAL"
+  //          ],
+  //          "Value": "Disable"
+  //        }
+  //      ]
+  //    }
+  //  ]
+  //},
+  {
+    "Name": "TaskProxy",
+    "IconPath": "ArrowDecision",
+    "Description": "TaskProxyDesc",
+    "Level": 2,
+    "Arguments": [
+      "PRO",
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Autochk\\Proxy",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "TaskWinSAT",
+    "IconPath": "Poll",
+    "Description": "TaskWinSATDesc",
+    "Level": 2,
+    "Arguments": [
+      "PRO",
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Maintenance\\WinSAT",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "TaskMaps",
+    "IconPath": "Map",
+    "Description": "TaskMapsDesc",
+    "Level": 2,
+    "Arguments": [
+      "PRO",
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Maps\\MapsToastTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Maps\\MapsUpdateTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Location\\Notifications",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Location\\WindowsActionDialog",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "TaskRC",
+    "IconPath": "AccountHardHatOutline",
+    "Description": "TaskRCDesc",
+    "Level": 2,
+    "Arguments": [
+      "PRO",
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\RemoteAssistance\\RemoteAssistanceTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "TaskMicAccSync",
+    "IconPath": "Microsoft",
+    "Description": "TaskMicAccSyncDesc",
+    "Level": 3,
+    "Arguments": [
+      "PRO",
+      "TRUSTED",
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\SettingSync\\BackgroundUploadTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\SettingSync\\BackupTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\SettingSync\\NetworkStateChangeTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "TaskClean",
+    "IconPath": "TrashCanOutline",
+    "Description": "TaskCleanDesc",
+    "Level": 2,
+    "Arguments": [
+      "PRO",
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\ApplicationData\\CleanupTemporaryState",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\ApplicationData\\DsSvcCleanup",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\DiskCleanup\\SilentCleanup",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\RetailDemo\\CleanupOfflineContent",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Setup\\SetupCleanupTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Server Manager\\CleanupOldPerfLogs",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Servicing\\StartComponentCleanup",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Wininet\\CacheTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "TaskStore",
+    "IconPath": "StorefrontOutline",
+    "Description": "TaskStoreDesc",
+    "Level": 2,
+    "Arguments": [
+      "PRO",
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\WS\\License Validation",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\WS\\WSRefreshBannedAppsListTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\PushToInstall\\Registration",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\PushToInstall\\LoginCheck",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "TaskXBOX",
+    "IconPath": "MicrosoftXbox",
+    "Description": "TaskXBOXDesc",
+    "Level": 2,
+    "Arguments": [
+      "PRO",
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\XblGameSave\\XblGameSaveTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\XblGameSave\\XblGameSaveTaskLogon",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "TaskLocalNetwork",
+    "IconPath": "Lan",
+    "Description": "TaskLocalNetworkDesc",
+    "Level": 2,
+    "Arguments": [
+      "PRO",
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Active Directory Rights Management Services Client\\AD RMS Rights Policy Template Management (Automated)",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Active Directory Rights Management Services Client\\AD RMS Rights Policy Template Management (Manual)",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\User Profile Service\\HiveUploadTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Work Folders\\Work Folders Logon Synchronization",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "TaskHDD",
+    "IconPath": "Harddisk",
+    "Description": "TaskHDDDesc",
+    "Level": 2,
+    "Arguments": [
+      "PRO",
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Data Integrity Scan\\Data Integrity Scan",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Data Integrity Scan\\Data Integrity Scan for Crash Recovery",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Data Integrity Scan\\Data Integrity Check And Scan",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Defrag\\ScheduledDefrag",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "TaskNotify",
+    "IconPath": "BellRing",
+    "Description": "TaskNotifyDesc",
+    "Level": 2,
+    "Arguments": [
+      "PRO",
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Setup\\EOSNotify",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Setup\\EOSNotify2",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\WindowsBackup\\ConfigNotification",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  }
+]

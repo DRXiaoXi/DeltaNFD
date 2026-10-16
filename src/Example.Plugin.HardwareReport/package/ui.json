@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "controls": [
+    { "id": "title", "type": "text", "text": "硬件报告" },
+    { "id": "detail", "type": "toggle", "label": "详细信息", "default": false },
+    { "id": "run", "type": "button", "label": "生成报告", "operationId": "report" },
+    { "id": "progress", "type": "progress" },
+    { "id": "result", "type": "result" }
+  ]
+}

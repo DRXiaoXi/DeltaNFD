@@ -1,0 +1,2964 @@
+[
+  {
+    "Name": "OptOutNet",
+    "IconPath": "DotNet",
+    "Description": "OptOutNetDesc",
+    "Arguments": [
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKCU\\Environment",
+        "Key": "DOTNET_CLI_TELEMETRY_OPTOUT",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "1"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "OptOutPowerShell",
+    "IconPath": "Powershell",
+    "Description": "OptOutPowerShellDesc",
+    "Arguments": [
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKCU\\Environment",
+        "Key": "POWERSHELL_TELEMETRY_OPTOUT",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "1"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "TelemetryServices",
+    "IconPath": "Cog",
+    "Description": "TelemetryServicesDesc",
+    "Level": 5,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\DiagTrack",
+        "Key": "Start",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "2"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "4"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\diagsvc",
+        "Key": "Start",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "3"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "4"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\dmwappushservice",
+        "Key": "Start",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "3"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "4"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\diagnosticshub.standardcollector.service",
+        "Key": "Start",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "2"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "4"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "WebCamTelemetry",
+    "IconPath": "Webcam",
+    "Description": "WebCamTelemetryDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Device Information\\Device",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\'DeviceCensus.exe'",
+        "Key": "Debugger",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "%windir%\\System32\\taskkill.exe"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "MicrosoftCompatibilityAppraiser",
+    "IconPath": "SemanticWeb",
+    "Description": "MicrosoftCompatibilityAppraiserDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Application Experience\\Microsoft Compatibility Appraiser",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\'CompatTelRunner.exe'",
+        "Key": "Debugger",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "%windir%\\System32\\taskkill.exe"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\'AggregatorHost.exe'",
+        "Key": "Debugger",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "%windir%\\System32\\taskkill.exe"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "CEIPDataUpdater",
+    "IconPath": "ProgressUpload",
+    "Description": "CEIPDataUpdaterDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Application Experience\\ProgramDataUpdater",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "ApplicationImpactTelemetryAgent",
+    "IconPath": "IncognitoCircle",
+    "Description": "ApplicationImpactTelemetryAgentDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Application Experience\\AitAgent",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "AppsToImprovePerfReminder",
+    "IconPath": "Security",
+    "Description": "AppsToImprovePerfReminderDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Application Experience\\StartupAppTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "CEIPTasks",
+    "IconPath": "HumanGreeting",
+    "Description": "CEIPTasksDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "\\Microsoft\\Windows\\Autochk\\Proxy",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "\\Microsoft\\Windows\\Customer Experience Improvement Program\\BthSQM",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "\\Microsoft\\Windows\\Customer Experience Improvement Program\\Consolidator",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "\\Microsoft\\Windows\\Customer Experience Improvement Program\\KernelCeipTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "\\Microsoft\\Windows\\Customer Experience Improvement Program\\UsbCeip",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "CEIPSQM",
+    "IconPath": "HumanGreeting",
+    "Description": "CEIPSQMDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\Software\\Policies\\Microsoft\\SQMClient\\Windows",
+        "Key": "CEIPEnable",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\AppV\\CEIP",
+        "Key": "CEIPEnable",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\Software\\Policies\\Microsoft\\Internet Explorer\\SQM",
+        "Key": "DisableCustomerImprovementProgram",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\Software\\Policies\\Microsoft\\Messenger\\Client",
+        "Key": "CEIP",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "2"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\UnattendSettings\\SQMClient",
+        "Key": "CEIPEnabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "0"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "ApplicationImpactTelemetry",
+    "IconPath": "ApplicationCogOutline",
+    "Description": "ApplicationImpactTelemetryDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\Software\\Policies\\Microsoft\\Windows\\AppCompat",
+        "Key": "AITEnable",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "0"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "DataCollectionPolicyTelemetry",
+    "IconPath": "FolderInformationOutline",
+    "Description": "DataCollectionPolicyTelemetryDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection",
+        "Key": "AllowTelemetry",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection",
+        "Key": "AllowTelemetry",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+        "Key": "AllowTelemetry",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection",
+        "Key": "LimitEnhancedDiagnosticDataWindowsAnalytics",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "0"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "LicenseTelemetry",
+    "IconPath": "CardAccountDetailsOutline",
+    "Description": "LicenseTelemetryDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\Software\\Policies\\Microsoft\\Windows NT\\CurrentVersion\\Software Protection Platform",
+        "Key": "NoGenTicket",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "1"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "DisableAppsAndCortanaToActivateWithVoice",
+    "IconPath": "RobotOffOutline",
+    "Description": "DisableAppsAndCortanaToActivateWithVoiceDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Speech_OneCore\\Settings\\VoiceActivation\\UserPreferenceForAllApps",
+        "Key": "AgentActivationEnabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy",
+        "Key": "LetAppsActivateWithVoice",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "2"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "\\Microsoft\\Windows\\Speech\\SpeechModelDownloadTask",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "DisableAppsAndCortanaToActivateWithVoiceWhenSystemIsLocked",
+    "IconPath": "RobotOff",
+    "Description": "DisableAppsAndCortanaToActivateWithVoiceWhenSystemIsLockedDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Speech_OneCore\\Settings\\VoiceActivation\\UserPreferenceForAllApps",
+        "Key": "AgentActivationOnLockScreenEnabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy",
+        "Key": "LetAppsActivateWithVoiceAboveLock",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "2"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "WindowsSearchDataCollection",
+    "IconPath": "NoteSearchOutline",
+    "Description": "WindowsSearchDataCollectionDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+        "Key": "AllowIndexingEncryptedStoresOrItems",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+        "Key": "AlwaysUseAutoLangDetection",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+        "Key": "AllowSearchToUseLocation",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+        "Key": "DisableWebSearch",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+        "Key": "ConnectedSearchUseWeb",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Search",
+        "Key": "BingSearchEnabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "TargetedAdsAndMarketing",
+    "IconPath": "AdvertisementsOff",
+    "Description": "TargetedAdsAndMarketingDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "WillBrake": [ "WBYour Phone" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Privacy",
+        "Key": "TailoredExperiencesWithDiagnosticDataEnabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "0"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "ContentDeliveryAllowed",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SubscribedContentEnabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SilentInstalledAppsEnabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SubscribedContent-310093Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SubscribedContent-314559Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SubscribedContent-280815Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SubscribedContent-314563Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SubscribedContent-280810Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SubscribedContent-280811Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SubscribedContent-338387Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SubscribedContent-202914Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SubscribedContent-338388Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SoftLandingEnabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SubscribedContent-338389Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SubscribedContent-338393Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SubscribedContent-353694Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "SubscribedContent-353696Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+        "Key": "RemediationRequired",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent",
+        "Key": "DisableSoftLanding",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent",
+        "Key": "DisableWindowsConsumerFeatures",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "CloudSync",
+    "IconPath": "CloudSync",
+    "Description": "CloudSyncDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableSettingSync",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 2
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableSettingSyncUserOverride",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableSyncOnPaidNetwork",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\SettingSync",
+        "Key": "SyncPolicy",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 5
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableApplicationSettingSync",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 2
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableApplicationSettingSyncUserOverride",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableAppSyncSettingSync",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 2
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableAppSyncSettingSyncUserOverride",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableCredentialsSettingSync",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 2
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableCredentialsSettingSyncUserOverride",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\SettingSync\\Groups\\Credentials",
+        "Key": "Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableDesktopThemeSettingSync",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 2
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableDesktopThemeSettingSyncUserOverride",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisablePersonalizationSettingSync",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 2
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisablePersonalizationSettingSyncUserOverride",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableStartLayoutSettingSync",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 2
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableStartLayoutSettingSyncUserOverride",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableWebBrowserSettingSync",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 2
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableWebBrowserSettingSyncUserOverride",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableWindowsSettingSync",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 2
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SettingSync",
+        "Key": "DisableWindowsSettingSyncUserOverride",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\SettingSync\\Groups\\Language",
+        "Key": "Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "CloudSpeechRecognition",
+    "IconPath": "CloudPrintOutline",
+    "Description": "CloudSpeechRecognitionDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Speech_OneCore\\Settings\\OnlineSpeechPrivacy",
+        "Key": "HasAccepted",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "OptOutWindowsPrivacyConsent",
+    "IconPath": "AlphaXBoxOutline",
+    "Description": "OptOutWindowsPrivacyConsentDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\Personalization\\Settings",
+        "Key": "AcceptedPrivacyPolicy",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "OFF"
+            ],
+            "Value": 1
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "ON",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "WindowsFeedback",
+    "IconPath": "CommentQuote",
+    "Description": "WindowsFeedbackDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Feedback\\Siuf\\DmClient",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Feedback\\Siuf\\DmClientOnScenarioDownload",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\Siuf\\Rules",
+        "Key": "NumberOfSIUFInPeriod",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\Siuf\\Rules",
+        "Key": "PeriodInNanoSeconds",
+        "Values": [
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection",
+        "Key": "DoNotShowFeedbackNotifications",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+        "Key": "DoNotShowFeedbackNotifications",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "TextAndHandWritingCollection",
+    "IconPath": "TextBoxEditOutline",
+    "Description": "TextAndHandWritingCollectionDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Policies\\Microsoft\\InputPersonalization",
+        "Key": "RestrictImplicitInkCollection",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\Software\\Policies\\Microsoft\\InputPersonalization",
+        "Key": "RestrictImplicitInkCollection",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Policies\\Microsoft\\InputPersonalization",
+        "Key": "RestrictImplicitTextCollection",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\Software\\Policies\\Microsoft\\InputPersonalization",
+        "Key": "RestrictImplicitTextCollection",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Policies\\Microsoft\\Windows\\HandwritingErrorReports",
+        "Key": "PreventHandwritingErrorReports",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\Software\\Policies\\Microsoft\\Windows\\HandwritingErrorReports",
+        "Key": "PreventHandwritingErrorReports",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Policies\\Microsoft\\Windows\\TabletPC",
+        "Key": "PreventHandwritingDataSharing",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\Software\\Policies\\Microsoft\\Windows\\TabletPC",
+        "Key": "PreventHandwritingDataSharing",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\InputPersonalization",
+        "Key": "AllowInputPersonalization",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\InputPersonalization\\TrainedDataStore",
+        "Key": "HarvestContacts",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "Sensors",
+    "IconPath": "Leak",
+    "Description": "SensorsDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\LocationAndSensors",
+        "Key": "DisableSensors",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "WiFiSense",
+    "IconPath": "WifiCog",
+    "Description": "WiFiSenseDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\PolicyManager\\default\\WiFi\\AllowWiFiHotSpotReporting",
+        "Key": "value",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\PolicyManager\\default\\WiFi\\AllowAutoConnectToWiFiSenseHotspots",
+        "Key": "value",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\WcmSvc\\wifinetworkmanager\\config",
+        "Key": "AutoConnectAllowedOEM",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "HideMostUsedApps",
+    "IconPath": "AppsBox",
+    "Description": "HideMostUsedAppsDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+        "Key": "Start_TrackProgs",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "OFF"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "ON",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "InventoryCollector",
+    "IconPath": "Memory",
+    "Description": "InventoryCollectorDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppCompat",
+        "Key": "DisableInventory",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "\\Microsoft\\Windows\\Device Information\\Device",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "\\Microsoft\\Windows\\Device Information\\Device User",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Enable"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": "Disable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "WebSiteAccessToLangList",
+    "IconPath": "WebBox",
+    "Description": "WebSiteAccessToLangListDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\Control Panel\\International\\User Profile",
+        "Key": "HttpAcceptLanguageOptOut",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "StepsRecorder",
+    "IconPath": "FileDocumentAlertOutline",
+    "Description": "StepsRecorderDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppCompat",
+        "Key": "HttpAcceptLanguageOptOut",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppCompat",
+        "Key": "DisableUAR",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 1
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "FeedbackOnWrite",
+    "IconPath": "Typewriter",
+    "Description": "FeedbackOnWriteDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Input\\TIPC",
+        "Key": "Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKCU\\SOFTWARE\\Microsoft\\Input\\TIPC",
+        "Key": "Enabled",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Name": "ActivityFeed",
+    "IconPath": "TextBoxPlusOutline",
+    "Description": "ActivityFeedDesc",
+    "Level": 1,
+    "Arguments": [
+      "LEVEL",
+      "VISIBLETWEAKS"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+        "Key": "EnableActivityFeed",
+        "Values": [
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          },
+          {
+            "ValueTypes": [
+              "BEST",
+              "OFF",
+              "OPTIMAL"
+            ],
+            "Value": 0
+          }
+        ]
+      }
+    ]
+  }
+  ]

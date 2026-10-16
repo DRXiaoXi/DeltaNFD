@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    ACE 清理后端（C2）：敏感操作独立进程。
+    - 只引用共享执行库 DeltaNFD.Execution（其中已物理移入 AceService 清理实现）；
+    - 不引用主程序 DeltaNFD，不含任何 UI/WinUI；
+    - 完成后自行退出（见 BackendModules 的 ExitAfterCommands）。
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>DeltaNFD.Backend.SystemMaintenance</AssemblyName>
+    <RootNamespace>DeltaNFD.Backend.SystemMaintenance</RootNamespace>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseAppHost>true</UseAppHost>
+    <Version>0.9193</Version>
+    <InformationalVersion>Alpha0.9193</InformationalVersion>
+    <WindowsPackageType>None</WindowsPackageType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DeltaNFD.Execution\DeltaNFD.Execution.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="obj\**\*.cs" />
+  </ItemGroup>
+
+</Project>

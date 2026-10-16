@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    进程管理后端（procman）：持久驻留，通用进程枚举/详情/能力读取与手动属性控制。
+    - 只引用共享执行库 DeltaNFD.Execution（进程身份核对、能力原语、控制权协调器、修改日志）；
+    - 不引用主程序 DeltaNFD，不含任何 UI/WinUI；
+    - 与 CPU/帧格后端分离：本模块管理任意进程，不绑定游戏目标；
+    - 完全退出时先还原通用控制（OnStopping → RestoreAllAsync），再由宿主退出。
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>DeltaNFD.Backend.Procman</AssemblyName>
+    <RootNamespace>DeltaNFD.Backend.Procman</RootNamespace>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseAppHost>true</UseAppHost>
+    <Version>0.9193</Version>
+    <InformationalVersion>Alpha0.9193</InformationalVersion>
+    <WindowsPackageType>None</WindowsPackageType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DeltaNFD.Execution\DeltaNFD.Execution.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="obj\**\*.cs" />
+  </ItemGroup>
+
+</Project>

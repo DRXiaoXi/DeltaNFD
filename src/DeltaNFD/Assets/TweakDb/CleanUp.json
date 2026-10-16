@@ -1,0 +1,194 @@
+[
+  {
+    "Name": "TempFiles",
+    "IconPath": "DeleteClockOutline",
+    "Description": "TempFilesDesc",
+    "IsPRO": false,
+    "Paths": [
+      "C:\\Windows\\Temp",
+      "C:\\Users\\%username%\\AppData\\Local\\Temp",
+      "C:\\Windows\\Logs",
+      "C:\\Windows\\System32\\LogFiles",
+      "C:\\Windows\\Prefetch"
+    ],
+    "IncludeInsideFolders": true,
+    "SearchPattern": "*.*"
+  },
+  {
+    "Name": "ThumbnailCache",
+    "Description": "ThumbnailCacheDesc",
+    "IsPRO": false,
+    "Paths": [
+      "C:\\Users\\%username%\\AppData\\Local\\Microsoft\\Windows\\Explorer"
+    ],
+    "IncludeInsideFolders": false,
+    "SearchPattern": "*.db",
+    "IconPath": "FolderClockOutline"
+  },
+  {
+    "Name": "SavedUwpFiles",
+    "Description": "SavedUwpFilesDesc",
+    "IsPRO": true,
+    "Paths": [
+      "C:\\Program Files\\WindowsApps\\Deleted",
+      "C:\\Program Files\\WindowsApps\\DeletedAllUserPackages"
+    ],
+    "IncludeInsideFolders": true,
+    "SearchPattern": "*.*",
+    "IconPath": "ApplicationOutline"
+  },
+  {
+    "Name": "SetupLogFiles",
+    "Description": "SetupLogFilesDesc",
+    "IsPRO": false,
+    "Paths": [
+      "C:\\Windows"
+    ],
+    "IncludeInsideFolders": false,
+    "SearchPattern": "setup*.log|setup*.old|setuplog.txt|winnt32.log",
+    "IconPath": "ApplicationSettingsOutline"
+  },
+  {
+    "Name": "WindowsDefenderFiles",
+    "Description": "WindowsDefenderFilesDesc",
+    "IsPRO": false,
+    "Paths": [
+      "C:\\ProgramData\\Microsoft\\Windows Defender\\LocalCopy",
+      "C:\\ProgramData\\Microsoft\\Windows Defender\\Support"
+    ],
+    "IncludeInsideFolders": true,
+    "SearchPattern": "*.*",
+    "IconPath": "ShieldRefreshOutline"
+  },
+  {
+    "Name": "DownloadedProgramFiles",
+    "Description": "DownloadedProgramFilesDesc",
+    "IsPRO": false,
+    "Paths": [
+      "C:\\Windows\\Downloaded Program Files"
+    ],
+    "IncludeInsideFolders": true,
+    "SearchPattern": "*.*",
+    "IconPath": "FolderPoundOutline"
+  },
+  {
+    "Name": "ActiveSetupTempFolders",
+    "Description": "ActiveSetupTempFoldersDesc",
+    "IsPRO": false,
+    "Paths": [
+      "C:\\Windows\\msdownld.tmp",
+      "?:\\msdownld.tmp"
+    ],
+    "IncludeInsideFolders": false,
+    "SearchPattern": "*.tmp",
+    "IconPath": "SquareRoundedBadgeOutline"
+  },
+  {
+    "Name": "ContentIndexerCleaner",
+    "Description": "ContentIndexerCleanerDesc",
+    "IsPRO": false,
+    "Paths": [
+      "?:\\Catalog.wci"
+    ],
+    "IncludeInsideFolders": true,
+    "SearchPattern": "*.*",
+    "IconPath": "FolderMultiplePlusOutline"
+  },
+  {
+    "Name": "D3DShaderCache",
+    "Description": "D3DShaderCacheDesc",
+    "IsPRO": false,
+    "Paths": [
+      "C:\\Users\\%username%\\AppData\\Local\\D3DSCache"
+    ],
+    "IncludeInsideFolders": true,
+    "SearchPattern": "*.*",
+    "IconPath": "CubeUnfolded"
+  },
+  {
+    "Name": "DeliveryOptimizationFiles",
+    "Description": "DeliveryOptimizationFilesDesc",
+    "IsPRO": false,
+    "Paths": [
+      "C:\\Windows\\SoftwareDistribution"
+    ],
+    "IncludeInsideFolders": true,
+    "SearchPattern": "*.*",
+    "IconPath": "FolderMoveOutline"
+  },
+  {
+    "Name": "DignosticDataViewerDataBase",
+    "Description": "DignosticDataViewerDataBaseDesc",
+    "IsPRO": false,
+    "Paths": [
+      "%ProgramData%\\Microsoft\\Diagnosis\\EventTranscript"
+    ],
+    "IncludeInsideFolders": true,
+    "SearchPattern": "*.*",
+    "IconPath": "DownloadBoxOutline"
+  },
+  {
+    "Name": "OldSckDskFiles",
+    "Description": "OldSckDskFilesDesc",
+    "IsPRO": false,
+    "Paths": [
+      "?:\\FOUND.000",
+      "?:\\FOUND.001",
+      "?:\\FOUND.002",
+      "?:\\FOUND.003",
+      "?:\\FOUND.004",
+      "?:\\FOUND.005",
+      "?:\\FOUND.006",
+      "?:\\FOUND.007",
+      "?:\\FOUND.008",
+      "?:\\FOUND.009"
+    ],
+    "IncludeInsideFolders": false,
+    "SearchPattern": "*.CHK",
+    "IconPath": "FolderCogOutline"
+  },
+  {
+    "Name": "SystemErrorFiles",
+    "Description": "SystemErrorFilesDesc",
+    "IsPRO": false,
+    "Paths": [
+      "C:\\Windows",
+      "C:\\Windows\\Minidump",
+      "C:\\Users\\%username%\\Microsoft\\Windows\\WER"
+    ],
+    "IncludeInsideFolders": false,
+    "SearchPattern": "*.dmp",
+    "IconPath": "FolderInformationOutline"
+  },
+  {
+    "Name": "ExtraAdvancedCleanUp",
+    "Description": "ExtraAdvancedCleanUpDesc",
+    "IsPRO": true,
+    "Paths": [
+      "C:\\Windows\\ServiceProfiles\\NetworkService\\AppData\\Local\\Temp",
+      "C:\\Users\\%username%\\AppData\\Local\\CrashDumps",
+      "C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\Backup",
+      "C:\\Documents and Settings\\All Users\\Application Data\\Microsoft\\Windows Defender\\Scans",
+      "C:\\Users\\%username%\\AppData\\Roaming\\Adobe\\Common\\Media Cache",
+      "C:\\Users\\%username%\\AppData\\Roaming\\Adobe\\Common\\Media Cache Files",
+      "C:\\Users\\%username%\\AppData\\Local\\Microsoft\\Windows\\INetCache\\IE",
+      "C:\\Users\\%username%\\AppData\\LocalLow\\Microsoft\\CryptnetUrlCache\\MetaData",
+      "C:\\Users\\%username%\\AppData\\Local\\Temp\\filmoralog",
+      "C:\\Windows\\Logs",
+      "C:\\Users\\%username%\\AppData\\Local\\Microsoft\\CLR_v4.0\\UsageLogs",
+      "C:\\ProgramData\\Microsoft\\Windows Defender\\Scans",
+      "C:\\Windows\\Temp\\CreativeCloud\\ACC",
+      "C:\\ProgramData\\Microsoft\\Windows\\WER\\ReportQueue",
+      "C:\\Windows\\ServiceProfiles\\NetworkService\\AppData\\Local\\Microsoft\\Windows\\DeliveryOptimization\\Logs",
+      "C:\\ProgramData\\Apple\\Installer Cache",
+      "C:\\ProgramData\\Microsoft\\Windows\\WER\\Temp",
+      "C:\\Users\\%username%\\AppData\\Local\\Microsoft\\VisualStudio\\SettingsLogs",
+      "C:\\Users\\%username%\\AppData\\Roaming\\Notepad++",
+      "C:\\Users\\%username%\\Saved Games\\My Games\\Warface\\modelscache",
+      "C:\\Windows\\LiveKernelReports"
+    ],
+    "IncludeInsideFolders": true,
+    "SearchPattern": "*.*",
+    "IconPath": "DeleteVariant"
+  }
+]

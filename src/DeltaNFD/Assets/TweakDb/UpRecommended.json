@@ -1,0 +1,313 @@
+[
+  {
+    "Name": "UpPauseUpdates100Y",
+    "Risk": "High",
+    "Description": "UpPauseUpdates100YDesc",
+    "IconPath": "ClockPause",
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings",
+        "Key": "PauseUpdatesStartTime",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "ON" ],
+            "Value": "2026-09-21T00:00:00Z"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings",
+        "Key": "PauseUpdatesExpiryTime",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "ON" ],
+            "Value": "2126-09-21T23:59:59Z"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings",
+        "Key": "PauseFeatureUpdatesStartTime",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "ON" ],
+            "Value": "2026-09-21T00:00:00Z"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings",
+        "Key": "PauseFeatureUpdatesEndTime",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "ON" ],
+            "Value": "2126-09-21T23:59:59Z"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings",
+        "Key": "PauseQualityUpdatesStartTime",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "ON" ],
+            "Value": "2026-09-21T00:00:00Z"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG_SZ",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings",
+        "Key": "PauseQualityUpdatesEndTime",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "ON" ],
+            "Value": "2126-09-21T23:59:59Z"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ],
+    "Level": 2
+  },
+  {
+    "Name": "UpDisableHags",
+    "Description": "UpDisableHagsDesc",
+    "IconPath": "Graphics",
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers",
+        "Key": "HwSchMode",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "ON" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "2"
+          }
+        ]
+      }
+    ],
+    "Level": 1
+  },
+  {
+    "Name": "BitlockerPrevent",
+    "Description": "BitlockerPreventDesc",
+    "Level": 1,
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\BitLocker",
+        "Key": "PreventDeviceEncryption",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "ON" ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ],
+    "IconPath": "FolderLockOutline"
+  },
+  {
+    "Name": "UpTelemetryOff",
+    "Description": "UpTelemetryOffDesc",
+    "IconPath": "EyeOff",
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+        "Key": "AllowTelemetry",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "ON" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection",
+        "Key": "AllowTelemetry",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "ON" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "1"
+          }
+        ]
+      },
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+        "Key": "DoNotShowFeedbackNotifications",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "ON" ],
+            "Value": "1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "Null"
+          }
+        ]
+      },
+      {
+        "TweakType": "SVC",
+        "Path": "DiagTrack",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "ON" ],
+            "Value": "4"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "2"
+          }
+        ]
+      },
+      {
+        "TweakType": "SVC",
+        "Path": "dmwappushservice",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "ON" ],
+            "Value": "4"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "2"
+          }
+        ]
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Customer Experience Improvement Program\\Consolidator",
+        "Key": "",
+        "Values": []
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Customer Experience Improvement Program\\UsbCeip",
+        "Key": "",
+        "Values": []
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Application Experience\\Microsoft Compatibility Appraiser",
+        "Key": "",
+        "Values": []
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Application Experience\\ProgramDataUpdater",
+        "Key": "",
+        "Values": []
+      },
+      {
+        "TweakType": "TASK",
+        "Path": "Microsoft\\Windows\\Autochk\\Proxy",
+        "Key": "",
+        "Values": []
+      },
+      {
+        "TweakType": "CMD",
+        "Path": "",
+        "Key": "",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "ON" ],
+            "Value": "sc.exe stop DiagTrack >nul 2>&1 & sc.exe stop dmwappushservice >nul 2>&1"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": ""
+          }
+        ]
+      }
+    ],
+    "Level": 2
+  },
+  {
+    "Name": "BoostStartupTime",
+    "Description": "BoostStartupTimeDesc",
+    "IconPath": "Power",
+    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power",
+        "Key": "HiberbootEnabled",
+        "Values": [
+          {
+            "ValueTypes": [ "BEST", "OPTIMAL", "ON" ],
+            "Value": "0"
+          },
+          {
+            "ValueTypes": [ "DEFAULT", "OFF" ],
+            "Value": "1"
+          }
+        ]
+      }
+    ],
+    "Level": 2
+  }
+]

@@ -1,0 +1,160 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>BackendSmokeTest</RootNamespace>
+    <!-- 与产品同版本：官方后端客户端（已链接进本测试）按 AppVersion 校验后端版本。 -->
+    <Version>0.9193</Version>
+    <InformationalVersion>Alpha0.9193</InformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DeltaNFD.Contracts\DeltaNFD.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\DeltaNFD.Shared\DeltaNFD.Shared.csproj" />
+    <ProjectReference Include="..\..\src\DeltaNFD.UpdateCore\DeltaNFD.UpdateCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\AlphaRestore\RuntimeCppOfficial.catalog.json" LogicalName="RuntimeCppOfficial.catalog.json" />
+    <Compile Remove="obj\**\*.cs" />
+    <Compile Remove="**/obj-*/**/*.cs;**/bin-*/**/*.cs;_buildcheck/**/*.cs" />
+  </ItemGroup>
+
+  <!--
+    只读冒烟测试：直接编译主工程的后端源文件（纯 BCL 实现，无 WinUI 依赖），
+    用来在不跑 UI 的情况下验证后端逻辑。只执行读取操作，不做任何伪装/关闭。
+    T6：原先从主工程链接的共享基础设施已物理移入 DeltaNFD.Shared（项目引用），
+    此处只保留仍留在前端、执行库尚未纳管的脱机/插件/更新等源码。
+    注意：FrameService 依赖 DispatcherQueue（WindowsAppSDK），无法在此编译，由主工程构建覆盖。
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AdvancedTweakService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceCoreFileCleanup.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceVirtualizationCheck.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceCleanupEnvironment.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceRegistrySafety.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceCleanupGuard.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineHelperSession.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Native\FileDialogNative.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineRestoreHandover.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineModeCoordinator.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineModeRetirement.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineHelperCompletion.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineHelperDeadline.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\CpuTopologyService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\OfflineCpuSetScheduler.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\OfflineCpuSetRecovery.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\FrameTweaksService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\FramePowerLifecycle.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\CpuFrameEngine.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\OfflineTaskOwnership.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginContract.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginPath.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginManifestParser.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginNavigationCatalog.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginUiParser.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginIpc.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginTrust.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginPackageIndex.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginPackageIntegrity.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginAuthorizationStore.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginRunStore.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginReconnectSession.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginPackageImporter.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginBackendSession.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginRuntimeService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginBackupStore.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginJobHandle.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginHandoffStore.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\PluginLifecycleGuard.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\DeploymentHandover.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginDiagnostics.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginHistoryQuery.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\DashboardHealthPresentation.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\DashboardShaderHealth.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\PluginManagerService.cs" />
+    <!--
+      「弱网加速」插件本体逻辑：测试链接编译**同一份源码**，用临时目录驱动真实的
+      Apply/Restore，并把生成的加速配置交给宿主真实的 UpdateService 解析器校验。
+      插件工程与本测试共用这一份实现，避免测试和实现各写一份而漂移。
+    -->
+    <Compile Include="..\..\src\Plugin.WeakNetBoost\WeakNetBoostProfile.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\FrameFeatureState.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\CpuFrameStatusState.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\AppVersion.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\AdvancedStartupRestart.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\ProcmanRuleProjection.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\ProcmanCpuSelection.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\DeltaProcessRules.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\FactoryResetConfiguration.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\BugFeedbackService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\StableList.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\BackendEnvironment.cs" />
+    <!-- 官方后端宿主（T5 生命周期检查的临时测试后端夹具）：纯 BCL，无 WinUI 依赖。 -->
+    <Compile Include="..\..\src\DeltaNFD.Execution\BackendHost.cs" />
+    <!-- 官方后端客户端（前端侧，WinUI 无关）：合同测试直接驱动真实客户端与后端 EXE。 -->
+    <Compile Include="..\..\src\DeltaNFD\Services\Backends\*.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\IUpdateService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\UpdateService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\UpdateService.Files.cs" />
+    <Compile Include="..\DotNetLayoutCheck\DotNetEnvironmentProbe.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\EmergencyPolicyUpdateService.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\GitHubReleaseSource.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\UpdateChannelPolicy.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\UpdateServerPolicy.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\UpdateChannelInstallation.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\UpdateUrlRewriter.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CleanupService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\DefenderGuard.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\GpuSpoofService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\GpuSpoofWatch.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\NvProfileService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\ShaderRecoveryCleanup.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\PowerService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeGuardService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeHighFpsMaintenance.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AlphaRestore\*.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\Vc14*.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeFileUse.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeGuardProtection.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeGuardRecoveryReport.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeLegacyInstallationReview.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeInstallationReview.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeGuardBackends.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\ShaderService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\SystemTweakService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\ApplicationPreLaunchControl.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\PagefileService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\ProcessMaintenanceService.cs" />
+    <!-- 进程管理（procman）引擎与控制权核心：同一份源码编译测试，避免测试和实现各写一份漂移。 -->
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\Procman\*.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Native\*.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RegistryAclHelper.cs" />
+    <!-- BxCatalog 已迁入 Contracts（项目引用）；BxService 执行实现已物理移入执行库。 -->
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\TweakDb\BxService.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.1" />
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="8.0.1" />
+  </ItemGroup>
+
+  <!-- DefenderGuard 的配置数据文件（冒烟测试的 Defender 状态只读查询要用） -->
+  <ItemGroup>
+    <Content Include="..\..\src\DeltaNFD\Assets\TweakDb\*.json" Link="Assets\TweakDb\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 自动更新的来源配置（update-checks 校验“随程序输出的配置本身合法”） -->
+  <ItemGroup>
+    <Content Include="..\..\src\DeltaNFD\Assets\UpdateConfig.json" Link="Assets\UpdateConfig.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Fixtures\LegacyVc14\*.inf" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Fixtures\Vc14BetaUninstall\*.inf" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

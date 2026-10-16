@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "id": "io.github.drxiaoxi.weaknet-boost",
+  "name": "弱网加速",
+  "author": "DRXiaoXi",
+  "version": "1.0.0",
+  "protocolVersion": "1.0",
+  "hostCompatibility": { "minInclusive": "0.90.0", "maxExclusive": "1.0.0" },
+  "backend": { "entry": "backend/Plugin.WeakNetBoost.exe", "architecture": "x64" },
+  "permissions": [
+    { "id": "files.modify", "purpose": "改写用户级更新源 %APPDATA%\\Delta NFD\\update-source.json：写入前把原文件完整字节备份到插件数据目录，关闭开关或卸载时按备份还原；不改动程序安装目录" },
+    { "id": "network.access", "purpose": "访问 gh-proxy 加速节点做可用性与延迟探测，并通过它读取公开的 GitHub 发布清单用于状态检查" }
+  ],
+  "capabilities": { "continuous": false, "offlineAutonomous": false },
+  "operations": [
+    { "id": "apply", "title": "应用弱网加速开关", "mutating": true, "reversible": true,
+      "targetScoped": false, "timeoutSeconds": 60, "resourceIds": ["filesystem.tweak"] },
+    { "id": "probe", "title": "检查加速状态", "mutating": false, "reversible": false,
+      "targetScoped": false, "timeoutSeconds": 45 }
+  ],
+  "navigation": { "label": "弱网加速", "icon": "activity", "pageId": "main" }
+}

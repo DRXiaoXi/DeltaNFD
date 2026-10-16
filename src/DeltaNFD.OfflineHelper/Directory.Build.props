@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <OfflineBuildRoot Condition="'$(OfflineBuildRoot)' == ''">$(MSBuildThisFileDirectory)..\..\_buildcheck\offline-helper\</OfflineBuildRoot>
+    <BaseIntermediateOutputPath>$(OfflineBuildRoot)obj\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+    <BaseOutputPath>$(OfflineBuildRoot)bin\</BaseOutputPath>
+  </PropertyGroup>
+</Project>

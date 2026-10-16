@@ -1,0 +1,713 @@
+<Page
+    x:Class="DeltaNFD.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:DeltaNFD.Views">
+
+    <ScrollViewer>
+        <StackPanel MaxWidth="1080" Padding="28,20,28,32" Spacing="16">
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="设置" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="外观与常规选项" Style="{StaticResource PageSubtitleStyle}" />
+            </StackPanel>
+
+            <!-- 外观 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <ToggleSwitch x:Name="CustomGameModeToggle" Header="不玩三角洲辣" Toggled="CustomGameMode_Toggled" />
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel Spacing="4">
+                            <TextBlock x:Name="TargetFileNameText" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock x:Name="TargetFilePathText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button x:Name="SelectGameExeButton" Grid.Column="1" Click="SelectGameExe_Click" VerticalAlignment="Top" ToolTipService.ToolTip="选择主进程 EXE">
+                            <FontIcon Glyph="&#xE8B7;" />
+                        </Button>
+                    </Grid>
+                    <TextBlock x:Name="TargetModeStatusText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="外观" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
+
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="应用主题" FontWeight="SemiBold" />
+                            <TextBlock Text="切换界面明暗主题" Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" MinWidth="150" VerticalAlignment="Center"
+                                  ItemsSource="{x:Bind ThemeOptions}"
+                                  IsEnabled="{x:Bind ViewModel.ThemeSelectionEnabled, Mode=OneWay}"
+                                  SelectedIndex="{x:Bind ViewModel.SelectedThemeIndex, Mode=TwoWay}" />
+                    </Grid>
+
+                    <!-- 背景图片模式（总开关；开启时界面锁定深色主题） -->
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="背景图片模式" FontWeight="SemiBold" />
+                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                       Text="开启：显示背景图（自定义或内置）；关闭：使用系统 Mica 云母背景。开启背景图片模式期间，界面主题锁定为深色（背景图按深色调设计），浅色/深色选择暂不可用。" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" IsOn="{x:Bind ViewModel.BackgroundImageEnabled, Mode=TwoWay}"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <!-- 主题色（自由切换工具强调色） -->
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="主题色" FontWeight="SemiBold" />
+                            <TextBlock Text="自由切换工具强调色（按钮 / 开关 / 主页横幅等），立即生效并保存"
+                                       Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <ItemsControl x:Name="AccentSwatchList">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="6" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="local:AccentOption">
+                                        <Button Click="AccentSwatch_Click" Tag="{x:Bind Hex}"
+                                                Padding="0" MinWidth="34" MinHeight="26"
+                                                CornerRadius="7" BorderThickness="0" VerticalAlignment="Center"
+                                                ToolTipService.ToolTip="{x:Bind Name}">
+                                            <Grid>
+                                                <Border Width="28" Height="18" CornerRadius="5">
+                                                    <Border.Background>
+                                                        <SolidColorBrush Color="{x:Bind Color}" />
+                                                    </Border.Background>
+                                                </Border>
+                                                <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White"
+                                                          Visibility="{x:Bind IsSelected}" />
+                                            </Grid>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Content="自定义…" Click="CustomAccentButton_Click" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="自定义背景图片" FontWeight="SemiBold" />
+                            <TextBlock Text="选择 PNG / JPG / WebP 图片作为全局背景（覆盖整个窗口，立即生效并持久保存）"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <Button Content="选择图片" Click="PickBackgroundButton_Click"
+                                    IsEnabled="{x:Bind ViewModel.BackgroundImageEnabled, Mode=OneWay}" />
+                            <Button Content="恢复默认" Click="ResetBackgroundButton_Click"
+                                    IsEnabled="{x:Bind ViewModel.BackgroundImageEnabled, Mode=OneWay}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="背景遮罩浓度" FontWeight="SemiBold" />
+                            <TextBlock Text="背景图上的暗色遮罩：越暗文字越清晰，越透背景越明显"
+                                       Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <Slider Grid.Column="1" MinWidth="180" VerticalAlignment="Center"
+                                Minimum="0" Maximum="95" StepFrequency="5"
+                                x:Name="DimSlider"
+                                IsEnabled="{x:Bind ViewModel.BackgroundImageEnabled, Mode=OneWay}"
+                                ValueChanged="DimSlider_ValueChanged" />
+                    </Grid>
+
+                    <TextBlock x:Name="BackgroundStatusText"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Margin="0,2,0,6" />
+                </StackPanel>
+            </Border>
+
+            <!-- 常规 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="未确认的后端操作" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="超时或断线不代表操作已恢复。请先确认相关程序已结束，并核对系统状态；证据会保留。"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <Button Content="核对未确认操作" Click="ReviewBackendOperations_Click" />
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="常规" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
+
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="开机自动启动" FontWeight="SemiBold" />
+                            <TextBlock Text="登录 Windows 后自动运行（计划任务，不弹 UAC）" Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" IsOn="{x:Bind ViewModel.AutoStart, Mode=TwoWay}"
+                                      IsEnabled="{x:Bind ViewModel.NormalAutomationSettingsEnabled, Mode=OneWay}"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="关闭时最小化到托盘" FontWeight="SemiBold" />
+                            <TextBlock Text="开启后关闭窗口将驻留托盘；未开启时，若帧格或 CPU 调度正在运行，关闭窗口会提示是否开启后台运行。" Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" IsOn="{x:Bind ViewModel.MinimizeToTray, Mode=TwoWay}"
+                                      IsEnabled="{x:Bind ViewModel.NormalAutomationSettingsEnabled, Mode=OneWay}"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <!-- 运行日志（排障用） -->
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="运行日志" FontWeight="SemiBold" />
+                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                       Text="记录启动环境、页面导航与全部系统操作的执行结果与异常（%APPDATA%\Delta NFD\logs）。在其他电脑上出问题时，把对应时间的日志文件发回来即可定位。每次启动一个文件，自动保留 14 天。" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="打开日志文件夹" Click="OpenLogFolderButton_Click"
+                                VerticalAlignment="Center" />
+                    </Grid>
+
+                    <TextBlock Text="{x:Bind ViewModel.GeneralStatusText, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="问题反馈" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="填写问题所在模块和复现步骤，可附带最近应用日志。无需登录，预览并确认后才发送至作者服务器。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button x:Name="BugFeedbackButton" Content="反馈 BUG" Click="SendBugFeedback_Click" />
+                        <Button x:Name="RetryFeedbackButton" Content="重试上次反馈" Click="RetryBugFeedback_Click" Visibility="Collapsed" />
+                        <Button x:Name="CancelFeedbackButton" Content="取消发送" Click="CancelBugFeedback_Click" Visibility="Collapsed" />
+                        <ProgressRing x:Name="FeedbackProgressRing" Width="22" Height="22" IsActive="False" />
+                    </StackPanel>
+                    <TextBlock x:Name="FeedbackStatusText" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="恢复出厂设置" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="用于清理新旧配置冲突：备份当前配置，停止并恢复工具的临时修改，将外观、游戏目录、自动功能、进程规则和后台参数重置为默认值。完成后关闭并重新打开工具。"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <TextBlock Text="系统优化的原值备份、日志和插件文件保留；已应用的系统优化不会在此重置，仍可在对应页面按备份还原。未完成的操作必须先核对，不能靠清空记录跳过恢复。"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <Button x:Name="FactoryResetButton" Content="一键恢复出厂设置" Click="FactoryReset_Click" HorizontalAlignment="Left" />
+                    <TextBlock x:Name="FactoryResetStatusText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite" />
+                </StackPanel>
+            </Border>
+
+            <!-- Recovery only: shown solely for existing records from retired versions. -->
+            <Border x:Name="LegacyRecoveryCard" Style="{StaticResource CardBorderStyle}" Visibility="Collapsed">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="旧版设置待恢复" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock x:Name="LegacyRecoveryStatusText" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                    <Button x:Name="LegacyRecoveryButton" Content="恢复旧版遗留设置" Click="LegacyRecoveryButton_Click" />
+                </StackPanel>
+            </Border>
+
+            <!-- 三角洲目录识别（支持多安装） -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="三角洲安装目录" Style="{StaticResource SectionTitleStyle}" />
+
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="登记本机所有三角洲安装目录；着色器清理、ACE 清理、运行库防护、全屏优化等功能会对每个登记目录同时生效。未登记的目录仍会被 WeGame 注册表和常见路径自动识别。" />
+
+                    <ListView x:Name="GameRootsList" MaxHeight="220" SelectionMode="None" />
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="GamePathBox" VerticalAlignment="Center"
+                                 PlaceholderText="手动粘贴安装目录后点添加，或用下方搜索" />
+                        <Button x:Name="PickGameFolderButton" Grid.Column="1" Content="浏览" Click="PickGameFolderButton_Click" />
+                        <Button x:Name="AddGamePathButton" Grid.Column="2" Content="添加" Style="{StaticResource AccentButtonStyle}"
+                                Click="AddGamePathButton_Click" />
+                        <Button x:Name="SearchGameFoldersButton" Grid.Column="3" Content="搜索添加" Click="SearchGameFoldersButton_Click" />
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="FullScanGameFoldersButton" Content="全盘搜索" Click="FullScanGameFoldersButton_Click" />
+                        <Button x:Name="ScopedScanGameFoldersButton" Content="指定目录搜索" Click="ScopedScanGameFoldersButton_Click" />
+                        <Button x:Name="ClearGamePathButton" Content="清除旧手动指定" Click="ClearGamePathButton_Click" />
+                    </StackPanel>
+
+                    <TextBlock x:Name="GamePathStatusText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- 三角帧本体设置 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="三角帧本体设置" Style="{StaticResource SectionTitleStyle}" />
+
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="针对游戏主程序（DeltaForceClient-Win64-Shipping.exe）的兼容性调整，直接写入用户级注册表，无需重启电脑，下次启动游戏生效。" />
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="禁用全屏优化" FontWeight="SemiBold" />
+                            <TextBlock Text="禁用游戏的全屏优化（Fullscreen Optimizations），可降低全屏模式下的输入延迟与帧生成波动。开启后写入注册表兼容性标记，关闭时恢复原值。"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ToggleSwitch x:Name="FsoDisableToggle" Grid.Column="1" Toggled="FsoDisableToggle_Toggled"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <TextBlock x:Name="FsoStatusText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Opacity="0.8" />
+                </StackPanel>
+            </Border>
+
+            <!-- 软件更新 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="软件更新" Style="{StaticResource SectionTitleStyle}" />
+
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="默认从自建服务器下载并替换变化文件；也可选择全量更新，下载完整安装包。更新前会安全退出主程序和后端，设置、备份与日志都会保留。" />
+                    <TextBlock Text="Alpha0.9193 为更新测试版，未开放运行库；更新至 Alpha0.9194 后获得完整功能。"
+                               Visibility="{x:Bind LimitedUpdateTestVisibility}" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}" />
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="更新方式" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind Update.UpdateModeDescription, Mode=OneWay}"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" SelectedIndex="{x:Bind Update.UpdateModeIndex, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind Update.ModeEnabled, Mode=OneWay}"
+                                  AutomationProperties.Name="更新方式" VerticalAlignment="Center" MinWidth="210">
+                            <ComboBoxItem Content="仅替换变更文件（默认）" />
+                            <ComboBoxItem Content="全量更新" />
+                        </ComboBox>
+                    </Grid>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="启动时自动检查更新" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind Update.CurrentVersionDetail}"
+                                       Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" IsOn="{x:Bind Update.AutoCheck, Mode=TwoWay}"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="更新通道" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind Update.UpdateChannelDescription, Mode=OneWay}"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" SelectedIndex="{x:Bind Update.UpdateChannelIndex, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind Update.ChannelEnabled, Mode=OneWay}"
+                                  AutomationProperties.Name="更新通道" VerticalAlignment="Center" MinWidth="140">
+                            <ComboBoxItem Content="内测通道" />
+                            <ComboBoxItem Content="公测通道" />
+                        </ComboBox>
+                    </Grid>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="更新服务器" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind Update.UpdateServerDescription, Mode=OneWay}"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" SelectedIndex="{x:Bind Update.UpdateServerIndex, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind Update.ServerEnabled, Mode=OneWay}"
+                                  AutomationProperties.Name="更新服务器" VerticalAlignment="Center" MinWidth="210">
+                            <ComboBoxItem Content="自动（GitHub 优先）" />
+                            <ComboBoxItem Content="仅 GitHub" />
+                            <ComboBoxItem Content="仅自建服务器" />
+                        </ComboBox>
+                    </Grid>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="接收紧急算法策略" FontWeight="SemiBold" />
+                            <TextBlock Text="已安装版本启动时及每 15 分钟检查一次，沿用上方更新通道。仅应用签名验证通过的参数、内置方案和故障功能停用策略，无需重装；新算法代码仍需安装更新。关闭后立即使用内置算法。"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" IsOn="{x:Bind Update.EmergencyPolicyEnabled, Mode=TwoWay}"
+                                      AutomationProperties.Name="接收紧急算法策略"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center" />
+                    </Grid>
+                    <TextBlock Text="{x:Bind Update.EmergencyPolicyStatus, Mode=OneWay}"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+
+                    <InfoBar IsOpen="{x:Bind Update.InfoBarOpen, Mode=OneWay}"
+                             Severity="{x:Bind Update.Severity, Mode=OneWay}"
+                             Title="更新" Message="{x:Bind Update.StatusText, Mode=OneWay}"
+                             IsClosable="False" />
+
+                    <!-- 有新版本时的详情与操作 -->
+                    <StackPanel Spacing="10" Visibility="{x:Bind Update.UpdateAvailable, Mode=OneWay}">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="新版本" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <Border Style="{StaticResource ChipBorderStyle}"
+                                    Background="{StaticResource AppAccentChipBrush}">
+                                <TextBlock Text="{x:Bind Update.AvailableVersionText, Mode=OneWay}"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource AppAccentBrush}" />
+                            </Border>
+                            <Border Style="{StaticResource ChipBorderStyle}"
+                                    Background="#33E5484D" Visibility="{x:Bind Update.Mandatory, Mode=OneWay}">
+                                <TextBlock Text="必须更新" FontSize="11" FontWeight="SemiBold" Foreground="#FFE5484D" />
+                            </Border>
+                        </StackPanel>
+
+                        <Expander Header="更新说明" HorizontalAlignment="Stretch"
+                                  Visibility="{x:Bind Update.DetailsVisible, Mode=OneWay}">
+                            <TextBlock Text="{x:Bind Update.Notes, Mode=OneWay}" TextWrapping="Wrap"
+                                       Style="{StaticResource CardDescStyle}" Margin="0,4,0,0" />
+                        </Expander>
+
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button Content="{x:Bind Update.ActionButtonText, Mode=OneWay}"
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    Click="PrimaryUpdateAction_Click"
+                                    IsEnabled="{x:Bind Update.ActionEnabled, Mode=OneWay}" />
+                            <Button Content="稍后再更新" Click="SkipUpdateVersion_Click"
+                                    IsEnabled="{x:Bind Update.SkipEnabled, Mode=OneWay}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- 下载进度 -->
+                    <StackPanel Spacing="6" Visibility="{x:Bind Update.ShowProgress, Mode=OneWay}">
+                        <ProgressBar Maximum="100" Value="{x:Bind Update.ProgressPercent, Mode=OneWay}" />
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock Text="{x:Bind Update.ProgressText, Mode=OneWay}"
+                                       Style="{StaticResource CardDescStyle}" VerticalAlignment="Center" />
+                            <Button Content="取消下载" Click="CancelUpdateDownload_Click"
+                                    IsEnabled="{x:Bind Update.CancelEnabled, Mode=OneWay}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="检查更新" Click="CheckUpdateButton_Click"
+                                IsEnabled="{x:Bind Update.CheckEnabled, Mode=OneWay}" />
+                        <Button Content="更新源配置" Click="OpenUpdateSourceConfig_Click"
+                                ToolTipService.ToolTip="查看更新来源配置：update-source.json（升级不会覆盖）" />
+                        <HyperlinkButton Content="打开发布页面" Padding="4,0" VerticalAlignment="Center"
+                                         Click="OpenUpdateReleasePage_Click" />
+                        <Button Content="打开下载文件夹" Click="OpenUpdateDownloadFolder_Click" />
+                    </StackPanel>
+
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Opacity="0.7"
+                               Text="{x:Bind Update.SourceHint}" />
+
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Opacity="0.7"
+                               Text="说明：只有通过安装包安装的版本才支持自动更新；开发构建或手动解压运行会提示手动下载。下载失败的安装包不会被安装，可在下载文件夹里查看或重试。" />
+                </StackPanel>
+            </Border>
+
+            <!-- 关于 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="关于" Style="{StaticResource SectionTitleStyle}" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Border Width="48" Height="48" CornerRadius="12">
+                            <Image x:Name="AboutLogoImage" Source="ms-appx:///Assets/DeltaNFD.png"
+                                   Stretch="Uniform" />
+                        </Border>
+                        <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock Text="三角帧不掉洲" FontSize="17" FontWeight="SemiBold" />
+                                <Border Style="{StaticResource ChipBorderStyle}" Background="{StaticResource AppAccentChipBrush}">
+                                    <TextBlock Text="{x:Bind ViewModel.VersionText}" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{StaticResource AppAccentBrush}" />
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="Delta No FPS Drops（Delta NFD）· 三角洲行动系统级优化工具" Style="{StaticResource CardDescStyle}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" Margin="0,4" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <TextBlock Text="作者：逐梦之子-晓夕" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <HyperlinkButton NavigateUri="https://space.bilibili.com/630440925"
+                                         Content="B 站主页 @逐梦之子-晓夕"
+                                         Padding="4,0" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="本工具的大部分优化功能已真实生效（详见 README），关闭 Defender/更新禁用等高危项会降低系统安全性，使用时请自行权衡并遵守游戏用户协议。" />
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               Text="本版本采用 GNU GPL 第 3 版（GPL-3.0-only），允许商业使用与收费分发；分发本程序或受 GPL 覆盖的修改版时，须保留版权和许可证声明，并按 GPLv3 提供完整对应源代码。完整条款见安装目录 DELTA-NFD-LICENSE.txt；第三方资源保留各自授权。" />
+                    <TextBlock FontSize="11" Opacity="0.5" TextWrapping="Wrap"
+                               Text="显卡驱动级设置（低延迟 / 数字振动等）尚未实现，当前为演示数据。" />
+                </StackPanel>
+            </Border>
+
+            <!-- 致谢名单 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="致谢名单" Style="{StaticResource SectionTitleStyle}"
+                               AutomationProperties.HeadingLevel="Level2" />
+
+                    <TextBlock Text="感谢 Henry++ / Mem Reduct 提供内存回收设计参考。本项目独立实现逐进程保护、压力触发和冷却，未集成其 GPL 源码或程序。" TextWrapping="Wrap" FontSize="12" />
+                    <HyperlinkButton Content="Mem Reduct · Henry++" NavigateUri="https://github.com/henrypp/memreduct" HorizontalAlignment="Left" Padding="0" />
+
+                    <TextBlock Text="重大贡献者" FontSize="14" FontWeight="SemiBold"
+                               AutomationProperties.HeadingLevel="Level3" />
+
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Style="{StaticResource CardBorderStyle}" Padding="12">
+                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                         StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                    <Ellipse.Fill>
+                                        <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/token-provider.jpg"
+                                                    Stretch="UniformToFill" />
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <StackPanel Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="Token提供者" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                                    <TextBlock Text="怜爱" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="1" Style="{StaticResource CardBorderStyle}" Padding="12">
+                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                         StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                    <Ellipse.Fill>
+                                        <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/lead-tester.jpg"
+                                                    Stretch="UniformToFill" />
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <StackPanel Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="头号测试员" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                                    <TextBlock Text="14代耐电王" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2" Style="{StaticResource CardBorderStyle}" Padding="12">
+                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                         StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                    <Ellipse.Fill>
+                                        <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/shangguan-cash-support.jpg"
+                                                    Stretch="UniformToFill" />
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <StackPanel Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="提供648元资金支持" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                                    <TextBlock Text="上官赐福" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Expander Header="Bug排雷员" HorizontalAlignment="Stretch" IsExpanded="False"
+                              AutomationProperties.HeadingLevel="Level3">
+                        <Border Style="{StaticResource CardBorderStyle}" Padding="12" Margin="0,4,0,0">
+                            <StackPanel Spacing="8">
+                                <Border Style="{StaticResource CardBorderStyle}" Padding="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                        <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                                 StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                            <Ellipse.Fill>
+                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-muduo.jpg"
+                                                            Stretch="UniformToFill" />
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                        <TextBlock Text="目夺" FontSize="16" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource CardBorderStyle}" Padding="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                        <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                                 StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                            <Ellipse.Fill>
+                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-jiemei-wangming.jpg"
+                                                            Stretch="UniformToFill" />
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                        <TextBlock Text="九妹亡命天涯" FontSize="16" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource CardBorderStyle}" Padding="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                        <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                                 StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                            <Ellipse.Fill>
+                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-zi.jpg"
+                                                            Stretch="UniformToFill" />
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                        <TextBlock Text="梓" FontSize="16" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource CardBorderStyle}" Padding="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                        <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                                 StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                            <Ellipse.Fill>
+                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-wujiyan.jpg"
+                                                            Stretch="UniformToFill" />
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                        <TextBlock Text="无机盐" FontSize="16" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource CardBorderStyle}" Padding="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                        <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                                 StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                            <Ellipse.Fill>
+                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-putaojiu-tusi.jpg"
+                                                            Stretch="UniformToFill" />
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                        <TextBlock Text="葡萄酒吐司" FontSize="16" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource CardBorderStyle}" Padding="8">
+                                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                        <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}"
+                                                 StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                            <Ellipse.Fill>
+                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-anonymous-yanzhu.png"
+                                                            Stretch="UniformToFill" />
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                        <TextBlock Text="无数不留姓名的彦祖" FontSize="16" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </Expander>
+
+                    <Border Background="{StaticResource AppAccentSoftBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1" CornerRadius="8" Padding="14">
+                        <StackPanel Spacing="7">
+                            <TextBlock Text="【是否想更低成本调用主流大模型？】" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                <TextBlock Text="网站传送门：" VerticalAlignment="Center" />
+                                <HyperlinkButton Content="www.lynshen.org" NavigateUri="https://www.lynshen.org/"
+                                                 Padding="0" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Text="✨全场国产模型低至 0.55x" TextWrapping="Wrap" />
+                            <TextBlock Text="GLM-5.3-Flash、DeepSeek-V4.1-Flash 低至 0.2x" TextWrapping="Wrap" />
+                            <TextBlock Text="GPT 全系模型也低至 0.2x" TextWrapping="Wrap" />
+                            <TextBlock Text="kimi 限时0.2x" TextWrapping="Wrap" />
+                            <TextBlock Text="【充值时输入优惠码 65NEF55V】 🪧还可再享 5% 充值优惠"
+                                       TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                            <TextBlock Text="✨交流群【1124358530】" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                <TextBlock Text="【邀请码】" VerticalAlignment="Center" />
+                                <HyperlinkButton Content="点击注册" NavigateUri="https://www.lynshen.org/login?mode=register&amp;invite=65NEF55V"
+                                                 Padding="0" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Text="【同时有 Lynshen Agent [Aogiri] 客户端，支持大部分主流操作系统】"
+                                       FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock Text="Windows，MacOS Intel/MacOS Apple，Linux Deb，Linux rpm，Linux AppImage"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="【同时支持兼容 Codex CLI、Claude Code CLI 后端，支持迁移历史对话、Skills 和 MCP 进行无缝切换】"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="【模型具有】" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock Text="DeepSeek-V4.1-Flash&#xA;claude-fable-5&#xA;claude-fable-5-1&#xA;claude-opus-4-6&#xA;claude-opus-4-7&#xA;claude-opus-4-8&#xA;claude-opus-5&#xA;claude-opus-5-5&#xA;claude-sonnet-5&#xA;chat-gpt-6-sol&#xA;chat-gpt-6-astra&#xA;chat-gpt-6.1-sol&#xA;chat-gpt-5.6-sol&#xA;chat-gpt-6-luna&#xA;glm-5.3&#xA;glm-5.3-flash&#xA;kimi-k3"
+                                       TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                            <TextBlock Text="Aogiri 客户端进入公测阶段，新用户首次使用客户端可获得 7 天国模免费套餐（限时活动）。"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

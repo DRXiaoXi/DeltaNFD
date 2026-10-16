@@ -1,0 +1,4630 @@
+[
+    {
+        "ServiceName":  "AJRouter",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "AllJoyn (virtual network for smart devices)"
+                      ]
+    },
+    {
+        "ServiceName":  "ALG",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "AppIDSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Restrict software startup rights"
+                      ]
+    },
+    {
+        "ServiceName":  "Appinfo",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "AppMgmt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Installing PC applications on a local area network",
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "AppReadiness",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Windows Updates",
+                          "Microsoft Store"
+                      ]
+    },
+    {
+        "ServiceName":  "AppVClient",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "AppXSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Store",
+                          "BoosterX applications",
+                          "StoreX"
+                      ]
+    },
+    {
+        "ServiceName":  "AssignedAccessManagerSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Windows Kiosk"
+                      ]
+    },
+    {
+        "ServiceName":  "AudioEndpointBuilder",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "All sound"
+                      ]
+    },
+    {
+        "ServiceName":  "Audiosrv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "All sound"
+                      ]
+    },
+    {
+        "ServiceName":  "autotimesvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Automatic time setting via phone"
+                      ]
+    },
+    {
+        "ServiceName":  "AxInstSV",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "BDESVC",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "BitLocker",
+                          "Data Encryption"
+                      ]
+    },
+    {
+        "ServiceName":  "BFE",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Firewall",
+                          "Radeon Software",
+                          "Microsoft Store",
+                          "Windows11Panel",
+                          "AntiZapret",
+                          "VPN"
+                      ]
+    },
+    {
+        "ServiceName":  "BITS",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Windows Updates",
+                          "Microsoft Office"
+                      ]
+    },
+    {
+        "ServiceName":  "BrokerInfrastructure",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "Browser",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "SMB1 Component",
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "BTAGService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Bluetooth"
+                      ]
+    },
+    {
+        "ServiceName":  "BthAvctpSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Bluetooth"
+                      ]
+    },
+    {
+        "ServiceName":  "bthserv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Bluetooth"
+                      ]
+    },
+    {
+        "ServiceName":  "camsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Store",
+                          "Microphone"
+                      ]
+    },
+    {
+        "ServiceName":  "CDPSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Night Light",
+                          "Virtual Desktops",
+                          "Your Phone"
+                      ]
+    },
+    {
+        "ServiceName":  "CertPropSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Smart Cards"
+                      ]
+    },
+    {
+        "ServiceName":  "ClipSVC",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Store"
+                      ]
+    },
+    {
+        "ServiceName":  "cloudidsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "COMSysApp",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "COM+",
+                          ".NET Framework",
+                          "ActiveX",
+                          "DirectX",
+                          "LastActivityView"
+                      ]
+    },
+    {
+        "ServiceName":  "CoreMessagingRegistrar",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "CryptSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "CscService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Caching of files in public folders"
+                      ]
+    },
+    {
+        "ServiceName":  "DcomLaunch",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "defragsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "HDD Defragmentation",
+                          "SSD Optimization"
+                      ]
+    },
+    {
+        "ServiceName":  "DeviceAssociationService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Device Pairing",
+                          "Devices in Settings"
+                      ]
+    },
+    {
+        "ServiceName":  "DeviceInstall",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "DevQueryBroker",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Devices with background support"
+                      ]
+    },
+    {
+        "ServiceName":  "Dhcp",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Internet",
+                          "WIFI"
+                      ]
+    },
+    {
+        "ServiceName":  "diagnosticshub.standardcollector.service",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "diagsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "DiagTrack",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "DialogBlockingService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "DispBrokerDesktopSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Remote monitor management",
+                          "MonitorSettings",
+                          "SecondMonitor",
+                          "VirtualDesktop"
+                      ]
+    },
+    {
+        "ServiceName":  "DisplayEnhancementService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Adjusting monitor brightness via keys"
+                      ]
+    },
+    {
+        "ServiceName":  "DmEnrollmentSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Offline Windows updates"
+                      ]
+    },
+    {
+        "ServiceName":  "dmwappushservice",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "PCManager Service Store",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "PC Manager"
+                      ]
+    },
+    {
+        "ServiceName":  "NahimicService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Nahimic"
+                      ]
+    },
+    {
+        "ServiceName":  "PrintScanBrokerService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Printer"
+                      ]
+    },
+    {
+        "ServiceName":  "PrintDeviceConfigurationService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Printer"
+                      ]
+    },
+    {
+        "ServiceName":  "LocalKdc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "MDCoreSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "refsdedupsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "ApxSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "CloudBackupRestoreSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "WSAIFabricSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Dnscache",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Microsoft Store",
+                          "MetaLink",
+                          "Local network",
+                          "VPN",
+                          "Remote control",
+                          "WIFI",
+                          "AntiZapret"
+                      ]
+    },
+    {
+        "ServiceName":  "DoSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Windows updates (delivery optimization)",
+                          "Microsoft Office Installation"
+                      ]
+    },
+    {
+        "ServiceName":  "dot3svc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Local network restriction"
+                      ]
+    },
+    {
+        "ServiceName":  "DPS",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Network usage in Task Manager",
+                          "InternetUsage"
+                      ]
+    },
+    {
+        "ServiceName":  "DsmSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Online auto driver selection",
+                          "Adding new Bluetooth devices",
+                          "Removing Bluetooth devices"
+                      ]
+    },
+    {
+        "ServiceName":  "DsSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "WIN+SHIFT+S2",
+                          "Trimming in Movies and TV",
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "DusmSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "NetworkAndInternetInSettings"
+                      ]
+    },
+    {
+        "ServiceName":  "Eaphost",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Remote access by password"
+                      ]
+    },
+    {
+        "ServiceName":  "edgeupdate",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "edgeupdatem",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "EFS",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Data Encryption",
+                          "Extended buffer WIN+V",
+                          "WIN+SHIFT+S2"
+                      ]
+    },
+    {
+        "ServiceName":  "embeddedmode",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "EntAppSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "EventLog",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Windows Event Log",
+                          "Internet"
+                      ]
+    },
+    {
+        "ServiceName":  "EventSystem",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "COM+",
+                          ".NET Framework",
+                          "ActiveX",
+                          "DirectX",
+                          "LastActivityView"
+                      ]
+    },
+    {
+        "ServiceName":  "Fax",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Fax"
+                      ]
+    },
+    {
+        "ServiceName":  "fdPHost",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "FDResPub",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network",
+                          "There will be DCOM errors"
+                      ]
+    },
+    {
+        "ServiceName":  "fhsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "File history"
+                      ]
+    },
+    {
+        "ServiceName":  "FontCache",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Microsoft Office"
+                      ]
+    },
+    {
+        "ServiceName":  "FontCache3.0.0.0",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "FrameServer",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Webcam"
+                      ]
+    },
+    {
+        "ServiceName":  "FSE",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "WIN+SHIFT+S2"
+                      ]
+    },
+    {
+        "ServiceName":  "gpsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "GraphicsPerfSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "hidserv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Additional buttons on devices (scripts)",
+                          "GHUB",
+                          "OnboardMemoryManager",
+                          "Razer Synapse",
+                          "Bloody Software"
+                      ]
+    },
+    {
+        "ServiceName":  "HvHost",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Virtual Machines"
+                      ]
+    },
+    {
+        "ServiceName":  "icssvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "IKEEXT",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "XBOX",
+                          "VPN"
+                      ]
+    },
+    {
+        "ServiceName":  "InstallService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MinecraftLauncher"
+                      ]
+    },
+    {
+        "ServiceName":  "iphlpsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "IPv6",
+                          "XBOX"
+                      ]
+    },
+    {
+        "ServiceName":  "IpxlatCfgSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "IPv4 IPv6 Conversion"
+                      ]
+    },
+    {
+        "ServiceName":  "KeyIso",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Visual Studio Installation",
+                          "Microsoft Office Installation",
+                          "Your phone",
+                          "Pin code login",
+                          "Fingerprint login",
+                          "Face recognition login",
+                          "Logitech GHUB Drivers Installation"
+                      ]
+    },
+    {
+        "ServiceName":  "KtmRm",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Saving data when canceling movement in the local network"
+                      ]
+    },
+    {
+        "ServiceName":  "LanmanServer",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network",
+                          "GTA",
+                          "RAGEMP",
+                          "Rockstar Launcher"
+                      ]
+    },
+    {
+        "ServiceName":  "LGHUBUpdaterService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "GHUB"
+                      ]
+    },
+    {
+        "ServiceName":  "LanmanWorkstation",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network",
+                          "Windows Archiving",
+                          "System Protection",
+                          "AMD Ryzen Master",
+                          "GTA",
+                          "RAGEMP",
+                          "Rockstar Launcher",
+                          "GHUB",
+                          "Razer Synapse"
+                      ]
+    },
+    {
+        "ServiceName":  "lfsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Maps",
+                          "Location"
+                      ]
+    },
+    {
+        "ServiceName":  "LicenseManager",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Store",
+                          "Photo",
+                          "AppxMicrosoftApps"
+                      ]
+    },
+    {
+        "ServiceName":  "lltdsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "lmhosts",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "LSM",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "LxpSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Downloading other system languages"
+                      ]
+    },
+    {
+        "ServiceName":  "MapsBroker",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Maps",
+                          "Location"
+                      ]
+    },
+    {
+        "ServiceName":  "McpManagementService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Printer"
+                      ]
+    },
+    {
+        "ServiceName":  "MicrosoftEdgeElevationService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "MixedRealityOpenXRSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Mixed reality",
+                          "Virtual reality",
+                          "Augmented reality"
+                      ]
+    },
+    {
+        "ServiceName":  "mpssvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Microsoft Store",
+                          "Windows11Panel",
+                          "AntiZapret",
+                          "VPN"
+                      ]
+    },
+    {
+        "ServiceName":  "MSDTC",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "MSiSCSI",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "msiserver",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "MsKeyboardFilter",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "NaturalAuthentication",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Pin code login",
+                          "Fingerprint login",
+                          "Face recognition login",
+                          "External device login",
+                          "Password login"
+                      ]
+    },
+    {
+        "ServiceName":  "NcaSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "NcbService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Night Light",
+                          "Bluetooth",
+                          "Virtual Desktops",
+                          "Your Phone"
+                      ]
+    },
+    {
+        "ServiceName":  "NcdAutoSetup",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Netlogon",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Netman",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "netprofm",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "NetSetupSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "NetTcpPortSharing",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "NgcCtnrSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Pin code login",
+                          "Fingerprint login",
+                          "Face recognition login",
+                          "Smart cards"
+                      ]
+    },
+    {
+        "ServiceName":  "NgcSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Pin code login",
+                          "Fingerprint login",
+                          "Face recognition login",
+                          "Smart cards"
+                      ]
+    },
+    {
+        "ServiceName":  "NlaSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Internet"
+                      ]
+    },
+    {
+        "ServiceName":  "nsi",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "WIFI"
+                      ]
+    },
+    {
+        "ServiceName":  "p2pimsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "p2psvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "PcaSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Program compatibility"
+                      ]
+    },
+    {
+        "ServiceName":  "PeerDistSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "perceptionsimulation",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Holograms"
+                      ]
+    },
+    {
+        "ServiceName":  "PerfHost",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "PhoneSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Fax"
+                      ]
+    },
+    {
+        "ServiceName":  "pla",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "PlugPlay",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "PNRPAutoReg",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "IPv6"
+                      ]
+    },
+    {
+        "ServiceName":  "PNRPsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "IPv6"
+                      ]
+    },
+    {
+        "ServiceName":  "PolicyAgent",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Power",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "PrintNotify",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Printer"
+                      ]
+    },
+    {
+        "ServiceName":  "ProfSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "PushToInstall",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "QWAVE",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "RasAuto",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "RasMan",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "RemoteAccess",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "RemoteRegistry",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "RetailDemo",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "RmSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Airplane mode",
+                          "Radio",
+                          "Windows11Panel"
+                      ]
+    },
+    {
+        "ServiceName":  "RpcEptMapper",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "RpcLocator",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Realtek Audio Console"
+                      ]
+    },
+    {
+        "ServiceName":  "RpcSs",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "SamSs",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "SCardSvr",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Smart cards"
+                      ]
+    },
+    {
+        "ServiceName":  "ScDeviceEnum",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Schedule",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "SCPolicySvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Smart cards"
+                      ]
+    },
+    {
+        "ServiceName":  "SDRSVC",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Windows Backup",
+                          "Windows Recovery"
+                      ]
+    },
+    {
+        "ServiceName":  "seclogon",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "SecurityHealthService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "SecuityUI"
+                      ]
+    },
+    {
+        "ServiceName":  "SEMgrSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "NFC"
+                      ]
+    },
+    {
+        "ServiceName":  "SENS",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "LastActivityView"
+                      ]
+    },
+    {
+        "ServiceName":  "Sense",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "SensorDataService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Tablet sensors"
+                      ]
+    },
+    {
+        "ServiceName":  "SensorService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Tablet sensors"
+                      ]
+    },
+    {
+        "ServiceName":  "SensrSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Tablet sensors"
+                      ]
+    },
+    {
+        "ServiceName":  "SessionEnv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "SgrmBroker",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "System integrity check"
+                      ]
+    },
+    {
+        "ServiceName":  "SharedAccess",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "SharedRealitySvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Mixed reality",
+                          "Virtual reality",
+                          "Augmented reality"
+                      ]
+    },
+    {
+        "ServiceName":  "ShellHWDetection",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "ISOMounting"
+                      ]
+    },
+    {
+        "ServiceName":  "shpamsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "smphost",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "RAID",
+                          "PowerShell command Get-PhysicalDisk",
+                          "Disk Management"
+                      ]
+    },
+    {
+        "ServiceName":  "SmsRouter",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "SNMPTRAP",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "spectrum",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Holograms"
+                      ]
+    },
+    {
+        "ServiceName":  "Spooler",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Printer"
+                      ]
+    },
+    {
+        "ServiceName":  "sppsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "SSDPSRV",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network",
+                          "Wi-Fi Direct"
+                      ]
+    },
+    {
+        "ServiceName":  "ssh-agent",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "SstpSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "StateRepository",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "AllElements"
+                      ]
+    },
+    {
+        "ServiceName":  "stisvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Printer"
+                      ]
+    },
+    {
+        "ServiceName":  "StorSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Microsoft Store"
+                      ]
+    },
+    {
+        "ServiceName":  "svsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Check HDD bad sectors"
+                      ]
+    },
+    {
+        "ServiceName":  "swprv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Windows Backup",
+                          "Windows Restore",
+                          "System Restore",
+                          "System Protection"
+                      ]
+    },
+    {
+        "ServiceName":  "SysMain",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "LastActivityView"
+                      ]
+    },
+    {
+        "ServiceName":  "SystemEventsBroker",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "TabletInputService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Pen",
+                          "Touch Keyboard",
+                          "Microsoft IME (Chinese, Japanese, etc. keyboards)"
+                      ]
+    },
+    {
+        "ServiceName":  "TextInputManagementService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "TapiSrv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Fax"
+                      ]
+    },
+    {
+        "ServiceName":  "TermService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Themes",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "TieringEngineService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Storage Tiering Management for Windows Server"
+                      ]
+    },
+    {
+        "ServiceName":  "TimeBrokerSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "TokenBroker",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Sign in with Microsoft",
+                          "Microsoft Store"
+                      ]
+    },
+    {
+        "ServiceName":  "TrkWks",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "TroubleshootingSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "TrustedInstaller",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "tzautoupdate",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "UevAgentService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "uhssvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "UmRdpService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "upnphost",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "UserManager",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "UsoSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "VacSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Mixed reality"
+                      ]
+    },
+    {
+        "ServiceName":  "VaultSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "vds",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "VGAuthService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "vm3dservice",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "vmicguestinterface",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Virtual Machines"
+                      ]
+    },
+    {
+        "ServiceName":  "vmicheartbeat",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Virtual Machines"
+                      ]
+    },
+    {
+        "ServiceName":  "vmickvpexchange",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Virtual Machines"
+                      ]
+    },
+    {
+        "ServiceName":  "vmicrdv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Virtual Machines"
+                      ]
+    },
+    {
+        "ServiceName":  "vmicshutdown",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Virtual Machines"
+                      ]
+    },
+    {
+        "ServiceName":  "vmictimesync",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Virtual Machines"
+                      ]
+    },
+    {
+        "ServiceName":  "vmicvmsession",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Virtual Machines"
+                      ]
+    },
+    {
+        "ServiceName":  "vmicvss",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Virtual Machines"
+                      ]
+    },
+    {
+        "ServiceName":  "VMTools",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "vmvss",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "VSS",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Windows Backup",
+                          "Windows Recovery",
+                          "System Restore",
+                          "System Protection",
+                          "File History"
+                      ]
+    },
+    {
+        "ServiceName":  "W32Time",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Online Time Synchronization"
+                      ]
+    },
+    {
+        "ServiceName":  "WaaSMedicSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Windows Update Troubleshooter"
+                      ]
+    },
+    {
+        "ServiceName":  "WalletService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Wallet"
+                      ]
+    },
+    {
+        "ServiceName":  "WarpJITSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "EDGE Protection"
+                      ]
+    },
+    {
+        "ServiceName":  "wbengine",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Windows Backup",
+                          "Windows Recovery",
+                          "System Restore",
+                          "System Protection"
+                      ]
+    },
+    {
+        "ServiceName":  "WbioSrvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "PIN sign-in",
+                          "Fingerprint sign-in",
+                          "Face sign-in"
+                      ]
+    },
+    {
+        "ServiceName":  "Wcmsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "WIFI"
+                      ]
+    },
+    {
+        "ServiceName":  "wcncsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Router setup"
+                      ]
+    },
+    {
+        "ServiceName":  "WdiServiceHost",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "System Diagnostics"
+                      ]
+    },
+    {
+        "ServiceName":  "WdiSystemHost",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "System Diagnostics"
+                      ]
+    },
+    {
+        "ServiceName":  "WdNisSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "WebClient",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "WebDAV Public Access"
+                      ]
+    },
+    {
+        "ServiceName":  "Wecsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "WEPHOSTSVC",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "wercplsupport",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "System Stability Monitor"
+                      ]
+    },
+    {
+        "ServiceName":  "WerSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "WFDSConMgrSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Volume on 11 Windows",
+                          "New devices adding on 11 Windows",
+                          "Bluetooth on 11 Windows",
+                          "SendToMonitorPanel"
+                      ]
+    },
+    {
+        "ServiceName":  "WiaRpc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Scanner",
+                          "Printer"
+                      ]
+    },
+    {
+        "ServiceName":  "WinDefend",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "WinHttpAutoProxySvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Proxy",
+                          "WIFI",
+                          "AntiZapret"
+                      ]
+    },
+    {
+        "ServiceName":  "Winmgmt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "WinRM",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "wisvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Windows Preinstallation Environment"
+                      ]
+    },
+    {
+        "ServiceName":  "WlanSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "WIFI"
+                      ]
+    },
+    {
+        "ServiceName":  "wlidsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Store"
+                      ]
+    },
+    {
+        "ServiceName":  "wlpasvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "WManSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "wmiApSrv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Performance Analysis"
+                      ]
+    },
+    {
+        "ServiceName":  "WMPNetworkSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Windows Media Player"
+                      ]
+    },
+    {
+        "ServiceName":  "workfolderssvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "MetaLink",
+                          "Local network"
+                      ]
+    },
+    {
+        "ServiceName":  "WpcMonSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "WPDBusEnum",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Windows Media Player"
+                      ]
+    },
+    {
+        "ServiceName":  "WpnService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Your Phone",
+                          "Windows Kiosk"
+                      ]
+    },
+    {
+        "ServiceName":  "wscsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Microsoft Store"
+                      ]
+    },
+    {
+        "ServiceName":  "WSearch",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "wuauserv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "WwanSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "USB Modem"
+                      ]
+    },
+    {
+        "ServiceName":  "XblAuthManager",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "XBOX"
+                      ]
+    },
+    {
+        "ServiceName":  "XblGameSave",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "XBOX"
+                      ]
+    },
+    {
+        "ServiceName":  "XboxGipSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "XBOX"
+                      ]
+    },
+    {
+        "ServiceName":  "XboxNetApiSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "XBOX"
+                      ]
+    },
+    {
+        "ServiceName":  "xbgm",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "XBOX"
+                      ]
+    },
+    {
+        "ServiceName":  "AarSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "BcastDVRUserService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "BluetoothUserService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Bluetooth"
+                      ]
+    },
+    {
+        "ServiceName":  "CaptureService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "cbdhsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "WIN+SHIFT+S2",
+                          "Extended buffer WIN+V"
+                      ]
+    },
+    {
+        "ServiceName":  "CDPUserSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Timeline",
+                          "Virtual Desktops",
+                          "Your Phone",
+                          "Night Light"
+                      ]
+    },
+    {
+        "ServiceName":  "ConsentUxUserSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "CredentialEnrollmentManagerUserSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "DeviceAssociationBrokerSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "XBOX"
+                      ]
+    },
+    {
+        "ServiceName":  "DevicePickerUserSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "DevicesFlowUserSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "MessagingService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "OneSyncSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "PimIndexMaintenanceSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Contacts"
+                      ]
+    },
+    {
+        "ServiceName":  "PrintWorkflowUserSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Printer"
+                      ]
+    },
+    {
+        "ServiceName":  "UdkUserSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "UnistoreSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Store"
+                      ]
+    },
+    {
+        "ServiceName":  "UserDataSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "Microsoft Store"
+                      ]
+    },
+    {
+        "ServiceName":  "WpnUserService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2,
+        "WillBrake":  [
+                          "Your Phone",
+                          "Windows Kiosk",
+                          "NetworkAndInternetInSettings",
+                          "Windows11Panel",
+                          "NvidiaApp"
+                      ]
+    },
+    {
+        "ServiceName":  "1394ohci",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "3ware",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "ACPI",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "AcpiDev",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "acpiex",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "acpipagr",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "AcpiPmi",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "acpitime",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Acx01000",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "ADP80XX",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "AFD",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1,
+        "WillBrake":  [
+                          "WIFI"
+                      ]
+    },
+    {
+        "ServiceName":  "afunix",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "ahcache",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "amdgpio2",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "amdi2c",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "AmdK8",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "AmdPPM",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "amdsata",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "amdsbs",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "amdxata",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "AppID",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "applockerfltr",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "AppvStrm",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "AppvVemgr",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "AppvVfs",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "arcsas",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "AsyncMac",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "atapi",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "b06bdrv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "bam",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1,
+        "WillBrake":  [
+                          "EffinciencyModeTB"
+                      ]
+    },
+    {
+        "ServiceName":  "BasicDisplay",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "BasicRender",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "bcmfn2",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Beep",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "bindflt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "bowser",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "BthA2dp",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "BthEnum",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "BthHFEnum",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "BthLEEnum",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "BthMini",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "BTHMODEM",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "BTHPORT",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "BTHUSB",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "bttflt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "buttonconverter",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "CAD",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "cdfs",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "cdrom",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "cht4iscsi",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "cht4vbd",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "CimFS",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "circlass",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "CldFlt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "CLFS",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "CmBatt",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "CNG",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "cnghwassist",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "CompositeBus",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "condrv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "CSC",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "dam",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "Dfsc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "disk",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "dmvsc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "drmkaud",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "DXGKrnl",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "e1i65x64",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "ebdrv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "EhStorClass",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "EhStorTcgDrv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "ErrDev",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "exfat",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "fastfat",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "fdc",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "FileCrypt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "FileInfo",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "Filetrace",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "flpydisk",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "FltMgr",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "FsDepends",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "fvevol",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "GameInputSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "gencounter",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "genericusbfn",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "GPIOClx0101",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "GpuEnergyDrv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "HdAudAddService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "HDAudBus",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "HidBatt",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "HidBth",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "hidi2c",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "hidinterrupt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "HidIr",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "hidspi",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "HidUsb",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "HpSAMD",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "HTTP",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "hvcrash",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "hvservice",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "HwNClx0101",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "hwpolicy",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "hyperkbd",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "HyperVideo",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "i8042prt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iagpio",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iai2c",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iaLPSS2i_GPIO2",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iaLPSS2i_GPIO2_BXT_P",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iaLPSS2i_GPIO2_CNL",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iaLPSS2i_GPIO2_GLK",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iaLPSS2i_I2C",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iaLPSS2i_I2C_BXT_P",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iaLPSS2i_I2C_CNL",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iaLPSS2i_I2C_GLK",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iaLPSSi_GPIO",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iaLPSSi_I2C",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iaStorAVC",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iaStorV",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "ibbus",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "IndirectKmd",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "intelide",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "intelpep",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "intelpmax",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "intelppm",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iorate",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "IpFilterDriver",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "IPMIDRV",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "IPNAT",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "IPT",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "isapnp",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "iScsiPrt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "ItSas35i",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "kbdclass",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "kbdhid",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "kbldfltr",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "kdnic",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "KSecDD",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "KSecPkg",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "ksthunk",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "lltdio",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "LSI_SAS",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "LSI_SAS2i",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "LSI_SAS3i",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "LSI_SSS",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "luafv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "mausbhost",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "mausbip",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "MbbCx",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "megasas",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "megasas2i",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "megasas35i",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "megasr",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Microsoft_Bluetooth_AvrcpTransport",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "mlx4_bus",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "MMCSS",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "Modem",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "monitor",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "mouclass",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "mouhid",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "mountmgr",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "mpsdrv",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "MRxDAV",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "mrxsmb",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "mrxsmb20",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "MsBridge",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Msfs",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "msgpiowin32",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "mshidkmdf",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "mshidumdf",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "msisadrv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "MSKSSRV",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "MsLldp",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "MSPCLOCK",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "MSPQM",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "MsQuic",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "MsRPC",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "MsSecFlt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "mssmbios",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1,
+        "WillBrake":  [
+                          "GTA",
+                          "RAGEMP",
+                          "Rockstar Launcher"
+                      ]
+    },
+    {
+        "ServiceName":  "MSTEE",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "MTConfig",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Mup",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "mvumis",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "NativeWifiP",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "ndfltr",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "NDIS",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "NdisCap",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "NdisImPlatform",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "NdisTapi",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Ndisuio",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "NdisVirtualBus",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "NdisWan",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "ndiswanlegacy",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "NDKPing",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "ndproxy",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Ndu",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "NetAdapterCx",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "NetBIOS",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "NetBT",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "netvsc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Npfs",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "npsvctrig",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "nsiproxy",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "Ntfs",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Null",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "nvdimm",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "nvraid",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "nvstor",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Parport",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "partmgr",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "pci",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "pciide",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "pcmcia",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "pcw",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "pdc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "PEAUTH",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "percsas2i",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "percsas3i",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "PktMon",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "pmem",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "PNPMEM",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "portcfg",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "PptpMiniport",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Processor",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Psched",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "QWAVEdrv",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Ramdisk",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "RasAcd",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "RasAgileVpn",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Rasl2tp",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "RasPppoe",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "RasSstp",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "rdbss",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "rdpbus",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "RDPDR",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "RdpVideoMiniport",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "rdyboost",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "ReFS",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "ReFSv1",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "RFCOMM",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "rhproxy",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "rspndr",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "s3cap",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "sbp2port",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "scfilter",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "scmbus",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "sdbus",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "SDFRd",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "sdstor",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "SerCx",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "SerCx2",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Serenum",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Serial",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "sermouse",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "sfloppy",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "SgrmAgent",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "SiSRaid2",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "SiSRaid4",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "SmartSAMD",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "smbdirect",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "spaceparser",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "spaceport",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "SpatialGraphFilter",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "SpbCx",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "srv2",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "srvnet",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "stexstor",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "storahci",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "storflt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "stornvme",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "storqosflt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "storufs",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "storvsc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "swenum",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Synth3dVsc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Tcpip",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "Tcpip6",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "tcpipreg",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "tdx",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "Telemetry",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "terminpt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "TPM",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "TsUsbFlt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "TsUsbGD",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "tsusbhub",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "tunnel",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "UASPStor",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "UcmCx0101",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "UcmTcpciCx0101",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "UcmUcsiAcpiClient",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "UcmUcsiCx0101",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Ucx01000",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "UdeCx",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "udfs",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "UEFI",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "UevAgentDriver",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "Ufx01000",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "UfxChipidea",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "ufxsynopsys",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "umbus",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "UmPass",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "UrsChipidea",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "UrsCx01000",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "UrsSynopsys",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "usbaudio",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "usbaudio2",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "usbccgp",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "usbcir",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "usbehci",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "usbhub",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "USBHUB3",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "usbohci",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "usbprint",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "usbser",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "USBSTOR",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "usbuhci",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "USBXHCI",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "vdrvroot",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "VerifierExt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  4
+    },
+    {
+        "ServiceName":  "vhdmp",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "vhf",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Vid",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "VirtualRender",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "vm3dmp",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "vm3dmp-debug",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "vm3dmp-stats",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "vm3dmp_loader",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "vmbus",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "VMBusHID",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "vmci",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "vmgid",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "vmhgfs",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "VMMemCtl",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "vmmouse",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "vmrawdsk",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "vmusbmouse",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "volmgr",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "volmgrx",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "volsnap",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "volume",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "vpci",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "vsmraid",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "vsock",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "VSTXRAID",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "vwifibus",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "WIFI"
+                      ]
+    },
+    {
+        "ServiceName":  "vwififlt",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "WacomPen",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "wanarp",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "wanarpv6",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "wcifs",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "wcnfs",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "WdBoot",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "Wdf01000",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "WdFilter",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "wdiwifi",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3,
+        "WillBrake":  [
+                          "WIFI"
+                      ]
+    },
+    {
+        "ServiceName":  "WdmCompanionFilter",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "WdNisDrv",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "WFPLWFS",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "WIMMount",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "WindowsTrustedRT",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "WindowsTrustedRTProxy",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "WinMad",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "WinNat",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "WINUSB",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "WinVerbs",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "WmiAcpi",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "Wof",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  0
+    },
+    {
+        "ServiceName":  "WpdUpFltr",
+        "IsBlocked":  true,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "ws2ifsl",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  1
+    },
+    {
+        "ServiceName":  "WudfPf",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "WUDFRd",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "xboxgip",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "xinputhid",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "dcsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "NPSMSvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "P9RdrService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "PenService",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "FrameServerMonitor",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "webthreatdefsvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "webthreatdefusersvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  2
+    },
+    {
+        "ServiceName":  "InventorySvc",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    },
+    {
+        "ServiceName":  "BthPan",
+        "IsBlocked":  false,
+        "IsBlocked11":  false,
+        "DefaultStartMode":  3
+    }
+]

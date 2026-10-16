@@ -1,0 +1,197 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build main app (x64)
+        run: dotnet build src/DeltaNFD/DeltaNFD.csproj -c Release -p:Platform=x64
+
+      - name: Build smoke test
+        run: dotnet build tools/BackendSmokeTest/BackendSmokeTest.csproj -c Release
+
+      - name: Signed emergency policy checks (isolated, offline)
+        run: dotnet run --project tools/EmergencyPolicyChecks -c Release -p:Platform=x64 --
+
+      - name: Update channels and installation policy checks (isolated, offline)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --update-channel-checks
+
+      - name: Runtime repair retirement and retained protection checks
+        run: |
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --official-cpp-checks
+          if ($LASTEXITCODE -ne 0) { throw "Official C++ package regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-highfps-checks
+          if ($LASTEXITCODE -ne 0) { throw "High-FPS repair regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-alpha-uninstall-checks
+          if ($LASTEXITCODE -ne 0) { throw "Legacy C++ uninstall safety regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-repair-retirement-checks
+          if ($LASTEXITCODE -ne 0) { throw "Retired runtime capabilities detected" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --vc14-checks
+          if ($LASTEXITCODE -ne 0) { throw "VC14 reinstall policy regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --vc14-staged-checks
+          if ($LASTEXITCODE -ne 0) { throw "VC14 staged repair regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --safe-installer-checks
+          if ($LASTEXITCODE -ne 0) { throw "Temporary safe-mode Installer regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-file-use-checks
+          if ($LASTEXITCODE -ne 0) { throw "Runtime file-use consent regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --advanced-startup-checks
+          if ($LASTEXITCODE -ne 0) { throw "Advanced startup consent regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-guard-recovery-scope-checks
+          if ($LASTEXITCODE -ne 0) { throw "Protection recovery regression" }
+
+      - name: Beta0.9192 feature regression checks (isolated fixtures)
+        run: |
+          $checks = @('--memory-mode-checks', '--procman-topology-checks', '--delta-rules-offline-checks', '--frame-background-checks', '--factory-reset-checks', '--ace-core-cleanup-checks', '--runtime-pending-recovery-checks', '--nv-shader-cache-checks', '--shader-recovery-checks', '--dashboard-shader-health-checks')
+          foreach ($check in $checks) {
+            dotnet run --project tools/BackendSmokeTest -c Release --no-build -- $check
+            if ($LASTEXITCODE -ne 0) { throw "Feature regression failed: $check" }
+          }
+
+      - name: Bug feedback client and private receiver contract checks
+        run: |
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --bug-feedback-checks _buildcheck/feedback-client-fixture.zip
+          if ($LASTEXITCODE -ne 0) { throw "Feedback client regression" }
+          $env:FEEDBACK_CLIENT_FIXTURE = [IO.Path]::GetFullPath('_buildcheck/feedback-client-fixture.zip')
+          python -m unittest discover -s server/feedback -p test_feedback.py -v
+          if ($LASTEXITCODE -ne 0) { throw "Feedback server regression" }
+
+      - name: ACE registry, cleanup scope and update responsiveness checks (isolated, offline)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --external-fix-regression-checks
+
+      - name: Build-only self-contained runtime layout checks (isolated, offline)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --dotnet-layout-checks
+
+      - name: Actual SDK self-contained .NET manifest check
+        run: |
+          dotnet publish tools/DotNetLayoutCheck/DotNetLayoutCheck.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -o _buildcheck/dotnet-layout-selfcontained
+          & _buildcheck/dotnet-layout-selfcontained/DotNetLayoutCheck.exe --single _buildcheck/dotnet-layout-selfcontained/DotNetLayoutCheck.runtimeconfig.json
+
+      - name: Backend error recovery notification checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --backend-attention-checks
+
+      - name: Process management repair checks (unique process and isolated state)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --procman-core-checks
+
+      - name: Automatic memory reclaim and shared exclusion checks (isolated fixtures)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --procman-memory-checks
+
+      - name: Stable process list and separate game scope checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --procman-list-checks
+
+      - name: Virtualization evidence classification checks (simulated observations)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --ace-virtualization-checks
+
+      - name: Frame power recovery checks (all power operations simulated)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-power-safety-checks
+
+      - name: Frame feature state checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-feature-checks
+
+      - name: GPU spoof driver-change warning checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --gpu-spoof-watch-checks
+
+      - name: Shader SM5 fallback and SM6 priority checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --shader-path-checks
+
+      - name: Dashboard state and layout wiring checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --dashboard-design-checks
+
+      - name: Frame power backup and lifecycle safety checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-power-safety-checks
+
+      - name: Retired offline mode and legacy recovery checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --offline-retirement-checks
+
+      - name: Legacy CPU restore boundary checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --offline-recovery-boundary-checks
+
+      # 拓展插件规范 1.0 合同：manifest/ui/IPC 解析器验证用例 + 示例包文件与信任提示检查（纯逻辑，不装插件）
+      - name: Plugin contract checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-contract-checks
+
+      # 拓展插件 .dnfdplugin 无执行导入：恶意 ZIP/超限/加密/替换/回滚夹具（全部在临时目录，不装真实插件）
+      - name: Plugin import checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-import-checks
+
+      # 拓展插件管理服务：授权完整性/启停/配置/卸载/ui 读取（临时目录，不启动插件进程）
+      - name: Plugin manager checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-manager-checks
+
+      # 拓展插件运行时：真实测试后端进程走完整管道协议（启动/握手/invoke/取消/超时/崩溃/BUSY/stop 排空）
+      - name: Plugin runtime end-to-end checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-runtime-checks
+
+      - name: Plugin stability and handover evidence checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-stability-checks
+
+      - name: Plugin integrity and restart evidence checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-integrity-checks
+
+      - name: Plugin diagnostics privacy and storage checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-diagnostics-checks
+
+      # 拓展插件侧栏入口 B1-B4：schema 2 navigation 合同 / 动态菜单目录 / 路由与状态文案
+      # （全部在临时目录，不启动、不调用任何插件后端）
+      - name: Plugin sidebar navigation checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-navigation-checks
+
+      - name: Plugin UI source and XAML wiring checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-ui-wiring-checks
+
+      - name: Plugin adversarial response checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-adversarial-checks
+
+      # 拓展插件备份/恢复：落账、状态机、幂等恢复、失败重试、资源冲突（真实测试后端，临时目录）
+      - name: Plugin backup and restore checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-restore-checks
+
+      # 拓展插件持续运行：Job 不设 kill-on-close 的自主存活验证 + 心跳/失联/崩溃不重启（真实子进程）
+      - name: Plugin continuous runtime checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-continuous-checks
+
+      # 拓展插件只读示例后端真实端到端：构建独立示例工程后走 hello/ready 握手 + report + stop
+      - name: Plugin example backend end-to-end
+        run: |
+          dotnet build src/Example.Plugin.HardwareReport/Example.Plugin.HardwareReport.csproj -c Release -p:Platform=x64
+          dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-contract-e2e-checks
+
+      # 弱网加速插件：包合同 + 生成的加速配置交给真实 UpdateService 校验 + 临时目录驱动真实 Apply/Restore
+      # + 真实导入器接受真实包 + 只读 probe 端到端（不写真实 %APPDATA%，不联网断言、不启动游戏）
+      - name: Weak-network plugin checks
+        run: |
+          dotnet build src/Plugin.WeakNetBoost/Plugin.WeakNetBoost.csproj -c Release -p:Platform=x64
+          dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-weaknet-checks
+
+      - name: Auto-update logic checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --update-checks
+
+      - name: File update transaction and publisher checks (isolated, offline)
+        run: |
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --file-update-checks
+          if ($LASTEXITCODE -ne 0) { throw "File update regression" }
+          python -m unittest discover -s tools -p test_make_file_update.py -v
+          if ($LASTEXITCODE -ne 0) { throw "File update publisher regression" }
+
+      # 只读冒烟测试（枚举显卡 / 读取状态），不修改系统
+      - name: Runtime guard recovery logic and temporary ACL checks
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --runtime-guard-recovery-checks
+
+      # 只读冒烟测试（枚举显卡 / 读取状态），不修改系统
+      - name: Read-only smoke test
+        run: dotnet run --project tools/BackendSmokeTest --nologo
+        continue-on-error: true
