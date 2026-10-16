@@ -1,18 +1,28 @@
 {
   "schemaVersion": 1,
-  "version": "0.9192",
-  "displayVersion": "Beta0.9192",
+  "version": "0.9200",
+  "displayVersion": "Beta0.92",
   "channel": "beta",
   "mandatory": false,
   "minimumSupportedVersion": "",
-  "publishedAtUtc": "2026-10-15T03:39:45Z",
-  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9192",
-  "notes": "## Beta0.9192 公测版\r\n\r\n- 卸载确认前新增安全模式建议及手动进入步骤。建议非强制，可直接在当前环境继续；工具不会自动修改启动配置。安全模式下 Windows Installer 不可用时，可返回正常模式重试。\r\n- 运行库卸载采用 Beta0.9 的命令执行方式，范围严格限定为 x86/x64 C++ 14.x。MSI 按已核验产品码卸载；EXE 使用登记命令；固定旧 v14 INF 在模板和动态 MSI 身份核验、备份后执行卸载节。\r\n- 卸载完成后、安装固定 14.42.34433 双架构基线前，备份并受控清理以前工具留下的 C++2026/v14 残留。修正历史 INF 模板校验值不匹配，以及空静默命令的回退判断。\r\n- 保留预览、执行前身份复核、待核对事务、防护手动关闭和失败/未知/需重启停止机制。2005–2013、SDK/Debug、ARM64、Appx 与 DirectX 不在卸载范围，不手动删除系统 DLL。\r\n\r\n### 安装与使用\r\n\r\nWindows 10/11 x64。公测和内测通道均可接收 Beta0.9192。操作前关闭游戏和其他应用，并手动关闭工具的运行库防护。\r\n\r\n运行库是系统共享组件，降至 14.42 可能影响要求较新版本的其他软件。兼容性颜色属于项目游戏策略，不等同文件损坏或所有电脑均会掉帧，不保证重装提高帧率。\r\n\r\n### 验证与源码\r\n\r\n发布验收包含 113 项 VC14/卸载策略检查、相关隔离回归、自包含部署和六后端真实启动/只读接口检查；构建与回归结果另见对应源码分支的 GitHub Actions。未在开发机执行真实运行库重装、安装包安装/卸载或全面游戏性能测试。\r\n\r\n源码按精确发布提交归档，包含构建说明与默认背景，排除私人日志、研究材料和退休归档。原创代码 GPL-3.0-only，第三方原包保留原许可。SHA256SUMS.txt 提供附件校验值；update.json 同时记录安装包大小和 SHA256。",
+  "publishedAtUtc": "2026-10-16T18:13:08Z",
+  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9200",
+  "notes": "Beta0.92 公测版\n\n- 默认更新服务器为自建服务器，默认仅替换变更文件；保留用户手动选择，文件更新失败时可自动回退完整安装包。\n- 移除帧格核心常驻和游戏进程禁电源限制，保留高分辨率定时器；旧配置不再触发退休功能。\n- 修正临时显卡伪装还原完成后被旧待恢复状态阻塞的问题，增加受控收尾入口。\n- 补充常见AMD双CCD处理器型号和拓扑兼容识别；调度仍以实际核验的核心掩码为准。\n- BUG反馈无法提交时显示明确的字段错误、字数要求和发送结果，保留失败内容供重试。\n- ACE-CORE冗余检测置顶；更新致谢广告文案。\n- 运行库检测增加具体MSI状态码、安装上下文和权限诊断，合并重复提醒；提供检测开关及修复失败的人工处理指引。未知状态仍保留核验，不承诺自动修复所有运行库问题。\n\nWindows 10/11 x64。显示版本Beta0.92；为兼容旧更新器的数值排序，程序集、发布标签和更新清单采用0.9200（高于0.9199）。公测、内测均可接收；非强制更新。\n验证覆盖隔离文件事务、更新通道/来源、默认偏好、运行库诊断、反馈和六后端真实只读通信。没有在开发机实际安装本包、重装运行库或进行所有机器的游戏性能验收。\n",
   "installers": [
     {
-      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9192/DeltaNFD_Setup_0.9192_x64.exe",
-      "sizeBytes": 125605076,
-      "sha256": "f731fbfdd6b01f0e49e0c9e6c25302431a0d3ad105c0be1eaaa4156e0c48d0d0"
+      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9200/DeltaNFD_Setup_0.9200_x64.exe",
+      "sizeBytes": 248937254,
+      "sha256": "c918aba22234c08aaa3347ea228b6513d95ced1e793e57bccf32f0bac50ec44e"
+    },
+    {
+      "url": "https://deltaxiaoxi.xin/updates/packages/0.9200/DeltaNFD_Setup_0.9200_x64.exe",
+      "sizeBytes": 248937254,
+      "sha256": "c918aba22234c08aaa3347ea228b6513d95ced1e793e57bccf32f0bac50ec44e"
     }
-  ]
+  ],
+  "fileUpdate": {
+    "url": "https://deltaxiaoxi.xin/updates/packages/0.9200/files.json",
+    "sizeBytes": 814718,
+    "sha256": "e4d70645be7e0e67f195da094eeb2dddc8b3d1469b1845642be5642479d4f029"
+  }
 }
