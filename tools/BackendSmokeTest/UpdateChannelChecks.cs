@@ -33,6 +33,14 @@ internal static class UpdateChannelChecks
             && UpdateService.CompareVersions(beta921Numeric, beta92Numeric) > 0,
             "Beta0.921内部数值0.9210必须高于已发布0.9200");
         var config = UpdateService.LoadConfig(null);
+        var beta921Rc2Path = Path.Combine(root, "beta0921-rc2-defaults.json");
+        UpdateChannelInstallation.Apply(beta921Rc2Path, new("beta0921-rc2", "Beta0.921-RC2", ""));
+        Check(AppSettingsStore.Read(beta921Rc2Path) is { UpdateChannel: UpdateChannel.Public,
+            UpdateServer: UpdateServer.SelfHosted, UpdateMode: UpdateMode.ChangedFiles },
+            "Beta0.921-RC2新安装仍默认公测、自建服务器、替换文件");
+        Check(UpdateService.TryParseVersion("0.9212", out var beta921Rc2Numeric)
+            && UpdateService.CompareVersions(beta921Rc2Numeric, beta921Numeric) > 0,
+            "Beta0.921-RC2内部数值0.9212高于已发布0.9210");
         config.ManifestUrls = [GitHubReleaseSource.ReleasesUrl];
         var service = new UpdateService(config);
         var internalSettings = new AppSettings { UpdateChannel = UpdateChannel.Internal, UpdateServer = UpdateServer.Automatic };

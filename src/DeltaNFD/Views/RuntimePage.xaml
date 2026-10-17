@@ -106,7 +106,7 @@
                 <StackPanel Spacing="10">
                     <TextBlock Text="安装登记（只读）" Style="{StaticResource SectionTitleStyle}" />
                     <TextBlock Text="{x:Bind ViewModel.InstalledText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-                    <TextBlock Text="红色优先：已安装的 14.51.x 或 Visual C++ v14 组件；其余非 14.42 组件黄色；包装登记与残留最高黄色待核对，修复清理后消除；Appx 系统包只作说明。检测失败保留待核对，安装登记不能证明 DLL 完整性或游戏性能。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <TextBlock Text="14.44.x 已核验组件按绿色兼容版本处理，14.42.x 延续原判定；其余已安装的 14.51.x 或 Visual C++ v14 组件红色，其余非 14.42/14.44 组件黄色。包装登记与残留最高黄色待核对，修复清理后消除；Appx 系统包只作说明。检测失败保留待核对，安装登记不能证明 DLL 完整性或游戏性能。修复安装基线仍为内置 14.42。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                     <Button Content="刷新防护状态" Click="RefreshGuard_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" HorizontalAlignment="Left" />
                     <Button Content="核对未完成操作" Click="ReviewRuntimeOperation_Click" HorizontalAlignment="Left" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" />
                     <TextBlock Text="旧操作核对只检查事务是否结束并归档记录，不重新安装、不卸载运行库，也不代表旧修复成功。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />

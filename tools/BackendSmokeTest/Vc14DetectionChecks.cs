@@ -11,11 +11,38 @@ internal static class Vc14DetectionChecks
             ("Microsoft Visual C++ 2022", "14.51.36247.0", Vc14Severity.Abnormal),
             ("Microsoft Visual C++ v14", "14.42.34433.0", Vc14Severity.Abnormal),
             ("Microsoft Visual C++ v14", "unknown", Vc14Severity.Abnormal),
-            ("Microsoft Visual C++ 2022", "14.44.0", Vc14Severity.Warning),
+            ("Microsoft Visual C++ 2022", "14.44.0", Vc14Severity.Normal),
+            ("Microsoft Visual C++ v14", "14.44.35211.0", Vc14Severity.Normal),
+            ("Microsoft Visual C++ 2022", "14.43.35211", Vc14Severity.Warning),
+            ("Microsoft Visual C++ 2022", "14.45.35211", Vc14Severity.Warning),
+            ("Microsoft Visual C++ 2022", "14.440.35211", Vc14Severity.Warning),
             ("Microsoft Visual C++ 2022", "14.42.34433.0", Vc14Severity.Normal) })
             Check(Vc14Catalog.Classify(name, version) == severity, "read-only compatibility classification changed");
         // 横幅放宽（2026-10-15）：红色只由真实 MSI 组件驱动；包装/残留登记最高 Warning；Appx 不进横幅。
         var noProducts = new List<Vc14Entry>();
+        foreach (var arch in new[] { "x64", "x86" })
+        {
+            var products1444 = new[] { "Minimum", "Additional" }.Select(role => new Vc14Entry(
+                "{1444-" + role + "}", $"Microsoft Visual C++ 2022 {arch} {role} Runtime - 14.44.35211",
+                "14.44.35211", arch, role, "{U}")).ToArray();
+            var notices1444 = products1444.Select(p => new Vc14Notice(p.Name, p.Version, p.Architecture,
+                Vc14Catalog.Classify(p.Name, p.Version, true, products1444), "MSI verified fixture")).ToArray();
+            Check(notices1444.All(n => n.Severity == Vc14Severity.Normal), arch + " verified 14.44 roles are green");
+            var scan1444 = new Vc14Scan(products1444, notices1444, []);
+            var roundtrip1444 = System.Text.Json.JsonSerializer.Deserialize<Vc14Scan>(System.Text.Json.JsonSerializer.Serialize(scan1444))!;
+            Check(!roundtrip1444.IsMissing && !roundtrip1444.HasWarning && !roundtrip1444.HasAbnormal,
+                arch + " 14.44 green status reaches frontend through backend JSON");
+            var wrapper1444 = $"Microsoft Visual C++ v14 Redistributable ({arch})";
+            Check(Vc14Catalog.Classify(wrapper1444, "14.44.35211", false, noProducts) == Vc14Severity.Warning,
+                arch + " unverified 14.44 wrapper is still pending, not green proof");
+            Check(Vc14Catalog.Classify(wrapper1444, "14.44.35211.0", false, products1444) == Vc14Severity.Normal,
+                arch + " verified same-version 14.44 wrapper is green");
+            Check((scan1444 with { Issues = ["MSI enumeration incomplete"] }).HasWarning,
+                arch + " accepted version cannot hide incomplete scan");
+            Check((scan1444 with { Notices = [.. notices1444, new("Microsoft Visual C++ v14", "14.51.36247", arch,
+                    Vc14Catalog.Classify("Microsoft Visual C++ v14", "14.51.36247"), "incompatible fixture")] }).HasAbnormal,
+                arch + " 14.44 cannot hide co-installed abnormal 14.51");
+        }
         Check(Vc14Catalog.Classify("Microsoft Visual C++ v14 Redistributable (x64)", "14.51.36247.0", installedMsi: false, products: noProducts) == Vc14Severity.Warning,
             "wrapper registration must not drive the red banner");
         Check(Vc14Catalog.Classify("Microsoft Visual C++ 2026 Redistributable (x64)", "14.51.36247.0", installedMsi: false, products: noProducts) == Vc14Severity.Warning,

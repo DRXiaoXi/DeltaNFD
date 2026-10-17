@@ -295,7 +295,7 @@ public partial class DashboardViewModel : ObservableObject
             ? DashboardHealthState.Warning : DashboardHealthState.Normal;
         RuntimeStatusText = scan.IsMissing ? "缺少 C++ 14.x 运行库，可能导致三角洲无法启动；请进入运行库页安装 14.42"
             : scan.HasAbnormal ? "14.x 兼容性异常：检测到 14.51 或 Visual C++ v14 组件，请进入运行库页核对"
-            : scan.HasWarning ? "14.x 版本非 14.42 或状态待核对，请进入运行库页查看"
+            : scan.HasWarning ? "14.x 版本非 14.42/14.44 或状态待核对，请进入运行库页查看"
             : status.GuardIssue.Length > 0 ? "防护状态待核对：" + status.GuardIssue
             : status.IfeoRestorePending || status.Ue4RestorePending ? "旧防护有待恢复记录"
             : status.IfeoApplied ? $"防护已开启，拦截 {status.ScopeManagedCount}/{status.IfeoTotal} 个安装器"

@@ -36,8 +36,12 @@ internal static class Vc14Catalog
     }
     internal static Vc14Severity Classify(string name, string version)
     {
+        // 14.44.x is explicitly accepted by the compatibility policy, including v14 display names.
+        // This does not establish MSI identity or change the pinned repair baseline.
+        Version.TryParse(version, out var v);
+        if (v is { Major: 14, Minor: 44 }) return Vc14Severity.Normal;
         if (name.Contains("Visual C++ v14", StringComparison.OrdinalIgnoreCase)) return Vc14Severity.Abnormal;
-        if (!Version.TryParse(version, out var v)) return Vc14Severity.Warning;
+        if (v is null) return Vc14Severity.Warning;
         if (v.Major == 14 && v.Minor == 51) return Vc14Severity.Abnormal;
         return v.Major == 14 && v.Minor != 42 ? Vc14Severity.Warning : Vc14Severity.Normal;
     }
