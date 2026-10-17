@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily feedback retention cleanup
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

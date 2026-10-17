@@ -33,12 +33,14 @@ internal static class ProcmanResponsivenessFilter
     }
 
     internal static bool IsExcluded(ProcmanProcessIdentity identity)
+        => IsToolProcess(identity.ExecutablePath)
+            || Path.GetFileNameWithoutExtension(identity.ExecutablePath).Equals(DeltaForceLocator.GameProcessName, StringComparison.OrdinalIgnoreCase)
+            || IsSystemProcess(identity);
+
+    internal static bool IsSystemProcess(ProcmanProcessIdentity identity)
     {
         try
         {
-            // Exclusion of the game does not depend on whether it is currently foreground.
-            if (IsToolProcess(identity.ExecutablePath)
-                || Path.GetFileNameWithoutExtension(identity.ExecutablePath).Equals(DeltaForceLocator.GameProcessName, StringComparison.OrdinalIgnoreCase)) return true;
             using var handle = ProcmanIdentity.TryOpenQuery(identity.Pid);
             if (handle is null || !ProcmanIdentity.Matches(handle, identity)
                 || !ProcessIdToSessionId(identity.Pid, out var session) || session > int.MaxValue
@@ -46,8 +48,13 @@ internal static class ProcmanResponsivenessFilter
                 || !OpenProcessToken(handle, 0x0008, out var token)) return true;
             using (token)
             using (var owner = new WindowsIdentity(token.DangerousGetHandle()))
-                return ExcludedByIdentity(identity.ExecutablePath, (int)session, owner.User?.Value ?? "", critical,
-                    Environment.GetFolderPath(Environment.SpecialFolder.Windows));
+            {
+                var sid = owner.User?.Value ?? "";
+                var windows = Path.TrimEndingDirectorySeparator(Environment.GetFolderPath(Environment.SpecialFolder.Windows)) + Path.DirectorySeparatorChar;
+                return sid.Length == 0 || session == 0 || critical || identity.Pid <= 4
+                    || identity.ExecutablePath.StartsWith(windows, StringComparison.OrdinalIgnoreCase)
+                    || sid is "S-1-5-18" or "S-1-5-19" or "S-1-5-20" || sid.StartsWith("S-1-5-80-", StringComparison.Ordinal);
+            }
         }
         catch { return true; } // Unknown owner/identity is not permission to adjust a system process.
     }

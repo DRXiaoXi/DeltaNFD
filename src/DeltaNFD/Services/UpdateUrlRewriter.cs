@@ -1,70 +1,44 @@
 namespace DeltaNFD.Services;
 
-/// <summary>
-/// GitHub 加速镜像 URL 改写器：把官方 GitHub 地址前缀为 gh-proxy 加速地址。
-/// 只改写白名单内的 GitHub 主机，其他主机一律不改。
-/// </summary>
+/// <summary>只迁移历史加速 URL 到 GitHub 直连，不再生成任何加速地址。</summary>
 internal static class UpdateUrlRewriter
 {
     private const string GhProxyPrefix = "https://gh-proxy.com/";
-
-    /// <summary>gh-proxy 前缀长度（用于剥前缀还原官方地址）。</summary>
+    private static readonly string[] LegacyProxyPrefixes = [GhProxyPrefix, "https://gh-proxy.org/"];
     internal static readonly int GhProxyPrefixLength = GhProxyPrefix.Length;
 
-    /// <summary>允许被 gh-proxy 加速的主机后缀列表。</summary>
-    private static readonly string[] GitHubHosts =
-    [
-        "github.com",
-        "api.github.com",
-        "githubusercontent.com",
-        "objects.githubusercontent.com",
-        "release-assets.githubusercontent.com",
-        "raw.githubusercontent.com",
-    ];
+    internal static bool IsGhProxyUrl(string? url) =>
+        LegacyProxyPrefixes.Any(prefix => url?.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) == true);
 
-    /// <summary>
-    /// 尝试把官方 GitHub URL 改写成 gh-proxy 加速 URL。
-    /// 非白名单主机或已经是 gh-proxy 地址时返回 null。
-    /// </summary>
-    internal static string? TryPrefixGhProxy(string? url)
+    internal static bool IsLegacyProxyHost(string host)
     {
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            return null;
-        }
-
-        if (IsGhProxyUrl(url))
-        {
-            return null;
-        }
-
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
-        {
-            return null;
-        }
-
-        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        var host = uri.Host.Trim().Trim('.').ToLowerInvariant();
-        foreach (var allowed in GitHubHosts)
-        {
-            var suffix = allowed.TrimStart('.').ToLowerInvariant();
-            if (host == suffix || host.EndsWith("." + suffix, StringComparison.Ordinal))
-            {
-                return GhProxyPrefix + url;
-            }
-        }
-
-        return null;
+        host = host.Trim().TrimEnd('.');
+        return new[] { "gh-proxy.com", "gh-proxy.org" }.Any(proxy =>
+            host.Equals(proxy, StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith("." + proxy, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>判断 URL 是否已经是 gh-proxy 加速地址。</summary>
-    internal static bool IsGhProxyUrl(string? url)
+    internal static string RestoreOfficialUrl(string? url)
     {
-        return !string.IsNullOrWhiteSpace(url) &&
-               url.StartsWith(GhProxyPrefix, StringComparison.OrdinalIgnoreCase);
+        var original = url ?? "";
+        var candidate = original;
+        for (var i = 0; i < 8; i++)
+        {
+            var prefix = LegacyProxyPrefixes.FirstOrDefault(p => candidate.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+            if (prefix is null) break;
+            candidate = candidate[prefix.Length..];
+        }
+        return IsGitHubUrl(candidate) ? candidate : original;
     }
+
+    internal static bool IsGitHubUrl(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == "https"
+        && uri.IsDefaultPort && uri.UserInfo.Length == 0 && uri.Fragment.Length == 0
+        && (uri.Host == "github.com" || uri.Host.EndsWith(".github.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host == "githubusercontent.com" || uri.Host.EndsWith(".githubusercontent.com", StringComparison.OrdinalIgnoreCase));
+
+    internal static bool IsSelfHostedUrl(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == "https"
+        && uri.IsDefaultPort && uri.UserInfo.Length == 0 && uri.Fragment.Length == 0
+        && uri.Host == "deltaxiaoxi.xin";
 }

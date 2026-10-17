@@ -7,6 +7,7 @@ public static class BackendCommands
     public const string AceScan = "ace.scan";
     public const string AceCoreCheck = "ace.core";
     public const string AceClean = "ace.clean";
+    public const string AceCoreClean = "ace.core.clean";
     public const string AceReconcile = "ace.reconcile";
     public const string AceVirtCheck = "ace.vircheck";
 
@@ -21,11 +22,21 @@ public static class BackendCommands
     public const string GpuDriverApply = "gpu.driver.apply";
     public const string GpuDriverRestore = "gpu.driver.restore";
     public const string GpuDriverLock = "gpu.driver.lock";
+    public const string GpuShaderCacheApply = "gpu.shader-cache.apply";
+    public const string SystemShaderRecoveryClean = "system.shader.recovery-clean";
     public const string GpuReconcile = "gpu.reconcile";
     public const string GpuRecover = "gpu.recover";
 
     // ---- 运行库（模块 runtime）----
     public const string RuntimeStatus = "runtime.status";
+    public const string RuntimeFileUseScan = "runtime.file-use.scan";
+    public const string RuntimeFileUseClose = "runtime.file-use.close";
+    public const string RuntimeHighFpsPreview = "runtime.high-fps.preview";
+    public const string RuntimeHighFpsRepair = "runtime.high-fps.repair";
+    public const string Vc14Scan = "runtime.vc14.scan";
+    public const string Vc14Preview = "runtime.vc14.preview";
+    public const string Vc14Repair = "runtime.vc14.repair";
+    public const string Vc14LegacyClean = "runtime.vc14.legacy-clean";
     public const string RuntimeGuardEnable = "runtime.guard.enable";
     public const string RuntimeGuardDisable = "runtime.guard.disable";
     public const string RuntimeGuardSelectMode = "runtime.guard.select-mode";
@@ -37,7 +48,9 @@ public static class BackendCommands
     public const string ProcmanMemoryTrim = "procman.memory.trim";
     public const string ProcmanBackgroundGet = "procman.background.get";
     public const string ProcmanBackgroundSave = "procman.background.save";
+    public const string ProcmanFrameBackgroundSync = "procman.background.frame.sync";
     public const string RuntimeRedistListV14 = "runtime.redist.list-v14";
+    // Historical command identifiers only: never registered or dispatched.
     public const string RuntimeRepair = "runtime.repair";
     public const string RuntimeCompatibilityRepair = "runtime.compatibility.repair";
     public const string RuntimeRedistUninstall = "runtime.redist.uninstall";
@@ -179,7 +192,7 @@ public static class BackendModules
     private static readonly TimeSpan ThirtyMinutes = TimeSpan.FromMinutes(30);
 
     /// <summary>按需任务模块（清理等）在完成指定命令后自行退出。</summary>
-    private static readonly HashSet<string> AceExitAfter = new(StringComparer.Ordinal) { BackendCommands.AceClean };
+    private static readonly HashSet<string> AceExitAfter = new(StringComparer.Ordinal) { BackendCommands.AceClean, BackendCommands.AceCoreClean };
 
     private static BackendModuleSpec Make(
         string id, string display, string exe, IReadOnlyDictionary<string, TimeSpan>? timeouts,
@@ -197,6 +210,7 @@ public static class BackendModules
                     [BackendCommands.AceScan] = ThreeMinutes,
                     [BackendCommands.AceCoreCheck] = TwoMinutes,
                     [BackendCommands.AceClean] = FifteenMinutes,
+                    [BackendCommands.AceCoreClean] = TwoMinutes,
                     [BackendCommands.AceReconcile] = ThreeMinutes,
                     [BackendCommands.AceVirtCheck] = ThreeMinutes,
                 }, ThreeMinutes, AceExitAfter),
@@ -214,6 +228,7 @@ public static class BackendModules
                     [BackendCommands.GpuDriverApply] = FiveMinutes,
                     [BackendCommands.GpuDriverRestore] = FiveMinutes,
                     [BackendCommands.GpuDriverLock] = TwoMinutes,
+                    [BackendCommands.GpuShaderCacheApply] = TwoMinutes,
                     [BackendCommands.GpuReconcile] = FiveMinutes,
                     [BackendCommands.GpuRecover] = FifteenMinutes,
                 }, FiveMinutes),
@@ -222,20 +237,19 @@ public static class BackendModules
                 new Dictionary<string, TimeSpan>(StringComparer.Ordinal)
                 {
                     [BackendCommands.RuntimeStatus] = TwoMinutes,
+                    [BackendCommands.RuntimeFileUseScan] = TwoMinutes,
+                    [BackendCommands.RuntimeFileUseClose] = TwoMinutes,
+                    [BackendCommands.RuntimeHighFpsPreview] = TimeSpan.FromMinutes(5),
+                    [BackendCommands.RuntimeHighFpsRepair] = TimeSpan.FromMinutes(150),
+                    [BackendCommands.Vc14Scan] = TwoMinutes,
+                    [BackendCommands.Vc14Preview] = TwoMinutes,
+                    [BackendCommands.Vc14Repair] = TimeSpan.FromMinutes(42),
+                    [BackendCommands.Vc14LegacyClean] = FiveMinutes,
                     [BackendCommands.RuntimeGuardEnable] = FiveMinutes,
                     [BackendCommands.RuntimeGuardDisable] = FiveMinutes,
                     [BackendCommands.RuntimeGuardSelectMode] = TwoMinutes,
                     [BackendCommands.RuntimeGuardCleanupLegacy] = FiveMinutes,
                     [BackendCommands.RuntimeUe4RepairAcl] = FiveMinutes,
-                    [BackendCommands.RuntimeRedistScan] = TwoMinutes,
-                    [BackendCommands.RuntimeRepairEnvironment] = TwoMinutes,
-                    [BackendCommands.RuntimeRedistListV14] = TwoMinutes,
-                    // 强力系统阶段最多 60 分钟；高帧性后续 26 分钟，含全量卸载的兼容性后续 80 分钟。
-                    [BackendCommands.RuntimeRepair] = TimeSpan.FromMinutes(90),
-                    [BackendCommands.RuntimeCompatibilityRepair] = TimeSpan.FromMinutes(145),
-                    [BackendCommands.RuntimeRedistUninstall] = ThirtyMinutes,
-                    [BackendCommands.RuntimeRedistPreviewAll] = TwoMinutes,
-                    [BackendCommands.RuntimeRedistUninstallAll] = TimeSpan.FromMinutes(90),
                     [BackendCommands.RuntimeReconcile] = FiveMinutes,
                     [BackendCommands.RuntimeRecover] = FifteenMinutes,
                 }, FiveMinutes),
@@ -298,6 +312,7 @@ public static class BackendModules
                     [BackendCommands.ProcmanMemoryTrim] = TwoMinutes,
                     [BackendCommands.ProcmanBackgroundGet] = TwoMinutes,
                     [BackendCommands.ProcmanBackgroundSave] = TwoMinutes,
+                    [BackendCommands.ProcmanFrameBackgroundSync] = TwoMinutes,
                     [BackendCommands.ProcmanNativeProbe] = TwoMinutes,
                 }, TwoMinutes),
 
@@ -327,6 +342,7 @@ public static class BackendModules
                     [BackendCommands.SystemShaderStatus] = TwoMinutes,
                     [BackendCommands.SystemShaderDiagnose] = TwoMinutes,
                     [BackendCommands.SystemShaderClear] = FiveMinutes,
+                    [BackendCommands.SystemShaderRecoveryClean] = FiveMinutes,
                     [BackendCommands.SystemPagefileStatus] = TwoMinutes,
                     [BackendCommands.SystemPagefileSet] = FiveMinutes,
                     [BackendCommands.SystemPagefileRestoreAuto] = FiveMinutes,
@@ -378,10 +394,9 @@ public static class BackendModules
         BackendCommands.AceVirtCheck,
         BackendCommands.GpuSpoofStatus, BackendCommands.GpuWatchEvaluate,
         BackendCommands.GpuDriverStatus, BackendCommands.GpuDriverRead, BackendCommands.GpuReconcile,
-        BackendCommands.RuntimeStatus, BackendCommands.RuntimeRedistScan, BackendCommands.RuntimeRepairEnvironment,
-        BackendCommands.RuntimeRedistListV14, BackendCommands.RuntimeReconcile,
-        BackendCommands.RuntimeRedistPreviewAll,
-        BackendCommands.CpuFrameStatus, BackendCommands.CpuFrameReconcile,
+        BackendCommands.RuntimeStatus, BackendCommands.RuntimeReconcile, BackendCommands.Vc14Scan, BackendCommands.Vc14Preview,
+        BackendCommands.RuntimeHighFpsPreview, BackendCommands.RuntimeFileUseScan,
+                BackendCommands.CpuFrameStatus, BackendCommands.CpuFrameReconcile,
         BackendCommands.CpuFrameTopology, BackendCommands.CpuFrameAffinityCheck,
         BackendCommands.CpuFrameAffinityPending, BackendCommands.CpuFrameMemoryLimitDetect,
         BackendCommands.CpuFramePowerIncomplete,

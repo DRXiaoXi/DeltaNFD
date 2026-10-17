@@ -39,9 +39,20 @@ internal static class UpdateChannelInstallation
                 _ = JsonSerializer.Deserialize<AppSettings>(stream) ?? throw new InvalidDataException("设置文件为空。");
             }
             if (settings.UpdateChannelInstallationId == installation.Id) return;
+            if (installation.DisplayVersion is "Alpha0.9193" or "Alpha0.9194")
+            {
+                settings.UpdateChannel = UpdateChannel.Internal;
+                settings.UpdateServer = UpdateServer.SelfHosted;
+                settings.UpdateMode = UpdateMode.ChangedFiles;
+            }
             var pendingAlpha = existing && installation.AlphaInstallationId.Length != 0
                 && installation.AlphaInstallationId != settings.UpdateChannelAlphaInstallationId;
-            if (kind == UpdateReleaseKind.Alpha || pendingAlpha)
+            if (kind == UpdateReleaseKind.Local)
+            {
+                // Local builds preserve an existing channel; a fresh development installation defaults internal.
+                if (!existing) settings.UpdateChannel = UpdateChannel.Internal;
+            }
+            else if (kind == UpdateReleaseKind.Alpha || pendingAlpha)
                 settings.UpdateChannel = UpdateChannel.Internal;
             else if (!existing)
                 settings.UpdateChannel = UpdateChannel.Public; // Fresh Beta/Release; reinstall preserves an existing selection.

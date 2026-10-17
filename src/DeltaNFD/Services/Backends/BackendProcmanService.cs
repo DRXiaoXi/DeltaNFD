@@ -17,11 +17,17 @@ internal sealed class BackendProcmanService
     internal Task<BackendResult> InvokeAsync(string command, object args, CancellationToken ct = default)
         => _caller.InvokeAsync(command, args, null, ct);
 
+    internal async Task<OperationResult> SyncFrameBackgroundAsync()
+    {
+        try { return BackendResults.Map(await InvokeAsync(BackendCommands.ProcmanFrameBackgroundSync, new { }), "帧格后台功能同步"); }
+        catch (Exception ex) { Log.Error("帧格后台功能同步未完成", ex); return OperationResult.Fail(ex.Message); }
+    }
+
     internal async Task ActivateSavedRulesAsync()
     {
         if (OfflineModeGuard.BlocksNormalAutomation) return;
         if (!File.Exists(Path.Combine(AppDataPaths.Root, "procman-rules.json")) && !File.Exists(Path.Combine(AppDataPaths.Root, "procman-changes.json"))
-            && !File.Exists(Path.Combine(AppDataPaths.Root, "procman-background.json"))) return;
+            && !File.Exists(Path.Combine(AppDataPaths.Root, "procman-background.json")) && !AppSettingsStore.Read().FrameModeActive) return;
         try
         {
             var result = await InvokeAsync(BackendCommands.ProcmanActivate, new { });

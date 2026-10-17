@@ -1,0 +1,14 @@
+[Unit]
+Description=Mark bounded Nginx feedback body storage ready
+Requires=var-lib-nginx-deltanfd_feedback_body.mount
+After=var-lib-nginx-deltanfd_feedback_body.mount
+Before=nginx.service deltanfd-feedback.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/touch /var/lib/nginx/deltanfd_feedback_body/.ready
+ExecStop=/usr/bin/rm -f /var/lib/nginx/deltanfd_feedback_body/.ready
+
+[Install]
+WantedBy=multi-user.target

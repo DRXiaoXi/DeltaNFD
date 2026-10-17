@@ -15,7 +15,7 @@ namespace BackendSmokeTest;
 /// 覆盖三件事：
 ///   1) 包合同：仓库内 manifest.json / ui.json / README / LICENSE 是否满足宿主解析器与规范要求；
 ///   2) 加速链路：把插件真实生成的加速配置交给宿主真实的 UpdateService 解析，验证
-///      「清单地址不被改写回直连 / 白名单放行加速主机 / 镜像排在首位时下载走加速」；
+///      「历史清单迁移为直连 / 移除加速主机 / 历史镜像条目恢复为官方地址」；
 ///   3) 可恢复改写：用临时目录驱动真实的 WeakNetBoostProfile.Apply/Restore
 ///      （插件与测试编译同一份源码，不是各写一份），覆盖首次开启、原文件备份还原、
 ///      幂等、第三方改动冲突、证据丢失等路径。
@@ -156,26 +156,36 @@ internal static class PluginWeakNetBoostChecks
         var normalized = UpdateService.Normalize(config);
         var manifestUrls = normalized.ManifestUrls ?? [];
 
-        Check("宿主不会把加速清单地址改写回直连 API",
-            manifestUrls.Count > 0 && manifestUrls[0] == WeakNetBoostProfile.AcceleratorPrefix + WeakNetBoostProfile.RawManifestUrl,
+        Check("历史加速清单迁移为官方 API",
+            manifestUrls.Count > 0 && manifestUrls[0] == GitHubReleaseSource.ReleasesUrl,
             manifestUrls.Count > 0 ? manifestUrls[0] : "(空)");
         Check("清单地址全部通过宿主白名单",
             manifestUrls.All(u => UpdateService.IsAllowedUrl(u, normalized, out _)));
-        Check("加速主机在 allowedHosts 里（否则宿主拒绝下载）",
-            UpdateService.IsAllowedHost("gh-proxy.com", normalized.AllowedHosts ?? []) &&
-            UpdateService.IsAllowedHost("gh-proxy.org", normalized.AllowedHosts ?? []));
+        Check("历史加速主机不再进入宿主白名单",
+            !UpdateService.IsAllowedHost("gh-proxy.com", normalized.AllowedHosts ?? []) &&
+            !UpdateService.IsAllowedHost("gh-proxy.org", normalized.AllowedHosts ?? []));
 
         var acceleratedInstallerUrl = WeakNetBoostProfile.AcceleratorPrefix + DirectInstallerUrl;
-        Check("加速安装包地址通过宿主白名单与 https 校验",
-            UpdateService.IsAllowedUrl(acceleratedInstallerUrl, normalized, out var installReason), installReason);
+        Check("历史加速地址不能绕过取消加速后的下载限制",
+            !UpdateService.IsAllowedUrl(acceleratedInstallerUrl, normalized, out var installReason), installReason);
+        Check("备用旧代理恢复为官方安装包地址",
+            UpdateUrlRewriter.RestoreOfficialUrl(WeakNetBoostProfile.AcceleratorPrefixAlternate + DirectInstallerUrl) == DirectInstallerUrl);
+        Check("两种旧代理混合嵌套仍恢复官方 API",
+            UpdateUrlRewriter.RestoreOfficialUrl(WeakNetBoostProfile.AcceleratorPrefix + WeakNetBoostProfile.AcceleratorPrefixAlternate + GitHubReleaseSource.ReleasesUrl)
+                == GitHubReleaseSource.ReleasesUrl);
+        Check("旧代理备用地址即使被手工放入白名单也拒绝",
+            !UpdateService.IsAllowedUrl(WeakNetBoostProfile.AcceleratorPrefixAlternate + DirectInstallerUrl,
+                new UpdateConfig { AllowedHosts = ["gh-proxy.org"] }, out _));
+        Check("代理相似域名不被误识别为旧代理",
+            !UpdateUrlRewriter.IsLegacyProxyHost("gh-proxy.org.example.com"));
 
-        // 发布端用 -MirrorFirst 生成时：镜像条目在首位，宿主第一个下载地址就是加速地址。
+        // 历史镜像在前的清单仍可恢复为官方地址；不能重新启用已退休的加速。
         var mirrorOk = UpdateService.TryParseManifest(
             ManifestJson([acceleratedInstallerUrl, DirectInstallerUrl]), normalized,
             out var mirrorManifest, out var mirrorReason);
-        Check("镜像排在首位时宿主首选加速地址",
+        Check("历史镜像在前的清单恢复为官方直连地址",
             mirrorOk && mirrorManifest?.Installers is { Count: > 0 } installed &&
-            WeakNetBoostProfile.IsAcceleratedUrl(installed[0].Url), mirrorReason);
+            installed.All(i => i.Url == DirectInstallerUrl), mirrorReason);
 
         // 未发布镜像条目时的回退：仍然可用，不会把更新器弄坏（只是不走加速）。
         var fallbackOk = UpdateService.TryParseManifest(

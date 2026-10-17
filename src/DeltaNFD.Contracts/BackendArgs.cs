@@ -2,17 +2,6 @@ using DeltaNFD.Services.TweakDb;
 
 namespace DeltaNFD.Backends;
 
-public sealed class RuntimeRepairArgs
-{
-    public Services.RuntimeRepairMode Mode { get; set; } = Services.RuntimeRepairMode.FullReinstall;
-    public bool StrongRepairMode { get; set; }
-}
-
-public sealed class RuntimeCompatibilityRepairArgs
-{
-    public bool StrongRepairMode { get; set; }
-}
-
 /// <summary>官方后端命令参数 DTO（前端与后端共用，避免匿名对象的字段漂移）。</summary>
 public sealed class GpuSpoofApplyArgs
 {
@@ -45,6 +34,18 @@ public sealed class NvDriverRestoreArgs
 public sealed class NvDriverReadOnlyArgs
 {
     public bool ReadOnly { get; set; }
+}
+
+public sealed class NvShaderCacheApplyArgs
+{
+    public string Scope { get; set; } = "";
+    public uint? Value { get; set; }
+}
+
+public sealed class ShaderRecoveryCleanArgs
+{
+    public bool GameCache { get; set; }
+    public bool NvidiaCache { get; set; }
 }
 
 public sealed class RuntimeSelectModeArgs

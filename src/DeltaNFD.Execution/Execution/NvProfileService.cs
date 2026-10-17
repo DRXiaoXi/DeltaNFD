@@ -25,6 +25,33 @@ public sealed class NvProfileService : INvProfileService
 
     public IReadOnlyList<NvSettingDef> GetSettingCatalog() => NvSettingsCatalog.Definitions;
 
+    public Task<OperationResult> SetShaderCacheSizeAsync(string scope, uint? value) => Task.Run(() =>
+    {
+        if (!NvShaderCacheChoices.IsValid(scope, value)) return OperationResult.Fail("缓存范围或大小不合法。");
+        if (!ElevationHelper.IsElevated) return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
+        bool CanWrite() => !DeltaForceLocator.IsGameRunning()
+            && !DrsFiles.Any(f => File.Exists(f) && (File.GetAttributes(f) & FileAttributes.ReadOnly) != 0);
+        if (!CanWrite()) return OperationResult.Fail("请先退出三角洲，并在 N 卡设置页解除数据库只读锁定。");
+        var folder = Path.Combine(AppDataPaths.Root, "logs", "nv-shader-cache"); Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            var (success, message) = NvApiDrs.SetShaderCacheSize(scope, value,
+                before => {
+                    using var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+                    System.Text.Json.JsonSerializer.Serialize(file, before); file.Flush(true);
+                }, CanWrite);
+            var report = NvApiDrs.ReadShaderCacheSizes();
+            var targets = report.Scopes.Where(s => scope == "game" ? s.Scope.StartsWith("三角洲") : s.Scope.StartsWith("全局")).ToArray();
+            var verified = success && targets.Length > 0 && targets.All(s => s.State != "unknown"
+                && (value is null ? s.State is "default" or "inherited" || scope == "game" && s.Detail.Contains("继承") : s.Value == value));
+            return new OperationResult { Success = verified, OutcomeUnknown = !success && message.Contains("保存未成功") && !report.Complete,
+                Message = (verified ? "设置及只读复检通过。" : "未确认设置完整生效，请核对实际状态。") + "\n" + message
+                    + "\n" + report.Advice + "\n操作前原值记录：" + path };
+        }
+        catch (Exception ex) { return OperationResult.Fail("缓存大小设置未完成，请刷新核对：" + ex.Message + "\n原值记录：" + path); }
+    });
+
     // ---------------- 环境与状态 ----------------
 
     public Task<NvGpuEnvironmentInfo> GetEnvironmentAsync() => Task.Run(() =>
@@ -37,8 +64,19 @@ public sealed class NvProfileService : INvProfileService
             NvApiAvailable = NvApiDrs.IsAvailable,
             DrsFilesExist = DrsFiles.Any(File.Exists),
             DrsFilesLocked = DrsFiles.Any(f => File.Exists(f) && (File.GetAttributes(f) & FileAttributes.ReadOnly) != 0),
+            ShaderCache = isNvidia ? ReadShaderCacheReport() : null,
         };
     });
+
+    private static NvShaderCacheReport ReadShaderCacheReport()
+    {
+        try { return NvApiDrs.ReadShaderCacheSizes(); }
+        catch (Exception ex)
+        {
+            Log.Warn("NVIDIA 着色器缓存大小检测失败：" + ex.Message);
+            return new() { Scopes = [new("全局与三角洲", "unknown", null, ex.Message)] };
+        }
+    }
 
     private static (bool IsNvidia, string GpuName) ReadNvidiaGpu()
     {

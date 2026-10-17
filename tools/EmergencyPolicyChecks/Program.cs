@@ -114,6 +114,8 @@ try
         Check((await EmergencyPolicyUpdateService.FetchBoundedAsync(client, new Uri("https://raw.githubusercontent.com/fixture"), CancellationToken.None)).SequenceEqual(signed), "受限下载保留原始签名字节");
     await RejectFetch(_ => throw new Exception("should not send"), "http://raw.githubusercontent.com/test", "拒绝非 HTTPS");
     await RejectFetch(_ => throw new Exception("should not send"), "https://evil.example/test", "拒绝未知主机");
+    await RejectFetch(_ => throw new Exception("should not send"), "https://gh-proxy.com/https://raw.githubusercontent.com/test", "不再访问旧 GitHub 加速代理");
+    await RejectFetch(_ => new(HttpStatusCode.Redirect) { Headers = { Location = new Uri("https://gh-proxy.com/https://raw.githubusercontent.com/test") } }, "https://raw.githubusercontent.com/test", "直连重定向也不能进入旧代理");
     await RejectFetch(_ => new(HttpStatusCode.Redirect) { Headers = { Location = new Uri("https://evil.example/test") } }, "https://raw.githubusercontent.com/test", "重定向逐跳检查主机");
     await RejectFetch(_ => new(HttpStatusCode.Redirect) { Headers = { Location = new Uri("https://github.com/loop") } }, "https://raw.githubusercontent.com/test", "重定向次数有界");
     await RejectFetch(_ => new(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[65537]) }, "https://raw.githubusercontent.com/test", "有长度响应大小有界");

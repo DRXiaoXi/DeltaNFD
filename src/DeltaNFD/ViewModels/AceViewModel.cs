@@ -21,6 +21,7 @@ public partial class AceViewModel : ObservableObject
     [ObservableProperty] private bool canClean;
     [ObservableProperty] private string coreCheckText = "正在检测 ACE-CORE 冗余文件…";
     [ObservableProperty] private bool coreCheckBusy;
+    [ObservableProperty] private string coreCleanupResultText = "";
     [ObservableProperty] private bool hasBlockers;
     [ObservableProperty] private bool cleanupNeedsReview;
     [ObservableProperty] private string cleanupReviewMessage = "";
@@ -55,7 +56,11 @@ public partial class AceViewModel : ObservableObject
         RefreshFlags();
     }
 
-    public bool CleanEnabled => !IsBusy && !IsCleaning && CanClean && !CleanupNeedsReview;
+    public bool CleanEnabled => !IsBusy && !IsCleaning && !CoreCheckBusy && CanClean && !CleanupNeedsReview;
+
+    public bool CoreCleanEnabled => CleanEnabled && !DetectionPaused;
+
+    public string CoreCleanButtonText => IsCleaning ? "清理中…" : "仅清理 ACE-CORE SYS";
 
     public bool CanRefresh => !IsBusy && !IsCleaning;
 
@@ -63,7 +68,7 @@ public partial class AceViewModel : ObservableObject
 
     public string CoreCheckButtonText => CoreCheckBusy ? "检测中…" : "开始检测";
 
-    public bool CanCheckCore => !CoreCheckBusy && !DetectionPaused && !IsCleaning;
+    public bool CanCheckCore => !CoreCheckBusy && !DetectionPaused && !IsCleaning && !IsBusy;
 
     public string VirtCheckButtonText => VirtCheckBusy ? "检测中…" : "检测虚拟化环境";
 
@@ -95,9 +100,11 @@ public partial class AceViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(CoreCheckButtonText));
         OnPropertyChanged(nameof(CanCheckCore));
+        OnPropertyChanged(nameof(CleanEnabled));
+        OnPropertyChanged(nameof(CoreCleanEnabled));
     }
 
-    partial void OnDetectionPausedChanged(bool value) => OnPropertyChanged(nameof(CanCheckCore));
+    partial void OnDetectionPausedChanged(bool value) => RefreshFlags();
 
     // ---------------- 随游戏进程状态自动暂停 / 恢复 ----------------
 
@@ -149,6 +156,8 @@ public partial class AceViewModel : ObservableObject
         OnPropertyChanged(nameof(CleanRefreshEnabled));
         OnPropertyChanged(nameof(CanRefresh));
         OnPropertyChanged(nameof(CanCheckCore));
+        OnPropertyChanged(nameof(CoreCleanEnabled));
+        OnPropertyChanged(nameof(CoreCleanButtonText));
     }
 
     public async Task LoadAsync()
@@ -234,9 +243,13 @@ public partial class AceViewModel : ObservableObject
     }
 
     /// <summary>一键清除。返回后端结果供页面弹窗；完成后自动重扫。</summary>
-    public async Task<OperationResult?> CleanAsync()
+    public Task<OperationResult?> CleanAsync() => CleanAsync(coreOnly: false);
+
+    public Task<OperationResult?> CleanCoreFilesAsync() => CleanAsync(coreOnly: true);
+
+    private async Task<OperationResult?> CleanAsync(bool coreOnly)
     {
-        if (IsCleaning)
+        if (IsCleaning || IsBusy || CoreCheckBusy)
         {
             return null;
         }
@@ -245,8 +258,12 @@ public partial class AceViewModel : ObservableObject
         OperationResult result;
         try
         {
-            var progress = new Progress<string>(s => ScanSummary = s);
-            result = await _ace.CleanAsync(progress);
+            var progress = new Progress<string>(s =>
+            {
+                if (coreOnly) CoreCleanupResultText = s;
+                else ScanSummary = s;
+            });
+            result = coreOnly ? await _ace.CleanCoreFilesAsync(progress) : await _ace.CleanAsync(progress);
         }
         catch (Exception ex)
         {
@@ -257,6 +274,7 @@ public partial class AceViewModel : ObservableObject
         {
             IsCleaning = false;
         }
+        if (coreOnly) CoreCleanupResultText = result.Message;
         await LoadAsync();
         return result;
     }

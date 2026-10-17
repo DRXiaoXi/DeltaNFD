@@ -6,7 +6,7 @@ namespace DeltaNFD.Execution.CpuFrame;
 
 /// <summary>
 /// CPU/帧格后端执行引擎（T4）：持有唯一的「两秒共享游戏监控」，并在每个 tick 按当前偏好维护
-/// 实际生效的优先级 / 硬亲和性 / CPU Sets / 双单 CCD / 计时器 / EcoQoS / 核心常驻 / DWM /
+/// 实际生效的优先级 / 硬亲和性 / CPU Sets / 双单 CCD / 计时器 / DWM /
 /// 电源守护 / 临时优化。前端不再执行这些写入，只通过状态快照读取「实际生效状态」，
 /// 并在需要立即生效时调用本引擎的命令。
 ///
@@ -45,7 +45,6 @@ public sealed class CpuFrameEngine : IDisposable
     private int _priorityAppliedCount;
     private ulong _affinityMask;
     private bool _timerActive;
-    private bool _ecoQosApplied;
     private bool _dwmHandledForSession;
     private bool _tempOptimizationApplied;
     private bool _powerLockActive;
@@ -54,16 +53,11 @@ public sealed class CpuFrameEngine : IDisposable
     private int _powerGuardCount;
 
     // 显式由前端命令设定的临时优化/加速响应期望（机箱形态等编排由前端决定）。
-    private bool _boostCoreParking;
-    private bool _boostEcoQos;
     private bool _boostTimer;
     private bool _tweaksDesired;
     private CpuFrameTempArgs _tweaksArgs = new();
 
     private readonly Dictionary<int, (GameProcessIdentity Identity, ProcessPriorityClass Original)> _priorityOriginals = [];
-    private readonly Dictionary<int, (GameProcessIdentity Identity, string Original)> _ecoQosOriginals = [];
-    private CoreParkingLoop? _parkingLoop;
-    private int? _parkedCores;
 
     public CpuFrameEngine() : this(new PowerService(), new FrameTweaksService()) { }
 
@@ -108,7 +102,6 @@ public sealed class CpuFrameEngine : IDisposable
             if (loop is not null) { try { await loop; } catch (OperationCanceledException) { } }
             cts.Dispose();
         }
-        StopParkingLoop();
         SetAction("游戏监控已停止。");
         return OperationResult.Ok("游戏监控已停止。");
     }
@@ -183,9 +176,7 @@ public sealed class CpuFrameEngine : IDisposable
             await _cpu.ExcludeCpu0FromGameAsync().ConfigureAwait(false);
         CpuTopologyService.ApplyCpuSchedulingTick();
 
-        // ④ 加速系统响应模式：核心常驻 / EcoQoS / 高分辨率计时器（期望由前端命令设定，随游戏启停换挡）
-        UpdateParkingLoop(_boostCoreParking);
-        UpdateEcoQos(_boostEcoQos && gameRunning, identities);
+        // ④ 加速系统响应模式：高分辨率计时器（随游戏启停换挡）
         UpdateTimer(_boostTimer && gameRunning);
 
         // ⑤ 游戏启动后自动重启 DWM（延迟 5 秒，避免初始化窗口）
@@ -436,25 +427,19 @@ public sealed class CpuFrameEngine : IDisposable
         return result;
     }
 
-    // ---------------- 计时器 / EcoQoS / 核心常驻（加速响应） ----------------
+    // ---------------- 高分辨率计时器（加速响应） ----------------
 
-    /// <summary>设定加速响应期望并立即换挡；监控随后按期望与游戏启停持续维持。</summary>
-    public async Task<OperationResult> ApplyBoostAsync(bool coreParking, bool ecoQos, bool timer)
+    /// <summary>设定计时器期望，随后随游戏启停维持。</summary>
+    public Task<OperationResult> ApplyBoostAsync(bool timer)
     {
-        _boostCoreParking = coreParking;
-        _boostEcoQos = ecoQos;
         _boostTimer = timer;
-        var identities = RefreshIdentities(GameTargetService.Default.Current.Generation);
-        var gameRunning = identities.Count > 0;
-        UpdateParkingLoop(coreParking);
-        UpdateEcoQos(ecoQos && gameRunning, identities);
+        var gameRunning = RefreshIdentities(GameTargetService.Default.Current.Generation).Count > 0;
         UpdateTimer(timer && gameRunning);
-        SetAction($"加速响应已换挡（核心常驻={(coreParking ? "开" : "关")}，EcoQoS={(ecoQos ? "开" : "关")}，计时器={(timer ? "开" : "关")}）。");
-        await Task.CompletedTask;
-        return OperationResult.Ok("加速响应状态已更新。");
+        SetAction($"加速响应已更新（计时器={(timer ? "开" : "关")}）。");
+        return Task.FromResult(OperationResult.Ok("计时器选项已更新。"));
     }
 
-    /// <summary>单独的计时器开关（加速响应子项；不改动核心常驻/EcoQoS 期望）。</summary>
+    /// <summary>设定高分辨率计时器期望，并立即按游戏运行状态更新请求。</summary>
     public async Task<OperationResult> ApplyTimerAsync(bool enabled)
     {
         _boostTimer = enabled;
@@ -479,66 +464,6 @@ public sealed class CpuFrameEngine : IDisposable
             var release = ProcessPerf.ReleaseTimerResolutionDetailed();
             _timerActive = !release.Succeeded;
         }
-    }
-
-    private void UpdateParkingLoop(bool wanted)
-    {
-        if (wanted && (_parkingLoop is null || !_parkingLoop.IsRunning))
-        {
-            _parkingLoop ??= new CoreParkingLoop();
-            _parkingLoop.Start(p => _parkedCores = p);
-        }
-        else if (!wanted) StopParkingLoop();
-    }
-
-    private void StopParkingLoop()
-    {
-        if (_parkingLoop is { IsRunning: true }) _parkingLoop.Stop();
-        _parkedCores = null;
-    }
-
-    private void UpdateEcoQos(bool wanted, IReadOnlyList<GameProcessIdentity> identities)
-    {
-        if (wanted)
-        {
-            foreach (var identity in identities)
-            {
-                if (_ecoQosOriginals.ContainsKey(identity.Id)) continue;
-                using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(identity.Id, "ecoQos");
-                if (ownership is null) continue;
-                var processIdentity = new DeltaNFD.Execution.Procman.ProcmanProcessIdentity(identity.Id, identity.StartTimeUtc, identity.ExecutablePath);
-                try
-                {
-                    using var pin = DeltaNFD.Execution.Procman.ProcmanCapabilities.Pin(processIdentity);
-                    var original = DeltaNFD.Execution.Procman.ProcmanCapabilities.ReadEcoQos(identity.Id);
-                    if (original.Ok && DeltaNFD.Execution.Procman.ProcmanCapabilities.SetEcoQos(identity.Id, false).Ok)
-                        _ecoQosOriginals[identity.Id] = (identity, original.Value!);
-                }
-                catch (Exception ex) { SetError("帧格 EcoQoS 未应用：" + ex.Message); }
-            }
-            _ecoQosApplied = _ecoQosOriginals.Count > 0;
-        }
-        else if (_ecoQosOriginals.Count > 0)
-        {
-            foreach (var (pid, saved) in _ecoQosOriginals.ToArray())
-            {
-                try
-                {
-                    var identity = saved.Identity;
-                    using var process = Process.GetProcessById(pid);
-                    if (process.HasExited || process.StartTime.ToUniversalTime() != identity.StartTimeUtc) { _ecoQosOriginals.Remove(pid); continue; }
-                    using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(pid, "ecoQos", true);
-                    if (ownership is null || !GameTargetService.Default.Matches(process, identity)) continue;
-                    using var pin = DeltaNFD.Execution.Procman.ProcmanCapabilities.Pin(new(pid, identity.StartTimeUtc, identity.ExecutablePath));
-                    if (DeltaNFD.Execution.Procman.ProcmanCapabilities.RestoreEcoQos(pid, saved.Original).Ok) _ecoQosOriginals.Remove(pid);
-                }
-                catch (ArgumentException) { _ecoQosOriginals.Remove(pid); }
-                catch { }
-            }
-            _ecoQosApplied = _ecoQosOriginals.Count > 0;
-            GameTargetService.Default.SetRestoreFailure("EcoQoS", _ecoQosApplied);
-        }
-        else _ecoQosApplied = false;
     }
 
     // ---------------- DWM ----------------
@@ -821,14 +746,9 @@ public sealed class CpuFrameEngine : IDisposable
             messages.Add("单CCD：" + single.Message);
             if (!single.Success || CpuTopologyService.SingleCcdExcludeActive) failures.Add("单 CCD 还原未完成");
         }
-        _boostCoreParking = false;
-        _boostEcoQos = false;
         _boostTimer = false;
         UpdateTimer(false);
-        UpdateParkingLoop(false);
-        UpdateEcoQos(false, []);
-        if (_ecoQosOriginals.Count != 0) failures.Add("EcoQoS 仍有待还原实例");
-        messages.Add("计时器/EcoQoS/核心常驻已还原");
+        messages.Add("高分辨率计时器请求已释放");
         _tweaksDesired = false;
         var tweaks = await RevertTweaksCoreAsync().ConfigureAwait(false);
         messages.Add("临时优化：" + tweaks.Message);
@@ -851,7 +771,6 @@ public sealed class CpuFrameEngine : IDisposable
             new() { Id = "affinity", Kind = "cpuframe", State = _affinityMask != 0 ? $"已生效（0x{_affinityMask:X}）" : "未生效", HasBackup = CpuTopologyService.HasAffinityRuleRestorePending },
             new() { Id = "ccd", Kind = "cpuframe", State = CpuTopologyService.DualCcdSchedulingActive ? "双CCD已生效" : CpuTopologyService.SingleCcdExcludeActive ? "单CCD已生效" : "未生效" },
             new() { Id = "timer", Kind = "cpuframe", State = _timerActive ? "高分辨率计时器已请求" : "未请求" },
-            new() { Id = "ecoqos", Kind = "cpuframe", State = _ecoQosApplied ? "已禁用游戏电源限制" : "未禁用" },
             new() { Id = "tweaks", Kind = "cpuframe", State = _tempOptimizationApplied ? "临时优化已应用" : "未应用", HasBackup = FrameTweaksService.IsForegroundBoostApplied() || FrameTweaksService.IsPowerSaveLatencyApplied() },
             new() { Id = "power", Kind = "cpuframe", State = _powerLockActive ? $"电源锁定中（{_powerLockedGuid}）" : "未锁定", HasBackup = _tweaks.HasPowerSchemeContentSnapshot || AppSettingsStore.Read().FramePowerRestorePending },
         };
@@ -974,13 +893,10 @@ public sealed class CpuFrameEngine : IDisposable
             DualCcdSchedulingActive = CpuTopologyService.DualCcdSchedulingActive,
             SingleCcdExcludeActive = CpuTopologyService.SingleCcdExcludeActive,
             TimerActive = _timerActive,
-            EcoQosApplied = _ecoQosApplied,
             DwmRestartedThisSession = _dwmHandledForSession,
             TempOptimizationApplied = _tempOptimizationApplied,
             PowerLockActive = _powerLockActive,
             PowerLockedSchemeGuid = _powerLockedGuid,
-            CoreParkingActive = _parkingLoop is { IsRunning: true },
-            ParkedCoreCount = _parkedCores,
             MemoryCleanStatus = "旧帧格内存清理已下线。",
             LastAction = _lastAction,
             LastError = _lastError,

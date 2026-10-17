@@ -166,6 +166,8 @@ internal sealed class BackendClient : IAsyncDisposable
             CreateNoWindow = true,
             WorkingDirectory = Path.GetDirectoryName(executable) ?? AppContext.BaseDirectory,
         };
+        // Surface host startup failure through the tool, rather than a blocking native .NET dialog.
+        startInfo.Environment["DOTNET_DISABLE_GUI_ERRORS"] = "1";
 
         Process process;
         try
@@ -192,11 +194,25 @@ internal sealed class BackendClient : IAsyncDisposable
         {
             using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             connectTimeout.CancelAfter(TimeSpan.FromSeconds(15));
-            await pipe.WaitForConnectionAsync(connectTimeout.Token);
+            try
+            {
+                var connected = pipe.WaitForConnectionAsync(connectTimeout.Token);
+                var exited = process.WaitForExitAsync(connectTimeout.Token);
+                if (await Task.WhenAny(connected, exited) == exited)
+                {
+                    await exited;
+                    if (!pipe.IsConnected)
+                        throw new BackendContractException($"官方后端 {spec.DisplayName} 在建立连接前已退出（0x{process.ExitCode:X8}）。请检查该后端的 .NET 部署文件并修复工具安装。路径：{executable}");
+                }
+                await connected;
+            }
+            finally { connectTimeout.Cancel(); }
         }
         catch (Exception ex)
         {
             await client.DisposeAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+            if (ex is BackendContractException) throw;
             throw new BackendContractException($"官方后端 {spec.DisplayName} 未在超时内建立连接：{ex.Message}");
         }
 

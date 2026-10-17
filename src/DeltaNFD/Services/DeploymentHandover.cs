@@ -10,7 +10,6 @@ internal sealed class DeploymentHandover : IDisposable
     private readonly IDisposable _plugins;
     private DeploymentHandover()
     {
-        if (DotNetRepairService.IsBusy) throw new InvalidOperationException(".NET 安装/修复正在运行，请完成或取消微软安装器后重试。");
         _backends = BackendOperationGate.BlockNewOperations();
         try { _plugins = ServiceLocator.PluginRuntime.BlockNewOperations(); }
         catch { _backends.Dispose(); throw; }
@@ -38,14 +37,16 @@ internal sealed class DeploymentHandover : IDisposable
         finally { foreach (var process in processes) process.Dispose(); }
     }
 
-    public static async Task<DeploymentHandover> PrepareAsync(bool uninstall)
+    public static Task<DeploymentHandover> PrepareAsync(bool uninstall) => PrepareAsync(uninstall, null);
+
+    public static async Task<DeploymentHandover> PrepareAsync(bool uninstall, string? purpose)
     {
         var permit = new DeploymentHandover();
         try
         {
             using var control = BackendOperationGate.AllowControlOperations();
             var failures = new List<string>();
-            var reason = uninstall ? "卸载" : "安装更新";
+            var reason = purpose ?? (uninstall ? "卸载" : "安装更新");
             async Task Attempt(string name, Func<Task> action)
             {
                 try { await action(); }
@@ -109,6 +110,9 @@ internal sealed class DeploymentHandover : IDisposable
                 failures.Add(client.ModuleId + "：最终退出尚未确认。");
             if (File.Exists(Path.Combine(AppDataPaths.Root, "defender-session.json")))
                 failures.Add("Defender 临时排除项尚未恢复。");
+            if (File.Exists(Path.Combine(AppDataPaths.Root, "safe-installer-active.json"))
+                || Directory.Exists(Path.Combine(AppDataPaths.Root, "safe-installer-active.json")))
+                failures.Add("临时 Installer 设置仍待恢复，请在运行库页点击“恢复临时 Installer 设置”；未允许替换或移除程序及恢复记录。");
             permit.ExitCode = failures.Count > 0 ? 2 : reviews.Count > 0 ? 10 : 0;
             permit.Detail = failures.Count > 0 ? string.Join(Environment.NewLine, failures.Distinct())
                 : reviews.Count > 0 ? "执行者已停止，仍有历史操作待人工核对。保留全部数据和原始证据；这不代表历史操作已还原。\n"

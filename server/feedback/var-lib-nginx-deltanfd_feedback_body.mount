@@ -1,0 +1,9 @@
+[Unit]
+Description=Bounded private Nginx feedback request body storage
+
+[Mount]
+What=tmpfs
+Where=/var/lib/nginx/deltanfd_feedback_body
+Type=tmpfs
+# OpenClaw must substitute numeric IDs of the existing Nginx worker account.
+Options=size=32M,nr_inodes=4096,mode=0700,uid=__NGINX_UID__,gid=__NGINX_GID__,nosuid,nodev,noexec

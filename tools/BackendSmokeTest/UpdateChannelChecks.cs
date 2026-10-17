@@ -9,14 +9,36 @@ internal static class UpdateChannelChecks
         var root = Path.Combine(Path.GetTempPath(), "DeltaNFD-update-channel-" + id.ToString("N"));
         Directory.CreateDirectory(root); File.WriteAllText(Path.Combine(root, "isolated-test.marker"), id.ToString("D"));
         AppDataPaths.ConfigureIsolatedDataRoot(root, id);
+        AppSettingsStore.Update(s => s.UpdateServer = UpdateServer.Automatic);
         var count = 0;
         void Check(bool condition, string message) { if (!condition) throw new Exception(message); count++; }
+        var beta92Path = Path.Combine(root, "beta092-defaults.json");
+        UpdateChannelInstallation.Apply(beta92Path, new("beta092", "Beta0.92", ""));
+        Check(AppSettingsStore.Read(beta92Path) is { UpdateChannel: UpdateChannel.Public,
+            UpdateServer: UpdateServer.SelfHosted, UpdateMode: UpdateMode.ChangedFiles },
+            "Beta0.92新安装默认公测、自建服务器、替换文件");
+        AppSettingsStore.Update(beta92Path, s => { s.UpdateServer = UpdateServer.GitHub; s.UpdateMode = UpdateMode.FullInstaller; });
+        UpdateChannelInstallation.Apply(beta92Path, new("beta092-reinstall", "Beta0.92", ""));
+        Check(AppSettingsStore.Read(beta92Path) is { UpdateServer: UpdateServer.GitHub, UpdateMode: UpdateMode.FullInstaller },
+            "Beta0.92重新安装保留用户手选来源和方式");
+        Check(UpdateService.TryParseVersion("0.9200", out var beta92Numeric)
+            && UpdateService.CompareVersions(beta92Numeric, new Version(0, 9199)) > 0,
+            "Beta0.92内部数值0.9200必须高于旧Alpha0.9199");
         var config = UpdateService.LoadConfig(null);
         config.ManifestUrls = [GitHubReleaseSource.ReleasesUrl];
         var service = new UpdateService(config);
-        var internalSettings = new AppSettings { UpdateChannel = UpdateChannel.Internal };
-        var publicSettings = new AppSettings { UpdateChannel = UpdateChannel.Public };
+        var internalSettings = new AppSettings { UpdateChannel = UpdateChannel.Internal, UpdateServer = UpdateServer.Automatic };
+        var publicSettings = new AppSettings { UpdateChannel = UpdateChannel.Public, UpdateServer = UpdateServer.Automatic };
         Check(new AppSettings().UpdateChannel == UpdateChannel.Internal, "旧设置缺省保留内测行为");
+        var testInstallPath = Path.Combine(root, "alpha-test-install.json");
+        AppSettingsStore.Update(testInstallPath, s => { s.UpdateServer = UpdateServer.GitHub; s.UpdateChannel = UpdateChannel.Public; s.UpdateMode = UpdateMode.FullInstaller; });
+        UpdateChannelInstallation.Apply(testInstallPath, new("193-test", "Alpha0.9193", "193-test"));
+        Check(AppSettingsStore.Read(testInstallPath) is { UpdateServer: UpdateServer.SelfHosted, UpdateChannel: UpdateChannel.Internal, UpdateMode: UpdateMode.ChangedFiles }, "193 install initializes self-hosted internal changed-files");
+        AppSettingsStore.Update(testInstallPath, s => { s.UpdateServer = UpdateServer.GitHub; s.UpdateMode = UpdateMode.FullInstaller; });
+        UpdateChannelInstallation.Apply(testInstallPath, new("193-test", "Alpha0.9193", "193-test"));
+        Check(AppSettingsStore.Read(testInstallPath).UpdateServer == UpdateServer.GitHub, "same installation preserves subsequent user changes");
+        UpdateChannelInstallation.Apply(testInstallPath, new("194-test", "Alpha0.9194", "194-test"));
+        Check(AppSettingsStore.Read(testInstallPath) is { UpdateServer: UpdateServer.SelfHosted, UpdateMode: UpdateMode.ChangedFiles }, "194 committed installation reinitializes defaults once");
         var path = Path.Combine(root, "channel-settings.json");
         Check(AppSettings.Save(path, publicSettings), "测试通道设置可写入隔离目录");
         Check(AppSettings.Load(path).UpdateChannel == UpdateChannel.Public,
@@ -57,6 +79,17 @@ internal static class UpdateChannelChecks
         var typoSettings = Path.Combine(root, "typo-install.json");
         UpdateChannelInstallation.Apply(typoSettings, new("typo", "AAlpha1.0", ""));
         Check(!File.Exists(typoSettings), "AAlpha 错字不新增安装阶段别名");
+        var preAlphaKind = UpdateChannelPolicy.Classify("0.916", "PreAlpha0.916", "stable", false);
+        Check(preAlphaKind == UpdateReleaseKind.Local && !UpdateChannelPolicy.Allows(UpdateChannel.Internal, preAlphaKind)
+            && !UpdateChannelPolicy.Allows(UpdateChannel.Public, preAlphaKind), "PreAlpha0.916 仅本地构建，两个在线通道均不接收，不能被 stable 字段提升");
+        var preAlphaSettings = Path.Combine(root, "prealpha-install.json");
+        UpdateChannelInstallation.Apply(preAlphaSettings, new("prealpha-0916", "PreAlpha0.916", "prealpha-0916"));
+        Check(AppSettingsStore.Read(preAlphaSettings).UpdateChannel == UpdateChannel.Internal,
+            "首次本地 PreAlpha 安装默认内测，不当作线上 Alpha 安装批次");
+        AppSettingsStore.Update(preAlphaSettings, settings => settings.UpdateChannel = UpdateChannel.Public);
+        UpdateChannelInstallation.Apply(preAlphaSettings, new("prealpha-reinstall", "PreAlpha0.916", ""));
+        Check(AppSettingsStore.Read(preAlphaSettings).UpdateChannel == UpdateChannel.Public,
+            "已有用户安装本地 PreAlpha 保留其更新通道选择");
         foreach (var prefix in new[] { "Alpha2.0", "alphaV2.0", "Beta2.0", "Release2.0" })
         {
             var kind = UpdateChannelPolicy.Classify("2.0", prefix);
@@ -80,6 +113,42 @@ internal static class UpdateChannelChecks
         Check(alpha.HasUpdate && alpha.Manifest?.Version == "9.0.0", "内测选择全部阶段中数值最高版本");
         var beta = await Run(mixed, publicSettings);
         Check(beta.HasUpdate && beta.Manifest?.Version == "3.0.0" && beta.Manifest.Channel == "beta", "公测跳过更高 Alpha，接受 prerelease 标记的 Beta");
+        var domesticConfig = UpdateService.LoadConfig(null);
+        var domesticJson = JsonSerializer.Serialize(new UpdateManifest { SchemaVersion = 1, Version = "3.0.0", DisplayVersion = "Beta3.0.0", Channel = "beta",
+            Installers = [new() { Url = "https://deltaxiaoxi.xin/updates/packages/3.0.0/setup.exe", SizeBytes = 123, Sha256 = new string('a', 64) }] });
+        var requested = new List<string>();
+        async Task<UpdateCheckResult> Domestic(AppSettings settings, string? failUrl = null, bool invalid = false)
+        {
+            requested.Clear();
+            return await service.CheckSourcesAsync(domesticConfig, settings, new Version(1, 0), false, (url, _) =>
+            {
+                requested.Add(url);
+                if (url == failUrl) throw new HttpRequestException("simulated offline");
+                return Task.FromResult(url == UpdateService.SelfHostedManifest(settings.UpdateChannel) ? invalid ? "{broken" : domesticJson : invalid ? "{broken" : mixed);
+            });
+        }
+        Check((await Domestic(publicSettings)).Manifest?.Version == "3.0.0" && requested.SequenceEqual(new[] { GitHubReleaseSource.ReleasesUrl }),
+            "公测优先 GitHub 且成功后不额外请求自建服务器");
+        Check((await Domestic(internalSettings)).Manifest?.Version == "9.0.0" && requested.SequenceEqual(new[] { GitHubReleaseSource.ReleasesUrl }),
+            "内测保留发现更高 Alpha 的能力，不被国内 Beta 清单遮挡");
+        Check((await Domestic(publicSettings, GitHubReleaseSource.ReleasesUrl)).Manifest?.Version == "3.0.0" && requested.Count == 2,
+            "GitHub 获取失败时公测回退自建服务器且仍过滤 Alpha");
+        Check((await Domestic(internalSettings, GitHubReleaseSource.ReleasesUrl)).Manifest?.Version == "3.0.0" && requested.Count == 2,
+            "GitHub 获取失败时内测可使用国内 Beta");
+        Check((await Domestic(publicSettings, invalid: true)).Status == UpdateCheckStatus.ManifestInvalid && requested.Count == 2,
+            "两个清单均损坏时明确报错");
+        Check(UpdateService.TryReadConfigText("""{"manifestUrls":["https://custom.example/update.json"],"allowedHosts":["custom.example","deltaxiaoxi.xin"]}""", out var customConfig, out _), "旧自定义更新配置仍可解析");
+        customConfig = UpdateService.Normalize(customConfig);
+        requested.Clear();
+        await service.CheckSourcesAsync(customConfig, internalSettings, new Version(1, 0), false, (url, _) => { requested.Add(url); return Task.FromResult(domesticJson); });
+        Check(requested.SequenceEqual(new[] { "https://custom.example/update.json" }) && customConfig.InternalManifestUrls.Count == 0,
+            "未声明内测专用来源的旧自定义配置保持原顺序，不强插官方站");
+        var legacyConfig = UpdateService.LoadConfig(null);
+        legacyConfig.ManifestUrls = [UpdateService.OfficialManifestUrl, "https://gh-proxy.com/" + GitHubReleaseSource.ReleasesUrl];
+        var legacyService = new UpdateService(legacyConfig);
+        Check(legacyService.Config.ManifestUrls!.SequenceEqual(UpdateService.DefaultManifestUrls)
+            && legacyService.Config.InternalManifestUrls.SequenceEqual(UpdateService.DefaultInternalManifestUrls),
+            "旧国内优先/加速配置自动迁移为两个通道 GitHub 优先");
         Check((await Run(mixed, publicSettings, manual: true)).Manifest?.Version == "3.0.0", "手动检查也服从所选通道");
         Check(!(await Run(mixed, publicSettings, current: new Version(4, 0))).HasUpdate, "切换通道不降级安装较旧公测版");
         var onlyAlpha = JsonSerializer.Serialize(new[] { Release("Alpha9.0.0", valid: false) });

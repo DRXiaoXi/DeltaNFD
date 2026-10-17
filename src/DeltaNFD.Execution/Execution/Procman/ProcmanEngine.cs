@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using DeltaNFD.Services;
 
 namespace DeltaNFD.Execution.Procman;
@@ -66,14 +66,29 @@ public sealed partial class ProcmanEngine : IDisposable
 
     public ProcmanStatusSnapshot Snapshot() => new()
     {
+        BackendPid = Environment.ProcessId,
+        BackendPriorityClass = ReadOwnPriority(),
         RulesEngineRunning = _rulesEngineRunning,
-        ResponsivenessEnabled = _responsiveness is { Enabled: true },
+        ResponsivenessEnabled = _responsiveness is { Enabled: true } && FrameSuppressionActive,
+        ResponsivenessConfig = _responsiveness is { } config ? new ProcmanResponsivenessConfigArgs
+        {
+            Enabled = config.Enabled, CpuBusyThreshold = config.CpuBusyThreshold, CpuBusySeconds = config.CpuBusySeconds,
+            CpuIdleThreshold = config.CpuIdleThreshold, CpuIdleSeconds = config.CpuIdleSeconds,
+            CooldownSeconds = config.CooldownSeconds, CandidateCpuFloorPercent = config.CandidateCpuFloorPercent,
+            MaxAdjustPerRound = config.MaxAdjustPerRound,
+        } : null,
         HeldChangeCount = _changeLog.Records.Count,
         UnreconciledCount = _changeLog.Records.Count,
         LastAction = Volatile.Read(ref _lastAction),
         LastError = Volatile.Read(ref _lastError),
         UpdatedUtc = DateTimeOffset.UtcNow,
     };
+
+    private static string ReadOwnPriority()
+    {
+        try { using var process = Process.GetCurrentProcess(); return process.PriorityClass.ToString(); }
+        catch { return "未知"; }
+    }
 
     private void SetAction(string text) => Volatile.Write(ref _lastAction, text);
     private void SetError(string text) { Volatile.Write(ref _lastError, text); Log.Error("进程管理：" + text); }
@@ -996,23 +1011,23 @@ public sealed partial class ProcmanEngine : IDisposable
 
     // ---------------- P4：原创「后台抑制」 ----------------
     // 策略与阈值为本项目自行制定（不从任何第三方产品提取）：
-    //   触发：系统 CPU 使用率持续 ≥ CpuBusyThreshold%（默认 80）至少 CpuBusySeconds 秒（默认 6）；
+    //   触发：系统 CPU 使用率持续 ≥ CpuBusyThreshold%（默认 65）至少 CpuBusySeconds 秒（默认 3）；
     //   候选：排除三角洲、系统、前台应用，以及已有规则或其他属性修改的进程；
-    //   剩余进程占总 CPU ≥ CandidateCpuFloorPercent%（默认 10）；
-    //   动作：每轮最多 MaxAdjustPerRound（默认 2）个 Normal 进程临时降为 Below Normal；
-    //   恢复：系统 CPU 连续 < CpuIdleThreshold%（默认 60）至少 CpuIdleSeconds 秒（默认 8）后恢复，之后冷却 CooldownSeconds 秒（默认 10）；
+    //   剩余进程占总 CPU ≥ CandidateCpuFloorPercent%（默认按逻辑 CPU 数自动取 1–5）；
+    //   动作：每轮最多 MaxAdjustPerRound（默认 1）个 Normal 进程临时降为 Below Normal；
+    //   恢复：系统 CPU 连续 < CpuIdleThreshold%（默认 50）至少 CpuIdleSeconds 秒（默认 6）后恢复，之后冷却 CooldownSeconds 秒（默认 15）；
     //   采样失败时不新增调整。默认关闭。
 
     private sealed class ResponsivenessState
     {
         public bool Enabled;
-        public int CpuBusyThreshold = 80;
-        public int CpuBusySeconds = 6;
-        public int CpuIdleThreshold = 60;
-        public int CpuIdleSeconds = 8;
-        public int CooldownSeconds = 10;
-        public int CandidateCpuFloorPercent = 10;
-        public int MaxAdjustPerRound = 2;
+        public int CpuBusyThreshold = 65;
+        public int CpuBusySeconds = 3;
+        public int CpuIdleThreshold = 50;
+        public int CpuIdleSeconds = 6;
+        public int CooldownSeconds = 15;
+        public int CandidateCpuFloorPercent = 5;
+        public int MaxAdjustPerRound = 1;
 
         public DateTime? BusySince;
         public DateTime? IdleSince;
@@ -1033,7 +1048,7 @@ public sealed partial class ProcmanEngine : IDisposable
         if (args.CpuBusyThreshold is < 10 or > 99 || args.CpuIdleThreshold is < 5 or > 99
             || args.CpuBusyThreshold <= args.CpuIdleThreshold || args.CpuBusySeconds is < 1 or > 600
             || args.CpuIdleSeconds is < 1 or > 600 || args.CooldownSeconds is < 0 or > 3600
-            || args.CandidateCpuFloorPercent is < 1 or > 100 || args.MaxAdjustPerRound is < 1 or > 4)
+            || args.CandidateCpuFloorPercent is < 0 or > 100 || args.MaxAdjustPerRound is < 1 or > 4)
             return OperationResult.Fail("后台抑制参数无效；原循环和配置保持不变。");
         _ = StopRulesEngineAsync().GetAwaiter().GetResult();
         lock (_gate)
@@ -1041,26 +1056,26 @@ public sealed partial class ProcmanEngine : IDisposable
             if (args.CpuBusyThreshold is < 10 or > 99 || args.CpuIdleThreshold is < 5 or > 99
                 || args.CpuBusyThreshold <= args.CpuIdleThreshold
                 || args.CpuBusySeconds < 1 || args.CpuIdleSeconds < 1 || args.CooldownSeconds < 0
-                || args.CandidateCpuFloorPercent is < 1 or > 100 || args.MaxAdjustPerRound is < 1 or > 4)
+                || args.CandidateCpuFloorPercent is < 0 or > 100 || args.MaxAdjustPerRound is < 1 or > 4)
                 return OperationResult.Fail("后台抑制参数不合法（触发阈值需高于恢复阈值，各值需在合理区间）。");
 
             var wasEnabled = _responsiveness is { Enabled: true };
             _responsiveness = new ResponsivenessState
             {
-                Enabled = args.Enabled,
+                Enabled = args.Enabled && FrameSuppressionActive,
                 CpuBusyThreshold = args.CpuBusyThreshold,
                 CpuBusySeconds = args.CpuBusySeconds,
                 CpuIdleThreshold = args.CpuIdleThreshold,
                 CpuIdleSeconds = args.CpuIdleSeconds,
                 CooldownSeconds = args.CooldownSeconds,
-                CandidateCpuFloorPercent = args.CandidateCpuFloorPercent,
+                CandidateCpuFloorPercent = ResolveCandidateThreshold(args.CandidateCpuFloorPercent),
                 MaxAdjustPerRound = args.MaxAdjustPerRound,
             };
             if (args.Enabled && !wasEnabled) SetAction("后台抑制已启用（本项目自行制定的保守策略，默认关闭）。");
             if (!args.Enabled && wasEnabled) SetAction("后台抑制已停用，正在恢复全部调整…");
         }
 
-        if (!args.Enabled)
+        if (!args.Enabled || !FrameSuppressionActive)
         {
             // 停用：恢复所有 responsiveness 拥有的记录（同步执行，可核对）。
             foreach (var record in _changeLog.Records.Where(r => r.Owner == ProcmanControlCoordinator.OwnerResponsiveness).ToList())
@@ -1073,9 +1088,9 @@ public sealed partial class ProcmanEngine : IDisposable
                 if (restored.Status != "restored") return OperationResult.Fail("已停用，恢复尚未完成：" + restored.Message);
             }
         }
-        if (args.Enabled || _rules.EnabledRules().Count > 0 || _automaticMemoryActive) _ = StartRulesEngine();
+        if (ResponsivenessEnabled || _rules.EnabledRules().Count > 0 || _automaticMemoryActive) _ = StartRulesEngine();
         else lock (_gate) _frozen = false;
-        return OperationResult.Ok(args.Enabled ? "后台抑制已启用。" : "后台抑制已停用并恢复调整。");
+        return OperationResult.Ok(ResponsivenessEnabled ? "后台抑制已随帧格启用。" : "后台抑制已停用并恢复调整，等待一键帧格开启。");
     }
 
     /// <summary>后台抑制 tick（由规则引擎循环附带驱动；采样失败时不做任何调整）。</summary>
@@ -1083,6 +1098,18 @@ public sealed partial class ProcmanEngine : IDisposable
     {
         var state = _responsiveness;
         if (state is not { Enabled: true }) return;
+        if (!FrameSuppressionActive)
+        {
+            lock (_gate) RestoreResponsivenessAdjustments(reason: "帧格或后台抑制已停用，恢复原优先级。");
+            state.BusySince = state.IdleSince = null;
+            return;
+        }
+
+        // 转回前台不等待整机负载下降；采样失败也不妨碍恢复已确认身份的前台进程。
+        var foreground = ForegroundForTests?.Invoke() ?? NativeProcman.ForegroundPid();
+        if (foreground > 0)
+            lock (_gate) RestoreResponsivenessAdjustments(r => r.Pid == foreground,
+                "应用已切换到前台，恢复原优先级。");
 
         ProcmanCpuSample sample;
         lock (_gate) sample = SampleForTests?.Invoke() ?? _sampler.Sample();
@@ -1111,8 +1138,11 @@ public sealed partial class ProcmanEngine : IDisposable
                 int restored;
                 lock (_gate) restored = ReferenceEquals(state, _responsiveness) ? RestoreResponsivenessAdjustments() : 0;
                 state.IdleSince = now;
-                state.CooldownUntil = now.AddSeconds(state.CooldownSeconds);
-                if (restored > 0) SetAction($"后台抑制：系统负载回落，已恢复 {restored} 个进程的优先级。");
+                if (restored > 0)
+                {
+                    state.CooldownUntil = now.AddSeconds(state.CooldownSeconds);
+                    SetAction($"后台抑制：系统负载回落，已恢复 {restored} 个进程的优先级。");
+                }
             }
         }
         else
@@ -1133,7 +1163,7 @@ public sealed partial class ProcmanEngine : IDisposable
         var adjusted = 0;
         foreach (var (identity, cpu) in sample.Processes.OrderByDescending(p => p.Cpu))
         {
-            if (adjusted >= state.MaxAdjustPerRound || !ReferenceEquals(state, _responsiveness) || !state.Enabled || _frozen) break;
+            if (adjusted >= state.MaxAdjustPerRound || !ReferenceEquals(state, _responsiveness) || !state.Enabled || !FrameSuppressionActive || _frozen) break;
             if (identity.Pid == foreground || identity.Pid == Environment.ProcessId || cpu < state.CandidateCpuFloorPercent
                 || IsBackgroundExcluded(identity.ExecutablePath)
                 || ProcmanResponsivenessFilter.IsToolProcess(identity.ExecutablePath)
@@ -1165,7 +1195,8 @@ public sealed partial class ProcmanEngine : IDisposable
         }
     }
 
-    private int RestoreResponsivenessAdjustments(Func<ProcmanChangeLog.ChangeRecord, bool>? filter = null)
+    private int RestoreResponsivenessAdjustments(Func<ProcmanChangeLog.ChangeRecord, bool>? filter = null,
+        string reason = "系统 CPU 负载回落，恢复原优先级。")
     {
         var restored = 0;
         foreach (var record in _changeLog.Records.Where(r => r.Owner == ProcmanControlCoordinator.OwnerResponsiveness && (filter is null || filter(r))).ToList())
@@ -1184,8 +1215,9 @@ public sealed partial class ProcmanEngine : IDisposable
                     Pid = record.Pid,
                     ExecutablePath = record.ExecutablePath,
                     Action = "restore",
-                    Reason = "系统 CPU 负载回落，恢复原优先级。",
+                    Reason = reason,
                 });
+                while (_responsivenessEvents.Count > 200) _responsivenessEvents.RemoveAt(0);
             }
         }
         return restored;

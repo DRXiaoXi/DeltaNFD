@@ -9,7 +9,7 @@ internal static class GitHubReleaseSource
     internal const string NoMatchingReleaseReason = "当前更新通道没有已发布版本。";
 
     /// <summary>
-    /// 判断 URL 是否指向本仓库的 Releases API（允许 gh-proxy 前缀和任意 query 后缀）。
+    /// 判断 URL 是否指向本仓库的 Releases API（兼容识别历史代理配置，实际请求始终直连）。
     /// 用于 UpdateService 决定是否需要分页拉取完整发布列表。
     /// </summary>
     internal static bool IsRepositoryReleasesApi(string url)
@@ -19,12 +19,7 @@ internal static class GitHubReleaseSource
             return false;
         }
 
-        var effective = url;
-        if (UpdateUrlRewriter.IsGhProxyUrl(effective))
-        {
-            // 剥掉 gh-proxy 前缀，还原成官方地址再判断
-            effective = effective[UpdateUrlRewriter.GhProxyPrefixLength..];
-        }
+        var effective = UpdateUrlRewriter.RestoreOfficialUrl(url);
 
         if (!Uri.TryCreate(effective, UriKind.Absolute, out var uri))
         {
@@ -109,6 +104,12 @@ internal static class GitHubReleaseSource
                     Url = asset.DownloadUrl, SizeBytes = asset.Size, Sha256 = asset.Digest[7..],
                 }],
             };
+            var fileAssets = (latest.Assets ?? []).Where(a => a is not null && a.State == "uploaded"
+                && a.Name.Equals($"DeltaNFD_Files_{AppVersion.Format(highest)}_x64.json", StringComparison.OrdinalIgnoreCase)).ToList();
+            if (fileAssets.Count == 1 && fileAssets[0].Size is > 0 and <= DeltaNFD.Updates.FileUpdateRules.MaximumManifestBytes
+                && fileAssets[0].Digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
+                && UpdateService.IsValidSha256(fileAssets[0].Digest[7..]))
+                generated.FileUpdate = new() { Url = fileAssets[0].DownloadUrl, SizeBytes = fileAssets[0].Size, Sha256 = fileAssets[0].Digest[7..] };
             return UpdateService.TryParseManifest(JsonSerializer.Serialize(generated), config, out manifest, out reason);
         }
         catch (Exception ex) when (ex is JsonException or ArgumentException or NullReferenceException)

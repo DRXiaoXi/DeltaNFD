@@ -145,6 +145,14 @@ public partial class GpuSpoofViewModel : ObservableObject
                 ? "未检测到显示适配器"
                 : $"共检测到 {adapters.Count} 个显示适配器，请先在列表中选中要操作的显卡";
         }
+        catch (Exception ex)
+        {
+            SelectedAdapter = null;
+            Adapters.Clear();
+            AdapterSummaryText = "显卡列表读取失败，未确认显卡与备份状态。";
+            Log.Error("显卡与备份状态读取失败", ex);
+            ShowResult(OperationResult.Fail("显卡列表读取失败：" + ex.Message));
+        }
         finally
         {
             IsBusy = false;

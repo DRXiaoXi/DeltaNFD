@@ -4,7 +4,7 @@ using DeltaNFD.Services;
 namespace DeltaNFD.Backend.Runtime;
 
 /// <summary>
-/// 运行库后端的命令实现：IFEO / UE4 ACL 保护、VC++ 运行库扫描、重装与卸载。
+/// 运行库后端：IFEO / UE4 ACL 防护、事务核对和新版 14.x 定向修复；旧修复命令不注册。
 /// 权限与拦截状态复核在执行库内完成；处理器只做调用与结果包装。
 /// </summary>
 internal static class RuntimeCommands
@@ -15,19 +15,19 @@ internal static class RuntimeCommands
         Handlers = new Dictionary<string, Func<BackendCommandContext, Task<BackendResult>>>(StringComparer.Ordinal)
         {
             [BackendCommands.RuntimeStatus] = StatusAsync,
+            [BackendCommands.RuntimeFileUseScan] = FileUseScanAsync,
+            [BackendCommands.RuntimeFileUseClose] = FileUseCloseAsync,
+            [BackendCommands.RuntimeHighFpsPreview] = HighFpsPreviewAsync,
+            [BackendCommands.RuntimeHighFpsRepair] = HighFpsRepairAsync,
+            [BackendCommands.Vc14Scan] = VcScanAsync,
+            [BackendCommands.Vc14Preview] = VcPreviewAsync,
+            [BackendCommands.Vc14Repair] = VcRepairAsync,
+            [BackendCommands.Vc14LegacyClean] = VcLegacyCleanAsync,
             [BackendCommands.RuntimeGuardEnable] = GuardEnableAsync,
             [BackendCommands.RuntimeGuardDisable] = GuardDisableAsync,
             [BackendCommands.RuntimeGuardSelectMode] = GuardSelectModeAsync,
             [BackendCommands.RuntimeGuardCleanupLegacy] = GuardCleanupLegacyAsync,
             [BackendCommands.RuntimeUe4RepairAcl] = Ue4RepairAclAsync,
-            [BackendCommands.RuntimeRedistScan] = RedistScanAsync,
-            [BackendCommands.RuntimeRepairEnvironment] = RepairEnvironmentAsync,
-            [BackendCommands.RuntimeRedistListV14] = RedistListV14Async,
-            [BackendCommands.RuntimeRepair] = RepairAsync,
-            [BackendCommands.RuntimeCompatibilityRepair] = CompatibilityRepairAsync,
-            [BackendCommands.RuntimeRedistUninstall] = RedistUninstallAsync,
-            [BackendCommands.RuntimeRedistPreviewAll] = PreviewAllAsync,
-            [BackendCommands.RuntimeRedistUninstallAll] = UninstallAllAsync,
             [BackendCommands.RuntimeReconcile] = ReconcileAsync,
             [BackendCommands.RuntimeRecover] = RecoverAsync,
         },
@@ -36,8 +36,9 @@ internal static class RuntimeCommands
     /// <summary>只读状态核对：拦截是否生效、已拦截数量与已安装运行库。</summary>
     private static async Task<BackendResult> ReconcileAsync(BackendCommandContext context)
     {
-        context.ReportProgress("正在只读核对运行库防护状态…", null, "reconcile");
-        var snapshot = await BuildSnapshotAsync();
+        context.ReportProgress("正在核对运行库安装事务、防护与当前组件状态…", null, "reconcile");
+        var scope = context.ArgsAs<RecoverArgs>().Scope;
+        var snapshot = scope == RuntimeLegacyInstallationReview.Scope ? await RuntimeLegacyInstallationReview.InspectAsync() : await BuildSnapshotAsync();
         return BackendResult.Ok("runtime.reconcile", snapshot.Summary, snapshot);
     }
 
@@ -46,6 +47,22 @@ internal static class RuntimeCommands
     {
         var args = context.ArgsAs<RecoverArgs>();
         var scope = (args.Scope ?? "").Trim().ToLowerInvariant();
+        if (scope == RuntimeLegacyInstallationReview.Scope)
+        {
+            context.ReportProgress("正在确认旧安装事务结束并归档核对记录…", null, "recover");
+            var reviewed = await RuntimeLegacyInstallationReview.ReviewAsync();
+            return BackendResult.Ok("runtime.recover", reviewed.Message, reviewed);
+        }
+        if (scope == "safe-installer")
+        {
+            var restored = await Vc14Maintenance.RestoreTemporaryInstallerAsync();
+            return BackendResult.Ok(BackendCommands.RuntimeRecover, restored.Message, new RecoverOutcome
+            {
+                Scope = scope, Success = restored.Success, Verified = restored.Success, Message = restored.Message,
+                VerifiedSnapshot = new ReconcileSnapshot { Module = BackendModules.Runtime, Complete = restored.Success,
+                    Summary = restored.Message, RecoveryScopes = [new() { Id = scope, Available = !restored.Success, Description = "恢复临时 Installer 设置" }] },
+            });
+        }
         if (scope != "guard")
             return BackendResult.Failed("runtime.recover", $"未知恢复范围“{args.Scope}”，已拒绝执行。");
 
@@ -102,65 +119,51 @@ internal static class RuntimeCommands
         return Wrap("runtime.ue4.repair-acl", await new RuntimeGuardService().RepairLegacyUe4AclAsync(args.ExpectedPath));
     }
 
-    private static async Task<BackendResult> RedistScanAsync(BackendCommandContext context)
+
+
+
+
+
+
+
+
+    private static async Task<BackendResult> VcScanAsync(BackendCommandContext context) =>
+        BackendResult.Ok(BackendCommands.Vc14Scan, "14.x 兼容性检测完成", await Vc14Maintenance.ScanAsync());
+    private static async Task<BackendResult> FileUseScanAsync(BackendCommandContext context) =>
+        BackendResult.Ok(BackendCommands.RuntimeFileUseScan, "运行库文件占用检测", await RuntimeFileUseMaintenance.ScanAsync(context.CancellationToken, context.ArgsAs<RuntimeFileUseScanArgs>().Scope));
+    private static async Task<BackendResult> FileUseCloseAsync(BackendCommandContext context) =>
+        BackendResult.Ok(BackendCommands.RuntimeFileUseClose, "运行库占用进程处理完成", await RuntimeFileUseMaintenance.CloseAsync(
+            context.ArgsAs<RuntimeFileUseCloseArgs>(), context.CancellationToken));
+
+    private static async Task<BackendResult> HighFpsPreviewAsync(BackendCommandContext context) =>
+        BackendResult.Ok(BackendCommands.RuntimeHighFpsPreview, "全量修复预览",
+            await RuntimeHighFpsMaintenance.PreviewAsync(context.ArgsAs<RuntimeHighFpsArgs>().StrongMode));
+
+    private static async Task<BackendResult> HighFpsRepairAsync(BackendCommandContext context)
     {
-        context.ReportProgress("正在扫描 VC++ 运行库…", null, "redist-scan");
-        var report = await new RuntimeGuardService().ScanVcRedistsAsync();
-        return BackendResult.Ok("runtime.redist.scan", report.Advice, report);
+        var args = context.ArgsAs<RuntimeHighFpsArgs>();
+        return Wrap(BackendCommands.RuntimeHighFpsRepair, await RuntimeHighFpsMaintenance.RepairAsync(
+            args.Fingerprint, args.StrongMode, new Progress<string>(s => context.ReportProgress(s, null, "high-fps-repair")), context.CancellationToken));
     }
 
-    private static async Task<BackendResult> RepairEnvironmentAsync(BackendCommandContext context)
+    private static async Task<BackendResult> VcPreviewAsync(BackendCommandContext context)
     {
-        context.ReportProgress("正在检查修复前环境，不执行卸载或安装…", null, "environment");
-        var report = await new RuntimeGuardService().CheckRepairEnvironmentAsync(context.CancellationToken);
-        return BackendResult.Ok(context.Command, report.Summary, report);
+        var args = context.ArgsAs<Vc14RepairArgs>();
+        return BackendResult.Ok(BackendCommands.Vc14Preview, "14.x 阶段预览", await Vc14Maintenance.PreviewAsync(args.Mode, args.AllowTemporaryInstaller));
     }
 
-    private static async Task<BackendResult> RedistListV14Async(BackendCommandContext context)
+    private static async Task<BackendResult> VcRepairAsync(BackendCommandContext context)
     {
-        var entries = await new RuntimeGuardService().GetV14EntriesAsync();
-        return BackendResult.Ok("runtime.redist.list-v14", $"发现 {entries.Count} 个 v14 命名条目。", entries);
+        var args = context.ArgsAs<Vc14RepairArgs>();
+        var progress = new Progress<string>(s => context.ReportProgress(s, null, "vc14-repair"));
+        return Wrap(BackendCommands.Vc14Repair, await Vc14Maintenance.RepairAsync(args.Fingerprint, progress, context.CancellationToken, args.Mode, args.AllowTemporaryInstaller));
     }
 
-    private static async Task<BackendResult> RepairAsync(BackendCommandContext context)
-    {
-        var args = context.ArgsAs<RuntimeRepairArgs>();
-        if (!Enum.IsDefined(args.Mode)) return BackendResult.Failed(context.Command, "修复模式无效，未执行。");
-        var progress = new RelayProgress(context);
-        return Wrap("runtime.repair", await new RuntimeGuardService().RepairVcRedistAsync(progress, args.Mode, context.CancellationToken, args.StrongRepairMode));
-    }
-
-    private static async Task<BackendResult> RedistUninstallAsync(BackendCommandContext context)
-    {
-        var progress = new RelayProgress(context);
-        return Wrap("runtime.redist.uninstall", await new RuntimeGuardService().UninstallV14Async(progress));
-    }
-
-    private static async Task<BackendResult> PreviewAllAsync(BackendCommandContext context)
-    {
-        var preview = await new RuntimeGuardService().PreviewUninstallAllAsync();
-        return BackendResult.Ok(context.Command, $"全量卸载候选 {preview.Entries.Count} 项。", preview);
-    }
-
-    private static async Task<BackendResult> UninstallAllAsync(BackendCommandContext context)
-    {
-        var args = context.ArgsAs<RuntimeUninstallAllArgs>();
-        return Wrap(context.Command, await new RuntimeGuardService().UninstallAllAsync(args.Fingerprint, new RelayProgress(context), context.CancellationToken));
-    }
-
-    private static async Task<BackendResult> CompatibilityRepairAsync(BackendCommandContext context)
-    {
-        var args = context.ArgsAs<RuntimeCompatibilityRepairArgs>();
-        return Wrap(context.Command, await new RuntimeGuardService().RepairCompatibilityAsync(
-            new RelayProgress(context), context.CancellationToken, args.StrongRepairMode));
-    }
+    private static async Task<BackendResult> VcLegacyCleanAsync(BackendCommandContext context) =>
+        BackendResult.Failed(BackendCommands.Vc14LegacyClean, "旧包装单独处理已并入 14.x 全量重装，不再单独执行。");
 
     private static BackendResult Wrap(string code, OperationResult result) =>
         new(result.Success ? BackendResultStatuses.Ok : BackendResultStatuses.Failed, code, result.Message, [],
             result.OutcomeUnknown, System.Text.Json.JsonSerializer.SerializeToElement(result, BackendJson.SerializerOptions));
 
-    private sealed class RelayProgress(BackendCommandContext context) : IProgress<string>
-    {
-        public void Report(string value) => context.ReportProgress(value, null, "runtime");
-    }
 }

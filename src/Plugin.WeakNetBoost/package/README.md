@@ -1,3 +1,5 @@
+> 历史兼容示例：当前宿主已取消 GitHub 加速，会将旧加速配置迁移为官方直连并拒绝代理下载地址。此插件不能为当前版本启用加速；保留源码用于旧配置备份、恢复及迁移测试。
+
 # 弱网加速（io.github.drxiaoxi.weaknet-boost）
 
 面向「三角帧不掉洲 / Delta NFD」的弱网加速拓展插件，规范 1.0。开关打开后，本工具的**检查更新**与**安装包下载**改走 [gh-proxy](https://gh-proxy.com/) 加速节点，缓解国内直连 `api.github.com` / `raw.githubusercontent.com` / `github.com` 超时与慢速问题。

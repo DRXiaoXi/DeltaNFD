@@ -73,11 +73,11 @@ internal static class TestBackendFixture
                             Module = moduleId, Summary = "不可逆清理，仅核对当前状态。", Complete = aceScenario != "blocked-reconcile",
                             RecoveryScopes = [new DeltaNFD.Services.RecoveryScope { Id = "none", Description = "无自动恢复", Available = false }],
                         });
-                    if (context.Command == BackendCommands.AceClean)
+                    if (context.Command is BackendCommands.AceClean or BackendCommands.AceCoreClean)
                     {
                         var isolated = Environment.GetEnvironmentVariable("DELTANFD_BACKEND_ISOLATED_ROOT");
                         if (string.IsNullOrWhiteSpace(isolated)) throw new InvalidOperationException("ACE 清理夹具必须使用隔离目录。");
-                        File.AppendAllText(Path.Combine(isolated, "ace-fixture-clean.log"), "clean\n");
+                        File.AppendAllText(Path.Combine(isolated, "ace-fixture-clean.log"), context.Command + "\n");
                         return aceScenario == "partial"
                             ? BackendResult.PartialResult("ace.clean-partial", "模拟遗留后端部分完成", [new("fixture-step", "ok", "已完成模拟项")],
                                 DeltaNFD.Services.OperationResult.Ok("旧格式成功数据", requiresReboot: true))

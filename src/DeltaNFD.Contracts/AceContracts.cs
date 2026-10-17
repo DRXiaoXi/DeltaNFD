@@ -178,6 +178,9 @@ public interface IAceService
     /// <summary>一键清除 ACE（游戏或 sguard64 运行时拒绝执行）。</summary>
     Task<OperationResult> CleanAsync(IProgress<string>? progress = null);
 
+    /// <summary>仅删除 C:\Program Files\AntiCheatExpert 及其子目录内 ACE-CORE*.sys；不处理服务、注册表或其他文件。</summary>
+    Task<OperationResult> CleanCoreFilesAsync(IProgress<string>? progress = null);
+
     /// <summary>
     /// ACE-CORE 冗余文件检测（纯只读）：统计 %ProgramFiles%\AntiCheatExpert 下
     /// 文件名含 ACE-CORE 的 .sys 文件——只有 1 个为正常，2 个及以上为冗余异常。

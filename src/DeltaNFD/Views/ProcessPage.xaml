@@ -93,7 +93,7 @@
                 </ListView.ItemContainerStyle>
               </ListView>
               <StackPanel Grid.Row="3" Padding="14,6,14,10" Spacing="6">
-                <TextBlock x:Name="ScopeNoteText" Text="按名称稳定排列，只更新变化的数值。三角洲主进程在独立页签管理。" FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
+                <TextBlock x:Name="ScopeNoteText" Text="按名称稳定排列，只更新变化的数值。三角洲属性请在“三角洲规则”中预先配置，后台开关请在帧格开启。" FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
                 <TextBlock x:Name="ListNoteText" FontSize="11" Opacity="0.7" TextWrapping="Wrap" MaxLines="2" />
                 <TextBlock x:Name="ListSummaryText" FontSize="11" Opacity="0.65" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -181,7 +181,7 @@
                       <!-- 亲和性/CPU 集合（按处理器组） -->
                       <Expander Header="CPU 亲和性与 CPU 集合" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" x:Name="AffinityExpander">
                         <StackPanel Spacing="4">
-                          <TextBlock Text="CPU 亲和性（按处理器组）" FontSize="12" FontWeight="SemiBold" />
+                          <TextBlock Text="按 CPU 拓扑选择亲和性 / CPU 集合" FontSize="12" FontWeight="SemiBold" />
                           <StackPanel x:Name="AffinityGroupPanel" Spacing="4" />
                           <Grid ColumnSpacing="8" RowSpacing="8">
                             <Grid.ColumnDefinitions>
@@ -197,7 +197,7 @@
                             <Button Content="清除 CPU 集合" Click="ClearCpuSet_Click" Grid.Row="1" Grid.Column="0" HorizontalAlignment="Stretch" />
                             <Button Content="解除亲和性限制" Click="ClearAffinity_Click" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch" />
                           </Grid>
-                          <TextBlock x:Name="TopologyNoteText" FontSize="10" Opacity="0.55" TextWrapping="Wrap" Text="按处理器组设置；P/E 核与 NUMA 拓扑无法识别时不猜测标签。" />
+                          <TextBlock x:Name="TopologyNoteText" FontSize="11" Opacity="0.7" TextWrapping="Wrap" Text="正在读取进程管理独立 CPU 拓扑…" />
                         </StackPanel>
                       </Expander>
                       <!-- 动态优先级提升 / 效率模式 -->
@@ -299,16 +299,37 @@
         </Grid>
         </ContentControl>
       </TabViewItem>
-      <TabViewItem x:Name="GameTab" Header="三角洲进程" IsClosable="False">
-        <ContentControl x:Name="GameWorkspaceHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+      <TabViewItem x:Name="GameTab" Header="三角洲规则" IsClosable="False">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="16" Margin="0,12,0,0">
+            <Border Style="{StaticResource CardBorderStyle}">
+              <StackPanel Spacing="12">
+                <TextBlock Text="三角洲主进程规则" Style="{StaticResource SectionTitleStyle}" />
+                <TextBlock Text="无需启动游戏即可设置优先级、效率模式、动态提升、CPU 亲和性与集合、I/O、内存及 GPU 调度优先级。规则按一个完整 EXE 路径保存，游戏启动后自动尝试应用。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                <TextBox x:Name="GameRulePathBox" Header="三角洲主进程完整路径" PlaceholderText="…\DeltaForce\Binaries\Win64\DeltaForceClient-Win64-Shipping.exe" MaxLength="32760" />
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Button x:Name="UseGameRulePathButton" Content="使用此路径" Click="UseGameRulePath_Click" />
+                  <Button x:Name="DetectGameRulePathButton" Content="自动识别安装位置" Click="DetectGameRulePath_Click" />
+                </StackPanel>
+                <TextBlock x:Name="GameRuleStatusText" Text="进入此页后自动识别游戏安装位置；也可粘贴主进程路径。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                <TextBlock Text="后台抑制和自动内存回收请前往帧格页开启，三角洲主进程固定排除在这两项后台操作之外。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                <Button Content="前往帧格开启后台功能" Click="OpenFrameBackground_Click" HorizontalAlignment="Left" />
+              </StackPanel>
+            </Border>
+            <ContentControl x:Name="GameRulesWorkspaceHost" HorizontalContentAlignment="Stretch" />
+          </StackPanel>
+        </ScrollViewer>
       </TabViewItem>
       <TabViewItem x:Name="RulesTab" Header="总是规则" IsClosable="False">
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-          <Border Style="{StaticResource CardBorderStyle}" Margin="0,12,0,0">
+          <ContentControl x:Name="GenericRulesWorkspaceHost" HorizontalContentAlignment="Stretch">
+          <Border x:Name="RulesWorkspace" Style="{StaticResource CardBorderStyle}" Margin="0,12,0,0">
                     <StackPanel Spacing="16">
-                      <TextBlock Text="总是规则" Style="{StaticResource SectionTitleStyle}" />
+                      <TextBlock x:Name="RulesWorkspaceTitle" Text="总是规则" Style="{StaticResource SectionTitleStyle}" />
+                      <StackPanel x:Name="GenericRuleTargetPanel" Spacing="12">
                       <TextBox x:Name="StandaloneRulePathBox" Header="应用完整 EXE 路径" PlaceholderText="可粘贴当前未运行的应用路径" MaxLength="32760" />
                       <Button Content="创建此应用的规则" Click="SetStandaloneRuleTarget_Click" HorizontalAlignment="Left" />
+                      </StackPanel>
                       <StackPanel Spacing="12" Visibility="Collapsed" x:Name="SavedRuleEditor">
                         <Border Background="{ThemeResource ControlFillColorDefaultBrush}" CornerRadius="8" Padding="12">
                           <StackPanel Spacing="4">
@@ -316,6 +337,7 @@
                             <TextBlock x:Name="RuleTargetPathText" Text="选择进程后即可创建规则。" FontSize="12" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                           </StackPanel>
                         </Border>
+                        <ContentControl x:Name="RuleEditorHost" HorizontalContentAlignment="Stretch">
                         <StackPanel x:Name="RuleEditorPanel" Spacing="12">
                           <ComboBox x:Name="RuleCapabilityCombo" Header="能力" SelectedIndex="0" MinWidth="180" SelectionChanged="RuleCapabilityCombo_SelectionChanged" HorizontalAlignment="Stretch">
                             <ComboBoxItem Content="CPU 优先级" />
@@ -329,17 +351,16 @@
                           </ComboBox>
                           <ComboBox x:Name="RuleValueCombo" Header="应用的设置" HorizontalAlignment="Stretch" />
                           <StackPanel x:Name="RuleMaskPanel" Spacing="8" Visibility="Collapsed">
-                            <TextBlock Text="可使用进程页中勾选的 CPU，或编辑处理器组掩码。" FontSize="12" TextWrapping="Wrap" />
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                              <Button Content="使用勾选的 CPU" Click="UseSelectedCpus_Click" />
-                              <Button Content="选择 CPU" Click="GoToCpuSelection_Click" />
-                            </StackPanel>
+                            <TextBlock Text="直接选择本机逻辑 CPU，无需启动目标进程；也可手动编辑处理器组掩码。" FontSize="12" TextWrapping="Wrap" />
+                            <StackPanel x:Name="RuleCpuGroupPanel" Spacing="12" />
+                            <Button Content="使用所选 CPU" Click="UseRuleCpus_Click" HorizontalAlignment="Left" />
                             <TextBox x:Name="RuleValueBox" Header="处理器组掩码" PlaceholderText="例：g0:0xF" MaxLength="512" />
                           </StackPanel>
                           <ToggleSwitch x:Name="RuleEnabledToggle" Header="启用规则" OnContent="启用" OffContent="停用" IsOn="True" />
                           <CheckBox x:Name="RuleAutoTakeoverCheck" Content="允许规则接管游戏模式控制的同一属性" />
                         </StackPanel>
-                        <Button Content="保存总是设置" Click="SaveRule_Click" Style="{StaticResource AccentButtonStyle}" />
+                        </ContentControl>
+                        <Button x:Name="SaveRuleButton" Content="保存规则" Click="SaveRule_Click" Style="{StaticResource AccentButtonStyle}" />
                       </StackPanel>
                       <StackPanel Orientation="Vertical" Spacing="10">
                         <TextBlock Text="已保存规则" Style="{StaticResource SectionTitleStyle}" VerticalAlignment="Center" FontSize="18" />
@@ -351,48 +372,62 @@
                       <TextBlock x:Name="RuleNoteText" FontSize="12" Opacity="0.7" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
                     </StackPanel>
           </Border>
+          </ContentControl>
         </ScrollViewer>
       </TabViewItem>
-      <TabViewItem Header="后台管理" IsClosable="False">
+      <TabViewItem x:Name="BackgroundTab" Header="后台保护与回收" IsClosable="False">
         <Border Style="{StaticResource CardBorderStyle}" Margin="0,12,0,0" Padding="0">
           <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <ContentControl x:Name="BackgroundSettingsPanel" HorizontalContentAlignment="Stretch">
             <StackPanel Spacing="16" Padding="24" MaxWidth="760" HorizontalAlignment="Left">
               <StackPanel Orientation="Vertical" Spacing="10">
-                <TextBlock Text="保持前台应用响应" Style="{StaticResource SectionTitleStyle}" VerticalAlignment="Center" FontSize="20" />
+                <TextBlock Text="后台保护与手动回收" Style="{StaticResource SectionTitleStyle}" VerticalAlignment="Center" FontSize="20" />
               </StackPanel>
-              <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="CPU 持续繁忙时，暂时降低合适的后台应用优先级；负载回落后恢复。排除三角洲、三角帧全部进程、系统进程、前台应用，以及已有属性设置或持久规则的进程。" />
-              <ToggleSwitch x:Name="ResponsivenessToggle" Header="启用后台抑制" OnContent="启用" OffContent="关闭（默认）" />
-              <Grid ColumnSpacing="12" RowSpacing="16">
-                <Grid.RowDefinitions>
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*" />
-                  <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <NumberBox x:Name="BusyThresholdBox" Header="触发 CPU%（默认80）" Value="80" Minimum="10" Maximum="99" SpinButtonPlacementMode="Compact" Grid.Row="0" Grid.Column="0" />
-                <NumberBox x:Name="IdleThresholdBox" Grid.Column="1" Header="恢复 CPU%（默认60）" Value="60" Minimum="5" Maximum="99" SpinButtonPlacementMode="Compact" Grid.Row="0" />
-                <NumberBox x:Name="MaxAdjustBox" Grid.Column="0" Header="每轮上限（默认2）" Value="2" Minimum="1" Maximum="4" SpinButtonPlacementMode="Compact" Grid.Row="1" />
-                <NumberBox x:Name="CooldownBox" Grid.Column="1" Header="冷却秒（默认10）" Value="10" Minimum="0" Maximum="600" SpinButtonPlacementMode="Compact" Grid.Row="1" />
+              <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="请先在帧格页选择后台抑制或自动内存回收，再开启“一键帧格模式”。本页只调整具体参数、排除名单和手动回收；保存参数不会独立开启后台功能。" />
+              <Button Content="前往帧格开启后台功能" Click="OpenFrameBackground_Click" HorizontalAlignment="Left" />
+              <TextBlock Text="帧格后台功能参数" FontSize="18" FontWeight="SemiBold" />
+              <Grid ColumnSpacing="12" RowSpacing="12">
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <NumberBox x:Name="BusyThresholdBox" Header="触发 CPU%" Value="65" Minimum="10" Maximum="99" SpinButtonPlacementMode="Compact" />
+                <NumberBox x:Name="IdleThresholdBox" Grid.Column="1" Header="恢复 CPU%" Value="50" Minimum="5" Maximum="99" SpinButtonPlacementMode="Compact" />
+                <NumberBox x:Name="MaxAdjustBox" Grid.Row="1" Header="每轮抑制上限" Value="1" Minimum="1" Maximum="4" SpinButtonPlacementMode="Compact" />
+                <NumberBox x:Name="CooldownBox" Grid.Row="1" Grid.Column="1" Header="恢复后冷却秒数" Value="15" Minimum="0" Maximum="600" SpinButtonPlacementMode="Compact" />
               </Grid>
-              <Button Content="保存设置" Click="SaveResponsiveness_Click" Style="{StaticResource AccentButtonStyle}" />
-              <TextBlock FontSize="12" Opacity="0.75" TextWrapping="Wrap" Text="保护三角洲、三角帧全部进程和系统进程。身份或权限无法确认时跳过；前台应用及已有手动设置或启用规则的进程不参与。采样失败时不新增调整，关闭后恢复。" />
-              <TextBlock x:Name="ResponsivenessNoteText" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
-              <Button Content="查看事件" Click="LoadResponsivenessEvents_Click" />
-              <TextBlock FontSize="12" TextWrapping="Wrap" IsTextSelectionEnabled="True" x:Name="ResponsivenessEventsText" />
+              <TextBlock x:Name="SuppressionPolicyText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="高负载持续 3 秒触发，低负载持续 6 秒恢复；候选占用门槛按逻辑 CPU 数自动调整。" />
+              <NumberBox x:Name="MemoryPressureBox" Header="自动回收的系统内存占用阈值（%）" Value="85" Minimum="30" Maximum="95" SpinButtonPlacementMode="Compact" />
+              <ComboBox x:Name="MemoryModeCombo" Header="内存回收模式" SelectedIndex="0" SelectionChanged="MemoryMode_SelectionChanged" HorizontalAlignment="Stretch">
+                <ComboBoxItem Content="普通回收模式" />
+                <ComboBoxItem Content="激进回收模式" />
+                <ComboBoxItem Content="稳洲回收模式" />
+              </ComboBox>
+              <TextBlock x:Name="MemoryModeDescriptionText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+              <NumberBox x:Name="MemoryBatchLimitBox" Header="单次内存回收进程数（手动 / 自动）" Value="5" Minimum="1" Maximum="256" SmallChange="1" SpinButtonPlacementMode="Compact" />
+              <NumberBox x:Name="MemoryCooldownBox" Header="内存回收最短间隔（分钟）" Value="10" Minimum="1" Maximum="1440" SmallChange="1" SpinButtonPlacementMode="Compact" />
+              <TextBlock x:Name="MemoryCooldownPolicyText" Text="默认间隔 10 分钟，可设为 1–1440 分钟。自动批次和同一进程的重复回收共用；达到间隔后仍需满足持续高压条件。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+              <TextBlock x:Name="MemoryBatchPolicyText" Text="普通模式默认每次最多 5 个进程，可设 1–256；其他两种模式不使用这个数量上限。修改后点击保存生效。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+              <TextBlock Text="自动回收需内存持续高压至少 30 秒，并满足用户设置的清理间隔。无明显效果或快速回涨不再额外延长至 20–30 分钟；紧急策略仍可能提高最短间隔。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+              <Button Content="保存后台参数" Click="SaveBackgroundParameters_Click" HorizontalAlignment="Left" />
+              <Expander Header="后台抑制事件" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                <StackPanel Spacing="8">
+                  <Button Content="刷新事件" Click="LoadResponsivenessEvents_Click" HorizontalAlignment="Left" />
+                  <TextBlock x:Name="ResponsivenessEventsText" Text="点击刷新查看最近调整。" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                </StackPanel>
+              </Expander>
               <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,18,0,0">
                 <StackPanel Spacing="12">
-                  <TextBlock Text="后台内存回收" FontSize="18" FontWeight="SemiBold" />
-                  <TextBlock Text="自动或手动回收后台应用的工作集，不限制 CPU 占用。沿用上方保护范围和下方排除名单，不结束进程；内存可能回涨或引起换页，不能保证提升帧率。" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}" />
-                  <ToggleSwitch x:Name="AutomaticMemoryToggle" Header="自动内存回收" OnContent="启用" OffContent="关闭（默认）" />
-                  <NumberBox x:Name="MemoryPressureBox" Header="系统内存占用达到此百分比时回收" Value="85" Minimum="30" Maximum="95" SpinButtonPlacementMode="Compact" />
-                  <Button x:Name="SaveBackgroundButton" Content="保存自动回收设置" Click="SaveBackground_Click" Style="{StaticResource AccentButtonStyle}" />
-                  <TextBlock Text="开启并保存后，每 30 秒检查内存压力，持续高压至少 30 秒才回收。每轮最多 3 个工作集至少 256 MiB 的进程，两轮至少间隔 10 分钟；效果不明显或快速回涨会延长冷却。设置会保留，退出工具即停止。" TextWrapping="Wrap" FontSize="12" Opacity="0.75" />
-                  <Button Content="刷新自动回收状态" Click="RefreshBackground_Click" />
+                  <TextBlock Text="手动内存回收" FontSize="18" FontWeight="SemiBold" />
+                  <TextBlock Text="预览并选择后台应用回收工作集，不结束进程。三角洲、工具、系统、前台应用和排除名单中的应用仍受保护；自动回收请在帧格页开启。" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}" />
+                  <StackPanel x:Name="MemoryPrelaunchPanel" Visibility="Collapsed" Spacing="8">
+                    <ToggleSwitch x:Name="MemoryPrelaunchToggle" Header="关闭预启动" OnContent="已关闭" OffContent="尚未全部关闭" IsEnabled="False" Toggled="MemoryPrelaunchToggle_Toggled" />
+                    <TextBlock Text="关闭 Windows 预启动和预读取，减少后台提前加载应用。与系统优化页的预读取设置同步；修改前自动备份，关闭开关可按原备份还原。部分设置需重启生效。" TextWrapping="Wrap" FontSize="12" Opacity="0.75" />
+                    <TextBlock x:Name="MemoryPrelaunchStatusText" TextWrapping="Wrap" FontSize="12" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite" />
+                    <Button x:Name="MemoryPrelaunchRefreshButton" Content="重新检测预启动" Click="MemoryPrelaunchRefresh_Click" />
+                  </StackPanel>
+                  <Button Content="刷新后台状态" Click="RefreshBackground_Click" />
                   <TextBlock x:Name="AutomaticMemoryStatusText" Text="正在读取设置…" TextWrapping="Wrap" FontSize="12" AutomationProperties.LiveSetting="Polite" />
                   <Button x:Name="MemoryPreviewButton" Content="预览可回收进程" Click="PreviewMemory_Click" />
-                  <TextBlock x:Name="MemoryTrimStatusText" Text="默认不自动清理。每次最多 3 个进程；同一进程 10 分钟内不重复回收。" FontSize="12" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite" />
+                  <TextBlock x:Name="MemoryTrimStatusText" Text="默认不自动清理。每次回收数量及同一进程的重复回收间隔沿用上方设置。" FontSize="12" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite" />
                 </StackPanel>
               </Border>
               <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,18,0,0">
@@ -406,6 +441,7 @@
                 </StackPanel>
               </Border>
             </StackPanel>
+            </ContentControl>
           </ScrollViewer>
         </Border>
       </TabViewItem>
