@@ -377,7 +377,8 @@ internal static class BackendUnconfirmedStore
         try
         {
             using var process = Process.GetProcessById(pid);
-            return !process.HasExited && process.StartTime.ToUniversalTime().Ticks == startTicks;
+            // WMI CreationDate 只有微秒精度，Process.StartTime 为 100ns 精度；不能因末位差异误判子进程已退出。
+            return !process.HasExited && process.StartTime.ToUniversalTime().Ticks / 10 == startTicks / 10;
         }
         catch (ArgumentException) { return false; }
         catch { return true; }
@@ -479,7 +480,7 @@ internal static class BackendUnconfirmedStore
         var outcome = new
         {
             Module = confirmed.Module,
-            Outcome = "restored",
+            Outcome = confirmed.Module == BackendModules.Runtime && scope == "repair-review" ? "installation-reviewed" : "restored",
             Scope = scope,
             Message = message,
             VerifiedUtc = DateTimeOffset.UtcNow,
@@ -487,7 +488,7 @@ internal static class BackendUnconfirmedStore
         };
         var evidence = JsonSerializer.Deserialize<Evidence>(bytes) ?? throw new InvalidDataException("记录为空。");
         if (!ConfirmExited(evidence) || evidence.ChildrenUnknown) throw new IOException("原后端或子进程未确认退出，不能归档恢复结果。");
-        return Archive(confirmed.Module, bytes, "restored", outcome);
+        return Archive(confirmed.Module, bytes, confirmed.Module == BackendModules.Runtime && scope == "repair-review" ? "installation-reviewed" : "restored", outcome);
     }
 
     private static string Archive(string module, byte[] original, string outcomeName, object? outcome = null)

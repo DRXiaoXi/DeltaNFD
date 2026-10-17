@@ -24,6 +24,13 @@ internal static class GpuCommands
             [BackendCommands.GpuDriverApply] = DriverApplyAsync,
             [BackendCommands.GpuDriverRestore] = DriverRestoreAsync,
             [BackendCommands.GpuDriverLock] = DriverLockAsync,
+            [BackendCommands.GpuShaderCacheApply] = async c => {
+                var args = c.ArgsAs<NvShaderCacheApplyArgs>();
+                var result = await new NvProfileService().SetShaderCacheSizeAsync(args.Scope, args.Value);
+                return new BackendResult(result.Success ? BackendResultStatuses.Ok : BackendResultStatuses.Failed,
+                    c.Command, result.Message, [], result.OutcomeUnknown,
+                    System.Text.Json.JsonSerializer.SerializeToElement(result, BackendJson.SerializerOptions));
+            },
             [BackendCommands.GpuReconcile] = ReconcileAsync,
             [BackendCommands.GpuRecover] = RecoverAsync,
         },

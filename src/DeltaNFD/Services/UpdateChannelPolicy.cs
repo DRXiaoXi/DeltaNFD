@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace DeltaNFD.Services;
 
-internal enum UpdateReleaseKind { Unknown, Alpha, Beta, Release }
+internal enum UpdateReleaseKind { Unknown, Alpha, Beta, Release, Local }
 
 internal static class UpdateChannelPolicy
 {
@@ -11,15 +11,18 @@ internal static class UpdateChannelPolicy
 
     internal static UpdateReleaseKind Prefix(string? text)
     {
-        var match = Regex.Match(text ?? "", @"^\s*v?(OpenAlpha|Alpha|Beta|Release)[\s_-]*v?\s*\d", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var match = Regex.Match(text ?? "", @"^\s*v?(PreAlpha|OpenAlpha|Alpha|Beta|Release)[\s_-]*v?\s*\d", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         if (!match.Success) return UpdateReleaseKind.Unknown;
         var prefix = match.Groups[1].Value;
-        return prefix.EndsWith("Alpha", StringComparison.OrdinalIgnoreCase) ? UpdateReleaseKind.Alpha
+        return prefix.Equals("PreAlpha", StringComparison.OrdinalIgnoreCase) ? UpdateReleaseKind.Local
+            : prefix.EndsWith("Alpha", StringComparison.OrdinalIgnoreCase) ? UpdateReleaseKind.Alpha
             : prefix.Equals("Beta", StringComparison.OrdinalIgnoreCase) ? UpdateReleaseKind.Beta : UpdateReleaseKind.Release;
     }
     internal static UpdateReleaseKind Classify(string? version, string? display, string? channel = null, bool prerelease = false)
     {
         var kinds = new[] { Prefix(version), Prefix(display) };
+        // PreAlpha is a local build identifier, never a selectable online release in either channel.
+        if (kinds.Contains(UpdateReleaseKind.Local)) return UpdateReleaseKind.Local;
         // An explicit Alpha prefix cannot be promoted by a misleading stable/prerelease flag.
         if (kinds.Contains(UpdateReleaseKind.Alpha)) return UpdateReleaseKind.Alpha;
         if (kinds.Contains(UpdateReleaseKind.Beta)) return UpdateReleaseKind.Beta;

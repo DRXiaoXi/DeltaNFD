@@ -6,35 +6,35 @@ namespace DeltaNFD.Views;
 
 public sealed partial class ProcessPage
 {
-    private bool _workspaceReady, _gameScope;
-    private bool IsProcessTab => ProcessTabs.SelectedItem is TabViewItem selected && (selected == GeneralTab || selected == GameTab);
+    private bool _workspaceReady;
+    private object? _lastProcessTab;
+    private bool IsProcessTab => ProcessTabs.SelectedItem is TabViewItem selected && selected == GeneralTab;
+    private bool IsGameRulesTab => ProcessTabs.SelectedItem is TabViewItem selected && selected == GameTab;
+    private bool IsBackgroundTab => ProcessTabs.SelectedItem is TabViewItem selected && selected == BackgroundTab;
 
     private void ProcessTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_workspaceReady || !IsProcessTab) return;
-        var game = ProcessTabs.SelectedItem is TabViewItem selected && selected == GameTab;
-        if (game != _gameScope)
+        if (!_workspaceReady) return;
+        if (ReferenceEquals(_lastProcessTab, ProcessTabs.SelectedItem)) return;
+        _lastProcessTab = ProcessTabs.SelectedItem;
+        if (IsBackgroundTab)
         {
-            GeneralWorkspaceHost.Content = null;
-            GameWorkspaceHost.Content = null;
-            (game ? GameWorkspaceHost : GeneralWorkspaceHost).Content = ProcessWorkspace;
-            _gameScope = game;
-            _listGeneration++;
-            _selected = null; ShowEmptyDetail();
-            _suppressSelection = true;
-            try { _rows.Clear(); ProcessList.SelectedItem = null; }
-            finally { _suppressSelection = false; }
-            ListNoteText.Text = "正在读取进程…";
-            ListSummaryText.Text = "";
-            ApplyScopePicker.SelectedIndex = 0;
-            _offset = 0; _search = "";
-            SearchBox.Text = "";
-            SearchBox.IsEnabled = !game;
-            ProcessListTitle.Text = game ? "三角洲主进程" : "其他运行中的进程";
-            ScopeNoteText.Text = game ? "此页只管理三角洲主进程。后台抑制和内存回收始终跳过它；属性与帧格控制冲突时需确认接管。"
-                : "按名称稳定排列，只更新变化的数值。三角洲主进程在独立页签管理。";
+            _ = LoadMemoryPrelaunchAsync();
+            return;
         }
-        _ = RefreshListAsync(preserveSelection: true);
+        if (IsGameRulesTab)
+        {
+            ShowRulesWorkspace(game: true);
+            _ = InitializeGameRulesAsync();
+            return;
+        }
+        if (ProcessTabs.SelectedItem is TabViewItem rules && rules == RulesTab)
+        {
+            ShowRulesWorkspace(game: false);
+            _ = LoadRulesAsync();
+            return;
+        }
+        if (IsProcessTab) _ = RefreshListAsync(preserveSelection: true);
     }
 
     private static bool IsFixedBackgroundProtection(string path)
@@ -87,4 +87,6 @@ public sealed partial class ProcessPage
         }
         catch (Exception ex) { RuleNoteText.Text = ex.Message; }
     }
+
+    private void OpenFrameBackground_Click(object sender, RoutedEventArgs e) => App.MainWindow?.NavigateByTag("frame");
 }

@@ -17,6 +17,33 @@ public sealed class NvGpuEnvironmentInfo
 
     /// <summary>nvdrsdb0/1.bin 是否处于只读锁定状态（任一为只读即视为锁定）。</summary>
     public required bool DrsFilesLocked { get; init; }
+
+    /// <summary>只读核对全局及三角洲着色器缓存大小；旧后端缺失时不得当作默认。</summary>
+    public NvShaderCacheReport? ShaderCache { get; init; }
+}
+
+public sealed record NvShaderCacheScope(string Scope, string State, uint? Value, string Detail);
+
+public static class NvShaderCacheChoices
+{
+    public static readonly uint?[] Values = [null, 0, 128, 256, 512, 1024, 4096, 5120, 10240, 102400, uint.MaxValue];
+    public static readonly string[] Labels = ["驱动默认（推荐）", "暂时关闭缓存（清理后恢复默认）", "128 MB", "256 MB", "512 MB", "1 GB", "4 GB", "5 GB", "10 GB", "100 GB", "无限制"];
+    public static bool IsValid(string scope, uint? value) => scope is "global" or "game" && Values.Contains(value);
+}
+
+/// <summary>驱动配置快照。非默认按用户要求作为三角洲抽帧兼容性风险提示。</summary>
+public sealed class NvShaderCacheReport
+{
+    public List<NvShaderCacheScope> Scopes { get; init; } = [];
+    public bool HasNonDefault => Scopes.Any(s => s.State == "custom");
+    public bool Complete => Scopes.Count >= 2 && Scopes.All(s => s.State is "default" or "inherited" or "custom");
+    public string Details => string.Join("\n", Scopes.Select(s => s.Scope + "：" + s.Detail));
+    public string Advice => HasNonDefault
+        ? "检测到着色器缓存大小不是驱动默认。根据三角洲抽帧反馈，请改回「驱动默认」。\n"
+            + Details + "\n打开 NVIDIA 控制面板 → 管理 3D 设置，在「全局设置」及「程序设置 → 三角洲」检查着色器缓存大小，改回「驱动默认」并应用；修改后重启游戏，再点「刷新状态」。程序页没有该选项时，移除第三方工具的该项覆盖以继承全局默认。"
+            + (Complete ? "" : "\n部分范围无法读取，请同时检查这些范围，不能认为已恢复默认。")
+        : Complete ? "着色器缓存大小：全局及三角洲均未检测到非默认设置。\n" + Details
+            : "着色器缓存大小无法完整核对，不能确认全局及三角洲是否为默认。\n" + Details;
 }
 
 /// <summary>一个驱动设置的候选取值。</summary>
@@ -84,6 +111,9 @@ public sealed class NvSettingChangeDto
 /// </summary>
 public interface INvProfileService
 {
+    /// <summary>用户确认后仅修改缓存大小：global / game；null = 恢复驱动默认。</summary>
+    Task<OperationResult> SetShaderCacheSizeAsync(string scope, uint? value)
+        => Task.FromResult(OperationResult.Fail("后端未提供着色器缓存处理功能，请更新工具。"));
     /// <summary>读取环境信息（N 卡 / NVAPI / 数据库文件锁定状态），纯只读。</summary>
     Task<NvGpuEnvironmentInfo> GetEnvironmentAsync();
 

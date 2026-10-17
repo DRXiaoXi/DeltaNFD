@@ -1,0 +1,30 @@
+[Unit]
+Description=Delta NFD private feedback receiver
+After=network.target deltanfd-feedback-body.service
+Requires=deltanfd-feedback-body.service
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=deltanfd-feedback
+Group=deltanfd-feedback
+WorkingDirectory=/opt/deltanfd-feedback
+Environment=FEEDBACK_DATA_DIR=/var/lib/deltanfd-feedback/reports
+ExecStart=/opt/deltanfd-feedback/venv/bin/gunicorn --bind 127.0.0.1:18792 --workers 1 --threads 2 --worker-connections 4 --backlog 8 --keep-alive 2 --timeout 30 --limit-request-line 2048 feedback_app:application
+Restart=on-failure
+RestartSec=5
+UMask=0077
+StateDirectory=deltanfd-feedback
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/deltanfd-feedback
+MemoryMax=192M
+CPUQuota=50%
+TasksMax=32
+
+[Install]
+WantedBy=multi-user.target

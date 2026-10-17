@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -21,7 +21,7 @@ namespace DeltaNFD.Services;
 ///
 /// 本类只依赖 BCL（不引用 WinUI 类型），因此可被 tools\BackendSmokeTest 直接编译做只读校验。
 /// </summary>
-public sealed class UpdateService : IUpdateService
+public sealed partial class UpdateService : IUpdateService
 {
     internal const int SupportedSchemaVersion = 1;
 
@@ -35,24 +35,35 @@ public sealed class UpdateService : IUpdateService
 
     private const int BufferSize = 81920;
     private const int MaxManifestChars = 256 * 1024;
+    internal const int MaxGitHubResponseBytes = 8 * 1024 * 1024;
+    private const int MaxReleaseListChars = 16 * 1024 * 1024;
     private static readonly TimeSpan DownloadIdleTimeout = TimeSpan.FromSeconds(90);
     private static readonly TimeSpan InitialInstallObservation = TimeSpan.FromMilliseconds(1500);
 
-    /// <summary>清单默认地址（GitHub 主地址；镜像请在 Assets\UpdateConfig.json 追加）。</summary>
+    internal const string OfficialManifestUrl = "https://deltaxiaoxi.xin/updates/update.json";
+    internal const string OfficialInternalManifestUrl = "https://deltaxiaoxi.xin/updates/internal/update.json";
+    internal static string SelfHostedManifest(UpdateChannel channel) => UpdateChannelPolicy.Normalize(channel) == UpdateChannel.Internal
+        ? OfficialInternalManifestUrl : OfficialManifestUrl;
+
+    /// <summary>优先 GitHub，失败后尝试自建服务器。</summary>
     internal static readonly string[] DefaultManifestUrls =
     [
         GitHubReleaseSource.ReleasesUrl,
+        OfficialManifestUrl,
     ];
+
+    // 两个通道共用回退顺序；仍按通道筛选 Alpha / Beta / Release。
+    internal static readonly string[] DefaultInternalManifestUrls = [GitHubReleaseSource.ReleasesUrl, OfficialInternalManifestUrl];
 
     /// <summary>默认允许的下载/清单主机（镜像主机请追加到 Assets\UpdateConfig.json 的 allowedHosts）。</summary>
     internal static readonly string[] DefaultAllowedHosts =
     [
+        "deltaxiaoxi.xin",
         "githubusercontent.com",
         "github.com",
         "api.github.com",
         "objects.githubusercontent.com",
         "release-assets.githubusercontent.com",
-        "gh-proxy.com",
     ];
 
     /// <summary>清单不可用 / 未安装版时的手动下载兜底地址。</summary>
@@ -74,23 +85,27 @@ public sealed class UpdateService : IUpdateService
 
     /// <summary>
     /// 用户级更新源配置模板（首次点「更新源配置」时生成到 %APPDATA%\Delta NFD\update-source.json）。
-    /// 该文件优先级高于程序自带配置，且升级安装不会覆盖——加国内镜像改这里最稳妥。
+    /// 该文件优先级高于程序自带配置，且升级安装不会覆盖。官方来源统一按 GitHub、自建服务器排序。
     /// </summary>
     internal const string UserConfigTemplate = """
     {
       // Delta NFD 更新源配置（用户级，优先级高于程序目录里的 Assets\UpdateConfig.json，
       // 并且升级安装不会覆盖本文件）。
       //
-      // 要加国内镜像，需要同时改两处：
-      //   1) allowedHosts：把镜像主机名加进来，否则客户端拒绝从它下载；
-      //   2) 发布端 update.json 的 installers[] 里加上镜像的安装包地址（所有地址共用同一条 SHA256）。
-      //
-      // manifestUrls / allowedHosts：按顺序尝试，第一个成功的生效。
+      // 两个通道均先查 GitHub，失败后才查自建服务器。
+      // 历史官方来源/代理配置会在内存中迁移，不覆盖此文件。
+      // 完全自定义来源须同时配置 allowedHosts；下载仍须校验大小和 SHA256。
       "schemaVersion": 1,
       "manifestUrls": [
-        "https://api.github.com/repos/DRXiaoXi/DeltaNFD/releases?per_page=100"
+        "https://api.github.com/repos/DRXiaoXi/DeltaNFD/releases?per_page=100",
+        "https://deltaxiaoxi.xin/updates/update.json"
+      ],
+      "internalManifestUrls": [
+        "https://api.github.com/repos/DRXiaoXi/DeltaNFD/releases?per_page=100",
+        "https://deltaxiaoxi.xin/updates/update.json"
       ],
       "allowedHosts": [
+        "deltaxiaoxi.xin",
         "githubusercontent.com",
         "github.com",
         "api.github.com",
@@ -106,15 +121,9 @@ public sealed class UpdateService : IUpdateService
     """;
 
     private readonly UpdateConfig _config;
-    private readonly string[] _originalManifestUrls;
-    private readonly string _originalReleasePageUrl;
-    private readonly Func<Task<bool>> _connectivityProbe;
-    private readonly object _sourceGate = new();
-    private int _probeInFlight;
-    internal Task? AccelerationProbeTask { get; private set; }
-
-    /// <summary>加速探测结果缓存有效期：30 分钟内不重复探测。</summary>
-    private static readonly TimeSpan AccelerationProbeCacheLifetime = TimeSpan.FromMinutes(30);
+    private readonly HttpClient _httpClient;
+    private readonly string? _downloadRoot;
+    private readonly string? _installRoot;
 
     public UpdateService()
     {
@@ -123,102 +132,16 @@ public sealed class UpdateService : IUpdateService
             Path.Combine(AppDataPaths.Root, "update-source.json"),
             out var source);
         ConfigSourceDescription = source;
-        _originalManifestUrls = [.. _config.ManifestUrls ?? []];
-        _originalReleasePageUrl = _config.ReleasePageUrl;
-        _connectivityProbe = () => GitHubConnectivity.IsGitHubReachableAsync(TimeSpan.FromSeconds(5), SharedClient.Value);
-        ApplyAccelerationMode(_config, AppSettingsStore.Read());
+        _httpClient = SharedClient.Value;
     }
 
-    internal UpdateService(UpdateConfig config, Func<Task<bool>>? connectivityProbe = null)
+    internal UpdateService(UpdateConfig config, HttpClient? httpClient = null, string? downloadRoot = null, string? installRoot = null)
     {
-        _config = config;
+        _config = Normalize(config);
         ConfigSourceDescription = "测试注入配置";
-        _originalManifestUrls = [.. config.ManifestUrls ?? []];
-        _originalReleasePageUrl = config.ReleasePageUrl;
-        _connectivityProbe = connectivityProbe ?? (() => GitHubConnectivity.IsGitHubReachableAsync(TimeSpan.FromSeconds(5), SharedClient.Value));
-        ApplyAccelerationMode(_config, AppSettingsStore.Read());
-    }
-
-    /// <summary>开关或网络环境变化后重新评估加速模式（设置页切换时调用）。</summary>
-    public void RefreshSources()
-    {
-        ApplyAccelerationMode(_config, AppSettingsStore.Read());
-    }
-
-    /// <summary>
-    /// 根据当前设置和探测结果调整更新源：
-    /// 从原始用户配置重新计算：本次使用缓存，冷缓存探测在后台进行，后续检查生效。
-    /// </summary>
-    private void ApplyAccelerationMode(UpdateConfig config, AppSettings settings)
-    {
-        lock (_sourceGate)
-        {
-            if (!settings.GitHubAccelerateEnabled)
-            {
-                ApplyAccelerationResult(config, false);
-                return;
-            }
-
-            var now = DateTime.UtcNow;
-            var status = settings.GitHubDirectStatus;
-            var checkedAt = settings.GitHubDirectCheckedUtc;
-
-            // 缓存有效则直接用，避免每次启动都探测
-            if (status is 0 or 1 && checkedAt.HasValue && checkedAt.Value <= now && now - checkedAt.Value < AccelerationProbeCacheLifetime)
-            {
-                ApplyAccelerationResult(config, status == 1);
-                return;
-            }
-
-            ApplyAccelerationResult(config, status == 1);
-            if (Interlocked.CompareExchange(ref _probeInFlight, 1, 0) != 0) return;
-            AccelerationProbeTask = Task.Run(async () =>
-            {
-                try
-                {
-                    var reachable = await _connectivityProbe().ConfigureAwait(false);
-                    AppSettingsStore.Update(s =>
-                    {
-                        s.GitHubDirectStatus = reachable ? 0 : 1;
-                        s.GitHubDirectCheckedUtc = DateTime.UtcNow;
-                    });
-                }
-                catch (Exception ex) { Log.Warn("更新：后台 GitHub 连通性探测失败：" + ex.Message); }
-                finally { Interlocked.Exchange(ref _probeInFlight, 0); }
-            });
-        }
-    }
-
-    /// <summary>把加速决策落到配置：true = 切 gh-proxy，false = 恢复/保持直连。</summary>
-    private void ApplyAccelerationResult(UpdateConfig config, bool useAcceleration)
-    {
-        // 只撤销本实例自动加上的代理，用户原本配置的镜像与顺序保持原样。
-        config.ManifestUrls = [.. _originalManifestUrls];
-        config.ReleasePageUrl = _originalReleasePageUrl;
-        if (useAcceleration)
-        {
-            // 清单地址：把官方 GitHub 地址前缀为 gh-proxy
-            var rewritten = new List<string>();
-            foreach (var url in config.ManifestUrls ?? [])
-            {
-                var accelerated = UpdateUrlRewriter.TryPrefixGhProxy(url);
-                rewritten.Add(accelerated ?? url);
-            }
-            config.ManifestUrls = rewritten;
-
-            // 发布页面也切到 gh-proxy，避免用户点开打不开
-            var releasePage = UpdateUrlRewriter.TryPrefixGhProxy(config.ReleasePageUrl);
-            if (releasePage is not null)
-            {
-                config.ReleasePageUrl = releasePage;
-            }
-
-            Log.Info("更新：GitHub 加速已启用（官方源不可达或用户强制加速）");
-        }
-        else
-        {
-            Log.Info("更新：GitHub 直连可用，使用官方源");
-        }
+        _httpClient = httpClient ?? SharedClient.Value;
+        _downloadRoot = downloadRoot;
+        _installRoot = installRoot;
     }
 
     internal UpdateConfig Config => _config;
@@ -233,10 +156,10 @@ public sealed class UpdateService : IUpdateService
 
     public string CurrentVersionText => AppVersion.Text;
 
-    public string InstallDirectory => AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+    public string InstallDirectory => _installRoot ?? AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
 
     public string UpdateRootDirectory =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Delta NFD", "update");
+        _downloadRoot ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Delta NFD", "update");
 
     public string FallbackReleasePageUrl =>
         !string.IsNullOrWhiteSpace(_config.ReleasePageUrl) && IsAllowedUrl(_config.ReleasePageUrl, _config, out _)
@@ -255,10 +178,11 @@ public sealed class UpdateService : IUpdateService
 
     public void ResetCheckResult()
     {
+        ClearFullFallbackPermit();
         lock (_resultGate)
         {
             _checkGeneration++;
-            _lastResult = Simple(UpdateCheckStatus.UpToDate, "更新通道已变更，请重新检查更新。");
+            _lastResult = Simple(UpdateCheckStatus.UpToDate, "更新通道或服务器已变更，请重新检查更新。");
             AvailabilityChanged?.Invoke(false);
         }
     }
@@ -276,11 +200,15 @@ public sealed class UpdateService : IUpdateService
         long generation;
         lock (_resultGate) generation = ++_checkGeneration;
         var channel = UpdateChannelPolicy.Normalize(settings.UpdateChannel);
+        var server = UpdateServerPolicy.Normalize(settings.UpdateServer);
+        var mode = UpdateModePolicy.Normalize(settings.UpdateMode);
         var result = await check().ConfigureAwait(false);
         lock (_resultGate)
         {
-            if (generation != _checkGeneration || channel != UpdateChannelPolicy.Normalize(AppSettingsStore.Read().UpdateChannel))
-                return _lastResult ?? Simple(UpdateCheckStatus.UpToDate, "更新通道已变更，请重新检查更新。");
+            var current = AppSettingsStore.Read();
+            if (generation != _checkGeneration || channel != UpdateChannelPolicy.Normalize(current.UpdateChannel)
+                || server != UpdateServerPolicy.Normalize(current.UpdateServer) || mode != UpdateModePolicy.Normalize(current.UpdateMode))
+                return _lastResult ?? Simple(UpdateCheckStatus.UpToDate, "更新通道或服务器已变更，请重新检查更新。");
             _lastResult = result;
             AvailabilityChanged?.Invoke(result.HasUpdate);
             return result;
@@ -290,7 +218,6 @@ public sealed class UpdateService : IUpdateService
     private async Task<UpdateCheckResult> CheckCoreAsync(bool manual, CancellationToken cancellationToken, AppSettings settings)
     {
         var config = _config;
-        ApplyAccelerationMode(config, settings);
         if (manual)
             EmergencyPolicyUpdateService.RequestCheck(IsInstalledCopy);
 
@@ -303,7 +230,8 @@ public sealed class UpdateService : IUpdateService
         }
 
         return await CheckForSessionAsync(settings, IsInstalledCopy, manual,
-            (url, ct) => FetchUpdateSourceAsync(url, config, ct),
+            (url, ct) => FetchUpdateSourceAsync(url, config, ct,
+                (source, cfg, token) => FetchStringAsync(source, cfg, token, _httpClient, settings.UpdateServer)),
             time => AppSettingsStore.Update(s => s.LastUpdateCheckUtc = time), cancellationToken).ConfigureAwait(false);
     }
 
@@ -332,8 +260,10 @@ public sealed class UpdateService : IUpdateService
         bool manual, Func<string, CancellationToken, Task<string>> fetch, CancellationToken cancellationToken = default)
     {
         var errors = new List<string>();
+        var invalidSource = false;
 
-        foreach (var url in config.ManifestUrls ?? [])
+        var sources = UpdateServerPolicy.ManifestSources(config, settings);
+        foreach (var url in sources)
         {
             string json;
             try
@@ -356,13 +286,27 @@ public sealed class UpdateService : IUpdateService
                 if (reason == GitHubReleaseSource.NoMatchingReleaseReason)
                     return Simple(UpdateCheckStatus.UpToDate, UpdateChannelPolicy.Name(settings.UpdateChannel) + "暂无可用更新。");
                 Log.Warn($"更新：清单不可用（{url}）：{reason}");
-                return Simple(UpdateCheckStatus.ManifestInvalid, "更新源数据不可用：" + reason);
+                // 已读到有效 JSON，但版本/安装包身份校验失败时停止，不能用旧备用清单掩盖。
+                // 空响应、HTML 或损坏 JSON 属于来源不可读，可继续尝试自建服务器。
+                try
+                {
+                    using var document = JsonDocument.Parse(json);
+                    return Simple(UpdateCheckStatus.ManifestInvalid, "更新源数据不可用：" + reason);
+                }
+                catch (JsonException) { }
+                invalidSource = true;
+                errors.Add($"{HostOf(url)}：{reason}");
+                continue;
             }
 
+            manifest.Installers = (manifest.Installers ?? []).Where(i => UpdateServerPolicy.Allows(UpdateServerPolicy.EffectiveServer(settings), i.Url)).ToList();
+            if (manifest.Installers.Count == 0 && !(UpdateModePolicy.Normalize(settings.UpdateMode) == UpdateMode.ChangedFiles
+                && IsFileReferenceUsable(manifest, config) && UpdateServerPolicy.Allows(settings.UpdateServer, manifest.FileUpdate!.Url)))
+                return Simple(UpdateCheckStatus.ManifestInvalid, "所选服务器的清单未提供该服务器的安装包，请切换服务器或稍后重试。");
             return Evaluate(manifest, settings, current, ignoreSkipped: true);
         }
 
-        var status = UpdateCheckStatus.NetworkError;
+        var status = invalidSource ? UpdateCheckStatus.ManifestInvalid : UpdateCheckStatus.NetworkError;
         var detail = errors.Count == 0 ? "未配置更新清单地址。" : string.Join("；", errors);
         Log.Warn("更新：检查失败（" + status + "）：" + detail);
         return Simple(status, "检查更新失败：" + detail);
@@ -424,12 +368,16 @@ public sealed class UpdateService : IUpdateService
 
     // ---------------------------------------------------------------- 下载
 
-    public async Task<UpdateDownloadResult> DownloadAsync(
+    private async Task<UpdateDownloadResult> DownloadFullAsync(
         UpdateManifest manifest,
         IProgress<UpdateProgressInfo>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, bool fallback = false)
     {
-        if (!UpdateChannelPolicy.Allows(AppSettingsStore.Read().UpdateChannel, manifest))
+        var settings = AppSettingsStore.Read();
+        var server = UpdateServerPolicy.EffectiveServer(settings);
+        if (!fallback && UpdateModePolicy.Normalize(settings.UpdateMode) != UpdateMode.FullInstaller)
+            return UpdateDownloadResult.Fail("更新方式已变化，请重新检查。");
+        if (!UpdateChannelPolicy.Allows(settings.UpdateChannel, manifest))
             return UpdateDownloadResult.Fail("该版本不属于当前更新通道，请重新检查更新。");
         if (!TryParseVersion(manifest.Version, out var remote))
         {
@@ -441,42 +389,29 @@ public sealed class UpdateService : IUpdateService
         }
 
         var installers = (manifest.Installers ?? [])
-            .Where(i => IsInstallerUsable(i, _config, out _))
-            .ToList();
+            .OfType<UpdateInstallerInfo>()
+            .Select(i => new UpdateInstallerInfo
+            {
+                Url = UpdateUrlRewriter.RestoreOfficialUrl(i.Url),
+                SizeBytes = i.SizeBytes,
+                Sha256 = i.Sha256,
+            })
+            .Where(i => IsInstallerUsable(i, _config, out _) && UpdateServerPolicy.Allows(server, i.Url))
+            .OrderBy(i => UpdateUrlRewriter.IsGitHubUrl(i.Url) ? 0
+                : UpdateUrlRewriter.IsSelfHostedUrl(i.Url) ? 1 : 2)
+            .DistinctBy(i => i.Url, StringComparer.OrdinalIgnoreCase).ToList();
         if (installers.Count == 0)
-        {
             return UpdateDownloadResult.Fail("更新清单里没有可用的下载地址（需 https + 白名单主机 + 64 位 SHA256）。");
-        }
 
-        // GitHub 加速开启时，把官方安装包地址追加 gh-proxy 镜像（共享同一 SHA256，安全不变）
-        if (AppSettingsStore.Read().GitHubAccelerateEnabled)
-        {
-            var originalCount = installers.Count;
-            for (var i = 0; i < originalCount; i++)
-            {
-                var installer = installers[i];
-                if (UpdateUrlRewriter.IsGhProxyUrl(installer.Url))
-                {
-                    continue;
-                }
-
-                var mirrorUrl = UpdateUrlRewriter.TryPrefixGhProxy(installer.Url);
-                if (mirrorUrl is not null)
-                {
-                    installers.Add(new UpdateInstallerInfo
-                    {
-                        Url = mirrorUrl,
-                        SizeBytes = installer.SizeBytes,
-                        Sha256 = installer.Sha256,
-                    });
-                }
-            }
-
-            if (installers.Count > originalCount)
-            {
-                Log.Info($"更新：已为 {installers.Count - originalCount} 个安装包地址追加 gh-proxy 加速镜像");
-            }
-        }
+        var githubInstallers = installers.Where(i => UpdateUrlRewriter.IsGitHubUrl(i.Url)).ToList();
+        // 不允许备用 URL 携带与 GitHub 不同的安装包身份。
+        if (githubInstallers.Count > 0)
+            installers.RemoveAll(i => !UpdateUrlRewriter.IsGitHubUrl(i.Url)
+                && !githubInstallers.Any(g => SameInstaller(g, i)));
+        var fallbackResolved = server != UpdateServer.Automatic || githubInstallers.Count == 0
+            || installers.Any(i => UpdateUrlRewriter.IsSelfHostedUrl(i.Url))
+            || !(_config.ManifestUrls ?? []).Concat(_config.InternalManifestUrls)
+                .Contains(SelfHostedManifest(settings.UpdateChannel), StringComparer.OrdinalIgnoreCase);
 
         var versionTag = SanitizeSegment(AppVersion.Format(remote));
         var versionDir = Path.Combine(UpdateRootDirectory, versionTag);
@@ -497,20 +432,36 @@ public sealed class UpdateService : IUpdateService
             await MatchesAnyAsync(finalPath, installers, cancellationToken).ConfigureAwait(false) is not null)
         {
             Log.Info($"更新：复用已下载的安装包 {finalPath}");
+            if (!UpdateModePolicy.SameSelection(settings, AppSettingsStore.Read())) return UpdateDownloadResult.Fail("更新选项已变化，请重新检查。");
             return UpdateDownloadResult.Ok(finalPath, "已复用之前下载好的安装包。");
         }
 
         var errors = new List<string>();
 
-        for (var index = 0; index < installers.Count; index++)
+        for (var index = 0; index <= installers.Count; index++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!UpdateModePolicy.SameSelection(settings, AppSettingsStore.Read())) return UpdateDownloadResult.Fail("更新选项已变化，请重新检查。");
+            if (!fallbackResolved && (index == installers.Count || !UpdateUrlRewriter.IsGitHubUrl(installers[index].Url)))
+            {
+                fallbackResolved = true;
+                try
+                {
+                    var backupInstallers = await FetchSelfHostedInstallersAsync(manifest, githubInstallers, cancellationToken).ConfigureAwait(false);
+                    installers.InsertRange(index, backupInstallers.Where(i => !installers.Any(existing =>
+                        string.Equals(existing.Url, i.Url, StringComparison.OrdinalIgnoreCase))));
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                catch (Exception ex) { errors.Add("自建服务器：" + ex.Message); }
+            }
+            if (index == installers.Count) break;
             var installer = installers[index];
             var partPath = finalPath + ".part";
             TryDelete(partPath);
 
             try
             {
-                await DownloadOneAsync(installer, partPath, progress, cancellationToken).ConfigureAwait(false);
+                await DownloadOneAsync(installer, partPath, progress, server, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -534,6 +485,8 @@ public sealed class UpdateService : IUpdateService
                 continue;
             }
 
+            if (!UpdateModePolicy.SameSelection(settings, AppSettingsStore.Read()))
+            { TryDelete(partPath); return UpdateDownloadResult.Fail("更新选项已变化，请重新检查。"); }
             try
             {
                 File.Move(partPath, finalPath, overwrite: true);
@@ -553,10 +506,36 @@ public sealed class UpdateService : IUpdateService
         return UpdateDownloadResult.Fail("全部下载地址均失败：" + string.Join("；", errors));
     }
 
+    private static bool SameInstaller(UpdateInstallerInfo first, UpdateInstallerInfo second) =>
+        first.SizeBytes == second.SizeBytes
+        && string.Equals(first.Sha256, second.Sha256, StringComparison.OrdinalIgnoreCase);
+
+    private async Task<List<UpdateInstallerInfo>> FetchSelfHostedInstallersAsync(UpdateManifest original,
+        IReadOnlyList<UpdateInstallerInfo> githubInstallers, CancellationToken token)
+    {
+        Log.Info("更新：GitHub 安装包下载失败，核对自建服务器备用清单。");
+        var json = await FetchStringAsync(SelfHostedManifest(AppSettingsStore.Read().UpdateChannel), _config, token, _httpClient).ConfigureAwait(false);
+        if (!TryParseManifest(json, _config, out var fallback, out var reason) || fallback is null)
+            throw new InvalidDataException("备用清单不可用：" + reason);
+        if (!TryParseVersion(original.Version, out var version)
+            || !TryParseVersion(fallback.Version, out var fallbackVersion)
+            || CompareVersions(version, fallbackVersion) != 0
+            || UpdateChannelPolicy.Classify(original.Version, original.DisplayVersion, original.Channel)
+                != UpdateChannelPolicy.Classify(fallback.Version, fallback.DisplayVersion, fallback.Channel)
+            || !UpdateChannelPolicy.Allows(AppSettingsStore.Read().UpdateChannel, fallback))
+            throw new InvalidDataException("备用清单版本或通道与当前更新不一致，请稍后重试。");
+        var matches = (fallback.Installers ?? []).Where(i => UpdateUrlRewriter.IsSelfHostedUrl(i.Url)
+            && githubInstallers.Any(g => SameInstaller(g, i))).ToList();
+        if (matches.Count == 0)
+            throw new InvalidDataException("备用安装包的大小或 SHA256 与 GitHub 不一致，已拒绝回退。");
+        return matches;
+    }
+
     private async Task DownloadOneAsync(
         UpdateInstallerInfo installer,
         string partPath,
         IProgress<UpdateProgressInfo>? progress,
+        UpdateServer server,
         CancellationToken cancellationToken)
     {
         if (!IsAllowedUrl(installer.Url, _config, out var reason))
@@ -567,10 +546,7 @@ public sealed class UpdateService : IUpdateService
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(DownloadIdleTimeout);
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(installer.Url, UriKind.Absolute));
-        using var response = await SharedClient.Value
-            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token)
-            .ConfigureAwait(false);
+        using var response = await SendGetAsync(_httpClient, installer.Url, _config, server, cts.Token).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
         var total = response.Content.Headers.ContentLength ?? installer.SizeBytes;
@@ -600,6 +576,8 @@ public sealed class UpdateService : IUpdateService
 
             await target.WriteAsync(buffer.AsMemory(0, read), cts.Token).ConfigureAwait(false);
             received += read;
+            if (installer.SizeBytes > 0 && received > installer.SizeBytes)
+                throw new InvalidDataException("下载内容超过清单声明的大小。");
 
             // 每读一块重置“无数据”超时：慢速但持续推进的下载不会被误杀
             cts.CancelAfter(DownloadIdleTimeout);
@@ -636,6 +614,18 @@ public sealed class UpdateService : IUpdateService
 
     public async Task<UpdateLaunchResult> LaunchInstallerAsync(UpdateManifest manifest, string installerPath)
     {
+        var launchSelection = AppSettingsStore.Read();
+        var fileUpdate = Path.GetFileName(installerPath).Equals("files.json", StringComparison.OrdinalIgnoreCase);
+        var fallback = !fileUpdate && HasFullFallbackPermit(manifest, installerPath, launchSelection);
+        if (!fallback && fileUpdate != (UpdateModePolicy.Normalize(launchSelection.UpdateMode) == UpdateMode.ChangedFiles))
+            return new() { Message = "更新方式已变化，请按当前方式重新下载。" };
+        if (fallback)
+        {
+            try { RequireSafeFallback(null); }
+            catch (Exception ex) { return new() { Message = "自动回退已停止：" + ex.Message }; }
+        }
+        if (Path.GetFileName(installerPath).Equals("files.json", StringComparison.OrdinalIgnoreCase))
+            return await LaunchFileUpdateAsync(manifest, installerPath).ConfigureAwait(false);
         if (!UpdateChannelPolicy.Allows(AppSettingsStore.Read().UpdateChannel, manifest))
             return new UpdateLaunchResult { Success = false, Message = "该版本不属于当前更新通道，请重新检查更新。" };
         var logPath = Path.Combine(UpdateRootDirectory, $"install-{SanitizeSegment(manifest.Version)}.log");
@@ -698,8 +688,9 @@ public sealed class UpdateService : IUpdateService
             // Keep the verified file open without write/delete sharing until the installer has started.
             using var verifiedInstaller = await OpenVerifiedInstallerAsync(
                 installerPath, manifest, UpdateRootDirectory, _config).ConfigureAwait(false);
-            if (!UpdateChannelPolicy.Allows(AppSettingsStore.Read().UpdateChannel, manifest))
-                return new UpdateLaunchResult { Success = false, Message = "更新通道已变更，请重新检查更新。", LogPath = logPath };
+            if (!UpdateChannelPolicy.Allows(AppSettingsStore.Read().UpdateChannel, manifest)
+                || !UpdateModePolicy.SameSelection(launchSelection, AppSettingsStore.Read()))
+                return new UpdateLaunchResult { Success = false, Message = "更新通道或服务器已变更，请重新检查更新。", LogPath = logPath };
             if (DescribeInstallBlocker() is { } changedBlocker)
             {
                 return new UpdateLaunchResult { Success = false, Message = changedBlocker, LogPath = logPath };
@@ -709,8 +700,13 @@ public sealed class UpdateService : IUpdateService
             using var deployment = await DeploymentHandover.PrepareAsync(uninstall: false).ConfigureAwait(false);
             if (!deployment.Ready)
                 return new UpdateLaunchResult { Success = false, Message = deployment.Detail, LogPath = logPath };
-            if (!UpdateChannelPolicy.Allows(AppSettingsStore.Read().UpdateChannel, manifest))
+            if (!UpdateChannelPolicy.Allows(AppSettingsStore.Read().UpdateChannel, manifest)
+                || !UpdateModePolicy.SameSelection(launchSelection, AppSettingsStore.Read()))
                 return new UpdateLaunchResult { Success = false, Message = "更新通道已变更，已取消启动安装器。", LogPath = logPath };
+
+            // The permission only covers this download, release and unchanged selection.
+            if (fallback && !HasFullFallbackPermit(manifest, installerPath, launchSelection))
+                return new() { Message = "全量回退的版本或下载身份已变化，请重新检查更新。", LogPath = logPath };
 
             // The installer can terminate this process as soon as it starts.
             AppSettingsStore.Update(s =>
@@ -721,6 +717,7 @@ public sealed class UpdateService : IUpdateService
                     : manifest.DisplayVersion;
                 s.PendingUpdateInstallerPath = installerPath;
             });
+            ClearFullFallbackPermit();
             using var process = Process.Start(startInfo);
             if (process is null)
             {
@@ -832,7 +829,6 @@ public sealed class UpdateService : IUpdateService
     /// <summary>安装前的条件复检（等价 Inno 脚本 PrepareToInstall 的拒绝条件），把失败前置成可读提示。</summary>
     internal string? DescribeInstallBlocker()
     {
-        if (DotNetRepairService.IsBusy) return ".NET 安装/修复正在运行，请完成后再更新工具。";
         var installLocation = ReadInstalledLocation();
         if (string.IsNullOrWhiteSpace(installLocation))
         {
@@ -986,7 +982,7 @@ public sealed class UpdateService : IUpdateService
         return true;
     }
 
-    /// <summary>补齐缺失字段，并检查清单地址是否通过自身白名单（不通过只告警，不改写）。</summary>
+    /// <summary>补齐缺失字段，迁移历史官方源和代理配置，再检查主机白名单。</summary>
     internal static UpdateConfig Normalize(UpdateConfig? config)
     {
         config ??= new UpdateConfig();
@@ -994,15 +990,18 @@ public sealed class UpdateService : IUpdateService
         if (config.ManifestUrls is null || config.ManifestUrls.Count == 0)
         {
             config.ManifestUrls = [.. DefaultManifestUrls];
+            if (config.InternalManifestUrls is not { Count: > 0 })
+                config.InternalManifestUrls = [.. DefaultInternalManifestUrls];
         }
-        config.ManifestUrls = config.ManifestUrls.Select(url =>
-            string.Equals(url, "https://raw.githubusercontent.com/DRXiaoXi/DeltaNFD/main/update.json", StringComparison.OrdinalIgnoreCase)
-                ? GitHubReleaseSource.ReleasesUrl : url).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-
+        config.ManifestUrls = NormalizeSources(config.ManifestUrls);
+        config.InternalManifestUrls = NormalizeSources(config.InternalManifestUrls ?? [], internalChannel: true);
         if (config.AllowedHosts is null || config.AllowedHosts.Count == 0)
-        {
             config.AllowedHosts = [.. DefaultAllowedHosts];
-        }
+        config.AllowedHosts.RemoveAll(h => h is not null
+            && h.Trim().Trim('.').Equals("gh-proxy.com", StringComparison.OrdinalIgnoreCase));
+        if (config.ManifestUrls.Concat(config.InternalManifestUrls).Any(IsManagedSource))
+            config.AllowedHosts = config.AllowedHosts.Concat(DefaultAllowedHosts).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        config.ReleasePageUrl = UpdateUrlRewriter.RestoreOfficialUrl(config.ReleasePageUrl);
 
         if (config.AutoCheckThrottleHours <= 0)
         {
@@ -1024,8 +1023,8 @@ public sealed class UpdateService : IUpdateService
             config.ReleasePageUrl = DefaultReleasePageUrl;
         }
 
-        // 配置能改，白名单不改：镜像主机必须自己写进 allowedHosts，否则一律拒绝下载
-        foreach (var url in config.ManifestUrls)
+        // 除官方来源外，自定义主机仍须显式声明在 allowedHosts。
+        foreach (var url in config.ManifestUrls.Concat(config.InternalManifestUrls))
         {
             if (!IsAllowedUrl(url, config, out var reason))
             {
@@ -1034,6 +1033,22 @@ public sealed class UpdateService : IUpdateService
         }
 
         return config;
+    }
+
+    private static bool IsManagedSource(string url) => GitHubReleaseSource.IsRepositoryReleasesApi(url)
+        || string.Equals(url, OfficialManifestUrl, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(url, OfficialInternalManifestUrl, StringComparison.OrdinalIgnoreCase);
+
+    private static List<string> NormalizeSources(IEnumerable<string> urls, bool internalChannel = false)
+    {
+        var sources = urls.Select(UpdateUrlRewriter.RestoreOfficialUrl).Select(url =>
+            string.Equals(url, "https://raw.githubusercontent.com/DRXiaoXi/DeltaNFD/main/update.json", StringComparison.OrdinalIgnoreCase)
+                || GitHubReleaseSource.IsRepositoryReleasesApi(url) ? GitHubReleaseSource.ReleasesUrl : url)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        // 只迁移本项目官方配置；完全自定义的来源仍由用户配置负责。
+        return sources.Any(IsManagedSource)
+            ? new[] { GitHubReleaseSource.ReleasesUrl, internalChannel ? OfficialInternalManifestUrl : OfficialManifestUrl }.Concat(sources.Where(u => !IsManagedSource(u))).ToList()
+            : sources;
     }
 
     internal static UpdateConfig LoadConfigOrDefault() =>
@@ -1122,6 +1137,12 @@ public sealed class UpdateService : IUpdateService
             return false;
         }
 
+        if (uri.Host.TrimEnd('.').Equals("gh-proxy.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.EndsWith(".gh-proxy.com", StringComparison.OrdinalIgnoreCase))
+        {
+            reason = "已取消 GitHub 加速，请使用官方直连地址。";
+            return false;
+        }
         var allowed = config.AllowedHosts ?? [];
         if (allowed.Count > 0 && !IsAllowedHost(uri.Host, allowed))
         {
@@ -1212,6 +1233,8 @@ public sealed class UpdateService : IUpdateService
             var rejected = new List<string>();
             foreach (var installer in parsed.Installers ?? [])
             {
+                if (installer is null) { rejected.Add("空条目"); continue; }
+                installer.Url = UpdateUrlRewriter.RestoreOfficialUrl(installer.Url);
                 if (IsInstallerUsable(installer, config, out var why))
                 {
                     usable.Add(installer);
@@ -1222,7 +1245,7 @@ public sealed class UpdateService : IUpdateService
                 }
             }
 
-            if (usable.Count == 0)
+            if (usable.Count == 0 && !IsFileReferenceUsable(parsed, config))
             {
                 reason = "清单里没有可用的下载地址" +
                          (rejected.Count > 0 ? "（" + string.Join("；", rejected) + "）" : "");
@@ -1388,17 +1411,20 @@ public sealed class UpdateService : IUpdateService
     internal static async Task<string> FetchUpdateSourceAsync(string url, UpdateConfig config, CancellationToken cancellationToken,
         Func<string, UpdateConfig, CancellationToken, Task<string>>? fetch = null)
     {
-        fetch ??= FetchStringAsync;
+        fetch ??= (source, cfg, token) => FetchStringAsync(source, cfg, token);
         var isRepositoryApi = GitHubReleaseSource.IsRepositoryReleasesApi(url);
-        var sourceUrl = isRepositoryApi ? (UpdateUrlRewriter.IsGhProxyUrl(url)
-            ? UpdateUrlRewriter.TryPrefixGhProxy(GitHubReleaseSource.ReleasesUrl)! : GitHubReleaseSource.ReleasesUrl) : url;
+        var sourceUrl = isRepositoryApi ? GitHubReleaseSource.ReleasesUrl : UpdateUrlRewriter.RestoreOfficialUrl(url);
         var json = await fetch(sourceUrl, config, cancellationToken)
             .ConfigureAwait(false);
         if (!isRepositoryApi) return json;
 
         var releases = new List<JsonElement>();
+        long totalChars = 0;
         for (var page = 1; page <= 10; page++)
         {
+            totalChars += json.Length;
+            if (totalChars > MaxReleaseListChars)
+                throw new InvalidDataException("GitHub 发布列表累计体积超过检查上限。");
             using var document = JsonDocument.Parse(json);
             if (document.RootElement.ValueKind != JsonValueKind.Array)
                 throw new InvalidDataException("GitHub Release 列表格式无效。");
@@ -1411,7 +1437,8 @@ public sealed class UpdateService : IUpdateService
         throw new InvalidDataException("无法读取完整发布列表。");
     }
 
-    private static async Task<string> FetchStringAsync(string url, UpdateConfig config, CancellationToken cancellationToken)
+    internal static async Task<string> FetchStringAsync(string url, UpdateConfig config, CancellationToken cancellationToken,
+        HttpClient? client = null, UpdateServer server = UpdateServer.Automatic)
     {
         if (!IsAllowedUrl(url, config, out var reason))
         {
@@ -1421,26 +1448,70 @@ public sealed class UpdateService : IUpdateService
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(TimeSpan.FromSeconds(config.CheckTimeoutSeconds));
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(url, UriKind.Absolute));
-        request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true };
-
-        using var response = await SharedClient.Value
-            .SendAsync(request, HttpCompletionOption.ResponseContentRead, cts.Token)
-            .ConfigureAwait(false);
+        using var response = await SendGetAsync(client ?? SharedClient.Value, url, config, server, cts.Token).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
-        var text = await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+        // Release lists include every asset's metadata; they are much larger than update.json.
+        // Bound the decoded response stream before buffering, including chunked/decompressed bodies.
+        var isReleaseList = GitHubReleaseSource.IsRepositoryReleasesApi(url)
+            && (response.RequestMessage?.RequestUri is not { } finalUri
+                || GitHubReleaseSource.IsRepositoryReleasesApi(finalUri.AbsoluteUri));
+        var maxBytes = isReleaseList ? MaxGitHubResponseBytes : MaxManifestChars * 4;
+        var maxChars = isReleaseList ? MaxGitHubResponseBytes : MaxManifestChars;
+        if (response.Content.Headers.ContentLength is { } length && length > maxBytes)
+            throw new InvalidDataException($"更新响应超过体积上限（{maxBytes} 字节）。");
+        await using var source = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+        using var bounded = new MemoryStream();
+        var buffer = new byte[16384];
+        while (true)
+        {
+            var remaining = maxBytes - (int)bounded.Length;
+            var read = await source.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, remaining + 1)), cts.Token).ConfigureAwait(false);
+            if (read == 0) break;
+            if (read > remaining)
+                throw new InvalidDataException($"更新响应超过体积上限（{maxBytes} 字节）。");
+            bounded.Write(buffer, 0, read);
+        }
+        bounded.Position = 0;
+        using var reader = new StreamReader(bounded, new UTF8Encoding(false, true), detectEncodingFromByteOrderMarks: true);
+        var text = await reader.ReadToEndAsync(cts.Token).ConfigureAwait(false);
         if (text.Length == 0)
         {
             throw new InvalidDataException("清单内容为空");
         }
 
-        if (text.Length > MaxManifestChars)
+        if (text.Length > maxChars)
         {
             throw new InvalidDataException($"清单体积异常（{text.Length} 字符）");
         }
 
         return text;
+    }
+
+    private static async Task<HttpResponseMessage> SendGetAsync(HttpClient client, string url, UpdateConfig config,
+        UpdateServer server, CancellationToken token)
+    {
+        var source = new Uri(url, UriKind.Absolute);
+        for (var redirects = 0; redirects <= 5; redirects++)
+        {
+            token.ThrowIfCancellationRequested();
+            if (!IsAllowedUrl(source.AbsoluteUri, config, out var reason))
+                throw new InvalidOperationException(reason);
+            if (!UpdateServerPolicy.Allows(server, source.AbsoluteUri))
+                throw new InvalidDataException("更新地址或重定向不属于所选服务器，已停止请求。");
+            using var request = new HttpRequestMessage(HttpMethod.Get, source);
+            request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true };
+            var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
+            if (response.StatusCode is not (HttpStatusCode.MovedPermanently or HttpStatusCode.Redirect or HttpStatusCode.TemporaryRedirect
+                or HttpStatusCode.PermanentRedirect or HttpStatusCode.SeeOther))
+                return response;
+            using (response)
+            {
+                source = response.Headers.Location is { } location ? new Uri(source, location)
+                    : throw new InvalidDataException("更新重定向缺少地址。");
+            }
+        }
+        throw new InvalidDataException("更新重定向次数过多。");
     }
 
     private static async Task<string?> MatchesAnyAsync(
@@ -1584,7 +1655,7 @@ public sealed class UpdateService : IUpdateService
         var handler = new SocketsHttpHandler
         {
             AutomaticDecompression = DecompressionMethods.All,
-            AllowAutoRedirect = true,
+            AllowAutoRedirect = false,
             ConnectTimeout = TimeSpan.FromSeconds(15),
             PooledConnectionLifetime = TimeSpan.FromMinutes(5),
         };

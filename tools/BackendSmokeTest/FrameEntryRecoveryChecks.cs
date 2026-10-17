@@ -23,6 +23,20 @@ internal static class FrameEntryRecoveryChecks
         }, "开启", false);
         check(clean.Success && called, "无旧记录时帧格开启正常执行");
 
+        var procmanPath = BackendUnconfirmedStore.RecordPathForTests(BackendModules.Procman);
+        File.WriteAllText(procmanPath, JsonSerializer.Serialize(new { Module = BackendModules.Procman, Pid = int.MaxValue,
+            StartTicks = 1L, Path = Environment.ProcessPath, Command = BackendCommands.ProcmanFrameBackgroundSync }));
+        var procmanEvidence = File.ReadAllBytes(procmanPath);
+        called = false;
+        var backgroundBlocked = await FrameBackendReadiness.RunAsync(() =>
+        {
+            called = true;
+            return Task.FromResult(OperationResult.Ok("不应执行"));
+        }, "开启", false);
+        check(!backgroundBlocked.Success && !called && backgroundBlocked.Message.Contains("核对"), "后台联动存在未知记录时帧格不绕过进程管理门禁");
+        check(File.ReadAllBytes(procmanPath).SequenceEqual(procmanEvidence), "帧格预检保留后台联动原始证据");
+        File.Delete(procmanPath); // Synthetic fixture evidence only.
+
         var client = await BackendClient.StartAsync(BackendModules.CpuFrame, default);
         typeof(BackendCpuFrameService).GetField("_client", BindingFlags.NonPublic | BindingFlags.Instance)!
             .SetValue(BackendCpuFrameService.Instance, client);

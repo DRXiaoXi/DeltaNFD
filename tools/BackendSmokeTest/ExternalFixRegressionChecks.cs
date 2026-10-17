@@ -63,35 +63,16 @@ internal static class ExternalFixRegressionChecks
         Check(!File.Exists(Path.Combine(thumbnails, "thumbcache_32.db")) && File.Exists(Path.Combine(thumbnails, "iconcache_32.db"))
             && File.Exists(Path.Combine(thumbnails, "nested", "thumbcache_other.db")), "缩略图只清顶层目标文件");
 
-        var probe = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        int probes = 0;
-        AppSettingsStore.Update(s => { s.GitHubAccelerateEnabled = true; s.GitHubDirectStatus = 1; s.GitHubDirectCheckedUtc = DateTime.UtcNow.AddHours(-1); });
-        Check(AppSettingsStore.Read().GitHubAccelerateEnabled, "隔离设置成功保存后才测试联网路径");
-        var config = UpdateService.LoadConfig(null); config.ManifestUrls = [GitHubReleaseSource.ReleasesUrl];
-        UpdateService service;
-        try
-        {
-            service = await Task.Run(() => new UpdateService(config, () => { Interlocked.Increment(ref probes); return probe.Task; }))
-                .WaitAsync(TimeSpan.FromSeconds(3));
-            Check(service.AccelerationProbeTask is not null && !probe.Task.IsCompleted, "构造函数不等待未完成的联网探测");
-        }
-        catch { probe.TrySetResult(true); throw; }
-        service.RefreshSources(); service.RefreshSources(); probe.SetResult(true);
-        await service.AccelerationProbeTask!.WaitAsync(TimeSpan.FromSeconds(5));
-        Check(probes == 1, "重复刷新合并在途探测");
-        service.RefreshSources(); Check(service.Config.ManifestUrls![0] == GitHubReleaseSource.ReleasesUrl, "直连恢复后移除本实例代理");
-        AppSettingsStore.Update(s => { s.GitHubDirectStatus = 1; s.GitHubDirectCheckedUtc = DateTime.UtcNow; });
-        service.RefreshSources(); Check(service.Config.ManifestUrls![0].StartsWith("https://gh-proxy.com/"), "缓存不可达时启用代理");
-        AppSettingsStore.Update(s => s.GitHubAccelerateEnabled = false); service.RefreshSources();
-        Check(service.Config.ManifestUrls![0] == GitHubReleaseSource.ReleasesUrl, "关闭加速恢复原配置");
+        var config = UpdateService.LoadConfig(null);
         var manualProxy = "https://gh-proxy.com/https://raw.githubusercontent.com/DRXiaoXi/DeltaNFD/main/update.json";
-        var customConfig = UpdateService.LoadConfig(null); customConfig.ManifestUrls = [manualProxy, GitHubReleaseSource.ReleasesUrl];
-        var custom = new UpdateService(customConfig, () => throw new Exception("disabled: no probe"));
-        custom.RefreshSources(); Check(custom.Config.ManifestUrls!.SequenceEqual([manualProxy, GitHubReleaseSource.ReleasesUrl]), "关闭自动加速保留用户原有镜像和顺序");
+        config.ManifestUrls = [manualProxy, UpdateService.OfficialManifestUrl];
+        var service = new UpdateService(config);
+        Check(service.Config.ManifestUrls!.SequenceEqual(UpdateService.DefaultManifestUrls), "历史代理还原官方源并按 GitHub、自建服务器排序");
+        Check(!UpdateService.IsAllowedUrl(manualProxy, config, out _), "旧加速主机不再允许访问");
         var seen = new List<string>();
         await UpdateService.FetchUpdateSourceAsync("https://gh-proxy.com/" + GitHubReleaseSource.ReleasesUrl, config, CancellationToken.None,
             (url, _, _) => { seen.Add(url); return Task.FromResult(seen.Count == 1 ? "[" + string.Join(",", Enumerable.Repeat("{}", 100)) + "]" : "[]"); });
-        Check(seen.Count == 2 && seen.All(u => u.StartsWith("https://gh-proxy.com/")) && seen[1].EndsWith("&page=2"), "Release 分页保留所选代理源");
+        Check(seen.Count == 2 && seen.All(u => u.StartsWith(GitHubReleaseSource.ReleasesUrl)) && seen[1].EndsWith("&page=2"), "历史代理 Release 分页恢复官方直连");
         Console.WriteLine($"External fix regression checks: {count} passed; ACE scope checks also passed. All system mutation simulated or isolated.");
     }
 }

@@ -72,6 +72,28 @@ internal static class AceCleanupFlowChecks
             File.WriteAllText(path, "{broken");
             check(!(await service.CleanAsync()).Success && File.ReadAllText(path) == "{broken", "损坏记录返回待核对失败，不覆盖记录");
             File.Delete(path);
+
+            var beforeCoreCalls = File.ReadAllLines(trace).Length;
+            await service.StopBackendIfIdleAsync();
+            Environment.SetEnvironmentVariable("DELTANFD_TEST_ACE_RESULT", "partial");
+            var corePartial = await service.CleanCoreFilesAsync();
+            check(!corePartial.Success && corePartial.IsPartial && File.Exists(path),
+                "CORE 文件清理的部分结果保留写前证据：" + corePartial.Message);
+            check(File.ReadAllLines(trace).Last() == BackendCommands.AceCoreClean, "前端 IPC 发送专用 CORE 命令，不转成全量清理");
+            var coreEvidence = File.ReadAllBytes(path);
+            check(!(await service.CleanCoreFilesAsync()).Success && !(await service.CleanAsync()).Success
+                && File.ReadAllLines(trace).Length == beforeCoreCalls + 1, "CORE 未确认记录同时阻止两种清理重放");
+            check(File.ReadAllBytes(path).SequenceEqual(coreEvidence), "再次点击不会覆盖 CORE 清理的原始证据");
+            await service.ScanAsync();
+            var coreReview = (await BackendLifecycle.PrepareReviewAsync([BackendModules.Ace])).Single();
+            var coreSnapshot = await BackendRecovery.ReconcileAsync(BackendModules.Ace);
+            check(BackendRecovery.CanKeepCurrentState(coreReview, coreSnapshot), "CORE 清理后退出并只读核对后可明确保留状态");
+            await BackendLifecycle.AcknowledgeCurrentStateAsync(coreReview);
+            Environment.SetEnvironmentVariable("DELTANFD_TEST_ACE_RESULT", null);
+            check((await service.CleanCoreFilesAsync()).Success && !AceCleanupReadiness.RequiresReview
+                && File.ReadAllLines(trace).Length == beforeCoreCalls + 2, "明确重试专用清理可成功退出，不留下未确认门禁");
+            check((await service.ScanAsync()).AnythingFound && File.ReadAllLines(trace).Length == beforeCoreCalls + 2,
+                "CORE 清理后重扫只读，不再次执行删除");
             var failed = await BackendLifecycle.PrepareHandoverAsync("ACE 入口回归收尾", TimeSpan.FromSeconds(5));
             check(failed.Count == 0, "ACE 入口回归无未知会话泄漏");
         }

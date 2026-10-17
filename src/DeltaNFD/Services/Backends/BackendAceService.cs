@@ -92,7 +92,13 @@ internal sealed class BackendAceService : IAceService
         }
     }
 
-    public async Task<OperationResult> CleanAsync(IProgress<string>? progress = null)
+    public Task<OperationResult> CleanAsync(IProgress<string>? progress = null) =>
+        CleanAsync(BackendCommands.AceClean, progress);
+
+    public Task<OperationResult> CleanCoreFilesAsync(IProgress<string>? progress = null) =>
+        CleanAsync(BackendCommands.AceCoreClean, progress);
+
+    private async Task<OperationResult> CleanAsync(string command, IProgress<string>? progress)
     {
         await _gate.WaitAsync();
         OperationResult? outcome = null;
@@ -102,7 +108,7 @@ internal sealed class BackendAceService : IAceService
             var blocker = AceCleanupReadiness.DescribeBlocker();
             if (blocker.Length > 0) return OperationResult.Fail(blocker);
             var client = await EnsureClientAsync(CancellationToken.None);
-            var result = await client.InvokeAsync(BackendCommands.AceClean, new { }, progress, CancellationToken.None);
+            var result = await client.InvokeAsync(command, new { }, progress, CancellationToken.None);
             var mapped = AceCleanupResults.ToOperationResult(result);
             outcome = mapped;
             await client.QuiesceAsync(BackendSessions.StopTimeoutFor(BackendModules.Ace));

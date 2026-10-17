@@ -11,8 +11,12 @@ namespace DeltaNFD.Services.Backends;
 internal static class BackendRecovery
 {
     internal static bool CanKeepCurrentState(BackendUnconfirmedStore.Review review, ReconcileSnapshot? snapshot) =>
-        review.CanAcknowledge && (review.Module != BackendModules.Ace
+        review.CanAcknowledge && !IsRuntimeInstallation(review) && (review.Module != BackendModules.Ace
             || snapshot is { Complete: true } && snapshot.Module == BackendModules.Ace);
+    internal static bool IsRuntimeInstallation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.Runtime
+        && review.Command is BackendCommands.RuntimeRepair or BackendCommands.RuntimeCompatibilityRepair
+            or BackendCommands.RuntimeRedistUninstall or BackendCommands.RuntimeRedistUninstallAll or BackendCommands.Vc14Repair or BackendCommands.Vc14LegacyClean
+            or BackendCommands.RuntimeHighFpsRepair;
     private static bool CanRestoreCpuRecord(string command) => BackendModules.IsReadOnly(BackendModules.CpuFrame, command)
         || command is BackendCommands.CpuFrameMonitorStart or BackendCommands.CpuFrameMonitorStop
         or BackendCommands.CpuFramePriorityApply or BackendCommands.CpuFrameAffinityApply
@@ -26,22 +30,25 @@ internal static class BackendRecovery
     internal static IReadOnlyList<RecoveryScope> RecoveryChoices(BackendUnconfirmedStore.Review review, ReconcileSnapshot? snapshot)
     {
         var module = review.Module;
+        if (module == BackendModules.Runtime && review.Command == BackendCommands.RuntimeFileUseClose) return [];
         if (module == BackendModules.Procman && review.Command == BackendCommands.ProcmanMemoryTrim) return [];
         if (snapshot is null || !snapshot.Complete || snapshot.Module != module) return [];
+        if (module == BackendModules.Runtime)
+            return snapshot.RecoveryScopes.Where(s => s.Available && s.Id == (IsRuntimeInstallation(review) ? "repair-review" : "guard")).ToArray();
         if (module == BackendModules.CpuFrame)
             return CanRestoreCpuRecord(review.Command) && snapshot.RecoveryScopes.Any(s => s.Available)
                 ? [new RecoveryScope { Id = "all", Description = "完整恢复 CPU/帧格状态并复核", Available = true }] : [];
         return snapshot.RecoveryScopes.Where(s => s.Available).ToArray();
     }
     /// <summary>只读核对：返回模块当前实际状态与可用恢复范围；模块未提供核对命令时返回 null。</summary>
-    public static async Task<ReconcileSnapshot?> ReconcileAsync(string moduleId, CancellationToken cancellationToken = default)
+    public static async Task<ReconcileSnapshot?> ReconcileAsync(string moduleId, CancellationToken cancellationToken = default, string? scope = null)
     {
         var command = BackendModules.ReconcileCommand(moduleId);
         if (command is null) return null;
         var caller = new BackendCaller(moduleId);
         try
         {
-            var result = await caller.InvokeReconcileAsync(command, new { }, null, cancellationToken);
+            var result = await caller.InvokeReconcileAsync(command, new RecoverArgs { Scope = scope ?? "" }, null, cancellationToken);
             return BackendResults.RequireData<ReconcileSnapshot>(result, "只读状态核对");
         }
         finally
@@ -62,6 +69,8 @@ internal static class BackendRecovery
             throw new InvalidOperationException("记录已变化或原后端、子进程尚未确认退出，请重新核对。");
         if (review.Module == BackendModules.CpuFrame && (scope != "all" || !CanRestoreCpuRecord(review.Command)))
             throw new InvalidOperationException("该 CPU/帧格记录需要对应的可信完整恢复路径。单个子范围、不可回滚操作或缺少命令的旧记录不能自动解除阻塞，请人工核对。");
+        if (review.Module == BackendModules.Runtime && scope != (IsRuntimeInstallation(review) ? "repair-review" : "guard"))
+            throw new InvalidOperationException("运行库安装记录必须核对事务结束；防护记录必须按备份恢复，不能混用解除路径。");
         var command = BackendModules.RecoverCommand(review.Module)
                       ?? throw new InvalidOperationException($"模块 {review.Module} 没有可信备份恢复路径。");
         var caller = new BackendCaller(review.Module);

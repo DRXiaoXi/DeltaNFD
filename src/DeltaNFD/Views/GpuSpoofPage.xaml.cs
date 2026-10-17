@@ -35,7 +35,7 @@ public sealed partial class GpuSpoofPage : Page
         if (AppSettingsStore.Read().TempSpoofRestorePending)
         {
             ViewModel.ShowResult(OperationResult.Fail(
-                "已有一项临时显卡伪装等待自动还原，请先完成还原后再开始新的显卡伪装。"));
+                "已有临时显卡伪装待还原。若型号已恢复，请点击“核对并完成临时还原收尾”；仍在伪装时先恢复原始型号。"));
             return;
         }
 
@@ -80,19 +80,12 @@ public sealed partial class GpuSpoofPage : Page
                 // 非帧格伪装：从帧格选项中移除显卡伪装
                 ViewModel.ClearFrameSpoof();
 
-                AppSettingsStore.Update(s =>
-                {
-                    s.TempSpoofRestorePending = true;
-                    s.TempSpoofRestorePath = registryPath;
-                });
-
-                var pendingRestore = AppSettingsStore.Read();
-                if (!pendingRestore.TempSpoofRestorePending ||
-                    !string.Equals(pendingRestore.TempSpoofRestorePath, registryPath, StringComparison.OrdinalIgnoreCase))
+                try { GpuSpoofRestoreState.Schedule(registryPath); }
+                catch (Exception ex)
                 {
                     var rollback = await ViewModel.RestoreByPathAsync(registryPath);
                     ViewModel.ShowResult(OperationResult.Fail(rollback.Success
-                        ? "无法保存重启后的自动还原登记，已取消重启并撤销伪装。"
+                        ? "无法保存重启后的自动还原登记，已取消重启并撤销伪装：" + ex.Message
                         : $"无法保存重启后的自动还原登记，未重启；伪装回滚失败：{rollback.Message}。请手动恢复型号。"));
                     return;
                 }
@@ -103,11 +96,6 @@ public sealed partial class GpuSpoofPage : Page
                     var rollback = await ViewModel.RestoreByPathAsync(registryPath);
                     if (rollback.Success)
                     {
-                        AppSettingsStore.Update(s =>
-                        {
-                            s.TempSpoofRestorePending = false;
-                            s.TempSpoofRestorePath = "";
-                        });
                         ViewModel.ShowResult(OperationResult.Fail(
                             $"登录自启动任务创建失败，已取消重启并撤销伪装。{autostart.Message}"));
                     }
@@ -205,7 +193,7 @@ public sealed partial class GpuSpoofPage : Page
         if (!ViewModel.SelectedAdapter.HasBackup)
         {
             ViewModel.ShowResult(OperationResult.Fail(
-                "该显卡没有本工具记录的备份（可能未用本工具伪装过），无法恢复。"));
+                "该显卡没有原始型号备份，无法重新恢复。若此前已还原，请点击“核对并完成临时还原收尾”。"));
             return;
         }
 
@@ -226,23 +214,17 @@ public sealed partial class GpuSpoofPage : Page
         }
 
         var registryPath = ViewModel.SelectedAdapter.RegistryPath;
+        var wasPending = AppSettingsStore.Read();
         var restore = await ViewModel.RestoreSelectedAsync();
         if (restore.Success)
         {
-            var settings = AppSettingsStore.Read();
-            if (settings.TempSpoofRestorePending &&
-                string.Equals(settings.TempSpoofRestorePath, registryPath, StringComparison.OrdinalIgnoreCase))
+            if (wasPending.TempSpoofRestorePending &&
+                string.Equals(wasPending.TempSpoofRestorePath, registryPath, StringComparison.OrdinalIgnoreCase))
             {
-                if (!ViewModel.Frame.FrameModeEnabled)
+                if (!ViewModel.Frame.FrameModeEnabled && !AppSettingsStore.Read().TempSpoofRestorePending)
                 {
                     await ViewModel.Frame.DisableLogonAutostartAsync();
                 }
-
-                AppSettingsStore.Update(s =>
-                {
-                    s.TempSpoofRestorePending = false;
-                    s.TempSpoofRestorePath = "";
-                });
             }
         }
 

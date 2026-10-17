@@ -1,0 +1,86 @@
+[
+  {
+    "Architecture": "x64",
+    "Role": "Minimum",
+    "Code": "{382F1166-A409-4C5B-9B1E-85ED538B8291}",
+    "Name": "Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.42.34433",
+    "Version": "14.42.34433",
+    "UpgradeCode": "{36F68A90-239C-34DF-B58C-64B30153CE35}",
+    "OriginalSha256": "1821577409C35B2B9505AC833E246376CC68A8262972100444010B57226F0940",
+    "Files": [
+      {
+        "Path": "x64/packages/vcRuntimeMinimum_amd64/vc_runtimeMinimum_x64.msi",
+        "Bytes": 212992,
+        "Sha256": "47CCEB26DD7B78F0D3D09FDDC419290907FE818979884B2192C834034180E83B"
+      },
+      {
+        "Path": "x64/packages/vcRuntimeMinimum_amd64/cab1.cab",
+        "Bytes": 992435,
+        "Sha256": "B384B812DC59C2081CEE080EA6BBA748E02ECF3C0800D8DCAF9607A20A4F3290"
+      }
+    ]
+  },
+  {
+    "Architecture": "x64",
+    "Role": "Additional",
+    "Code": "{E1902FC6-C423-4719-AB8A-AC7B2694B367}",
+    "Name": "Microsoft Visual C++ 2022 X64 Additional Runtime - 14.42.34433",
+    "Version": "14.42.34433",
+    "UpgradeCode": "{9B0BAA88-E15F-3A1F-ACC0-B206E9DDF71C}",
+    "OriginalSha256": "1821577409C35B2B9505AC833E246376CC68A8262972100444010B57226F0940",
+    "Files": [
+      {
+        "Path": "x64/packages/vcRuntimeAdditional_amd64/vc_runtimeAdditional_x64.msi",
+        "Bytes": 212992,
+        "Sha256": "CF584E5132EF3766A088F824BD038494713A7168CDDDD44E3F8C4AD581E2206E"
+      },
+      {
+        "Path": "x64/packages/vcRuntimeAdditional_amd64/cab1.cab",
+        "Bytes": 5701492,
+        "Sha256": "7D48E0905EBEA9B14A07CFF687705DFDC50D795CD4C32E5ED87A0E344884B430"
+      }
+    ]
+  },
+  {
+    "Architecture": "x86",
+    "Role": "Minimum",
+    "Code": "{C2BB95AA-90F3-4891-81C1-A7E565BB836C}",
+    "Name": "Microsoft Visual C++ 2022 X86 Minimum Runtime - 14.42.34433",
+    "Version": "14.42.34433",
+    "UpgradeCode": "{65E5BD06-6392-3027-8C26-853107D3CF1A}",
+    "OriginalSha256": "DD1A8BE03398367745A87A5E35BEBDAB00FDAD080CF42AF0C3F20802D08C25D4",
+    "Files": [
+      {
+        "Path": "x86/packages/vcRuntimeMinimum_x86/vc_runtimeMinimum_x86.msi",
+        "Bytes": 204800,
+        "Sha256": "16547C99E9DC8602603BEDA79BB9099D06B2F0E06273660AAFFD3193D82E8BF5"
+      },
+      {
+        "Path": "x86/packages/vcRuntimeMinimum_x86/cab1.cab",
+        "Bytes": 862791,
+        "Sha256": "B31B87A09F3AA2DF573050949E87A68EEDA01CB80DC974714D0603CEA2C0708B"
+      }
+    ]
+  },
+  {
+    "Architecture": "x86",
+    "Role": "Additional",
+    "Code": "{84E3E712-6343-484B-8B6C-9F145F019A70}",
+    "Name": "Microsoft Visual C++ 2022 X86 Additional Runtime - 14.42.34433",
+    "Version": "14.42.34433",
+    "UpgradeCode": "{C78B8E51-0C65-377E-85D1-282F689FE505}",
+    "OriginalSha256": "DD1A8BE03398367745A87A5E35BEBDAB00FDAD080CF42AF0C3F20802D08C25D4",
+    "Files": [
+      {
+        "Path": "x86/packages/vcRuntimeAdditional_x86/vc_runtimeAdditional_x86.msi",
+        "Bytes": 204800,
+        "Sha256": "A6447DE0D0D5B56B50988AE350432D68E9D83FBB566E2FCAA3F758A2B2574FEA"
+      },
+      {
+        "Path": "x86/packages/vcRuntimeAdditional_x86/cab1.cab",
+        "Bytes": 5184890,
+        "Sha256": "D87D9B997B91F9E375BF3CF994B67882CE21C0FBD4D0C4611DD6F593D4A8F3BE"
+      }
+    ]
+  }
+]

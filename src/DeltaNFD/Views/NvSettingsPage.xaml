@@ -59,6 +59,26 @@
                 </StackPanel>
             </Border>
 
+            <InfoBar IsOpen="{x:Bind ViewModel.ShaderCacheNonDefault, Mode=OneWay}"
+                     Severity="Error" IsClosable="False"
+                     Title="着色器缓存大小非默认：请改回驱动默认，避免三角洲抽帧"
+                     Message="{x:Bind ViewModel.ShaderCacheAdvice, Mode=OneWay}"
+                     AutomationProperties.LiveSetting="Polite">
+                <InfoBar.ActionButton>
+                    <Button Content="打开缓存修复与预热" Click="OpenShaderRecovery_Click" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+            <InfoBar IsOpen="{x:Bind ViewModel.ShaderCacheCheckFailed, Mode=OneWay}"
+                     Severity="Warning" IsClosable="False" Title="着色器缓存大小无法确认"
+                     Message="{x:Bind ViewModel.ShaderCacheAdvice, Mode=OneWay}">
+                <InfoBar.ActionButton>
+                    <Button Content="打开缓存处理页" Click="OpenShaderRecovery_Click" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+            <TextBlock Text="{x:Bind ViewModel.ShaderCacheAdvice, Mode=OneWay}"
+                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                       Visibility="{x:Bind ViewModel.ShowShaderCacheStatus, Mode=OneWay}" />
+
             <!-- 设置条目 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="6">

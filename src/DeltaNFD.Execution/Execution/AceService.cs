@@ -221,6 +221,20 @@ public sealed class AceService : IAceService
         return AceCleanupResults.ToOperationResult(wire);
     }
 
+    public async Task<OperationResult> CleanCoreFilesAsync(IProgress<string>? progress = null) =>
+        AceCleanupResults.ToOperationResult(await CleanCoreFilesPhasedAsync(progress, CancellationToken.None));
+
+    public async Task<BackendResult> CleanCoreFilesPhasedAsync(IProgress<string>? progress, CancellationToken token)
+    {
+        using var operation = _target.BeginOperation();
+        var guard = new AceCleanupGuard(() => _target.IsCustom, () => _environment.IsElevated, () =>
+        {
+            if (!TryGetBlockers(out var blockers, out var error)) throw new IOException(error);
+            return blockers;
+        });
+        return await Task.Run(() => new AceCoreFileCleanup(new RealAceCoreFileEnvironment(), guard).Run(progress, token));
+    }
+
     /// <summary>
     /// 分阶段清除 ACE。每个阶段开始前都重新复核「管理员 / 默认游戏模式 / 游戏与守卫状态」：
     /// 检测失败或状态未知一律拒绝；发现游戏/守卫启动立即停止后续步骤并报告已完成项。

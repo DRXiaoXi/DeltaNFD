@@ -116,11 +116,17 @@ public partial class NvSettingsViewModel : ObservableObject
     [ObservableProperty] private bool drsFilesLocked;
     [ObservableProperty] private string lockStatusText = "";
     [ObservableProperty] private bool lockBusy;
+    [ObservableProperty] private bool shaderCacheNonDefault;
+    [ObservableProperty] private bool shaderCacheCheckFailed;
+    [ObservableProperty] private string shaderCacheAdvice = "正在检测全局及三角洲着色器缓存大小…";
 
     public bool EnvironmentReady => IsNvidia && NvApiAvailable;
+    public bool ShowShaderCacheStatus => EnvironmentReady && !ShaderCacheNonDefault && !ShaderCacheCheckFailed;
 
-    partial void OnIsNvidiaChanged(bool value) => OnPropertyChanged(nameof(EnvironmentReady));
-    partial void OnNvApiAvailableChanged(bool value) => OnPropertyChanged(nameof(EnvironmentReady));
+    partial void OnIsNvidiaChanged(bool value) { OnPropertyChanged(nameof(EnvironmentReady)); OnPropertyChanged(nameof(ShowShaderCacheStatus)); }
+    partial void OnNvApiAvailableChanged(bool value) { OnPropertyChanged(nameof(EnvironmentReady)); OnPropertyChanged(nameof(ShowShaderCacheStatus)); }
+    partial void OnShaderCacheNonDefaultChanged(bool value) => OnPropertyChanged(nameof(ShowShaderCacheStatus));
+    partial void OnShaderCacheCheckFailedChanged(bool value) => OnPropertyChanged(nameof(ShowShaderCacheStatus));
 
     public int PendingCount => Rows.Count(r => r.PendingChange);
 
@@ -286,6 +292,7 @@ public partial class NvSettingsViewModel : ObservableObject
 
             StatusText = $"就绪 · 配置目标：{ServiceLocator.GameTarget.Current.DisplayName}（首次应用时自动创建独立配置）";
         }
+        catch (Exception ex) { StatusText = "驱动状态读取失败，请刷新重试：" + ex.Message; }
         finally
         {
             IsLoading = false;
@@ -294,10 +301,21 @@ public partial class NvSettingsViewModel : ObservableObject
 
     private async Task LoadEnvironmentAsync()
     {
-        var env = await _nv.GetEnvironmentAsync();
+        NvGpuEnvironmentInfo env;
+        try { env = await _nv.GetEnvironmentAsync(); }
+        catch
+        {
+            ShaderCacheNonDefault = false; ShaderCacheCheckFailed = true;
+            ShaderCacheAdvice = "着色器缓存大小读取失败，无法确认全局及三角洲是否为驱动默认。请点「刷新状态」重试。";
+            throw;
+        }
         IsNvidia = env.IsNvidia;
         NvApiAvailable = env.NvApiAvailable;
         DrsFilesLocked = env.DrsFilesLocked;
+        ShaderCacheNonDefault = env.ShaderCache?.HasNonDefault == true;
+        ShaderCacheCheckFailed = env.IsNvidia && env.ShaderCache?.Complete != true && !ShaderCacheNonDefault;
+        ShaderCacheAdvice = !env.IsNvidia ? "未检测到 NVIDIA 显卡，无需检查 N 卡着色器缓存大小。"
+            : env.ShaderCache?.Advice ?? "后端未返回着色器缓存大小，无法确认是否为默认；请更新后端并刷新状态。";
 
         GpuSummaryText = env.IsNvidia
             ? $"显卡：{env.GpuName} · NVAPI：{(env.NvApiAvailable ? "可用" : "不可用")}"

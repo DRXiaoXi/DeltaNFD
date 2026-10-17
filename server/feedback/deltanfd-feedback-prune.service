@@ -1,0 +1,15 @@
+[Unit]
+Description=Prune expired Delta NFD feedback
+
+[Service]
+Type=oneshot
+User=deltanfd-feedback
+Group=deltanfd-feedback
+WorkingDirectory=/opt/deltanfd-feedback
+Environment=FEEDBACK_DATA_DIR=/var/lib/deltanfd-feedback/reports
+ExecStart=/opt/deltanfd-feedback/venv/bin/python feedback_app.py --prune
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/deltanfd-feedback

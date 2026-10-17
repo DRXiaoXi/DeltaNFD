@@ -253,7 +253,7 @@ internal static class BackendHandoverChecks
     {
         var client = await BackendClient.StartAsync(BackendModules.Runtime, CancellationToken.None);
         var inFlight = Task.Run(() => client.InvokeAsync(
-            BackendCommands.RuntimeRepair, new { testDelayMs = 8000 }, null, CancellationToken.None));
+            BackendCommands.RuntimeGuardDisable, new { testDelayMs = 8000 }, null, CancellationToken.None));
         await Task.Delay(500);
 
         Check(!client.RequiresAttention, "在途请求尚未失败时不误报未知结果");

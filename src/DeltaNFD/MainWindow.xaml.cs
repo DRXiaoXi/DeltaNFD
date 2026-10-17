@@ -70,6 +70,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        RuntimeNavigationItem.Visibility = ReleaseFeatures.RuntimeUiEnabled ? Visibility.Visible : Visibility.Collapsed;
         Services.Backends.BackendAttention.Changed += OnBackendAttention;
         Closed += (_, _) => Services.Backends.BackendAttention.Changed -= OnBackendAttention;
         ServiceLocator.GameTarget.Changed += OnGameTargetChanged;
@@ -117,8 +118,9 @@ public sealed partial class MainWindow : Window
             CreateTrayIcon();
         }
 
-        // 默认选中主页并导航
-        NavView.SelectedItem = NavView.MenuItems[0];
+        // A failed update resumes visibly on Settings, without starting game/background automation.
+        if (App.PendingFileFallback is not null) NavigateByTag("settings");
+        else NavView.SelectedItem = NavView.MenuItems[0];
 
         // 背景图：启动应用一次，并监听设置页的实时变更
         ApplyBackgroundImage();
@@ -240,6 +242,13 @@ public sealed partial class MainWindow : Window
         }
 
         _startupInitializationStarted = true;
+        if (App.PendingFileFallback is { } fallback)
+        {
+            _announcementChecked = true;
+            if (ContentFrame.Content is SettingsPage settings)
+                await settings.Update.ResumeFullFallbackAsync(fallback.Session, fallback.Nonce);
+            return;
+        }
         Services.Backends.BackendAttention.RefreshPersisted();
 
         var retiredRecovery = await OfflineModeRetirement.RecoverAsync();
@@ -830,6 +839,11 @@ public sealed partial class MainWindow : Window
         {
             return;
         }
+        if (_factoryResetInProgress)
+        {
+            args.Cancel = true;
+            return;
+        }
 
         if (OfflineModeGuard.BlocksNormalAutomation)
         {
@@ -978,15 +992,17 @@ public sealed partial class MainWindow : Window
     /// <summary>快捷方式再次启动时，恢复托盘中的主窗口并将其激活。</summary>
     public void ActivateFromSecondLaunch() => RestoreFromTray();
 
-    private bool _deploymentInProgress;
-    internal async Task<DeploymentHandover> PrepareDeploymentAsync(bool uninstall)
+    private bool _deploymentInProgress, _factoryResetInProgress;
+    internal Task<DeploymentHandover> PrepareDeploymentAsync(bool uninstall) => PrepareDeploymentAsync(uninstall, null);
+
+    internal async Task<DeploymentHandover> PrepareDeploymentAsync(bool uninstall, string? purpose)
     {
-        if (_pluginExitInProgress || _deploymentInProgress) throw new InvalidOperationException("正在处理退出，请稍后重试安装/卸载。");
+        if (_pluginExitInProgress || _deploymentInProgress || _factoryResetInProgress) throw new InvalidOperationException("正在处理退出或配置重置，请稍后重试安装/卸载。");
         _deploymentInProgress = true;
         if (Content is UIElement root) root.IsHitTestVisible = false;
         try
         {
-            var result = await DeploymentHandover.PrepareAsync(uninstall);
+            var result = await DeploymentHandover.PrepareAsync(uninstall, purpose);
             if (result.Ready) return result;
             _deploymentInProgress = false;
             if (Content is UIElement content) content.IsHitTestVisible = true;
@@ -1000,6 +1016,12 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    internal void CancelDeploymentPreparation()
+    {
+        _deploymentInProgress = false;
+        if (Content is UIElement content) content.IsHitTestVisible = true;
+    }
+
     internal void ExitForDeployment()
     {
         App.ExitAlreadyPrepared = true;
@@ -1010,18 +1032,19 @@ public sealed partial class MainWindow : Window
         Application.Current.Exit();
     }
 
+    internal void SetFactoryResetInteraction(bool enabled)
+    {
+        _factoryResetInProgress = !enabled;
+        NavView.IsEnabled = enabled;
+        ContentFrame.IsEnabled = enabled;
+        if (Content is UIElement root) root.IsHitTestVisible = enabled;
+    }
+
     /// <summary>托盘菜单「退出」：先移除图标再退出应用（不留幽灵图标）。</summary>
     private bool _pluginExitInProgress;
     private async void ExitApplication()
     {
-        if (_pluginExitInProgress || _deploymentInProgress) return;
-        if (DotNetRepairService.IsBusy)
-        {
-            RestoreFromTray();
-            await new ContentDialog { XamlRoot = ContentFrame.XamlRoot, Title = ".NET 修复正在运行",
-                Content = "请先在设置中取消下载，或在微软安装器中完成/取消安装，再退出工具。", CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
-            return;
-        }
+        if (_pluginExitInProgress || _deploymentInProgress || _factoryResetInProgress) return;
         _pluginExitInProgress = true;
 
         IDisposable? pluginBlock = null;
@@ -1135,11 +1158,18 @@ public sealed partial class MainWindow : Window
     /// <summary>按导航 tag 跳转页面（主页等处的「去处理」快速跳转按钮用），并同步导航栏选中项。</summary>
     public void NavigateByTag(string tag)
     {
+        if (tag == "runtime" && !ReleaseFeatures.RuntimeUiEnabled) tag = "settings";
         var target = EnumerateNavItems().FirstOrDefault(i => i.Tag?.ToString() == tag);
         if (target is not null)
         {
             NavView.SelectedItem = target; // SelectionChanged 里完成实际导航
         }
+    }
+
+    public void NavigateToProcessBackground()
+    {
+        NavigateByTag("process");
+        if (ContentFrame.Content is ProcessPage page) page.ShowBackgroundSettings();
     }
 
     private IEnumerable<NavigationViewItem> EnumerateNavItems() =>
@@ -1152,6 +1182,8 @@ public sealed partial class MainWindow : Window
         {
             return;
         }
+        if (item.Tag?.ToString() == "runtime" && !ReleaseFeatures.RuntimeUiEnabled)
+        { NavigateByTag("settings"); return; }
 
         if (ServiceLocator.GameTarget.IsCustom && item.Tag?.ToString() is "shader" or "ace")
         {

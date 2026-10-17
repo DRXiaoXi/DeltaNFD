@@ -38,6 +38,15 @@ public sealed partial class AcePage : Page
         finally { _cleanupFlowBusy = false; ViewModel.RefreshCleanupReview(); }
     }
 
+    private async void CleanCoreFilesButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_cleanupFlowBusy || !ViewModel.CoreCleanEnabled) return;
+        _cleanupFlowBusy = true;
+        try { await CleanCoreAsync(coreOnly: true); }
+        catch (Exception ex) { await ShowFailureAsync(ex); }
+        finally { _cleanupFlowBusy = false; ViewModel.RefreshCleanupReview(); }
+    }
+
     private async void ReviewCleanupButton_Click(object sender, RoutedEventArgs e)
     {
         if (_cleanupFlowBusy || ViewModel.IsCleaning) return;
@@ -53,7 +62,7 @@ public sealed partial class AcePage : Page
         await ViewModel.LoadAsync();
     }
 
-    private async Task CleanCoreAsync()
+    private async Task CleanCoreAsync(bool coreOnly = false)
     {
         if (AceCleanupReadiness.RequiresReview)
         {
@@ -63,15 +72,19 @@ public sealed partial class AcePage : Page
         var confirm = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "一键清除 ACE？",
-            Content = "将结束 ACE 进程、接管并删除全部 ACE 服务（含自保护驱动）、清理注册表残留、"
+            Title = coreOnly ? "仅清理 ACE-CORE SYS 文件？" : "一键清除 ACE？",
+            Content = coreOnly
+                ? "仅删除 C:\\Program Files\\AntiCheatExpert 及其子目录中，文件名以 ACE-CORE 开头的 .sys 文件。\n\n"
+                    + "保留 ACE 服务、注册表、其他文件及游戏目录；不会结束进程或安排重启删除。\n"
+                    + "请先完全退出游戏和反作弊守卫。删除不可撤销，完成后请用启动器执行普通修复，再启动游戏。"
+                : "将结束 ACE 进程、接管并删除全部 ACE 服务（含自保护驱动）、清理注册表残留、"
                       + "删除安装目录与游戏目录内的 AntiCheatExpert 文件夹。\n\n"
                       + "· 请确认已完全退出游戏（含 sguard64 后台进程）\n"
                       + "· 被占用的文件会在重启电脑后自动删除\n"
                       + "· 下次启动游戏时 ACE 会自动重新安装",
-            PrimaryButtonText = "清除",
+            PrimaryButtonText = coreOnly ? "清理 SYS 文件" : "清除",
             CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Primary,
+            DefaultButton = coreOnly ? ContentDialogButton.Close : ContentDialogButton.Primary,
         };
 
         if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
@@ -79,13 +92,13 @@ public sealed partial class AcePage : Page
             return;
         }
 
-        var result = await ViewModel.CleanAsync();
+        var result = coreOnly ? await ViewModel.CleanCoreFilesAsync() : await ViewModel.CleanAsync();
         if (result is { Success: false })
         {
             var choice = await new ContentDialog
             {
                 XamlRoot = XamlRoot,
-                Title = result.IsPartial ? "ACE 清理部分完成" : "ACE 清理未完成",
+                Title = coreOnly ? "ACE-CORE SYS 清理未完成" : result.IsPartial ? "ACE 清理部分完成" : "ACE 清理未完成",
                 Content = result.Message + (result.RequiresReboot ? "\n请先按提示重启，再用游戏启动器执行普通修复。" : ""),
                 PrimaryButtonText = AceCleanupReadiness.RequiresReview ? "核对当前状态" : "",
                 CloseButtonText = "知道了",
@@ -99,12 +112,12 @@ public sealed partial class AcePage : Page
             await new ContentDialog
             {
                 XamlRoot = XamlRoot,
-                Title = "ACE 清理完成",
-                Content = result.Message + "\n\n"
+                Title = coreOnly ? "ACE-CORE SYS 清理结果" : "ACE 清理完成",
+                Content = result.Message + (coreOnly && result.IsSkipped ? "" : "\n\n"
                           + "下一步（重要）：\n"
                           + "① 打开 WeGame / 游戏启动器\n"
                           + "② 对三角洲行动执行「修复」——普通修复即可，不要使用深度修复\n"
-                          + "③ 修复会重新安装干净的 ACE 组件，之后正常启动游戏即可。",
+                          + "③ 修复会重新安装干净的 ACE 组件，之后正常启动游戏即可。"),
                 CloseButtonText = "知道了",
                 DefaultButton = ContentDialogButton.Primary,
             }.ShowWithBackendRecoveryAsync();

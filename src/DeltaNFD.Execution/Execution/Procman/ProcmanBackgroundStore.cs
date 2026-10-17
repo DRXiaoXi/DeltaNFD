@@ -7,9 +7,17 @@ internal sealed class ProcmanBackgroundStore(string path)
 {
     internal static ProcmanBackgroundConfig Validate(ProcmanBackgroundConfig config)
     {
-        if (config.SchemaVersion != 1 || config.MemoryPressurePercent is < 30 or > 95
+        if (config.SchemaVersion != 1 || config.MemoryPressurePercent is < 30 or > 95 || config.MemoryBatchLimit is < 1 or > 256
+            || config.MemoryCooldownSeconds is < 60 or > 86400
+            || config.MemoryMode is not (ProcmanMemoryModes.Normal or ProcmanMemoryModes.Aggressive or ProcmanMemoryModes.DeltaStable)
             || config.ExcludedExecutablePaths is null || config.ExcludedExecutablePaths.Count > 256)
-            throw new ArgumentException("后台管理配置无效：内存阈值需为 30–95%，排除项最多 256 个。");
+            throw new ArgumentException("后台管理配置无效：内存阈值需为 30–95%，单次回收进程数需为 1–256，回收间隔需为 60–86400 秒，排除项最多 256 个。");
+        var suppression = config.Suppression;
+        if (suppression is null || suppression.CpuBusyThreshold is < 10 or > 99 || suppression.CpuIdleThreshold is < 5 or > 99
+            || suppression.CpuBusyThreshold <= suppression.CpuIdleThreshold || suppression.CpuBusySeconds is < 1 or > 600
+            || suppression.CpuIdleSeconds is < 1 or > 600 || suppression.CooldownSeconds is < 0 or > 3600
+            || suppression.CandidateCpuFloorPercent is < 0 or > 100 || suppression.MaxAdjustPerRound is < 1 or > 4)
+            throw new ArgumentException("后台抑制参数无效；触发阈值需高于恢复阈值。");
         var paths = config.ExcludedExecutablePaths.Select(p =>
         {
             if (string.IsNullOrWhiteSpace(p) || !Path.IsPathFullyQualified(p) || p.Length > 32760
@@ -29,7 +37,15 @@ internal sealed class ProcmanBackgroundStore(string path)
             catch (DirectoryNotFoundException) { return new(); }
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
             if (stream.Length > 16 * 1024 * 1024) throw new InvalidDataException("配置过大。");
-            return Validate(JsonSerializer.Deserialize<ProcmanBackgroundConfig>(stream) ?? throw new InvalidDataException("配置为空。"));
+            using var document = JsonDocument.Parse(stream);
+            var config = Validate(document.RootElement.Deserialize<ProcmanBackgroundConfig>() ?? throw new InvalidDataException("配置为空。"));
+            // 仅迁移没有版本标记且整套数值恰好等于旧出厂值的配置，保留用户自定义参数。
+            if (document.RootElement.TryGetProperty("Suppression", out var saved)
+                && !saved.TryGetProperty("DefaultsVersion", out _)
+                && config.Suppression is { CpuBusyThreshold: 80, CpuBusySeconds: 6, CpuIdleThreshold: 60,
+                    CpuIdleSeconds: 8, CooldownSeconds: 10, CandidateCpuFloorPercent: 10, MaxAdjustPerRound: 2 })
+                config = config with { Suppression = new() };
+            return config;
         }
         catch (Exception ex) { throw new InvalidDataException("后台管理配置无法读取，已暂停自动回收；原文件保留。", ex); }
     }

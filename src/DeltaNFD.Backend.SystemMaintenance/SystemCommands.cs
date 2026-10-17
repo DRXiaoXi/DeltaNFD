@@ -53,6 +53,13 @@ internal static class SystemCommands
             [BackendCommands.SystemShaderStatus] = ShaderStatusAsync,
             [BackendCommands.SystemShaderDiagnose] = ShaderDiagnoseAsync,
             [BackendCommands.SystemShaderClear] = ShaderClearAsync,
+            [BackendCommands.SystemShaderRecoveryClean] = async c => {
+                var args = c.ArgsAs<ShaderRecoveryCleanArgs>();
+                var result = await ShaderRecoveryCleanup.RunAsync(args.GameCache, args.NvidiaCache, c.CancellationToken);
+                return new BackendResult(result.Success ? BackendResultStatuses.Ok : BackendResultStatuses.Failed,
+                    c.Command, result.Message, [], false,
+                    System.Text.Json.JsonSerializer.SerializeToElement(result, BackendJson.SerializerOptions));
+            },
 
             [BackendCommands.SystemPagefileStatus] = PagefileStatusAsync,
             [BackendCommands.SystemPagefileSet] = PagefileSetAsync,

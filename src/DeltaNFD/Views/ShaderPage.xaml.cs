@@ -22,6 +22,9 @@ public sealed partial class ShaderPage : Page
         await ViewModel.LoadAsync();
     }
 
+    private void OpenShaderRecovery_Click(object sender, RoutedEventArgs e)
+        => Frame.Navigate(typeof(ShaderRecoveryPage), "shader");
+
     private async void ClearButton_Click(object sender, RoutedEventArgs e)
     {
         var confirm = new ContentDialog

@@ -3,7 +3,7 @@ using DeltaNFD.Backends;
 namespace DeltaNFD.Services.Backends;
 
 /// <summary>
-/// 前端侧运行库防护服务：状态读取、IFEO/UE4 ACL 开关、VC++ 运行库扫描/重装/卸载全部经运行库后端 EXE 完成。
+/// 前端运行库代理：防护、14.x 兼容性检测和定向修复，旧 AIO 命令不恢复。
 /// </summary>
 internal sealed class BackendRuntimeGuardService : IRuntimeGuardService
 {
@@ -43,6 +43,36 @@ internal sealed class BackendRuntimeGuardService : IRuntimeGuardService
         return RequireData<RuntimeGuardStatus>(result, "读取运行库防护状态");
     }
 
+    public async Task<Vc14Scan> Scan14Async() => RequireData<Vc14Scan>(
+        await InvokeAsync(BackendCommands.Vc14Scan, new { }, null, CancellationToken.None), "14.x 检测");
+    public async Task<RuntimeFileUseScan> ScanFileUseAsync(CancellationToken token, RuntimeFileUseScope scope = RuntimeFileUseScope.Vc14) => RequireData<RuntimeFileUseScan>(
+        await InvokeAsync(BackendCommands.RuntimeFileUseScan, new RuntimeFileUseScanArgs { Scope = scope }, null, token), "运行库文件占用检测");
+    public async Task<RuntimeFileUseCloseResult> CloseFileUseAsync(RuntimeFileUseCloseArgs args, CancellationToken token) => RequireData<RuntimeFileUseCloseResult>(
+        await InvokeAsync(BackendCommands.RuntimeFileUseClose, args, null, token), "处理运行库文件占用");
+    public async Task<Vc14ReinstallPreview> Preview14RepairAsync(Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false) => RequireData<Vc14ReinstallPreview>(
+        await InvokeAsync(BackendCommands.Vc14Preview, new Vc14RepairArgs { Mode = mode, AllowTemporaryInstaller = allowTemporaryInstaller }, null, CancellationToken.None), "14.x 阶段预览");
+    public async Task<OperationResult> Repair14Async(string fingerprint, IProgress<string>? progress, CancellationToken token, Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false)
+        => Map(await InvokeAsync(BackendCommands.Vc14Repair, new Vc14RepairArgs { Fingerprint = fingerprint, Mode = mode, AllowTemporaryInstaller = allowTemporaryInstaller }, progress, token), "14.x 阶段修复");
+    public async Task<OperationResult> RestoreTemporaryInstallerAsync()
+    {
+        // Reconcile control is usable after an uncertain repair; native recovery still checks MSI/children.
+        var caller = new BackendCaller(BackendModules.Runtime);
+        try
+        {
+            var result = await caller.InvokeReconcileAsync(BackendCommands.RuntimeRecover, new RecoverArgs { Scope = "safe-installer" }, null, CancellationToken.None);
+            var outcome = RequireData<RecoverOutcome>(result, "恢复临时 Installer 设置");
+            return new OperationResult { Success = outcome.Success && outcome.Verified, Message = outcome.Message, OutcomeUnknown = !outcome.Verified };
+        }
+        finally { if (!await caller.ResetAsync()) throw new InvalidOperationException("恢复后端退出未确认，证据保留。"); }
+    }
+
+    public async Task<RuntimeHighFpsPreview> PreviewHighFpsAsync(bool strongMode) => RequireData<RuntimeHighFpsPreview>(
+        await InvokeAsync(BackendCommands.RuntimeHighFpsPreview, new RuntimeHighFpsArgs { StrongMode = strongMode }, null, CancellationToken.None), "全量修复预览");
+
+    public async Task<OperationResult> RepairHighFpsAsync(string fingerprint, bool strongMode, IProgress<string>? progress, CancellationToken token)
+        => Map(await InvokeAsync(BackendCommands.RuntimeHighFpsRepair,
+            new RuntimeHighFpsArgs { StrongMode = strongMode, Fingerprint = fingerprint }, progress, token), "全量修复");
+
     public async Task<OperationResult> EnableAsync()
     {
         var result = await InvokeAsync(BackendCommands.RuntimeGuardEnable, new { }, null, CancellationToken.None);
@@ -73,54 +103,6 @@ internal sealed class BackendRuntimeGuardService : IRuntimeGuardService
         var result = await InvokeAsync(BackendCommands.RuntimeUe4RepairAcl,
             new RuntimeUe4RepairArgs { ExpectedPath = expectedPath }, null, CancellationToken.None);
         return Map(result, "修复 UE4 前置包 ACL");
-    }
-
-    public async Task<VcRedistScanReport> ScanVcRedistsAsync()
-    {
-        var result = await InvokeAsync(BackendCommands.RuntimeRedistScan, new { }, null, CancellationToken.None);
-        return RequireData<VcRedistScanReport>(result, "扫描 VC++ 运行库");
-    }
-
-    public async Task<RuntimeRepairEnvironmentReport> CheckRepairEnvironmentAsync(CancellationToken cancellationToken = default)
-    {
-        var result = await InvokeAsync(BackendCommands.RuntimeRepairEnvironment, new { }, null, cancellationToken);
-        return RequireData<RuntimeRepairEnvironmentReport>(result, "修复前环境检查");
-    }
-
-    public async Task<OperationResult> RepairVcRedistAsync(IProgress<string>? progress = null,
-        RuntimeRepairMode mode = RuntimeRepairMode.FullReinstall, CancellationToken cancellationToken = default, bool strongRepairMode = false)
-    {
-        var result = await InvokeAsync(BackendCommands.RuntimeRepair, new RuntimeRepairArgs { Mode = mode, StrongRepairMode = strongRepairMode }, progress, cancellationToken);
-        return Map(result, "重装运行库");
-    }
-
-    public async Task<List<VcRedistEntry>> GetV14EntriesAsync()
-    {
-        var result = await InvokeAsync(BackendCommands.RuntimeRedistListV14, new { }, null, CancellationToken.None);
-        return RequireData<List<VcRedistEntry>>(result, "枚举 v14 运行库");
-    }
-
-    public async Task<OperationResult> RepairCompatibilityAsync(IProgress<string>? progress = null, CancellationToken cancellationToken = default, bool strongRepairMode = false)
-    {
-        var result = await InvokeAsync(BackendCommands.RuntimeCompatibilityRepair, new RuntimeCompatibilityRepairArgs { StrongRepairMode = strongRepairMode }, progress, cancellationToken);
-        return Map(result, "兼容性修复");
-    }
-
-    public async Task<OperationResult> UninstallV14Async(IProgress<string>? progress = null)
-    {
-        var result = await InvokeAsync(BackendCommands.RuntimeRedistUninstall, new { }, progress, CancellationToken.None);
-        return Map(result, "卸载 v14 运行库");
-    }
-
-    public async Task<RuntimeUninstallPreview> PreviewUninstallAllAsync()
-    {
-        var result = await InvokeAsync(BackendCommands.RuntimeRedistPreviewAll, new { }, null, CancellationToken.None);
-        return RequireData<RuntimeUninstallPreview>(result, "预览全部 C++ 卸载条目");
-    }
-    public async Task<OperationResult> UninstallAllAsync(string fingerprint, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
-    {
-        var result = await InvokeAsync(BackendCommands.RuntimeRedistUninstallAll, new RuntimeUninstallAllArgs { Fingerprint = fingerprint }, progress, cancellationToken);
-        return Map(result, "卸载全部 C++ 运行库");
     }
 
     private static T RequireData<T>(BackendResult result, string what) where T : notnull

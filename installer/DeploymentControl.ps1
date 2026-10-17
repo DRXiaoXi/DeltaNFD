@@ -9,7 +9,13 @@ $ErrorActionPreference = 'Stop'
 # Native image queries work even when the WMI service is broken. No termination by image name.
 function Initialize-ProcessQuery {
     if ('DeltaDeployment.Native' -as [type]) { return }
-    Add-Type -TypeDefinition @'
+    # Windows PowerShell 5 otherwise resolves System.dll from the current directory,
+    # which may contain the product's .NET 8 facade rather than .NET Framework.
+    $compilerOptions = @{}
+    if ($PSVersionTable.PSVersion.Major -le 5) {
+        $compilerOptions.ReferencedAssemblies = @([System.ComponentModel.Win32Exception].Assembly.Location)
+    }
+    Add-Type @compilerOptions -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -38,7 +44,7 @@ function Test-UnderRoot([string]$ImagePath, [string]$Root) {
 
 function Get-ProductProcesses([string]$Root) {
     $names = @('DeltaNFD', 'DeltaOptimizer', 'DeltaNFD.Backend.Ace', 'DeltaNFD.Backend.Runtime',
-        'DeltaNFD.Backend.Gpu', 'DeltaNFD.Backend.CpuFrame', 'DeltaNFD.Backend.SystemMaintenance', 'DeltaNFD.OfflineHelper')
+        'DeltaNFD.Backend.Gpu', 'DeltaNFD.Backend.CpuFrame', 'DeltaNFD.Backend.SystemMaintenance', 'DeltaNFD.Backend.Procman', 'DeltaNFD.OfflineHelper')
     foreach ($name in $names) {
         foreach ($process in [Diagnostics.Process]::GetProcessesByName($name)) {
             try {
