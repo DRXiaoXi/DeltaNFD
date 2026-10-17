@@ -46,7 +46,16 @@ public static partial class Vc14Reinstall
     internal static string StageFingerprint(IReadOnlyList<Vc14RemovalPlanItem> plan, Vc14RepairMode mode, Vc14Continuation? pending, Vc14Scan? scan = null,
         SafeInstallerPreparation? temporary = null)
         => Convert.ToHexString(SHA256.HashData(
-            JsonSerializer.SerializeToUtf8Bytes(new { Plan = Fingerprint(plan), Mode = mode, Pending = pending, Scan = scan, Temporary = temporary })));
+            JsonSerializer.SerializeToUtf8Bytes(new { Plan = Fingerprint(plan), Mode = mode, Pending = pending, Scan = ScanProjection(scan), Temporary = temporary })));
+
+    private static object? ScanProjection(Vc14Scan? scan) => scan is null ? null : new
+    {
+        Products = scan.Products.OrderBy(p => p.Code, StringComparer.OrdinalIgnoreCase).ToArray(),
+        Notices = scan.Notices.OrderBy(n => n.Name, StringComparer.Ordinal)
+            .ThenBy(n => n.Architecture, StringComparer.Ordinal)
+            .ThenBy(n => n.Version, StringComparer.Ordinal).ToArray(),
+        scan.Issues,
+    };
 }
 
 /// <summary>Read-only readiness. Does not start services, edit SafeBoot or change boot configuration.</summary>

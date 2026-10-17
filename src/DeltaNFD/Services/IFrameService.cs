@@ -70,6 +70,9 @@ public interface IFrameService : INotifyPropertyChanged
 
     /// <summary>系统定时器 0.5ms（帧格激活且游戏运行时）。</summary>
     bool ResponseBoostTimerEnabled { get; set; }
+    bool GamePowerThrottlingDisabled { get; set; }
+    string GamePowerStatusText { get; }
+    bool GamePowerHasError { get; }
 
     // ---- 帧格功能：前台加速响应（调度参数临时改写，退出帧格自动还原） ----
 

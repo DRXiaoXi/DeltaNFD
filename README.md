@@ -4,26 +4,26 @@ Windows 10/11 x64 游戏优化工具，使用 .NET 8 与 WinUI 3。原创代码�
 
 ## 下载与版本
 
-- 已发布公测版：[Beta0.92 / v0.9200](https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9200)。显示版本为 Beta0.92，数值版本使用 0.9200，以兼容旧客户端的整数版本排序。
-- [GitHub 完整安装包](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9200/DeltaNFD_Setup_0.9200_x64.exe) / [自建服务器完整安装包](https://deltaxiaoxi.xin/updates/packages/0.9200/DeltaNFD_Setup_0.9200_x64.exe)。大小 248937254 字节，SHA256：`c918aba22234c08aaa3347ea228b6513d95ced1e793e57bccf32f0bac50ec44e`。
-- 对应已发布安装包的源码：[v0.9200 标签](https://github.com/DRXiaoXi/DeltaNFD/tree/v0.9200) / [发布源码 ZIP](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9200/DeltaNFD_Source_0.9200.zip)。ZIP 的 `SOURCE_FILES_SHA256.json` 记录完整构建源码输入。
-- **main 为后续维护源码**，包含尚未重新打包的更新兼容修正；不能把 main 的构建当成已发布安装包。标签、原安装包和原源码 ZIP 保持不变。
+- 已发布公测版：[Beta0.921 / v0.9210](https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9210)。显示版本为 Beta0.921，数值版本使用 0.9210，以兼容旧客户端的整数版本排序。
+- [GitHub 完整安装包](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9210/DeltaNFD_Setup_0.9210_x64.exe) / [自建服务器完整安装包](https://deltaxiaoxi.xin/updates/packages/0.9210/DeltaNFD_Setup_0.9210_x64.exe)。大小 248944034 字节，SHA256：`4a97c82b444cd7f6f30c6a26c466085f0e7ad73b2df1673a4baec883875abddc`。
+- 对应安装包的源码：[v0.9210 标签](https://github.com/DRXiaoXi/DeltaNFD/tree/v0.9210) / [发布源码 ZIP](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9210/DeltaNFD_Source_0.9210.zip)。ZIP 的 `SOURCE_FILES_SHA256.json` 记录完整构建源码输入。
+- **main 与当前发布源码同步**；复现某次发布时使用对应标签或源码 ZIP，后续维护变化不会覆盖旧版本包。
 
 ### 旧版本检查更新提示“清单体积异常”
 
 Beta0.92 的文件更新对象使 GitHub Releases API 返回超过旧客户端的 262144 字符限制。这是客户端与发布布局的兼容问题。旧程序内置的限制不能由远端清单修改，请完全退出旧程序后，手动下载上方完整安装包覆盖安装。Beta0.92 安装包默认使用自建服务器与仅替换变更文件更新；已经保存的服务器选择会保留，必要时在设置中手动切换自建服务器。
 
-main 已将 GitHub 发布列表改为独立的有界读取：每次响应最多 8 MiB，累计分页最多 16 Mi 字符，普通清单继续保持小体积限制。此修改尚未发布为新安装包。
+GitHub 发布列表现使用独立的有界读取：每次响应最多 8 MiB，累计分页最多 16 Mi 字符，普通清单继续保持小体积限制。修正已包含在 Beta0.921 安装包。
 
 ## 当前功能范围
 
 - 系统优化、显卡名称伪装与恢复、NVIDIA 驱动配置、着色器缓存修复指引、ACE 检测及受控清理。
-- 帧格一键配置、CPU 实验室、进程管理和三角洲规则；核心常驻和游戏进程禁电源限制已移除。
+- 帧格一键配置、CPU 实验室、进程管理和三角洲规则；核心常驻已移除，游戏进程禁电源限制作为加速系统响应子项保留，默认关闭。
 - C++ 14.x 兼容提醒、单独修复和全量修复、运行库防护、失败诊断及手动处理指引。可以关闭运行库检测；颜色是项目兼容策略，不代表已证明损坏或掉帧。
 - 手动 BUG 反馈：玩家填写、预览并同意后才上传日志与描述；失败时显示原因。
 - 更新默认自建服务器、仅替换变更文件，可选择 GitHub、自动模式或完整安装包；文件更新失败且满足恢复条件时自动回退整包。设置、备份和日志保留。
 
-着色器卡顿检测的新实现仍在本地验证，不包含在本次公开 Beta0.92 或此维护提交中。
+旧着色器卡顿检测实现已撤下，后续将重新设计；着色器缓存维护功能保留。
 
 ## 获取源码与构建
 

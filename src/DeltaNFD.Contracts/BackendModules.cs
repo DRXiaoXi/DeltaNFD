@@ -162,6 +162,7 @@ public static class BackendCommands
     public const string SystemProcessesScan = "system.processes.scan";
     public const string SystemProcessesKill = "system.processes.kill";
     public const string SystemProcessesTrim = "system.processes.trim";
+
 }
 
 /// <summary>一个官方后端的静态规格：id、EXE 名、命令白名单、超时、退出语义。</summary>
@@ -371,6 +372,7 @@ public static class BackendModules
                     [BackendCommands.SystemProcessesKill] = FiveMinutes,
                     [BackendCommands.SystemProcessesTrim] = FiveMinutes,
                 }, FiveMinutes),
+
         };
 
     public static BackendModuleSpec Require(string moduleId) =>

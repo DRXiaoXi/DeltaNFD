@@ -54,6 +54,7 @@ internal static class FrameFeatureChecks
             settings = AppSettingsStore.Read(path);
             Assert(settings.FrameModeActive && settings.FrameResponseBoostEnabled && !settings.FrameResponseBoostTimerEnabled,
                 "旧配置的开启状态不能替代计时器的已保存关闭选择");
+            Assert(!settings.FrameGamePowerThrottlingDisabled, "退休 EcoQos 字段不自动启用新偏好");
             Assert(!settings.RuntimeDetectionEnabled && settings.DwmRestartOnGameStart,
                 "退休字段不应改变其他偏好");
             AppSettingsStore.Update(path, s => s.FramePowerLockEnabled = true);
@@ -67,7 +68,7 @@ internal static class FrameFeatureChecks
         }
         finally
         {
-            if (File.Exists(path)) File.Delete(path);
+            foreach (var file in Directory.GetFiles(dir)) File.Delete(file);
             Directory.Delete(dir);
         }
 
@@ -82,9 +83,9 @@ internal static class FrameFeatureChecks
             Assert(texts.Contains($"{{x:Bind {status}, Mode=OneWay}}"), "缺少独立状态：" + status);
         var toggles = doc.Descendants().Where(e => e.Name.LocalName == "ToggleSwitch")
             .Select(e => (string?)e.Attribute("IsOn")).ToArray();
-        Assert(!texts.Any(t => t is not null && (t.Contains("核心常驻") || t.Contains("禁电源限制"))),
+        Assert(!texts.Any(t => t is not null && t.Contains("核心常驻")),
             "帧格页面不再显示退休功能及其说明");
-        foreach (var option in new[] { "TimerSelected", "ResponsivenessSelected",
+        foreach (var option in new[] { "TimerSelected", "GamePowerSelected", "ResponsivenessSelected",
             "PrioritySelected", "NicSelected", "UsbSelected" })
             Assert(toggles.Contains($"{{x:Bind {option}, Mode=TwoWay}}"), "缺少父子有效状态绑定：" + option);
         Console.WriteLine("帧格独立状态检查通过：8 组父开关组合、子项关闭、配置/激活区分、DWM 单项持久化、偏好保留、旧配置退休字段清理、XAML 绑定。");

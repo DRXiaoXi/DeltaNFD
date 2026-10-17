@@ -24,6 +24,14 @@ internal static class UpdateChannelChecks
         Check(UpdateService.TryParseVersion("0.9200", out var beta92Numeric)
             && UpdateService.CompareVersions(beta92Numeric, new Version(0, 9199)) > 0,
             "Beta0.92内部数值0.9200必须高于旧Alpha0.9199");
+        var beta921Path = Path.Combine(root, "beta0921-defaults.json");
+        UpdateChannelInstallation.Apply(beta921Path, new("beta0921", "Beta0.921", ""));
+        Check(AppSettingsStore.Read(beta921Path) is { UpdateChannel: UpdateChannel.Public,
+            UpdateServer: UpdateServer.SelfHosted, UpdateMode: UpdateMode.ChangedFiles },
+            "Beta0.921新安装默认公测、自建服务器、替换文件");
+        Check(UpdateService.TryParseVersion("0.9210", out var beta921Numeric)
+            && UpdateService.CompareVersions(beta921Numeric, beta92Numeric) > 0,
+            "Beta0.921内部数值0.9210必须高于已发布0.9200");
         var config = UpdateService.LoadConfig(null);
         config.ManifestUrls = [GitHubReleaseSource.ReleasesUrl];
         var service = new UpdateService(config);

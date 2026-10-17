@@ -145,7 +145,6 @@ internal static class CpuFrameStatusChecks
 
             foreach (var retired in new[] {
                 new CpuFrameBoostArgs { CoreParking = true, Timer = true },
-                new CpuFrameBoostArgs { EcoQos = true, Timer = true },
                 new CpuFrameBoostArgs { CoreParking = true, EcoQos = true, Timer = true } })
             {
                 var refused = await client.InvokeAsync(BackendCommands.CpuFrameBoostApply, retired, null, CancellationToken.None);

@@ -177,7 +177,7 @@
                             <StackPanel Spacing="4" VerticalAlignment="Center">
                                 <TextBlock Text="加速系统响应模式（不改电源计划）" FontWeight="SemiBold" />
                                 <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                           Text="帧格激活且目标游戏运行时，可请求 0.5ms 系统定时器分辨率；游戏退出、关闭帧格或退出工具时释放请求。实际分辨率由 Windows 与其他程序的请求共同决定。" />
+                                           Text="帧格激活且目标游戏运行时，按下方选择请求 0.5ms 定时器或禁用游戏执行速度节能。游戏退出、关闭帧格或退出工具时还原。" />
                                 <TextBlock Text="{x:Bind ResponseStatusText, Mode=OneWay}"
                                            FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
                             </StackPanel>
@@ -208,6 +208,20 @@
                                                   IsEnabled="{x:Bind SubTogglesEditable, Mode=OneWay}"
                                                   OnContent="" OffContent="" MinWidth="0" Margin="0"
                                                   HorizontalAlignment="Right" />
+                                </Grid>
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                                        <TextBlock Text="游戏进程禁用电源限制" FontWeight="SemiBold" FontSize="13" />
+                                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" FontSize="11"
+                                                   Text="一键帧格激活后，关闭目标游戏进程的执行速度节能（EcoQoS）。关闭帧格或退出工具时恢复原值；进程管理的手动和规则设置优先。" />
+                                        <TextBlock Text="{x:Bind GamePowerStatusText, Mode=OneWay}" FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                                  AutomationProperties.Name="游戏进程禁用电源限制"
+                                                  IsOn="{x:Bind GamePowerSelected, Mode=TwoWay}"
+                                                  IsEnabled="{x:Bind SubTogglesEditable, Mode=OneWay}"
+                                                  OnContent="" OffContent="" MinWidth="0" HorizontalAlignment="Right" />
                                 </Grid>
                             </StackPanel>
                         </Border>

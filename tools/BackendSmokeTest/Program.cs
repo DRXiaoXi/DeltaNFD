@@ -188,6 +188,20 @@ if (args is ["--file-update-checks"])
     return;
 }
 
+if (args is ["--game-power-native-child-checks"])
+{
+    try { await GamePowerThrottlingChecks.NativeChildAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--game-power-checks"])
+{
+    try { GamePowerThrottlingChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args.Length == 3 && args[0] == "--file-update-layout-checks")
 {
     try

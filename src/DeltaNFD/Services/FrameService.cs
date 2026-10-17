@@ -53,6 +53,10 @@ public sealed class FrameService : IFrameService
     private bool _dualCcdEnabled = true;
     private bool _responseBoostEnabled;
     private bool _responseBoostTimer = true;
+    private bool _gamePowerThrottlingDisabled;
+    private string _gamePowerStatusText = "";
+    public string GamePowerStatusText => _gamePowerStatusText;
+    public bool GamePowerHasError { get; private set; }
     private bool _memoryCleanEnabled;
     private bool _foregroundBoostEnabled;
     private bool _foregroundResponsiveness = true;
@@ -133,6 +137,10 @@ public sealed class FrameService : IFrameService
     {
         void Apply()
         {
+            _gamePowerStatusText = snapshot.GamePowerStatus;
+            GamePowerHasError = snapshot.GamePowerHasError;
+            OnPropertyChanged(nameof(GamePowerHasError));
+            OnPropertyChanged(nameof(GamePowerStatusText));
             _memoryCleanStatusText = string.IsNullOrEmpty(snapshot.MemoryCleanStatus) ? _memoryCleanStatusText : snapshot.MemoryCleanStatus;
             if (snapshot.GameRunning != _isGameRunning)
             {
@@ -329,6 +337,19 @@ public sealed class FrameService : IFrameService
             SaveSettings();
             OnPropertyChanged();
             UpdateStatus();
+            _ = SyncBackendExecutionAsync();
+        }
+    }
+
+    public bool GamePowerThrottlingDisabled
+    {
+        get => _gamePowerThrottlingDisabled;
+        set
+        {
+            if (_gamePowerThrottlingDisabled == value) return;
+            _gamePowerThrottlingDisabled = value;
+            SaveSettings();
+            OnPropertyChanged();
             _ = SyncBackendExecutionAsync();
         }
     }
@@ -901,7 +922,8 @@ public sealed class FrameService : IFrameService
 
             var boost = settings.FrameResponseBoostEnabled;
             var boosted = await cpuFrame.ApplyBoostAsync(
-                boost && settings.FrameResponseBoostTimerEnabled);
+                boost && settings.FrameResponseBoostTimerEnabled,
+                boost && settings.FrameGamePowerThrottlingDisabled);
 
             var notes = new List<string>();
             notes.Add(background.Message);
@@ -1440,6 +1462,7 @@ public sealed class FrameService : IFrameService
         _dualCcdEnabled = s.DualCcdFrameEnabled;
         _responseBoostEnabled = s.FrameResponseBoostEnabled;
         _responseBoostTimer = s.FrameResponseBoostTimerEnabled;
+        _gamePowerThrottlingDisabled = s.FrameGamePowerThrottlingDisabled;
         _memoryCleanEnabled = false; // Ignore the obsolete persisted switch.
         _memoryCleanGameAutoEnabled = false;
         _memoryCleanThresholdPercent = Math.Clamp(s.FrameMemoryCleanThresholdPercent, 30, 95);
@@ -1473,6 +1496,7 @@ public sealed class FrameService : IFrameService
                 s.DualCcdFrameEnabled = _dualCcdEnabled;
                 s.FrameResponseBoostEnabled = _responseBoostEnabled;
                 s.FrameResponseBoostTimerEnabled = _responseBoostTimer;
+                s.FrameGamePowerThrottlingDisabled = _gamePowerThrottlingDisabled;
                 s.FrameMemoryCleanEnabled = false;
                 s.GpuSpoofApplyMode = _gpuSpoofApplyMode.ToString();
                 s.GpuSpoofRegistryPath = _gpuSpoofRegistryPath;
