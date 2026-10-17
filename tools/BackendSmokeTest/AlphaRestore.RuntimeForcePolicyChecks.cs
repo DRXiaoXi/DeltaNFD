@@ -62,7 +62,8 @@ internal static class RuntimeForcePolicyChecks
         foreach (var arch in new[] { "x86", "x64" })
         foreach (var role in new[] { "Minimum", "Additional" })
         {
-            var file = Path.Combine(Directory.GetCurrentDirectory(), "src/DeltaNFD/Assets/RuntimeHighFps/2013", arch, $"vc_runtime{role}_{arch}.msi");
+            var file = Path.Combine(Directory.GetCurrentDirectory(), "src/DeltaNFD/Assets/RuntimeCppOfficial/2013",
+                arch, "packages", $"vcRuntime{role}_{(arch == "x64" ? "amd64" : "x86")}", $"vc_runtime{role}_{arch}.msi");
             var package = RuntimeMsiMetadata.ReadPackage(file);
             var installed = new RuntimeMsiProduct(package.Product, 5, package.Name, package.Publisher, package.Version, package.Architecture);
             Cached(installed); Check(true, "real Microsoft MSI cache identity fields read-only: " + arch + role);

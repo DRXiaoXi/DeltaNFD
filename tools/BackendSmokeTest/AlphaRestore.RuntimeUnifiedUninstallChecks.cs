@@ -75,10 +75,15 @@ internal static class RuntimeUnifiedUninstallChecks
         Check(lowerRefused, "无法解释的旧版本关联拒绝，不直接卸载");
         count += await RuntimeVc2013VersionChecks.RunAsync(root);
         count += RuntimeForcePolicyChecks.Run(root);
-        var msi = Directory.GetFiles(Path.Combine(Directory.GetCurrentDirectory(), "src/DeltaNFD/Assets/RuntimeHighFps"), "*.msi", SearchOption.AllDirectories)
-            .Where(f => new DirectoryInfo(Path.GetDirectoryName(f)!).Name is "x86" or "x64");
+        var officialRoot = Path.Combine(Directory.GetCurrentDirectory(), "src/DeltaNFD/Assets/RuntimeCppOfficial");
+        var msi = Directory.GetFiles(officialRoot, "*.msi", SearchOption.AllDirectories);
+        Check(msi.Length > 0, "当前微软原包 MSI 资源存在，架构核对不能空跑");
         foreach (var file in msi)
-            Check(RuntimeMsiMetadata.ReadArchitecture(file) == new DirectoryInfo(Path.GetDirectoryName(file)!).Name, "真实资源 MSI 架构只读核对：" + file);
+        {
+            var architecture = Path.GetRelativePath(officialRoot, file).Split(Path.DirectorySeparatorChar)[1];
+            Check(architecture is "x86" or "x64" && RuntimeMsiMetadata.ReadArchitecture(file) == architecture,
+                "当前微软原包 MSI 架构只读核对：" + file);
+        }
         count += RuntimeBundleProviderChecks.Run();
         count += await RuntimeDependencyUninstallChecks.RunAsync(root);
         count += await RuntimeUninstallBatchChecks.RunAsync(root);

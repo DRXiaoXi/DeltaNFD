@@ -82,7 +82,14 @@ def prepare(root, cache, manifest_bytes):
                 raise ValueError(f"Cached object mismatch: {cached.name}")
         else:
             data = download(item["urls"], item["downloadSize"], item["downloadSha256"])
-            cached.write_bytes(data)
+            # Different paths can share an object. Never expose a partial cache file.
+            with tempfile.NamedTemporaryFile(dir=cache, delete=False, suffix=".tmp") as temporary:
+                temporary.write(data)
+                cache_temporary = Path(temporary.name)
+            try:
+                os.replace(cache_temporary, cached)
+            finally:
+                cache_temporary.unlink(missing_ok=True)
         with gzip.GzipFile(fileobj=io.BytesIO(data)) as decoder:
             decoded = decoder.read(item["sizeBytes"] + 1)
         if len(decoded) != item["sizeBytes"] or digest(decoded) != item["sha256"]:
