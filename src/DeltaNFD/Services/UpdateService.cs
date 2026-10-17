@@ -1000,7 +1000,9 @@ public sealed partial class UpdateService : IUpdateService
         config.AllowedHosts.RemoveAll(h => h is not null
             && h.Trim().Trim('.').Equals("gh-proxy.com", StringComparison.OrdinalIgnoreCase));
         if (config.ManifestUrls.Concat(config.InternalManifestUrls).Any(IsManagedSource))
-            config.AllowedHosts = config.AllowedHosts.Concat(DefaultAllowedHosts).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            config.AllowedHosts = config.AllowedHosts.Concat(DefaultAllowedHosts)
+                .Where(host => !UpdateUrlRewriter.IsLegacyProxyHost(host))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         config.ReleasePageUrl = UpdateUrlRewriter.RestoreOfficialUrl(config.ReleasePageUrl);
 
         if (config.AutoCheckThrottleHours <= 0)
@@ -1137,8 +1139,7 @@ public sealed partial class UpdateService : IUpdateService
             return false;
         }
 
-        if (uri.Host.TrimEnd('.').Equals("gh-proxy.com", StringComparison.OrdinalIgnoreCase)
-            || uri.Host.EndsWith(".gh-proxy.com", StringComparison.OrdinalIgnoreCase))
+        if (UpdateUrlRewriter.IsLegacyProxyHost(uri.Host))
         {
             reason = "已取消 GitHub 加速，请使用官方直连地址。";
             return false;

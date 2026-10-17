@@ -32,14 +32,22 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Cache verified binary build inputs
-        uses: actions/cache@v4
+      - name: Restore verified binary build inputs
+        id: source-assets-cache
+        uses: actions/cache/restore@v4
         with:
           path: _buildcheck/source-assets-cache
           key: source-assets-v1-e4d70645be7e0e67
 
       - name: Prepare fixed published build inputs (never execute installers)
         run: python tools/prepare-source-assets.py
+
+      - name: Save verified binary build inputs
+        if: steps.source-assets-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: _buildcheck/source-assets-cache
+          key: source-assets-v1-e4d70645be7e0e67
 
       - name: Bounded update HTTP response checks
         run: dotnet run --project tools/BackendSmokeTest -c Release -- --update-response-checks
@@ -215,7 +223,7 @@ jobs:
 
       # 弱网加速插件：包合同 + 生成的加速配置交给真实 UpdateService 校验 + 临时目录驱动真实 Apply/Restore
       # + 真实导入器接受真实包 + 只读 probe 端到端（不写真实 %APPDATA%，不联网断言、不启动游戏）
-      - name: Weak-network plugin checks
+      - name: Legacy weak-network config migration checks
         run: |
           dotnet build src/Plugin.WeakNetBoost/Plugin.WeakNetBoost.csproj -c Release -p:Platform=x64
           dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --plugin-weaknet-checks
