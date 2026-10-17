@@ -54,7 +54,17 @@ internal static class ModuleBoundaryChecks
     private static void CheckBackendBoundaries(string repo)
     {
         var backends = Directory.GetDirectories(Path.Combine(repo, "src"), "DeltaNFD.Backend.*");
-        Check(backends.Length == 6, $"存在六个后端项目（找到 {backends.Length} 个）");
+        // 项目目录数量应与 BackendModules.All 的实际注册数保持一致。
+        var expected = DeltaNFD.Backends.BackendModules.All.Count;
+        Check(backends.Length == expected,
+            $"后端项目数与注册模块数一致（找到 {backends.Length} 个，注册 {expected} 个）");
+        // 每个注册模块都必须有对应的 EXE 项目，避免只加注册不加工程或反之。
+        foreach (var spec in DeltaNFD.Backends.BackendModules.All.Values)
+        {
+            Check(backends.Any(d => string.Equals(Path.GetFileName(d), spec.ExecutableName.Replace(".exe", ""),
+                    StringComparison.OrdinalIgnoreCase)),
+                $"{spec.Id} 的 {spec.ExecutableName} 存在对应后端项目");
+        }
         foreach (var backend in backends.OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
         {
             var name = Path.GetFileName(backend);

@@ -42,6 +42,7 @@ internal static class DeploymentLayoutChecks
             (BackendModules.Runtime, "runtime"),
             (BackendModules.System, "system"),
             (BackendModules.CpuFrame, "cpuframe"),
+            (BackendModules.Procman, "procman"),
         };
         foreach (var (module, folder) in moduleFolders)
         {
@@ -55,10 +56,15 @@ internal static class DeploymentLayoutChecks
             Check(File.Exists(Path.Combine(directory, Path.GetFileNameWithoutExtension(spec.ExecutableName) + ".deps.json")), $"模块 {module} 自己的 deps 在位");
         }
 
-        var helperDirectory = commonRuntime ? backendsRoot : Path.Combine(layout, "OfflineHelper");
-        var helperExe = Path.Combine(helperDirectory, "DeltaNFD.OfflineHelper.exe");
-        Check(File.Exists(helperExe), "脱机助手 DeltaNFD.OfflineHelper.exe 在布局中");
-        CheckSelfContainedDirectory(helperDirectory, "脱机助手");
+        // 脱机模式已按产品决定移除（DeltaNFD.csproj：“Offline mode removed: no helper is built,
+        // copied or published.”）。布局中不再包含 DeltaNFD.OfflineHelper.exe，因此这里断言其“不存在”，
+        // 而不是沿用旧断言要求它存在——旧断言在移除后必然失败，且与当前真实布局不符。
+        var helperExe = Path.Combine(layout, "OfflineHelper", "DeltaNFD.OfflineHelper.exe");
+        Check(!File.Exists(helperExe), "已移除的脱机助手不在布局中（与当前产品范围一致）");
+        Check(!File.Exists(Path.Combine(backendsRoot, "DeltaNFD.Backend.Diagnostics.exe"))
+            && !Directory.Exists(Path.Combine(backendsRoot, "diagnostics")), "已撤下的卡顿诊断后端不在布局中");
+        Check(!Directory.EnumerateFiles(layout, "ShaderStutterBridge.dll", SearchOption.AllDirectories).Any(),
+            "已撤下的卡顿采集原生桥不在布局中");
 
         CheckAssets(repo, layout);
         CheckBackendPathsResolve(layout, moduleFolders);
@@ -68,7 +74,7 @@ internal static class DeploymentLayoutChecks
                 Check(Directory.GetFiles(backendsRoot, runtime, SearchOption.AllDirectories).Length == 1,
                     "五后端及助手共用唯一的 " + runtime);
 
-        Console.WriteLine($"Deployment layout checks passed ({_passed} assertions): frontend + 5 backends + offline helper present, " +
+        Console.WriteLine($"Deployment layout checks passed ({_passed} assertions): frontend + 6 backends present, offline helper absent as expected, " +
             (commonRuntime ? "backends and helper share one runtime; " : "legacy per-component runtime; ") + "assets copied and hash-verified, " +
             "WinUI pri/xbf present, backends run with DOTNET_ROOT/PATH cleared. Isolated publish dir only; no installer, no live install.");
     }

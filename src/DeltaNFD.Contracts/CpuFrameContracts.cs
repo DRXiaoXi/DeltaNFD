@@ -72,6 +72,10 @@ public sealed class CpuFrameStatusSnapshot
 
     /// <summary>系统定时器高分辨率是否实际已请求。</summary>
     public bool TimerActive { get; init; }
+    public int GamePowerAppliedCount { get; init; }
+    public int GamePowerRestorePending { get; init; }
+    public bool GamePowerHasError { get; init; }
+    public string GamePowerStatus { get; init; } = "";
 
     /// <summary>最近一次内存清理的实际状态文字。</summary>
     public string MemoryCleanStatus { get; init; } = "";
@@ -142,14 +146,14 @@ public sealed class CpuFrameTempArgs
     public bool LaptopExcluded { get; set; }
 }
 
-/// <summary>高分辨率计时器的期望状态；旧版字段仅用于明确拒绝已移除的功能。</summary>
+/// <summary>加速响应的期望状态；CoreParking 仅用于拒绝已退休功能。</summary>
 public sealed class CpuFrameBoostArgs
 {
     /// <summary>退休协议字段；true 时拒绝整个请求。</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public bool CoreParking { get; set; }
 
-    /// <summary>退休协议字段；true 时拒绝整个请求。</summary>
+    /// <summary>游戏进程禁用执行速度节能，仍受帧格与保存偏好约束。</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public bool EcoQos { get; set; }
 

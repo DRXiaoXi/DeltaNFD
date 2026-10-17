@@ -13,11 +13,50 @@ internal static class Vc14StagedChecks
             Vc14Reinstall.RunAsync(env, Vc14Reinstall.Preview(env, mode).Fingerprint, null, token, mode);
         try
         {
+            var diagnosticProbe = Fresh();
+            var firstScan = diagnosticProbe.Scan();
+            var laterScan = diagnosticProbe.Scan();
+            var diagnosticPlan = diagnosticProbe.Plan(firstScan);
+            Check(firstScan.MsiStateDiagnostics.Count > 0
+                && firstScan.MsiStateDiagnostics[0].CapturedUtc != laterScan.MsiStateDiagnostics[0].CapturedUtc,
+                "fixture carries changing diagnostic timestamps across otherwise identical scans");
+            foreach (var mode in Enum.GetValues<Vc14RepairMode>())
+                Check(Vc14Reinstall.StageFingerprint(diagnosticPlan, mode, null, firstScan)
+                    == Vc14Reinstall.StageFingerprint(diagnosticPlan, mode, null, laterScan),
+                    "diagnostic timestamps must not invalidate confirmation: " + mode);
+            var notices = firstScan.Products.Select(p => new Vc14Notice(p.Name, p.Version, p.Architecture,
+                Vc14Severity.Warning, "fixture decision")).ToArray();
+            var orderedScan = firstScan with { Notices = notices };
+            string Approval(Vc14Scan scan) => Vc14Reinstall.StageFingerprint(diagnosticPlan, Vc14RepairMode.Full, null, scan);
+            Check(Approval(orderedScan) == Approval(orderedScan with
+                { Products = Enumerable.Reverse(orderedScan.Products).ToArray(), Notices = Enumerable.Reverse(notices).ToArray() }),
+                "product and notice enumeration order must not invalidate confirmation");
+            Check(Approval(orderedScan) != Approval(orderedScan with
+                { Products = [orderedScan.Products[0] with { Version = "14.51.36247" }, .. orderedScan.Products.Skip(1)] }),
+                "actual product changes still invalidate confirmation");
+            Check(Approval(orderedScan) != Approval(orderedScan with
+                { Notices = [notices[0] with { Severity = Vc14Severity.Abnormal }, .. notices.Skip(1)] }),
+                "notice decisions remain part of confirmation");
+            Check(Approval(orderedScan) != Approval(orderedScan with { Issues = ["incomplete scan"] }),
+                "scan issues remain part of confirmation");
+            var pendingProof = new Vc14Continuation(Guid.NewGuid().ToString("D"), DateTimeOffset.UnixEpoch);
+            Check(Vc14Reinstall.StageFingerprint(diagnosticPlan, Vc14RepairMode.Full, pendingProof, firstScan)
+                != Vc14Reinstall.StageFingerprint(diagnosticPlan, Vc14RepairMode.Full,
+                    pendingProof with { UninstallVerified = true }, firstScan),
+                "continuation proof changes still invalidate confirmation");
+            Check(Vc14Reinstall.StageFingerprint(diagnosticPlan, Vc14RepairMode.UninstallOnly, null, firstScan,
+                    new(true, true, "before", "fixture"))
+                != Vc14Reinstall.StageFingerprint(diagnosticPlan, Vc14RepairMode.UninstallOnly, null, firstScan,
+                    new(true, true, "after", "fixture")),
+                "temporary Installer confirmation remains bound");
+            Check(Vc14Reinstall.StageFingerprint(diagnosticPlan, Vc14RepairMode.Full, null, firstScan)
+                != Vc14Reinstall.StageFingerprint([diagnosticPlan[0] with { Identity = "changed" }, .. diagnosticPlan.Skip(1)],
+                    Vc14RepairMode.Full, null, firstScan), "removal identity remains bound");
             var full = Fresh();
             var ordinaryFull = Fresh();
             var prepared = await DeltaNFD.Services.AlphaRestore.RuntimeBetaRepairEnvironment.PrepareV14Async(ordinaryFull,
                 Vc14Reinstall.Fingerprint(ordinaryFull.Plan(ordinaryFull.Scan())), null, default);
-            Check(prepared.Success && !ordinaryFull.IsSafeMode, "full repair permits actual controlled removal in normal mode");
+            Check(prepared.Success && !ordinaryFull.IsSafeMode, "full repair permits actual controlled removal in normal mode: " + prepared.Message);
             Check(ordinaryFull.Calls.SequenceEqual(new[] { "remove:x64", "remove:x86", "cleanup" })
                 && ordinaryFull.PendingInstall()?.UninstallVerified == true, "full repair reuses wrapper-first removal and durable verification before installing");
             var noOpRemoval = Fresh(); noOpRemoval.LeaveProducts = true;
@@ -205,7 +244,12 @@ internal static class Vc14StagedChecks
             "Microsoft Visual C++ 2022 " + f.Arch.ToUpperInvariant() + " " + f.Role + " Runtime - 14.40.33816", "14.40.33816", f.Arch, f.Role, f.Upgrade)).ToList();
         private Vc14ContinuationStore Store => new(root);
         public string DiagnosticsDirectory => root;
-        public Vc14Scan Scan() => new(Products.ToArray(), [], ScanIssues.ToArray());
+        private long _scanGeneration;
+        public Vc14Scan Scan() => new(Products.ToArray(), [], ScanIssues.ToArray())
+        {
+            MsiStateDiagnostics = Products.Select(p => new Vc14MsiStateDiagnostic(p.Code, 5, "INSTALLSTATE_DEFAULT",
+                "fixture installed", DateTimeOffset.UnixEpoch.AddTicks(++_scanGeneration), [], "diagnostic only", "diagnostic only")).ToArray(),
+        };
         public string? Blocker() => ServiceBlocked ? Vc14InstallerReadiness.Evaluate(IsSafeMode, true, false, false) : null;
         public void VerifyBaselines() { }
         public void VerifyInstalled() { Calls.Add("verify"); VerifyInstalled("x64"); VerifyInstalled("x86"); }

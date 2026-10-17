@@ -50,6 +50,9 @@ public sealed class AppSettings
     /// <summary>帧格和游戏运行期间系统定时器 0.5ms，默认开。</summary>
     public bool FrameResponseBoostTimerEnabled { get; set; } = true;
 
+    // 新偏好独立于已退休的 EcoQos 字段，避免升级时自动恢复旧开启选择。
+    public bool FrameGamePowerThrottlingDisabled { get; set; }
+
     // ---- 帧格：内存清理（实验性；清空待备内存列表） ----
     /// <summary>帧格功能：内存清理（standby list 清空），帧格激活时自动触发 + 手动执行；实验性功能默认关。</summary>
     public bool FrameMemoryCleanEnabled { get; set; }

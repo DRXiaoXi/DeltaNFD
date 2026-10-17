@@ -100,8 +100,16 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
     public string DwmStatusText => !FrameSrv.DwmRestartOnGameStart ? "未启用"
         : FrameSrv.IsGameRunning ? "已选择 · 目标正在运行" : "已启用 · 等待目标启动";
     public string ResponseStatusText => FrameFeatureState.Describe(FrameSrv.ResponseBoostEnabled,
-        FrameSrv.ResponseBoostTimerEnabled,
+        FrameSrv.ResponseBoostTimerEnabled || FrameSrv.GamePowerThrottlingDisabled,
         FrameSrv.FrameModeEnabled);
+    public string GamePowerStatusText => FrameSrv.GamePowerHasError ? FrameSrv.GamePowerStatusText : FrameSrv.FrameModeActive && FrameSrv.ResponseBoostEnabled && FrameSrv.GamePowerThrottlingDisabled
+        ? (string.IsNullOrWhiteSpace(FrameSrv.GamePowerStatusText) ? "正在等待后端核对" : FrameSrv.GamePowerStatusText)
+        : FrameFeatureState.Describe(FrameSrv.ResponseBoostEnabled, FrameSrv.GamePowerThrottlingDisabled, FrameSrv.FrameModeEnabled);
+    public bool GamePowerSelected
+    {
+        get => FrameFeatureState.IsSelected(FrameSrv.ResponseBoostEnabled, FrameSrv.GamePowerThrottlingDisabled);
+        set { if (SubTogglesEditable) FrameSrv.GamePowerThrottlingDisabled = value; }
+    }
     public string ForegroundStatusText => FrameFeatureState.Describe(FrameSrv.ForegroundBoostEnabled,
         FrameSrv.ForegroundResponsivenessEnabled || FrameSrv.ForegroundPriorityEnabled, FrameSrv.FrameModeEnabled);
     public string PowerSaveStatusText => FrameFeatureState.Describe(FrameSrv.PowerSaveLatencyEnabled,
@@ -143,7 +151,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
     private static readonly string[] FeaturePresentationProperties =
     {
         nameof(DwmStatusText), nameof(ResponseStatusText), nameof(ForegroundStatusText), nameof(PowerSaveStatusText),
-        nameof(TimerSelected),
+        nameof(TimerSelected), nameof(GamePowerSelected), nameof(GamePowerStatusText),
         nameof(ResponsivenessSelected), nameof(PrioritySelected), nameof(NicSelected), nameof(UsbSelected),
         nameof(PcieSelected),
         nameof(SubTogglesEditable), nameof(ForegroundSubTogglesEditable), nameof(PowerSaveSubTogglesEditable),
@@ -183,7 +191,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
 
         if (e.PropertyName is null or "" or nameof(IFrameService.FeaturesEditable) or nameof(IFrameService.FrameModeEnabled)
             or nameof(IFrameService.IsGameRunning) or nameof(IFrameService.DwmRestartOnGameStart)
-            or nameof(IFrameService.ResponseBoostEnabled) or nameof(IFrameService.ResponseBoostTimerEnabled)
+            or nameof(IFrameService.ResponseBoostEnabled) or nameof(IFrameService.ResponseBoostTimerEnabled) or nameof(IFrameService.GamePowerThrottlingDisabled) or nameof(IFrameService.GamePowerStatusText) or nameof(IFrameService.GamePowerHasError)
             or nameof(IFrameService.ForegroundBoostEnabled) or nameof(IFrameService.ForegroundResponsivenessEnabled)
             or nameof(IFrameService.ForegroundPriorityEnabled) or nameof(IFrameService.PowerSaveLatencyEnabled)
             or nameof(IFrameService.NicPowerSavingOffEnabled) or nameof(IFrameService.UsbSuspendOffEnabled)

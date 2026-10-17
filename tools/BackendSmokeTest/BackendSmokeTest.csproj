@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>BackendSmokeTest</RootNamespace>
     <!-- 与产品同版本：官方后端客户端（已链接进本测试）按 AppVersion 校验后端版本。 -->
-    <Version>0.9200</Version>
-    <InformationalVersion>Beta0.92</InformationalVersion>
+    <Version>0.9210</Version>
+    <InformationalVersion>Beta0.921</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -55,6 +55,7 @@
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\FrameTweaksService.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\FramePowerLifecycle.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\CpuFrameEngine.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\GamePowerThrottling.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\OfflineTaskOwnership.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginContract.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\Plugins\PluginPath.cs" />
@@ -106,6 +107,7 @@
     <!-- 官方后端客户端（前端侧，WinUI 无关）：合同测试直接驱动真实客户端与后端 EXE。 -->
     <Compile Include="..\..\src\DeltaNFD\Services\Backends\*.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\IUpdateService.cs" />
+    <!-- 着色器卡顿检测前端服务合同：Backends/*.cs 已通配包含其实现，接口需显式纳入。 -->
     <Compile Include="..\..\src\DeltaNFD\Services\UpdateService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\UpdateService.Files.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\UpdateService.Fallback.cs" />

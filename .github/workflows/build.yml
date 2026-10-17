@@ -101,6 +101,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Advanced startup consent regression" }
           dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-guard-recovery-scope-checks
           if ($LASTEXITCODE -ne 0) { throw "Protection recovery regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --game-power-checks
+          if ($LASTEXITCODE -ne 0) { throw "Game power throttling recovery regression" }
 
       - name: Beta0.9192 feature regression checks (isolated fixtures)
         run: |
