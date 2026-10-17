@@ -17,12 +17,12 @@ param(
     [string]$OutDir = "_buildcheck/t5/publish",
     [string]$Configuration = "Release",
     [string]$ArtifactsRoot = "_buildcheck/t5/publish-artifacts",
-    [switch]$SkipFrontendBuild
+    [switch]$SkipFrontendBuild,
+    [ValidateSet('true','false')][string]$RuntimeUiEnabled = 'true'
 )
 
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
-& (Join-Path $PSScriptRoot 'prepare-dotnet-repair.ps1')
 $frontendProject = Join-Path $repo "src/DeltaNFD/DeltaNFD.csproj"
 $out = [IO.Path]::GetFullPath($(if ([IO.Path]::IsPathRooted($OutDir)) { $OutDir } else { Join-Path $repo $OutDir }))
 if (Test-Path -LiteralPath $out) { throw "Output must be a new directory: $out" }
@@ -33,7 +33,7 @@ $frontendArtifacts = Join-Path $artifacts "frontend"
 Write-Host "[1/3] Build frontend (produces xbf/pri and backend build output)..."
 if (-not $SkipFrontendBuild) {
     dotnet build $frontendProject -c $Configuration -p:Platform=x64 -m:1 -nr:false `
-        -p:UseArtifactsOutput=true "-p:ArtifactsPath=$frontendArtifacts" -p:NuGetAudit=false
+        -p:UseArtifactsOutput=true "-p:ArtifactsPath=$frontendArtifacts" -p:NuGetAudit=false "-p:RuntimeUiEnabled=$RuntimeUiEnabled"
     if ($LASTEXITCODE -ne 0) { throw "frontend build failed (exit=$LASTEXITCODE)" }
 }
 
@@ -41,7 +41,7 @@ Write-Host "[2/3] Prepare isolated self-contained components (SDK per-project ar
 dotnet publish $frontendProject -c $Configuration -r win-x64 --self-contained true -p:Platform=x64 -m:1 -nr:false `
     -p:UseArtifactsOutput=true "-p:ArtifactsPath=$frontendArtifacts" `
     "-p:PublishComponentsArtifactsPath=$artifacts/components" `
-    -p:PublishSelfContainedComponents=true -p:NuGetAudit=false -o $componentLayout
+    -p:PublishSelfContainedComponents=true -p:NuGetAudit=false "-p:RuntimeUiEnabled=$RuntimeUiEnabled" -o $componentLayout
 if ($LASTEXITCODE -ne 0) { throw "publish failed (exit=$LASTEXITCODE)" }
 
 # WinUI3 unpackaged publish is known to drop .xbf and pri; copy them back from build output.
@@ -66,14 +66,15 @@ $required = @(
     "Backends/DeltaNFD.Backend.SystemMaintenance.exe",
     "Backends/DeltaNFD.Backend.CpuFrame.exe",
     "Backends/DeltaNFD.Backend.Procman.exe",
+    "Backends/DeltaNFD.FileUpdater.exe",
+    "Backends/DeltaNFD.UpdateCore.dll",
+    "Tools/DeploymentControl.ps1",
     "Assets/UpdateConfig.json",
-    "Assets/DotNetRepair/dotnet-runtime-8.0.31-win-x64.exe",
-    "Assets/DotNetRepair/RepairDotNet.cmd",
-    "Assets/DotNetRepair/RepairDotNet.ps1",
+    "Assets/Vc14Baseline14.42/vc_redist.x64.exe",
+    "Assets/Vc14Baseline14.42/vc_redist.x86.exe",
+    "Assets/RuntimeHighFps/Installer.cmd",
+    "Assets/RuntimeHighFps/payload_manifest_sha256.csv",
     "Assets/TweakDb/RegistryTweaks.json"
-    "Assets/VCRedistRepair/Installer.cmd"
-    "Assets/DirectXRepair/DXSETUP.exe"
-    "Assets/DirectXRepair/payload-manifest.json"
 )
 $missing = @()
 foreach ($relative in $required) {
@@ -81,9 +82,58 @@ foreach ($relative in $required) {
 }
 if ($missing.Count -gt 0) { throw ("publish layout missing: " + ($missing -join ", ")) }
 
+$highFpsRoot = [IO.Path]::GetFullPath((Join-Path $out 'Assets/RuntimeHighFps'))
+$highFpsPrefix = $highFpsRoot + [IO.Path]::DirectorySeparatorChar
+$highFpsRows = @(Import-Csv -LiteralPath (Join-Path $highFpsRoot 'payload_manifest_sha256.csv'))
+if ($highFpsRows.Count -ne 375) { throw 'Auxiliary payload manifest must contain 375 files' }
+foreach ($year in @('2005', '2008', '2010', '2012', '2013', '2022', '2026')) {
+    if (Test-Path -LiteralPath (Join-Path $highFpsRoot $year)) { throw 'Excluded AIO v14 payload found' }
+}
+foreach ($entry in $highFpsRows) {
+    $file = [IO.Path]::GetFullPath((Join-Path $highFpsRoot $entry.relative_path))
+    if (-not $file.StartsWith($highFpsPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'High-FPS payload path escaped its root' }
+    if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or (Get-Item -LiteralPath $file).Length -ne [long]$entry.size_bytes) {
+        throw ('High-FPS payload missing or incomplete: ' + $entry.relative_path)
+    }
+    if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $entry.sha256) { throw ('High-FPS payload hash mismatch: ' + $entry.relative_path) }
+}
+
+foreach ($retired in @('Assets/DotNetRepair', 'Assets/VCRedistRepair', 'Assets/DirectXRepair', 'Assets/VCRedist2015-2022-x64.exe', 'Assets/VCRedist2015-2022-x86.exe', 'Assets/VCRedistRepair.exe')) {
+    if (Test-Path -LiteralPath (Join-Path $out $retired)) { throw ('Retired repair payload found: ' + $retired) }
+}
+$officialCatalog = Get-Content -LiteralPath (Join-Path $repo 'src/DeltaNFD.Execution/Execution/AlphaRestore/RuntimeCppOfficial.catalog.json') -Raw | ConvertFrom-Json
+$fileRepairCatalog = Get-Content -LiteralPath (Join-Path $repo 'src/DeltaNFD.Execution/Execution/Vc14FileRepair.catalog.json') -Raw | ConvertFrom-Json
+$ownershipCatalog = @(Get-Content -LiteralPath (Join-Path $repo 'src/DeltaNFD.Execution/Execution/Vc14OwnershipOriginals.catalog.json') -Raw | ConvertFrom-Json)
+if ($ownershipCatalog.Count -ne 1) { throw 'Expected the pinned historical ownership original' }
+foreach ($entry in $ownershipCatalog) {
+    $path = Join-Path $out ('Assets/Vc14OwnershipOriginals/' + $entry.File)
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -ne $entry.Bytes -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $entry.Sha256) {
+        throw ('Historical ownership original missing/hash mismatch; run tools/prepare-vc14-ownership.ps1: ' + $entry.File)
+    }
+}
+if ($fileRepairCatalog.Count -ne 4) { throw 'Expected four pinned 14.42 MSI/CAB packages' }
+foreach ($package in $fileRepairCatalog) {
+    foreach ($source in $package.Files) {
+        $path = Join-Path $out ('Assets/Vc14FileRepair14.42/' + $source.Path)
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -ne $source.Bytes -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $source.Sha256) {
+            throw ('14.42 forced-file source hash mismatch: ' + $source.Path)
+        }
+    }
+}
+if ($officialCatalog.Count -ne 10) { throw 'Expected ten Microsoft C++ originals' }
+foreach ($officialPackage in $officialCatalog) {
+    foreach ($officialFile in $officialPackage.Files) {
+        $path = Join-Path $out ('Assets/RuntimeCppOfficial/' + $officialFile.Path)
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -ne $officialFile.Bytes -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $officialFile.Sha256) {
+            throw ('Microsoft original or original source hash mismatch: ' + $officialFile.Path)
+        }
+    }
+}
 Write-Host "Validate actual .NET runtime files and dependency manifests in the final shared layout..."
-dotnet run --project (Join-Path $repo 'tools/DotNetLayoutCheck/DotNetLayoutCheck.csproj') -c Release `
-    -p:Platform=x64 -p:NuGetAudit=false -p:UseArtifactsOutput=true "-p:ArtifactsPath=$artifacts/layout-check" -- $out
+dotnet build (Join-Path $repo 'tools/DotNetLayoutCheck/DotNetLayoutCheck.csproj') -c Release -m:1 -nr:false `
+    -p:Platform=x64 -p:UseSharedCompilation=false -p:NuGetAudit=false -p:UseArtifactsOutput=true "-p:ArtifactsPath=$artifacts/layout-check"
+if ($LASTEXITCODE -ne 0) { throw 'Build-only runtime layout checker failed to build.' }
+& (Join-Path $artifacts 'layout-check/bin/DotNetLayoutCheck/release/DotNetLayoutCheck.exe') $out
 if ($LASTEXITCODE -ne 0) { throw "Published .NET dependency check failed; installer generation is blocked." }
 
 Write-Host "Publish layout complete: $out"

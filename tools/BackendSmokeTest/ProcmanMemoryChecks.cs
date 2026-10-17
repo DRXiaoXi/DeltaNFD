@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using DeltaNFD.Backends;
 using DeltaNFD.Execution.Procman;
 using DeltaNFD.Services;
@@ -29,7 +29,10 @@ internal static class ProcmanMemoryChecks
             {
                 ClockForTests = () => now, SampleForTests = () => sample, ForegroundForTests = () => foreground,
                 BackgroundLoopDisabledForTests = true,
-                MemoryPressureWindowForTests = TimeSpan.Zero, MemoryObservationDelayForTests = TimeSpan.FromDays(1),
+                FrameModeActiveForTests = () => true,
+                FrameSuppressionSelectedForTests = () => true,
+                FrameMemorySelectedForTests = () => true,
+                MemoryPressureWindowForTests = TimeSpan.Zero,
                 ResponsivenessExcludedForTests = _ => blocked,
                 MemoryReadForTests = _ => size, MemorySampleDelayForTests = TimeSpan.Zero,
                 MemoryTrimForTests = (identity, guard) =>
@@ -66,7 +69,9 @@ internal static class ProcmanMemoryChecks
                 sample = new(null, [(ordinary, 0.1)]);
                 Check((await engine.PreviewMemoryAsync()).Candidates.Count == 1, "系统 CPU 读数缺失不会阻止身份和工作集可确认的回收候选");
                 sample = new(20, [(ordinary, 0.1)]); size = 10;
-                Check((await engine.PreviewMemoryAsync()).Candidates.Count == 0, "小工作集不反复整理");
+                Check((await engine.PreviewMemoryAsync()).Candidates.Count == 1, "小工作集也能进入候选，无256MiB门槛");
+                size = 0;
+                Check((await engine.PreviewMemoryAsync()).Candidates.Count == 1, "零工作集读数也允许请求，不按MB筛除");
                 size = null;
                 Check((await engine.PreviewMemoryAsync()).Candidates.Count == 0, "工作集无法读取时跳过");
                 size = 600L * 1024 * 1024; foreground = ordinary.Pid;
@@ -109,11 +114,86 @@ internal static class ProcmanMemoryChecks
             {
                 sample = new(20, Enumerable.Range(1, 8).Select(i => (ordinary with { Pid = ordinary.Pid + i }, 0.1)).ToArray());
                 var preview = await engine.PreviewMemoryAsync();
-                Check(preview.Candidates.Count == 3, "每批最多三个候选，避免全机频繁换页");
+                Check(preview.Candidates.Count == 5, "默认每批最多五个候选");
                 using var cancel = new CancellationTokenSource(); cancel.Cancel(); var before = writes.Count;
                 Check(engine.TrimMemory(Confirm(preview), cancel.Token).Items.Count == 0 && writes.Count == before, "开始前取消不会回收任何进程");
             }
+            using (var engine = Engine("configurable-batch"))
+            {
+                sample = new(20, Enumerable.Range(1, 8).Select(i => (ordinary with { Pid = ordinary.Pid + i }, 0.1)).ToArray());
+                Check(engine.BackgroundStatus().Config.MemoryBatchLimit == 5, "新配置默认单次回收五个进程");
+                var preview = await engine.PreviewMemoryAsync(); var before = writes.Count;
+                Check(engine.SaveBackgroundConfig(new() { MemoryBatchLimit = 2 }).Success, "允许用户降低回收数量");
+                Check(engine.TrimMemory(Confirm(preview)).Items.Count == 0 && writes.Count == before, "修改数量使旧预览失效，避免确认清单过期");
+                preview = await engine.PreviewMemoryAsync();
+                Check(preview.Candidates.Count == 2 && preview.Message.Contains("最多 2 个"), "手动预览采用自定义数量和正确说明");
+                Check(engine.TrimMemory(Confirm(preview)).Items.Count == 2 && writes.Count == before + 2, "手动执行遵守自定义两进程上限");
+                now = now.AddMinutes(11);
+                engine.SaveBackgroundConfig(new() { MemoryBatchLimit = 7 });
+                preview = await engine.PreviewMemoryAsync();
+                Check(preview.Candidates.Count == 7, "允许提升回收数量，不再被旧三进程常量限制");
+                Check(engine.TrimMemory(Confirm(preview)).Items.Count == 7, "手动确认可实际处理七个模拟候选");
+                now = now.AddMinutes(11);
+                engine.MemoryPressureForTests = () => 95;
+                engine.SaveBackgroundConfig(new() { MemoryBatchLimit = 4 }); before = writes.Count;
+                engine.AutomaticMemoryOnceForTests();
+                Check(writes.Count == before + 4, "自动回收也采用自定义四进程上限");
+                foreach (var invalid in new[] { 0, -1, 257, int.MaxValue })
+                {
+                    try { engine.SaveBackgroundConfig(new() { MemoryBatchLimit = invalid }); Check(false, "非法数量被接受"); }
+                    catch (ArgumentException) { Check(engine.BackgroundStatus().Config.MemoryBatchLimit == 4, "非法数量保留原配置：" + invalid); }
+                }
+                engine.SaveBackgroundConfig(new() { MemoryBatchLimit = 256 }); now = now.AddMinutes(11);
+                Check((await engine.PreviewMemoryAsync()).Candidates.Count == 8, "候选不足时不补充受保护进程凑数");
+            }
+            using (var reload = Engine("configurable-batch"))
+                Check(reload.BackgroundStatus().Config.MemoryBatchLimit == 256, "用户数量跨引擎重建持久保存");
+            File.WriteAllText(Path.Combine(root, "old-batch.json.background.json"), "{\"SchemaVersion\":1,\"MemoryPressurePercent\":89}");
+            using (var old = Engine("old-batch"))
+                Check(old.BackgroundStatus().Config is { MemoryBatchLimit: 5, MemoryPressurePercent: 89 }, "旧配置缺少新字段时使用五进程默认且保留其他设置");
             sample = new(95, [(ordinary, 90)]);
+            using (var engine = Engine("cooldown-manual"))
+            {
+                Check(engine.BackgroundStatus().Config.MemoryCooldownSeconds == 600, "默认清理间隔仍为十分钟");
+                engine.SaveBackgroundConfig(new() { MemoryCooldownSeconds = 60 });
+                Check(engine.BackgroundStatus().EffectiveMemoryCooldownSeconds == 60, "无紧急策略时允许一分钟间隔，不再被旧十分钟常量覆盖");
+                engine.TrimMemory(Confirm(await engine.PreviewMemoryAsync()));
+                now = now.AddSeconds(59);
+                Check((await engine.PreviewMemoryAsync()).Candidates.Count == 0, "同进程在自定义间隔结束前不重复回收");
+                now = now.AddSeconds(1);
+                Check((await engine.PreviewMemoryAsync()).Candidates.Count == 1, "同进程满一分钟后可重新预览");
+                engine.SaveBackgroundConfig(new() { MemoryCooldownSeconds = 3600 }); now = now.AddMinutes(10);
+                Check((await engine.PreviewMemoryAsync()).Candidates.Count == 0, "自定义一小时间隔可延长同进程冷却");
+                now = now.AddHours(1);
+                Check((await engine.PreviewMemoryAsync()).Candidates.Count == 1, "长间隔结束后允许重新评估");
+                foreach (var invalid in new[] { -1, 0, 59, 86401 })
+                {
+                    try { engine.SaveBackgroundConfig(new() { MemoryCooldownSeconds = invalid }); Check(false, "invalid cooldown accepted"); }
+                    catch (ArgumentException) { Check(engine.BackgroundStatus().Config.MemoryCooldownSeconds == 3600, "非法间隔保留原配置：" + invalid); }
+                }
+            }
+            using (var reload = Engine("cooldown-manual"))
+                Check(reload.BackgroundStatus().Config.MemoryCooldownSeconds == 3600, "清理间隔重启后仍持久保存");
+            using (var old = Engine("old-batch"))
+                Check(old.BackgroundStatus().Config.MemoryCooldownSeconds == 600, "旧配置缺少清理间隔字段时采用十分钟默认");
+            using (var engine = Engine("cooldown-automatic"))
+            {
+                engine.MemoryPressureForTests = () => 95;
+                engine.SaveBackgroundConfig(new() { MemoryCooldownSeconds = 60 }); var before = writes.Count;
+                engine.AutomaticMemoryOnceForTests();
+                now = now.AddSeconds(30); engine.AutomaticMemoryOnceForTests();
+                Check(writes.Count == before + 1, "自动批次自定义间隔内不重复");
+                now = now.AddSeconds(30); engine.AutomaticMemoryOnceForTests();
+                Check(writes.Count == before + 2, "自动批次满一分钟后可再次执行");
+                engine.SaveBackgroundConfig(new() { MemoryCooldownSeconds = 3600 }); now = now.AddMinutes(10);
+                engine.AutomaticMemoryOnceForTests();
+                Check(writes.Count == before + 2, "自动批次也采用一小时间隔");
+                now = now.AddMinutes(50); engine.AutomaticMemoryOnceForTests();
+                Check(writes.Count == before + 3, "长自动批次间隔结束后才执行");
+                engine.MemoryPolicyForTests = () => new([new EmergencyPolicy { MemoryCleanCooldownSeconds = 1200 }]);
+                engine.SaveBackgroundConfig(new() { MemoryCooldownSeconds = 60 });
+                Check(engine.BackgroundStatus().EffectiveMemoryCooldownSeconds == 1200, "紧急策略延长实际间隔并回显，不能被一分钟设置绕过");
+            }
             using (var engine = Engine("automatic"))
             {
                 uint? pressure = 95;
@@ -139,9 +219,11 @@ internal static class ProcmanMemoryChecks
                 Check(writes.Count == before + 1, "自动回收沿用前台保护"); foreground = 20202;
                 now = now.AddSeconds(31); engine.AutomaticMemoryOnceForTests();
                 Check(writes.Count == before + 2, "冷却结束后恢复自动回收");
+                engine.FrameModeActiveForTests = () => false;
                 engine.SaveBackgroundConfig(new() { AutomaticMemoryEnabled = false });
                 now = now.AddMinutes(11); engine.AutomaticMemoryOnceForTests();
                 Check(writes.Count == before + 2, "关闭自动模式后不再回收");
+                engine.FrameModeActiveForTests = () => true;
                 engine.SaveBackgroundConfig(new() { AutomaticMemoryEnabled = true });
                 await engine.RestoreAllAsync(); now = now.AddMinutes(11); engine.AutomaticMemoryOnceForTests();
                 Check(writes.Count == before + 2 && !engine.BackgroundStatus().AutomaticMemoryActive
@@ -248,16 +330,15 @@ internal static class ProcmanMemoryChecks
             using (var engine = Engine("rebound"))
             {
                 engine.MemoryPressureWindowForTests = TimeSpan.FromSeconds(30);
-                engine.MemoryObservationDelayForTests = TimeSpan.FromSeconds(30);
                 engine.MemoryPressureForTests = () => 95;
                 engine.SaveBackgroundConfig(new() { AutomaticMemoryEnabled = true }); engine.AutomaticMemoryOnceForTests();
                 now = now.AddSeconds(31); engine.AutomaticMemoryOnceForTests();
                 now = now.AddSeconds(31); engine.AutomaticMemoryOnceForTests();
-                Check(engine.BackgroundStatus().Feedback.Contains("快速回涨"), "观察到工作集快速回涨后提示延长冷却");
+                Check(engine.BackgroundStatus().Feedback.Contains("不因无明显效果或快速回涨额外延长"), "回涨不再追加长时间冷却");
                 now = now.AddMinutes(11);
-                Check((await engine.PreviewMemoryAsync()).Candidates.Count == 0, "回涨身份超过普通 10 分钟仍不重复回收");
+                Check((await engine.PreviewMemoryAsync()).Candidates.Count == 1, "回涨身份满用户十分钟间隔即可重新回收");
                 now = now.AddMinutes(20);
-                Check((await engine.PreviewMemoryAsync()).Candidates.Count == 1, "回涨延长冷却结束后允许重新评估");
+                Check((await engine.PreviewMemoryAsync()).Candidates.Count == 1, "不保留旧三十分钟回涨退避");
             }
             using (var engine = Engine("ineffective"))
             {
@@ -267,13 +348,12 @@ internal static class ProcmanMemoryChecks
                 { if (guard()) attempts++; return new(target.Pid, "fixture", "completed", "no change", size, size); };
                 engine.SaveBackgroundConfig(new() { AutomaticMemoryEnabled = true }); engine.AutomaticMemoryOnceForTests();
                 now = now.AddMinutes(11); engine.AutomaticMemoryOnceForTests();
-                Check(attempts == 1 && engine.BackgroundStatus().Feedback.Contains("20 分钟"), "无明显效果时延长整轮自动冷却");
+                Check(attempts == 2, "无明显效果时满用户间隔即可再次尝试，不追加二十分钟退避");
                 now = now.AddMinutes(10); engine.AutomaticMemoryOnceForTests();
-                Check(attempts == 2, "无效果退避结束后才再次尝试");
+                Check(attempts == 3, "无效果多轮仍只遵循用户设置的间隔");
             }
             using (var engine = Engine("late-observation"))
             {
-                engine.MemoryObservationDelayForTests = TimeSpan.FromSeconds(30);
                 engine.MemoryPressureForTests = () => 95;
                 engine.SaveBackgroundConfig(new() { AutomaticMemoryEnabled = true }); engine.AutomaticMemoryOnceForTests();
                 now = now.AddMinutes(5); engine.AutomaticMemoryOnceForTests();

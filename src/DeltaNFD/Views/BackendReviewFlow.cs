@@ -36,11 +36,15 @@ internal static class BackendReviewFlow
                 var snapshotNote = "";
                 if (review.CanRestore)
                 {
-                    try { snapshot = await BackendRecovery.ReconcileAsync(review.Module); }
+                    try { snapshot = await BackendRecovery.ReconcileAsync(review.Module,
+                        scope: BackendRecovery.IsRuntimeInstallation(review) ? "repair-review" : null); }
                     catch (Exception ex) { snapshotNote = "\n\n只读状态核对未能完成：" + ex.Message; }
                 }
                 var scopes = BackendRecovery.RecoveryChoices(review, snapshot);
                 var canKeep = BackendRecovery.CanKeepCurrentState(review, snapshot);
+                var installationReview = BackendRecovery.IsRuntimeInstallation(review);
+                if (installationReview)
+                    snapshotNote += "\n\n安装/系统修复不能按防护备份回滚。请等待安装进程结束，再点击“核对结束并恢复可用”；会扫描当前组件并归档旧事务，不会重新执行修复。";
                 if (review.Module == DeltaNFD.Backends.BackendModules.Ace && !canKeep)
                     snapshotNote += "\n\nACE 当前状态尚未完成核对，不能归档旧清理记录；请退出游戏并等待旧清理进程结束后重试。";
                 if (snapshot is { Complete: true } && scopes.Count == 0)
@@ -66,7 +70,7 @@ internal static class BackendReviewFlow
                 {
                     XamlRoot = root, Title = "核对操作：" + BackendLifecycle.ModuleDisplayName(review.Module),
                     Content = new ScrollViewer { MaxHeight = 420, Content = content },
-                    PrimaryButtonText = scopes.Count > 0 ? "按可信备份恢复" : !canKeep ? "刷新并重新核对" : "",
+                    PrimaryButtonText = scopes.Count > 0 ? installationReview ? "核对结束并恢复可用" : "按可信备份恢复" : !canKeep ? "刷新并重新核对" : "",
                     SecondaryButtonText = canKeep ? "确认保留当前状态" : "",
                     CloseButtonText = "暂不处理", DefaultButton = scopes.Count > 0 ? ContentDialogButton.Primary : ContentDialogButton.Close,
                 };
@@ -83,7 +87,8 @@ internal static class BackendReviewFlow
                         var outcome = await BackendRecovery.RestoreAsync(review, scope.Id);
                         var recoveryChoice = await new ContentDialog
                         {
-                            XamlRoot = root, Title = outcome.Verified ? "恢复已复核通过" : "恢复未通过复核",
+                            XamlRoot = root, Title = installationReview ? outcome.Verified ? "安装事务已核对，可重新修复" : "安装事务尚未完成核对"
+                                : outcome.Verified ? "恢复已复核通过" : "恢复未通过复核",
                             Content = outcome.Message + (outcome.Verified ? "\n原始证据已归档；原值备份未删除。" : "\n阻塞与原始证据均已保留，可稍后重试。"),
                             PrimaryButtonText = outcome.Verified ? "" : "重新核对",
                             CloseButtonText = "知道了",

@@ -147,11 +147,23 @@ public partial class LabViewModel : ObservableObject
 
     public bool CanRefresh => !IsLoading;
 
-    public bool DualCcdApplyEnabled => !IsApplying;
+    public bool DualCcdApplyEnabled => !IsApplying && !IsLoading && DualCcdVisible;
 
     public bool DualCcdRevertEnabled => !IsApplying;
 
-    partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(CanRefresh));
+    partial void OnIsLoadingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanRefresh));
+        OnPropertyChanged(nameof(DualCcdApplyEnabled));
+    }
+
+    partial void OnDualCcdVisibleChanged(bool value) => OnPropertyChanged(nameof(DualCcdApplyEnabled));
+
+    partial void OnIsApplyingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(DualCcdApplyEnabled));
+        OnPropertyChanged(nameof(DualCcdRevertEnabled));
+    }
 
     partial void OnSingleCcdBusyChanged(bool value)
     {
@@ -201,7 +213,9 @@ public partial class LabViewModel : ObservableObject
     {
         var scenario = SelectedScenarioIndex;
         var isAmd = CcdVisible;           // 硬件检测：AMD
-        var isDualCcd = DualCcdVisible;   // 硬件检测：AMD 多 CCD
+        // 型号设计与可执行掩码分开：已知双 CCD 型号不因系统分组未确认而显示“不一致”。
+        var isDualCcd = _topology?.IsAmd == true &&
+            (_topology.ModelCcdCount == 2 || _topology.CcdCount == 2);
         var isIntel = string.Equals(_topology?.Vendor, "Intel", StringComparison.OrdinalIgnoreCase); // 硬件检测：Intel
 
         if (scenario == 0)

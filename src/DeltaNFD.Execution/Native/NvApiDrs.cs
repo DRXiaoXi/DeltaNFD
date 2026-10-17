@@ -94,6 +94,9 @@ public static class NvApiDrs
     private const uint IdDrsFindApplicationByName = 0xEEE566B2;
     private const uint IdDrsFindProfileByName = 0x7E4A9A0B;
     private const uint IdDrsGetProfileInfo = 0x61CD6FD6;
+    private const uint IdDrsGetBaseProfile = 0xDA8466A0;
+    private const uint IdDrsGetCurrentGlobalProfile = 0x617BFF9F;
+    private const uint IdDrsRestoreProfileDefaultSetting = 0x53F0381E;
     private const uint IdDrsSetProfileInfo = 0x16ABD3A9;
     private const uint IdDrsCreateProfile = 0xCC176068;
     private const uint IdDrsCreateApplication = 0x4347A9DE;
@@ -132,6 +135,9 @@ public static class NvApiDrs
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int CreateSessionFn(ref IntPtr session);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate int GetGlobalProfileFn(IntPtr session, ref IntPtr profile);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int FindAppFn(IntPtr session, [MarshalAs(UnmanagedType.LPWStr)] string appName, ref IntPtr profile, ref NvDrsApplication application);
@@ -180,12 +186,15 @@ public static class NvApiDrs
     private static FindAppFn? _findApp;
     private static FindProfileFn? _findProfile;
     private static GetProfileInfoFn? _getProfileInfo;
+    private static GetGlobalProfileFn? _getBaseProfile;
+    private static GetGlobalProfileFn? _getCurrentGlobalProfile;
     private static SetProfileInfoFn? _setProfileInfo;
     private static CreateProfileFn? _createProfile;
     private static CreateAppFn? _createApp;
     private static SetSettingFn? _setSetting;
     private static GetSettingFn? _getSetting;
     private static DeleteSettingFn? _deleteSetting;
+    private static DeleteSettingFn? _restoreDefaultSetting;
     private static EnumIdsFn? _enumIds;
     private static NameFromIdFn? _nameFromId;
 
@@ -245,12 +254,15 @@ public static class NvApiDrs
             _findApp = Resolve<FindAppFn>(IdDrsFindApplicationByName, 0);
             _findProfile = Resolve<FindProfileFn>(IdDrsFindProfileByName, 0);
             _getProfileInfo = Resolve<GetProfileInfoFn>(IdDrsGetProfileInfo, 0);
+            _getBaseProfile = Resolve<GetGlobalProfileFn>(IdDrsGetBaseProfile, 0);
+            _getCurrentGlobalProfile = Resolve<GetGlobalProfileFn>(IdDrsGetCurrentGlobalProfile, 0);
             _setProfileInfo = Resolve<SetProfileInfoFn>(IdDrsSetProfileInfo, 0);
             _createProfile = Resolve<CreateProfileFn>(IdDrsCreateProfile, 0);
             _createApp = Resolve<CreateAppFn>(IdDrsCreateApplication, 0);
             _setSetting = Resolve<SetSettingFn>(IdDrsSetSetting, IdDrsSetSettingOld);
             _getSetting = Resolve<GetSettingFn>(IdDrsGetSetting, IdDrsGetSettingOld);
             _deleteSetting = Resolve<DeleteSettingFn>(IdDrsDeleteProfileSetting, IdDrsDeleteProfileSettingOld);
+            _restoreDefaultSetting = Resolve<DeleteSettingFn>(IdDrsRestoreProfileDefaultSetting, 0);
             _enumIds = Resolve<EnumIdsFn>(IdDrsEnumAvailableSettingIds, IdDrsEnumAvailableSettingIdsOld);
             _nameFromId = Resolve<NameFromIdFn>(IdDrsGetSettingNameFromId, IdDrsGetSettingNameFromIdOld);
 
@@ -284,6 +296,171 @@ public static class NvApiDrs
     };
 
     // ---------------- 高层操作（每个操作一个完整会话） ----------------
+
+    // NVIDIA NvApiDriverSettings.h: PS_SHADERDISKCACHE_MAX_SIZE_ID. Never create/save/rename profiles here.
+    internal const uint ShaderDiskCacheSizeId = 0x00AC8497;
+    public static DeltaNFD.Services.NvShaderCacheReport ReadShaderCacheSizes()
+    {
+        var scopes = new List<DeltaNFD.Services.NvShaderCacheScope>();
+        lock (Gate)
+        {
+            if (!EnsureSession(out var session, out var error))
+                return new() { Scopes = [new("全局与三角洲", "unknown", null, error)] };
+            try
+            {
+                IntPtr ReadGlobal(GetGlobalProfileFn? reader, string scope)
+                {
+                    var handle = IntPtr.Zero;
+                    int status;
+                    try { status = reader is null ? StatusError : reader(session, ref handle); }
+                    catch (Exception ex) { scopes.Add(new(scope, "unknown", null, ex.Message)); return IntPtr.Zero; }
+                    if (status != StatusOk || handle == IntPtr.Zero)
+                        scopes.Add(new(scope, "unknown", null, "读取配置失败：" + DescribeStatus(status)));
+                    return status == StatusOk ? handle : IntPtr.Zero;
+                }
+                void ReadScope(IntPtr profile, string scope)
+                {
+                    if (profile == IntPtr.Zero) return;
+                    try
+                    {
+                        var setting = NewSetting(ShaderDiskCacheSizeId); var reserved = 0u;
+                        var status = _getSetting!(session, profile, ShaderDiskCacheSizeId, ref setting, ref reserved);
+                        scopes.Add(ClassifyShaderCache(scope, status, setting));
+                    }
+                    catch (Exception ex) { scopes.Add(new(scope, "unknown", null, ex.Message)); }
+                }
+                var global = ReadGlobal(_getCurrentGlobalProfile, "全局设置");
+                ReadScope(global, "全局设置");
+                var baseline = ReadGlobal(_getBaseProfile, "全局基础设置");
+                if (baseline != global) ReadScope(baseline, "全局基础设置");
+                var app = NewApplication(DeltaNFD.Services.DeltaForceLocator.GameProcessName + ".exe");
+                var game = IntPtr.Zero;
+                int found;
+                try { found = _findApp!(session, app.appName, ref game, ref app); }
+                catch (Exception ex)
+                {
+                    scopes.Add(new("三角洲程序设置", "unknown", null, ex.Message));
+                    return new() { Scopes = scopes };
+                }
+                if (found is StatusExecutableNotFound or StatusProfileNotFound)
+                    scopes.Add(new("三角洲程序设置", "inherited", null, "没有专用配置，沿用全局设置。"));
+                else if (found != StatusOk || game == IntPtr.Zero)
+                    scopes.Add(new("三角洲程序设置", "unknown", null, "读取配置失败：" + DescribeStatus(found)));
+                else ReadScope(game, "三角洲程序设置");
+            }
+            finally { _destroySession!(session); }
+        }
+        return new() { Scopes = scopes };
+    }
+
+    internal static DeltaNFD.Services.NvShaderCacheScope ClassifyShaderCache(string scope, int status, NvDrsSetting setting)
+    {
+        if (status != StatusOk)
+            return new(scope, "unknown", null, status == StatusSettingNotFound
+                ? "当前驱动未提供该设置，无法确认。" : "读取失败：" + DescribeStatus(status));
+        if (setting.settingType != NvDrsSetting.TypeDword || setting.currentValue is not { Length: >= 4 }
+            || setting.settingLocation is < 0 or > 3 || setting.isCurrentPredefined > 1 || setting.isPredefinedValid > 1)
+            return new(scope, "unknown", null, "驱动返回的设置类型、来源或值格式无法确认。");
+        var value = BitConverter.ToUInt32(setting.currentValue, 0);
+        var label = value == uint.MaxValue ? "无限制" : value == 0 ? "禁用"
+            : value >= 1024 ? $"{value / 1024d:0.###} GB" : $"{value} MB";
+        // Compare against this driver's predefined value, never a fixed GB baseline that changes across releases.
+        var matchesDefault = setting.isPredefinedValid == 1 && setting.predefinedValue is { Length: >= 4 }
+            && value == BitConverter.ToUInt32(setting.predefinedValue, 0);
+        var custom = setting.isCurrentPredefined == 0 && setting.settingLocation != 3 && !matchesDefault;
+        var inherited = setting.settingLocation is 1 or 2;
+        return new(scope, custom ? "custom" : inherited ? "inherited" : "default", value,
+            (custom ? "非默认" : "驱动默认") + (inherited ? "（继承全局/基础设置）" : "") + $"，当前值 {label}（0x{value:X8}）。");
+    }
+
+    public static (bool Success, string Message) SetShaderCacheSize(string scope, uint? value,
+        Action<object> persistBefore, Func<bool> canWrite)
+    {
+        if (!DeltaNFD.Services.NvShaderCacheChoices.IsValid(scope, value)) return (false, "缓存范围或大小不合法。");
+        lock (Gate)
+        {
+            if (!EnsureSession(out var session, out var error)) return (false, error);
+            try
+            {
+                if (value is null && _restoreDefaultSetting is null) return (false, "当前驱动不支持按单项恢复默认。");
+                var profiles = new List<IntPtr>();
+                if (scope == "global")
+                {
+                    foreach (var reader in new[] { _getCurrentGlobalProfile, _getBaseProfile })
+                    {
+                        var profile = IntPtr.Zero;
+                        if (reader is null || reader(session, ref profile) != StatusOk || profile == IntPtr.Zero)
+                            return (false, "全局配置无法完整核对，未保存任何修改。");
+                        if (!profiles.Contains(profile)) profiles.Add(profile);
+                    }
+                }
+                else
+                {
+                    var app = NewApplication(DeltaNFD.Services.DeltaForceLocator.GameProcessName + ".exe");
+                    var profile = IntPtr.Zero;
+                    var found = _findApp!(session, app.appName, ref profile, ref app);
+                    if (found is StatusExecutableNotFound or StatusProfileNotFound)
+                    {
+                        if (value is null) return (true, "三角洲没有专用覆盖，已沿用全局；请同时确认全局为默认。");
+                        // Create only a dedicated profile for this EXE; do not reuse an unrelated profile by display name.
+                        var name = "Delta NFD Shader Cache - " + Guid.NewGuid().ToString("N");
+                        var info = new NvDrsProfile { version = (uint)(Marshal.SizeOf<NvDrsProfile>() | (1 << 16)), profileName = name };
+                        if (_createProfile!(session, ref info, ref profile) != StatusOk || profile == IntPtr.Zero
+                            || _createApp!(session, profile, ref app) != StatusOk) return (false, "无法建立三角洲专用配置，未保存修改。");
+                    }
+                    else if (found != StatusOk || profile == IntPtr.Zero) return (false, "三角洲配置无法读取，未保存修改。");
+                    foreach (var reader in new[] { _getCurrentGlobalProfile, _getBaseProfile })
+                    {
+                        var global = IntPtr.Zero;
+                        if (reader is null || reader(session, ref global) != StatusOk || global == IntPtr.Zero || global == profile)
+                            return (false, "无法确认三角洲使用独立程序配置，拒绝以单游戏操作修改全局。");
+                    }
+                    profiles.Add(profile);
+                }
+                var before = new List<object>();
+                foreach (var profile in profiles)
+                {
+                    var setting = NewSetting(ShaderDiskCacheSizeId); var reserved = 0u;
+                    var status = _getSetting!(session, profile, ShaderDiskCacheSizeId, ref setting, ref reserved);
+                    if (status != StatusOk && status != StatusSettingNotFound) return (false, "原值读取失败，未保存修改：" + DescribeStatus(status));
+                    if (status == StatusOk && ClassifyShaderCache(scope, status, setting).State == "unknown")
+                        return (false, "原值类型或来源无法确认，未保存修改。");
+                    before.Add(new { scope, SettingId = ShaderDiskCacheSizeId, Status = status, setting.settingLocation,
+                        setting.isCurrentPredefined, setting.isPredefinedValid,
+                        Value = status == StatusOk ? BitConverter.ToUInt32(setting.currentValue, 0) : (uint?)null,
+                        Predefined = status == StatusOk && setting.isPredefinedValid == 1 ? BitConverter.ToUInt32(setting.predefinedValue, 0) : (uint?)null });
+                }
+                return CommitShaderCacheWrites(profiles, value,
+                    () => persistBefore(new { Scope = scope, RequestedValue = value, Before = before }), canWrite, (profile, size) =>
+                {
+                    if (size is null) return _restoreDefaultSetting!(session, profile, ShaderDiskCacheSizeId);
+                    var setting = NewSetting(ShaderDiskCacheSizeId);
+                    BitConverter.GetBytes(size.Value).CopyTo(setting.currentValue, 0);
+                    return _setSetting!(session, profile, ref setting, 0, 0);
+                }, () => _saveSettings!(session));
+            }
+            finally { _destroySession!(session); }
+        }
+    }
+
+    internal static (bool Success, string Message) CommitShaderCacheWrites(IReadOnlyList<IntPtr> profiles, uint? value,
+        Action persistBefore, Func<bool> canWrite, Func<IntPtr, uint?, int> set, Func<int> save)
+    {
+        persistBefore();
+        foreach (var profile in profiles)
+        {
+            if (!canWrite()) return (false, "游戏启动或写入条件变化，未保存修改。");
+            var status = set(profile, value);
+            if (status != StatusOk && !(value is null && status == StatusSettingNotFound))
+                return (false, "缓存大小设置未完成，未保存当前会话：" + DescribeStatus(status));
+        }
+        if (!canWrite()) return (false, "保存前条件变化，未保存修改。");
+        int saved;
+        try { saved = save(); }
+        catch (Exception ex) { return (false, "驱动保存未成功，请重新检测实际状态：" + ex.Message); }
+        return saved == StatusOk ? (true, "缓存大小已保存；将重新读取驱动核对结果。")
+            : (false, "驱动保存未成功，请重新检测实际状态：" + DescribeStatus(saved));
+    }
 
     /// <summary>读取指定程序配置里一组设置的当前值。
     /// 返回：settingId → (是否有本配置覆盖值, 覆盖值)。读取失败返回 null。</summary>

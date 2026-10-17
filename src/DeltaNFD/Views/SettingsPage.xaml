@@ -209,6 +209,35 @@
                 </StackPanel>
             </Border>
 
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="问题反馈" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="填写问题所在模块和复现步骤，可附带最近应用日志。无需登录，预览并确认后才发送至作者服务器。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button x:Name="BugFeedbackButton" Content="反馈 BUG" Click="SendBugFeedback_Click" />
+                        <Button x:Name="RetryFeedbackButton" Content="重试上次反馈" Click="RetryBugFeedback_Click" Visibility="Collapsed" />
+                        <Button x:Name="CancelFeedbackButton" Content="取消发送" Click="CancelBugFeedback_Click" Visibility="Collapsed" />
+                        <ProgressRing x:Name="FeedbackProgressRing" Width="22" Height="22" IsActive="False" />
+                    </StackPanel>
+                    <TextBlock x:Name="FeedbackStatusText" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite" />
+                    <InfoBar x:Name="FeedbackResultBar" IsOpen="False" IsClosable="True"
+                             AutomationProperties.LiveSetting="Assertive" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="恢复出厂设置" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="用于清理新旧配置冲突：备份当前配置，停止并恢复工具的临时修改，将外观、游戏目录、自动功能、进程规则和后台参数重置为默认值。完成后关闭并重新打开工具。"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <TextBlock Text="系统优化的原值备份、日志和插件文件保留；已应用的系统优化不会在此重置，仍可在对应页面按备份还原。未完成的操作必须先核对，不能靠清空记录跳过恢复。"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <Button x:Name="FactoryResetButton" Content="一键恢复出厂设置" Click="FactoryReset_Click" HorizontalAlignment="Left" />
+                    <TextBlock x:Name="FactoryResetStatusText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                               IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite" />
+                </StackPanel>
+            </Border>
+
             <!-- Recovery only: shown solely for existing records from retired versions. -->
             <Border x:Name="LegacyRecoveryCard" Style="{StaticResource CardBorderStyle}" Visibility="Collapsed">
                 <StackPanel Spacing="10">
@@ -253,44 +282,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- .NET 环境修复 -->
-            <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Spacing="10">
-                    <TextBlock Text=".NET 环境检测与修复" Style="{StaticResource SectionTitleStyle}" />
-
-                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                               Text="仅检查本工具主程序、官方后端和助手所需的 .NET 8 x64。正式包自带运行时；不要求 SDK、ASP.NET 或 WPF/WinForms 桌面运行时。" />
-
-                    <Grid ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Text=".NET 环境状态" FontWeight="SemiBold" />
-                            <TextBlock Text="{x:Bind DotNet.Status, Mode=OneWay}"
-                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
-                        </StackPanel>
-                        <Button Grid.Column="1" Content="重新检测" Command="{x:Bind DotNet.RefreshCommand}"
-                                IsEnabled="{x:Bind DotNet.CanAct, Mode=OneWay}" VerticalAlignment="Center" />
-                    </Grid>
-
-                    <ProgressBar IsIndeterminate="{x:Bind DotNet.IsBusy, Mode=OneWay}" />
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <Button Content="安装 / 修复所需 .NET" Click="RepairDotNetButton_Click"
-                                IsEnabled="{x:Bind DotNet.CanAct, Mode=OneWay}" Style="{StaticResource AccentButtonStyle}" />
-                        <Button Content="取消下载" Command="{x:Bind DotNet.CancelDownloadCommand}"
-                                IsEnabled="{x:Bind DotNet.IsBusy, Mode=OneWay}" />
-                    </StackPanel>
-                    <Expander Header="检测详情" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                        <TextBlock Text="{x:Bind DotNet.Details, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-                    </Expander>
-
-                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Opacity="0.7"
-                               Text="优先使用随工具携带的 .NET 8 x64 离线修复包，核验后打开官方安装器；缺少离线包时才联网下载。无法启动工具时可从开始菜单打开“.NET 环境修复”。工具自带文件缺损需重新安装工具；取消下载不会终止已启动的安装器。" />
-                </StackPanel>
-            </Border>
-
             <!-- 三角帧本体设置 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
@@ -324,7 +315,27 @@
                     <TextBlock Text="软件更新" Style="{StaticResource SectionTitleStyle}" />
 
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                               Text="从发布页面检查新版本：只提醒，下载与安装都需要你确认；安装包会先校验 SHA256 才允许执行。安装前本工具会退出，装完自动重新打开新版本，设置、备份与日志都会保留。" />
+                               Text="默认从自建服务器下载并替换变化文件，失败时自动回退全量更新；也可直接选择全量更新。更新前会安全退出主程序和后端，设置、备份与日志都会保留。" />
+                    <TextBlock Text="Alpha0.9193 为更新测试版，未开放运行库；更新至 Alpha0.9194 后获得完整功能。"
+                               Visibility="{x:Bind LimitedUpdateTestVisibility}" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}" />
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="更新方式" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind Update.UpdateModeDescription, Mode=OneWay}"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" SelectedIndex="{x:Bind Update.UpdateModeIndex, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind Update.ModeEnabled, Mode=OneWay}"
+                                  AutomationProperties.Name="更新方式" VerticalAlignment="Center" MinWidth="210">
+                            <ComboBoxItem Content="仅替换变更文件（默认）" />
+                            <ComboBoxItem Content="全量更新" />
+                        </ComboBox>
+                    </Grid>
 
                     <Grid ColumnSpacing="16">
                         <Grid.ColumnDefinitions>
@@ -365,13 +376,17 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Text="GitHub 加速" FontWeight="SemiBold" />
-                            <TextBlock Text="开启后先探测 GitHub 连通性，不通时自动切换加速镜像；关闭则始终直连官方源。"
+                            <TextBlock Text="更新服务器" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind Update.UpdateServerDescription, Mode=OneWay}"
                                        Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                         </StackPanel>
-                        <ToggleSwitch Grid.Column="1" IsOn="{x:Bind Update.GitHubAccelerate, Mode=TwoWay}"
-                                      OnContent="" OffContent="" MinWidth="0" Margin="0"
-                                      HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        <ComboBox Grid.Column="1" SelectedIndex="{x:Bind Update.UpdateServerIndex, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind Update.ServerEnabled, Mode=OneWay}"
+                                  AutomationProperties.Name="更新服务器" VerticalAlignment="Center" MinWidth="210">
+                            <ComboBoxItem Content="自动（GitHub 优先）" />
+                            <ComboBoxItem Content="仅 GitHub" />
+                            <ComboBoxItem Content="仅自建服务器" />
+                        </ComboBox>
                     </Grid>
 
                     <Grid ColumnSpacing="16">
@@ -444,7 +459,7 @@
                         <Button Content="检查更新" Click="CheckUpdateButton_Click"
                                 IsEnabled="{x:Bind Update.CheckEnabled, Mode=OneWay}" />
                         <Button Content="更新源配置" Click="OpenUpdateSourceConfig_Click"
-                                ToolTipService.ToolTip="添加国内镜像：编辑这里生成的 update-source.json（升级不会覆盖）" />
+                                ToolTipService.ToolTip="查看更新来源配置：update-source.json（升级不会覆盖）" />
                         <HyperlinkButton Content="打开发布页面" Padding="4,0" VerticalAlignment="Center"
                                          Click="OpenUpdateReleasePage_Click" />
                         <Button Content="打开下载文件夹" Click="OpenUpdateDownloadFolder_Click" />
@@ -661,20 +676,30 @@
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1" CornerRadius="8" Padding="14">
                         <StackPanel Spacing="7">
-                            <TextBlock Text="感谢lynshen提供的算力支持！" FontWeight="SemiBold" />
-                            <TextBlock Text="想更低成本调用主流大模型？" TextWrapping="Wrap" />
-                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                <TextBlock Text="来" VerticalAlignment="Center" />
-                                <HyperlinkButton Content="www.lynshen.org" NavigateUri="https://www.lynshen.org/"
-                                                 Padding="0" VerticalAlignment="Center" />
-                                <TextBlock Text="：" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <TextBlock Text="全场国产模型低至 0.55x，GLM-5.3-Flash、DeepSeek-V4.1-Flash 低至 0.2x，GPT 全系模型也低至 0.2x。"
+                            <TextBlock Text="【是否想更低成本调用Astra？】" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True">
+                                <Run Text="网站传送门：" /><Hyperlink NavigateUri="https://www.lynshen.org/"><Run Text="www.lynshen.org" /></Hyperlink>
+                            </TextBlock>
+                            <TextBlock Text="✨GPT全系模型低至 0.06x" TextWrapping="Wrap" />
+                            <TextBlock Text="Claude 全系模型也低至 0.0821x" TextWrapping="Wrap" />
+                            <TextBlock Text="DeepSeekV4.1Flash也低至0.4x" TextWrapping="Wrap" />
+                            <TextBlock Text="这简直就是在白送token" TextWrapping="Wrap" />
+                            <TextBlock Text="而且还有超值套餐选购，最高可以获得1.86倍的API积分利用率" TextWrapping="Wrap" />
+                            <TextBlock Text="【充值时输入优惠码 65NEF55V】" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                            <TextBlock Text="🪧还可再享 5% 充值优惠" TextWrapping="Wrap" />
+                            <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True">
+                                <Run Text="如果质疑模型纯净程度，可以使用" /><Hyperlink NavigateUri="https://lm.ikale.io/"><Run Text="lm.ikale.io" /></Hyperlink><Run Text="网站检测模型指纹来判断" />
+                            </TextBlock>
+                            <TextBlock Text="✨交流群【1124358530】" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                            <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True">
+                                <Run Text="【邀请码】" /><Hyperlink NavigateUri="https://www.lynshen.org/login?mode=register&amp;invite=65NEF55V"><Run Text="https://www.lynshen.org/login?mode=register&amp;invite=65NEF55V" /></Hyperlink>
+                            </TextBlock>
+                            <TextBlock Text="【同时有Lynshen Agent[Aogiri]客户端支持大部分主流操作系统】"
+                                       FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock Text="Windows，MacOS Intel/MacOS Apple，Linux Deb，Linux rpm，Linux AppImage"
                                        TextWrapping="Wrap" />
-                            <TextBlock Text="kimi 限时0.2x" TextWrapping="Wrap" />
-                            <TextBlock Text="充值时输入优惠码 9W435Q7C，还可再享 5% 充值优惠。"
-                                       TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-                            <TextBlock Text="交流群:1124358530" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                            <TextBlock Text="【同时支持兼容codex cli claude-codecli后端，支持迁移历史对话，skills和MCP 进行无缝切换】"
+                                       TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
                 </StackPanel>

@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DeltaNFD.Services;
@@ -62,6 +62,8 @@ public partial class UpdateViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(SkipEnabled))]
     [NotifyPropertyChangedFor(nameof(CheckEnabled))]
     [NotifyPropertyChangedFor(nameof(ChannelEnabled))]
+    [NotifyPropertyChangedFor(nameof(ServerEnabled))]
+    [NotifyPropertyChangedFor(nameof(ModeEnabled))]
     private bool isBusy;
 
     [ObservableProperty]
@@ -88,7 +90,19 @@ public partial class UpdateViewModel : ObservableObject
         ? "接收 Alpha、Beta 和 Release 更新。" : "只接收 Beta 和 Release 更新。";
 
     [ObservableProperty]
-    private bool gitHubAccelerate;
+    [NotifyPropertyChangedFor(nameof(UpdateServerDescription))]
+    [NotifyPropertyChangedFor(nameof(SourceHint))]
+    private int updateServerIndex;
+
+    public bool ServerEnabled => !IsBusy;
+    public string UpdateServerDescription => UpdateServerPolicy.Description((UpdateServer)UpdateServerIndex);
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UpdateModeDescription))]
+    [NotifyPropertyChangedFor(nameof(SourceHint))]
+    private int updateModeIndex;
+    public bool ModeEnabled => !IsBusy;
+    public string UpdateModeDescription => UpdateModePolicy.Description((UpdateMode)UpdateModeIndex);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SkipEnabled))]
@@ -106,10 +120,9 @@ public partial class UpdateViewModel : ObservableObject
     /// <summary>下载目录（用户可手动取用/排查）。</summary>
     public string DownloadFolderPath => _update.UpdateRootDirectory;
 
-    /// <summary>更新源说明 + 加镜像指引（显示在卡片底部）。</summary>
+    /// <summary>更新源说明。</summary>
     public string SourceHint =>
-        $"更新源：{_update.ConfigSourceDescription}。要加国内镜像，点「更新源配置」编辑 " +
-        "%APPDATA%\\Delta NFD\\update-source.json（升级不会覆盖），把镜像主机写进 allowedHosts 即可。";
+        $"更新服务器：{UpdateServerPolicy.Name((UpdateServer)UpdateServerIndex)}。更新方式：{UpdateModePolicy.Name((UpdateMode)UpdateModeIndex)}。";
 
     public bool ActionEnabled => UpdateAvailable && !IsBusy;
 
@@ -123,11 +136,12 @@ public partial class UpdateViewModel : ObservableObject
 
     public UpdateViewModel()
     {
-        // 直接写字段：构造期赋值不应触发 OnAutoCheckChanged / OnGitHubAccelerateChanged 的持久化
+        // 直接写字段：构造期赋值不应触发 OnAutoCheckChanged 的持久化
         autoCheck = AppSettingsStore.Read().AutoUpdateCheckEnabled;
         emergencyPolicyEnabled = AppSettingsStore.Read().EmergencyPolicyEnabled;
-        gitHubAccelerate = AppSettingsStore.Read().GitHubAccelerateEnabled;
         updateChannelIndex = UpdateChannelPolicy.Normalize(AppSettingsStore.Read().UpdateChannel) == UpdateChannel.Internal ? 0 : 1;
+        updateServerIndex = (int)UpdateServerPolicy.Normalize(AppSettingsStore.Read().UpdateServer);
+        updateModeIndex = (int)UpdateModePolicy.Normalize(AppSettingsStore.Read().UpdateMode);
         CurrentVersionText = AppVersion.Text;
         RenderLastResult();
     }
@@ -157,7 +171,7 @@ public partial class UpdateViewModel : ObservableObject
         EmergencyPolicyUpdateService.Changed -= OnEmergencyPolicyChanged;
     }
 
-    private void OnAvailabilityChanged(bool available) => _dispatcher?.TryEnqueue(RenderLastResult);
+    private void OnAvailabilityChanged(bool available) => _dispatcher?.TryEnqueue(() => { if (!IsBusy) RenderLastResult(); });
 
     private void OnEmergencyPolicyChanged() => _dispatcher?.TryEnqueue(() => OnPropertyChanged(nameof(EmergencyPolicyStatus)));
 
@@ -264,12 +278,15 @@ public partial class UpdateViewModel : ObservableObject
             ? $"（约 {FormatBytes(installers[0].SizeBytes)}）"
             : "";
 
+        var confirmedSelection = AppSettingsStore.Read();
+        var confirmedMode = UpdateModePolicy.Normalize(confirmedSelection.UpdateMode);
         var confirmed = ConfirmHook is not null &&
                         await ConfirmHook(
                             "下载并安装更新",
-                            $"将下载 {AvailableVersionText}{sizeHint} 并静默安装。\n\n" +
+                            $"将更新到 {AvailableVersionText}。" + (confirmedMode == UpdateMode.FullInstaller
+                                ? $"通过所选服务器下载完整安装包{sizeHint}。" : $"优先下载并替换变化文件；失败时自动从所选服务器下载完整安装包{sizeHint}并更新。") + "\n\n" +
                             "安装前本工具会退出，安装完成后请从快捷方式重新打开；设置、备份与日志保存在 %APPDATA%，不会被删除。\n" +
-                            "更新期间帧格 / CPU 调度等后台监控会中断约 1 分钟。",
+                            "更新期间帧格 / CPU 调度等后台监控会暂停，请等待更新完成。",
                             "下载并安装");
 
         if (!confirmed)
@@ -277,7 +294,17 @@ public partial class UpdateViewModel : ObservableObject
             Log.Info("更新：用户在确认框取消");
             return;
         }
+        if (!UpdateModePolicy.SameSelection(confirmedSelection, AppSettingsStore.Read()))
+        { StatusText = "更新方式、服务器或通道已变化，请重新确认。"; return; }
 
+        await RunConfirmedUpdateAsync(manifest);
+    }
+
+    public Task ResumeFullFallbackAsync(string session, string nonce) => IsBusy ? Task.CompletedTask
+        : RunConfirmedUpdateAsync(null, session, nonce);
+
+    private async Task RunConfirmedUpdateAsync(UpdateManifest? manifest, string? resumeSession = null, string? nonce = null)
+    {
         IsBusy = true;
         _downloadCts = new CancellationTokenSource();
         var progress = new DispatcherProgress(_dispatcher, OnProgress);
@@ -286,13 +313,19 @@ public partial class UpdateViewModel : ObservableObject
         {
             InfoBarOpen = true;
             Severity = InfoBarSeverity.Informational;
-            StatusText = "正在下载安装包…";
+            StatusText = resumeSession is not null ? "文件替换失败，正在核对回滚结果并回退全量更新…" : "正在准备更新…";
             IsDownloading = true;
             ShowProgress = true;
             ProgressPercent = 0;
             ProgressText = "";
 
-            var download = await _update.DownloadAsync(manifest, progress, _downloadCts.Token);
+            if (resumeSession is not null)
+                manifest = await _update.ResumeFullFallbackAsync(resumeSession, nonce!, _downloadCts.Token);
+            if (manifest is null) throw new InvalidOperationException("缺少更新版本信息。");
+            var selection = AppSettingsStore.Read();
+            var download = resumeSession is null
+                ? await _update.DownloadAsync(manifest, progress, _downloadCts.Token)
+                : await _update.DownloadFullFallbackAsync(manifest, progress, _downloadCts.Token);
             IsDownloading = false;
 
             if (!download.Success)
@@ -304,9 +337,26 @@ public partial class UpdateViewModel : ObservableObject
             }
 
             ActionButtonText = "重新尝试安装";
-            StatusText = "下载完成并通过校验，正在启动安装程序…";
+            StatusText = download.Message + (download.IsIncremental ? " 正在启动独立更新器…" : " 正在启动安装程序…");
 
+            _downloadCts.Token.ThrowIfCancellationRequested();
             var launch = await _update.LaunchInstallerAsync(manifest, download.InstallerPath);
+            if (!launch.Success && download.IsIncremental && launch.CanFallbackToFull
+                && UpdateModePolicy.SameSelection(selection, AppSettingsStore.Read()))
+            {
+                _downloadCts.Token.ThrowIfCancellationRequested();
+                StatusText = launch.Message;
+                IsDownloading = true;
+                ProgressPercent = 0;
+                ProgressText = "正在回退全量更新…";
+                download = await _update.DownloadFullFallbackAsync(manifest, progress, _downloadCts.Token);
+                IsDownloading = false;
+                if (!download.Success)
+                { StatusText = download.Message; Severity = InfoBarSeverity.Error; return; }
+                _downloadCts.Token.ThrowIfCancellationRequested();
+                StatusText = download.Message + " 正在启动安装程序…";
+                launch = await _update.LaunchInstallerAsync(manifest, download.InstallerPath);
+            }
             if (!launch.Success)
             {
                 StatusText = launch.Message;
@@ -454,20 +504,26 @@ public partial class UpdateViewModel : ObservableObject
         Log.Info("更新：更新通道 = " + channel);
     }
 
-    partial void OnGitHubAccelerateChanged(bool value)
+    partial void OnUpdateServerIndexChanged(int value)
     {
-        AppSettingsStore.Update(s => s.GitHubAccelerateEnabled = value);
-        Log.Info("更新：GitHub 加速 = " + value);
+        if (value is < 0 or > 2) return;
+        var server = (UpdateServer)value;
+        AppSettingsStore.Update(s => s.UpdateServer = server);
+        _update.ResetCheckResult();
+        RenderLastResult();
+        StatusText = "更新服务器已切换为" + UpdateServerPolicy.Name(server) + "，请重新检查更新。";
+        Severity = InfoBarSeverity.Informational;
+        Log.Info("更新：更新服务器 = " + server);
+    }
 
-        // 开关变化后立即重新评估加速模式（探测或读缓存）
-        if (_update is UpdateService service)
-        {
-            service.RefreshSources();
-        }
-
-        StatusText = value
-            ? "GitHub 加速已开启：会先探测官方源，不通时自动切换加速镜像。"
-            : "GitHub 加速已关闭：始终直连官方源。";
+    partial void OnUpdateModeIndexChanged(int value)
+    {
+        if (value is not (0 or 1)) return;
+        AppSettingsStore.Update(s => s.UpdateMode = (UpdateMode)value);
+        _update.ResetCheckResult();
+        RenderLastResult();
+        StatusText = "更新方式已切换为" + UpdateModePolicy.Name((UpdateMode)value) + "，请重新检查更新。";
+        Severity = InfoBarSeverity.Informational;
     }
 
     private void OnProgress(UpdateProgressInfo info)
@@ -476,6 +532,7 @@ public partial class UpdateViewModel : ObservableObject
         ProgressText = info.TotalBytes > 0
             ? $"{FormatBytes(info.BytesReceived)} / {FormatBytes(info.TotalBytes)}（{info.Fraction:P0}）· {FormatBytes((long)info.BytesPerSecond)}/s"
             : $"{FormatBytes(info.BytesReceived)} · {FormatBytes((long)info.BytesPerSecond)}/s";
+        if (info.Stage.Length > 0) StatusText = info.Stage;
     }
 
     private static void OpenUrl(string url)

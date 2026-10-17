@@ -32,7 +32,7 @@
                             <TextBlock Text="一键帧格模式" FontWeight="SemiBold" FontSize="14" />
                         </StackPanel>
                         <TextBlock FontSize="12" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                   Text="开启后启用已配置的帧格功能（各功能开关独立控制），与主界面的「一键帧格模式」开关同步。" />
+                                   Text="开启后执行下方已选择的帧格功能，与主界面的「一键帧格模式」开关同步。" />
                         <TextBlock Text="{x:Bind FrameSrv.StatusText, Mode=OneWay}"
                                    FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
                     </StackPanel>
@@ -45,10 +45,54 @@
                 </Grid>
             </Border>
 
-            <!-- 帧格功能列表 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="帧格功能" Style="{StaticResource SectionTitleStyle}" />
+
+                <ContentControl x:Name="FrameBackgroundSettingsPanel" HorizontalContentAlignment="Stretch">
+                <StackPanel Spacing="8">
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="4" VerticalAlignment="Center">
+                            <TextBlock Text="后台抑制" FontWeight="SemiBold" />
+                            <TextBlock Text="帧格运行期间，CPU 持续繁忙时暂时降低合适后台应用的优先级；负载回落或退出帧格后恢复。保护游戏、前台应用、系统及排除名单中的进程。"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                            <TextBlock x:Name="ResponsivenessNoteText" Text="正在读取状态…" FontSize="11" Opacity="0.75"
+                                       TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                        <ToggleSwitch x:Name="FrameSuppressionToggle" Grid.Column="1" VerticalAlignment="Center"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0" HorizontalAlignment="Right"
+                                      AutomationProperties.Name="后台抑制"
+                                      IsEnabled="{x:Bind FrameSrv.FeaturesEditable, Mode=OneWay}" Toggled="FrameBackgroundChoice_Toggled" />
+                    </Grid>
+                    <Grid ColumnSpacing="16" Padding="0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="4" VerticalAlignment="Center">
+                            <TextBlock Text="自动内存回收" FontWeight="SemiBold" />
+                            <TextBlock Text="帧格运行期间，内存持续高压时回收合适后台应用的工作集。保护范围与后台抑制共用；退出帧格后停止，工作集可能回涨或引起换页。"
+                                       Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                            <TextBlock x:Name="AutomaticMemoryStatusText" Text="正在读取状态…" FontSize="11" Opacity="0.75"
+                                       TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                        <ToggleSwitch x:Name="FrameAutomaticMemoryToggle" Grid.Column="1" VerticalAlignment="Center"
+                                      OnContent="" OffContent="" MinWidth="0" Margin="0" HorizontalAlignment="Right"
+                                      AutomationProperties.Name="自动内存回收"
+                                      IsEnabled="{x:Bind FrameSrv.FeaturesEditable, Mode=OneWay}" Toggled="FrameBackgroundChoice_Toggled" />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="调整后台参数与排除名单" Click="OpenProcessBackground_Click" />
+                        <Button Content="刷新状态" Click="RefreshFrameBackground_Click" />
+                    </StackPanel>
+                    <TextBlock x:Name="FrameBackgroundNoteText" FontSize="11" Opacity="0.75" Visibility="Collapsed"
+                               TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                </StackPanel>
+                </ContentControl>
 
                     <!-- 功能：目标游戏启动时重启 DWM -->
                     <Grid ColumnSpacing="16" Padding="0,10">
@@ -122,7 +166,7 @@
                                       MinWidth="0" Margin="0" HorizontalAlignment="Right" />
                     </Grid>
 
-                    <!-- 功能：加速系统响应模式（不改电源计划；总开关 + 三个子开关） -->
+                    <!-- 功能：加速系统响应模式（仅高分辨率计时器，不改电源计划） -->
                     <StackPanel Spacing="4" Padding="0,10">
                         <Grid ColumnSpacing="16">
                             <Grid.ColumnDefinitions>
@@ -133,7 +177,7 @@
                             <StackPanel Spacing="4" VerticalAlignment="Center">
                                 <TextBlock Text="加速系统响应模式（不改电源计划）" FontWeight="SemiBold" />
                                 <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                           Text="三项机制让系统在帧格期间保持「随时就绪」：核心常驻（防核心停放）+ 游戏进程禁电源限制 + 定时器 0.5ms。全部为运行时行为——不写系统配置、不碰任何电源计划，退出帧格或关闭本工具后自动恢复、零残留。总开关关闭时三项全部停止。" />
+                                           Text="帧格激活且目标游戏运行时，可请求 0.5ms 系统定时器分辨率；游戏退出、关闭帧格或退出工具时释放请求。实际分辨率由 Windows 与其他程序的请求共同决定。" />
                                 <TextBlock Text="{x:Bind ResponseStatusText, Mode=OneWay}"
                                            FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
                             </StackPanel>
@@ -145,44 +189,10 @@
                                           MinWidth="0" Margin="0" HorizontalAlignment="Right" />
                         </Grid>
 
-                        <!-- 三个子开关（总开关关闭时置灰） -->
+                        <!-- 计时器选项（总开关关闭时置灰） -->
                         <Border Margin="16,4,0,2" Padding="12,8" CornerRadius="8"
                                 Background="{StaticResource AppAccentSoftBrush}">
                             <StackPanel Spacing="10">
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Spacing="2" VerticalAlignment="Center">
-                                        <TextBlock Text="核心常驻（防核心停放）" FontWeight="SemiBold" FontSize="13" />
-                                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" FontSize="11"
-                                                   Text="帧格激活全程：高频轮询逐核停靠状态并把轮询线程轮流钉到每个核心，让核心来不及深度停靠——「靠活动而非电源策略」实现核心常驻待命，降低突发调度的唤醒延迟。状态文字实时显示当前停靠核心数。" />
-                                    </StackPanel>
-                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsOn="{x:Bind CoreParkingSelected, Mode=TwoWay}"
-                                                  IsEnabled="{x:Bind SubTogglesEditable, Mode=OneWay}"
-                                                  OnContent="" OffContent="" MinWidth="0" Margin="0"
-                                                  HorizontalAlignment="Right" />
-                                </Grid>
-
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Spacing="2" VerticalAlignment="Center">
-                                        <TextBlock Text="游戏进程禁电源限制" FontWeight="SemiBold" FontSize="13" />
-                                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" FontSize="11"
-                                                   Text="游戏运行期间：对目标游戏进程禁用 EcoQoS 电源限制（强制高性能电源状态），游戏内重启后自动对新进程重新应用，退出自动交还系统控制。" />
-                                    </StackPanel>
-                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
-                                                  IsOn="{x:Bind EcoQosSelected, Mode=TwoWay}"
-                                                  IsEnabled="{x:Bind SubTogglesEditable, Mode=OneWay}"
-                                                  OnContent="" OffContent="" MinWidth="0" Margin="0"
-                                                  HorizontalAlignment="Right" />
-                                </Grid>
-
                                 <Grid ColumnSpacing="16">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -255,7 +265,7 @@
                                     <StackPanel Spacing="2" VerticalAlignment="Center">
                                         <TextBlock Text="前台游戏优先调度" FontWeight="SemiBold" FontSize="13" />
                                         <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" FontSize="11"
-                                                   Text="启用前台程序优先的处理器调度策略（0x1A）：短时间片 + 前台高加速，游戏获得更多 CPU 时间片，后台任务自动让路。对应系统优化·调整里的「前台游戏优先调度」。" />
+                                                   Text="将 Windows 处理器调度设为长、固定时间片（Win32PrioritySeparation=0x1A），量子不随前后台状态调整。CPU 争用时可能减少同优先级线程轮转，但不单独提高游戏进程优先级或保证帧率提升。对应系统优化·调整里的「前台游戏优先调度」。" />
                                     </StackPanel>
                                     <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
                                                   IsOn="{x:Bind PrioritySelected, Mode=TwoWay}"

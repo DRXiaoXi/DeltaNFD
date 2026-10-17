@@ -3,6 +3,8 @@ using System.Text.Json;
 namespace DeltaNFD.Services;
 
 public enum UpdateChannel { Internal, Public }
+public enum UpdateServer { Automatic, GitHub, SelfHosted }
+public enum UpdateMode { ChangedFiles, FullInstaller }
 
 /// <summary>
 /// 全部功能开关的共享持久化仓库（%APPDATA%\Delta NFD\settings.json）。
@@ -18,6 +20,9 @@ public sealed class AppSettings
     public string GpuSpoofRegistryPath { get; set; } = "";
     public string GpuSpoofFakeName { get; set; } = "";
     public bool FrameModeActive { get; set; }
+    /// <summary>帧格功能选项；只有此开关和 FrameModeActive 同时开启才执行。</summary>
+    public bool FrameBackgroundSuppressionEnabled { get; set; }
+    public bool FrameAutomaticMemoryEnabled { get; set; }
 
     // ---- 显卡伪装：临时重启生效的登录还原登记 ----
     /// <summary>true = 重启后登录时需要还原原显卡型号。</summary>
@@ -26,6 +31,7 @@ public sealed class AppSettings
 
     /// <summary>临时显卡伪装的注册表路径（登录还原用）。</summary>
     public string TempSpoofRestorePath { get; set; } = "";
+    public string TempSpoofRestoreId { get; set; } = "";
 
     // ---- 帧格：电源计划锁定 ----
     /// <summary>帧格功能：开启一键帧格模式时锁定电源计划（游戏期间防止被修改），退出时解除。</summary>
@@ -41,13 +47,7 @@ public sealed class AppSettings
     /// <summary>总开关：帧格页「加速系统响应模式」。</summary>
     public bool FrameResponseBoostEnabled { get; set; }
 
-    /// <summary>子开关①：核心常驻（PDH 停放状态轮询 + 亲和性轮转，防核心停放），默认开。</summary>
-    public bool FrameResponseBoostCoreParkingEnabled { get; set; } = true;
-
-    /// <summary>子开关②：游戏进程禁用电源限制（EcoQoS off），默认开。</summary>
-    public bool FrameResponseBoostEcoQosEnabled { get; set; } = true;
-
-    /// <summary>子开关③：帧格+游戏运行期间系统定时器 0.5ms，默认开。</summary>
+    /// <summary>帧格和游戏运行期间系统定时器 0.5ms，默认开。</summary>
     public bool FrameResponseBoostTimerEnabled { get; set; } = true;
 
     // ---- 帧格：内存清理（实验性；清空待备内存列表） ----
@@ -148,6 +148,9 @@ public sealed class AppSettings
     // ---- 运行库保护 ----
     public bool RuntimeGuardEnabled { get; set; }
 
+    /// <summary>主页及运行库页的兼容性检测；不改变防护，也不跳过手动修复的安全核验。</summary>
+    public bool RuntimeDetectionEnabled { get; set; } = true;
+
     // ---- 一键优化（真实执行的步骤开关） ----
     public bool OptimizeCleanProcesses { get; set; } = true;
     public bool OptimizeTrimMemory { get; set; } = true;
@@ -185,21 +188,13 @@ public sealed class AppSettings
 
     /// <summary>默认保留旧版接收 Alpha 的行为；公测仅接收 Beta / Release。</summary>
     public UpdateChannel UpdateChannel { get; set; } = UpdateChannel.Internal;
+    /// <summary>更新来源；未配置时使用自建服务器，已有选择保持。</summary>
+    public UpdateServer UpdateServer { get; set; } = UpdateServer.SelfHosted;
+    /// <summary>仅替换变化文件为默认，也可从所选服务器下载完整安装包。</summary>
+    public UpdateMode UpdateMode { get; set; } = UpdateMode.ChangedFiles;
     /// <summary>已处理的安装批次，防止每次启动覆盖用户后来选择的通道。</summary>
     public string UpdateChannelInstallationId { get; set; } = "";
     public string UpdateChannelAlphaInstallationId { get; set; } = "";
-
-    /// <summary>
-    /// GitHub 加速开关：关 = 始终直连官方源；开 = 先探测官方源，连不上自动切换加速镜像。
-    /// 探测结果会缓存一段时间，避免每次启动都重复探测。
-    /// </summary>
-    public bool GitHubAccelerateEnabled { get; set; }
-
-    /// <summary>加速模式自动探测结果（-1 = 未知待探测，0 = 直连可用，1 = 官方源不可达需加速）。</summary>
-    public int GitHubDirectStatus { get; set; } = -1;
-
-    /// <summary>上次探测 GitHub 连通性的 UTC 时间。</summary>
-    public DateTime? GitHubDirectCheckedUtc { get; set; }
 
     /// <summary>上次发起更新检查的 UTC 诊断时间；不再阻止每次启动检查。</summary>
     public DateTime? LastUpdateCheckUtc { get; set; }
@@ -269,6 +264,7 @@ public static class AppSettingsStore
     public static readonly string DefaultPath = Path.Combine(AppDataPaths.Root, "settings.json");
 
     private static readonly object Gate = new();
+    private static readonly Dictionary<string, int> ResetWriteBlocks = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, (AppSettings Settings, (DateTime LastWriteUtc, long Length, bool Exists) Stamp)> Cache =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -308,10 +304,53 @@ public static class AppSettingsStore
         }
     }
 
+    /// <summary>恢复核对不能把损坏、不可读或空配置当作没有待恢复任务。</summary>
+    public static AppSettings ReadRequired(string? path = null)
+    {
+        path = Path.GetFullPath(path ?? DefaultPath);
+        lock (Gate)
+        {
+            if (!File.Exists(path)) return new AppSettings();
+            using var stream = File.OpenRead(path);
+            return JsonSerializer.Deserialize<AppSettings>(stream) ?? throw new IOException("设置文件为空，无法核对恢复状态。");
+        }
+    }
+
     /// <summary>线程安全地读出 → 修改 → 原子写回。</summary>
     public static void Update(Action<AppSettings> mutate) => Update(DefaultPath, mutate);
 
+    /// <summary>恢复出厂设置期间阻止本进程旧服务回写配置；后端恢复完成后由重置事务写入，成功后持有至退出。</summary>
+    public static IDisposable BlockWritesForReset(string path)
+    {
+        path = Path.GetFullPath(path);
+        lock (Gate) ResetWriteBlocks[path] = ResetWriteBlocks.GetValueOrDefault(path) + 1;
+        return new ResetWriteLease(path);
+    }
+
+    private sealed class ResetWriteLease(string path) : IDisposable
+    {
+        private int _disposed;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            lock (Gate)
+            {
+                if (ResetWriteBlocks[path] == 1) ResetWriteBlocks.Remove(path);
+                else ResetWriteBlocks[path]--;
+            }
+        }
+    }
+
     public static void Update(string path, Action<AppSettings> mutate)
+        => UpdateCore(path, mutate, required: false);
+
+    /// <summary>恢复收尾等事务使用：配置损坏或保存失败时抛出，不得宣称完成。</summary>
+    public static void UpdateRequired(string path, Action<AppSettings> mutate)
+        => UpdateCore(path, mutate, required: true);
+
+    public static void UpdateRequired(Action<AppSettings> mutate) => UpdateRequired(DefaultPath, mutate);
+
+    private static void UpdateCore(string path, Action<AppSettings> mutate, bool required)
     {
         path = Path.GetFullPath(path);
         var digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(path.ToUpperInvariant())));
@@ -323,17 +362,24 @@ public static class AppSettingsStore
             if (!acquired) throw new IOException("另一进程正在保存设置，请稍后重试。");
         lock (Gate)
         {
+            if (ResetWriteBlocks.ContainsKey(path)) throw new InvalidOperationException("恢复出厂设置期间暂停配置写入，请等待工具关闭后重新打开。");
             Cache.Remove(path); // Writers must reload under the cross-process lease, not modify an old snapshot.
-            var settings = ReadCore(path);
+            var settings = required && File.Exists(path)
+                ? JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? throw new IOException("设置文件为空，未覆盖原配置。")
+                : ReadCore(path);
             mutate(settings);
             var saved = AppSettings.Save(path, settings);
             if (saved)
             {
+                if (required && !JsonSerializer.SerializeToUtf8Bytes(settings).SequenceEqual(
+                    JsonSerializer.SerializeToUtf8Bytes(JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)))))
+                    throw new IOException("设置保存后的回读核验失败，请保留恢复记录。");
                 Cache[path] = (settings.Copy(), GetStamp(path));
             }
             else
             {
                 Cache.Remove(path);
+                if (required) throw new IOException("无法保存设置，恢复收尾未完成；请检查数据目录权限后重试。");
             }
         }
         }

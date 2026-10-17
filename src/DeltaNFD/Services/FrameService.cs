@@ -52,8 +52,6 @@ public sealed class FrameService : IFrameService
     private bool _dualCcdArmed;
     private bool _dualCcdEnabled = true;
     private bool _responseBoostEnabled;
-    private bool _responseBoostCoreParking = true;
-    private bool _responseBoostEcoQos = true;
     private bool _responseBoostTimer = true;
     private bool _memoryCleanEnabled;
     private bool _foregroundBoostEnabled;
@@ -331,32 +329,6 @@ public sealed class FrameService : IFrameService
             SaveSettings();
             OnPropertyChanged();
             UpdateStatus();
-            _ = SyncBackendExecutionAsync();
-        }
-    }
-
-    public bool ResponseBoostCoreParkingEnabled
-    {
-        get => _responseBoostCoreParking;
-        set
-        {
-            if (_responseBoostCoreParking == value) return;
-            _responseBoostCoreParking = value;
-            SaveSettings();
-            OnPropertyChanged();
-            _ = SyncBackendExecutionAsync();
-        }
-    }
-
-    public bool ResponseBoostEcoQosEnabled
-    {
-        get => _responseBoostEcoQos;
-        set
-        {
-            if (_responseBoostEcoQos == value) return;
-            _responseBoostEcoQos = value;
-            SaveSettings();
-            OnPropertyChanged();
             _ = SyncBackendExecutionAsync();
         }
     }
@@ -869,16 +841,18 @@ public sealed class FrameService : IFrameService
         FrameModeActive = false;
         GpuSpoofEnabled = false;
 
+        var background = await Backends.BackendProcmanService.Instance.SyncFrameBackgroundAsync();
+
         var dualNote = await RevertArmedDualCcdAsync();
 
         // 退出帧格：后端撤销加速响应、临时优化与电源锁定；失败时如实报告并保留恢复记录。
         var cpuFrame = Backends.BackendCpuFrameService.Instance;
-        await cpuFrame.ApplyBoostAsync(false, false, false);
+        await cpuFrame.ApplyBoostAsync(false);
         var tweaksNote = await cpuFrame.RevertTweaksAsync();
         var powerNote = await cpuFrame.UnlockPowerAsync();
-        var notes = dualNote + " " + tweaksNote.Message + " " + powerNote.Message;
+        var notes = dualNote + " " + tweaksNote.Message + " " + powerNote.Message + " " + background.Message;
 
-        if (!powerNote.Success || !tweaksNote.Success)
+        if (!powerNote.Success || !tweaksNote.Success || !background.Success)
             return new OperationResult
             {
                 Success = false,
@@ -914,24 +888,24 @@ public sealed class FrameService : IFrameService
         {
             var settings = AppSettingsStore.Read();
             var active = _frameModeActive && !OfflineModeGuard.BlocksNormalAutomation;
+            var background = await Backends.BackendProcmanService.Instance.SyncFrameBackgroundAsync();
             var cpuFrame = Backends.BackendCpuFrameService.Instance;
             if (!active)
             {
-                var stopped = await cpuFrame.ApplyBoostAsync(false, false, false);
+                var stopped = await cpuFrame.ApplyBoostAsync(false);
                 var restored = await cpuFrame.RevertTweaksAsync();
                 var unlocked = await cpuFrame.UnlockPowerAsync();
-                return stopped.Success && restored.Success && unlocked.Success ? OperationResult.Ok("")
-                    : OperationResult.Fail(stopped.Message + " " + restored.Message + " " + unlocked.Message);
+                return stopped.Success && restored.Success && unlocked.Success && background.Success ? OperationResult.Ok(background.Message)
+                    : OperationResult.Fail(stopped.Message + " " + restored.Message + " " + unlocked.Message + " " + background.Message);
             }
 
             var boost = settings.FrameResponseBoostEnabled;
             var boosted = await cpuFrame.ApplyBoostAsync(
-                boost && settings.FrameResponseBoostCoreParkingEnabled,
-                boost && settings.FrameResponseBoostEcoQosEnabled,
                 boost && settings.FrameResponseBoostTimerEnabled);
 
             var notes = new List<string>();
-            var complete = boosted.Success;
+            notes.Add(background.Message);
+            var complete = boosted.Success && background.Success;
             if (!boosted.Success) notes.Add(boosted.Message);
             var laptop = await GetChassisKindAsync() == ChassisKind.Laptop;
             if (settings.FrameForegroundBoostEnabled || settings.FramePowerSaveLatencyEnabled)
@@ -1131,11 +1105,8 @@ public sealed class FrameService : IFrameService
                     var autostartCleanup = OperationResult.Ok("无需清理登录自启动任务。");
                     if (!_frameModeActive) autostartCleanup = await DisableLogonAutostartAsync();
 
-                    AppSettingsStore.Update(s =>
-                    {
-                        s.TempSpoofRestorePending = false;
-                        s.TempSpoofRestorePath = "";
-                    });
+                    // The GPU backend clears and verifies the matching pending task before deleting its backup.
+                    // Do not blindly write false here: another task may have been created while awaiting cleanup.
 
                     StatusText = autostartCleanup.Success
                         ? "临时显卡伪装已自动还原：注册表已恢复原始型号（Windows 可能要到下次重启才刷新显示名称）。"
@@ -1192,12 +1163,18 @@ public sealed class FrameService : IFrameService
 
         if (shouldRestore)
         {
-            AppSettingsStore.Update(s =>
+            if (AppSettingsStore.Read().TempSpoofRestorePending)
+            { Log.Warn("旧帧格显卡伪装迁移：已有待还原任务，保留当前任务，未覆盖。"); return; }
+            try
             {
-                s.TempSpoofRestorePending = true;
-                s.TempSpoofRestorePath = legacyPath;
-            });
-            Log.Info("旧版临时（帧格）显卡伪装已迁移到启动时自动还原");
+                GpuSpoofRestoreState.Schedule(legacyPath);
+                Log.Info("旧版临时（帧格）显卡伪装已迁移到启动时自动还原");
+            }
+            catch (Exception ex)
+            {
+                Log.Error("旧帧格显卡伪装还原登记未保存，请在显卡伪装页手动恢复", ex);
+                StatusText = "旧显卡还原登记未保存，请在显卡伪装页手动恢复：" + ex.Message;
+            }
         }
         else
         {
@@ -1462,8 +1439,6 @@ public sealed class FrameService : IFrameService
         _dualCcdArmed = s.DualCcdArmed;
         _dualCcdEnabled = s.DualCcdFrameEnabled;
         _responseBoostEnabled = s.FrameResponseBoostEnabled;
-        _responseBoostCoreParking = s.FrameResponseBoostCoreParkingEnabled;
-        _responseBoostEcoQos = s.FrameResponseBoostEcoQosEnabled;
         _responseBoostTimer = s.FrameResponseBoostTimerEnabled;
         _memoryCleanEnabled = false; // Ignore the obsolete persisted switch.
         _memoryCleanGameAutoEnabled = false;
@@ -1497,8 +1472,6 @@ public sealed class FrameService : IFrameService
                 s.GpuSpoofFrameConfigured = _gpuSpoofFrameConfigured;
                 s.DualCcdFrameEnabled = _dualCcdEnabled;
                 s.FrameResponseBoostEnabled = _responseBoostEnabled;
-                s.FrameResponseBoostCoreParkingEnabled = _responseBoostCoreParking;
-                s.FrameResponseBoostEcoQosEnabled = _responseBoostEcoQos;
                 s.FrameResponseBoostTimerEnabled = _responseBoostTimer;
                 s.FrameMemoryCleanEnabled = false;
                 s.GpuSpoofApplyMode = _gpuSpoofApplyMode.ToString();

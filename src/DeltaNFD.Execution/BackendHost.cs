@@ -59,6 +59,8 @@ public sealed class BackendHostOptions
 
     /// <summary>握手等待上限（宿主未按时发送 hello 即退出）。</summary>
     public TimeSpan HandshakeTimeout { get; init; } = TimeSpan.FromSeconds(10);
+    /// <summary>可选的后端自身启动优先级，不修改宿主或目标进程。</summary>
+    public ProcessPriorityClass? InitialPriorityClass { get; init; }
 
     /// <summary>执行命令时，超过模块超时后附加的宽限（超过即由后端自行取消）。</summary>
     public TimeSpan CommandGrace { get; init; } = TimeSpan.FromSeconds(30);
@@ -144,6 +146,17 @@ public static class BackendHost
             return ExitUsage;
 
         Log.Info($"官方后端启动：module={options.Module.Id}, pipe={pipeName}");
+        if (options.InitialPriorityClass is { } priority)
+        {
+            try
+            {
+                using var current = Process.GetCurrentProcess();
+                current.PriorityClass = priority;
+                current.Refresh();
+                Log.Info($"官方后端自身优先级：module={options.Module.Id}；请求={priority}；回读={current.PriorityClass}");
+            }
+            catch (Exception ex) { Log.Warn($"后端自身优先级设置未完成：module={options.Module.Id}；{ex.Message}"); }
+        }
         try
         {
             return await ServeAsync(options, pipeName, hostPid, hostToken);

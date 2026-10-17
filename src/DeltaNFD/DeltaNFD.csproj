@@ -26,14 +26,16 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 
     <DefaultLanguage>zh-CN</DefaultLanguage>
-    <Version>0.915</Version>
+    <Version>0.9200</Version>
     <!-- 日志头/程序集读取的显示版本（与关于卡 VersionText 保持一致） -->
-    <InformationalVersion>Alpha0.915</InformationalVersion>
+    <InformationalVersion>Beta0.92</InformationalVersion>
+    <RuntimeUiEnabled Condition="'$(RuntimeUiEnabled)' == ''">true</RuntimeUiEnabled>
     <!-- 应用图标（exe / 任务栏 / 托盘共用；托盘经 ExtractIconExW 从 exe 提取） -->
     <ApplicationIcon>Assets\DeltaNFD.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
+    <AssemblyMetadata Include="RuntimeUiEnabled" Value="$(RuntimeUiEnabled)" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
@@ -54,6 +56,7 @@
   <ItemGroup>
     <ProjectReference Include="..\DeltaNFD.Contracts\DeltaNFD.Contracts.csproj" />
     <ProjectReference Include="..\DeltaNFD.Shared\DeltaNFD.Shared.csproj" />
+    <ProjectReference Include="..\DeltaNFD.UpdateCore\DeltaNFD.UpdateCore.csproj" />
   </ItemGroup>
 
   <!-- The WinUI-free helper is built separately below, with isolated restore/intermediate paths. -->
@@ -90,71 +93,48 @@
   <!-- 自动更新来源与网络参数（发布后可在安装目录直接改，无需重编译） -->
   <ItemGroup>
     <Content Include="Assets\UpdateConfig.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\installer\DeploymentControl.ps1" Link="Tools\DeploymentControl.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\Vc14Baseline14.42\*.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\Vc14OwnershipOriginals\*.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Remove="Assets\RuntimeHighFps\**\*" />
+    <None Remove="Assets\RuntimeHighFps\**\*" />
+    <HighFpsPayload Include="Assets\RuntimeHighFps\**\*" Exclude="Assets\RuntimeHighFps\2005\**\*;Assets\RuntimeHighFps\2008\**\*;Assets\RuntimeHighFps\2010\**\*;Assets\RuntimeHighFps\2012\**\*;Assets\RuntimeHighFps\2013\**\*" />
+    <Content Remove="Assets\RuntimeCppOfficial\**\*" />
+    <None Remove="Assets\RuntimeCppOfficial\**\*" />
+    <OfficialCppPayload Include="Assets\RuntimeCppOfficial\**\*" />
+    <Content Remove="Assets\Vc14FileRepair14.42\**\*" />
+    <None Remove="Assets\Vc14FileRepair14.42\**\*" />
+    <Vc14RepairPayload Include="Assets\Vc14FileRepair14.42\**\*" />
   </ItemGroup>
 
-  <!-- VC++ AIO 解包修复安装程序及其 payload：作为自定义数据复制，不进入 WinUI PRI 资源索引。 -->
-  <ItemGroup>
-    <Content Remove="Assets\VCRedistRepair\**\*" />
-    <None Remove="Assets\VCRedistRepair\**\*" />
-    <RepairRuntimePayload Include="Assets\VCRedistRepair\**\*"
-                          Exclude="Assets\VCRedistRepair\解包报告.md;Assets\VCRedistRepair\SFX配置块.txt" />
-  </ItemGroup>
-
-  <!-- VC++ 2015-2022 官方运行库安装包（修复后钉装基线 14.42.34433） -->
-  <ItemGroup>
-    <Content Include="Assets\VCRedist2015-2022-x64.exe" Condition="Exists('Assets\VCRedist2015-2022-x64.exe')" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Assets\VCRedist2015-2022-x86.exe" Condition="Exists('Assets\VCRedist2015-2022-x86.exe')" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
+  <!-- MSI 的 WinSxS 路径不能进入 WinUI PRI 的区域限定符索引。 -->
+  <Target Name="CopyHighFpsPayloadToBuild" AfterTargets="Build" Condition="'$(IsDesignTimeBuild)' != 'true'">
+    <Copy SourceFiles="@(HighFpsPayload)" DestinationFiles="@(HighFpsPayload->'$(OutDir)Assets\RuntimeHighFps\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(OfficialCppPayload)" DestinationFiles="@(OfficialCppPayload->'$(OutDir)Assets\RuntimeCppOfficial\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(Vc14RepairPayload)" DestinationFiles="@(Vc14RepairPayload->'$(OutDir)Assets\Vc14FileRepair14.42\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyHighFpsPayloadToPublish" AfterTargets="Publish">
+    <Copy SourceFiles="@(HighFpsPayload)" DestinationFiles="@(HighFpsPayload->'$(PublishDir)Assets\RuntimeHighFps\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(OfficialCppPayload)" DestinationFiles="@(OfficialCppPayload->'$(PublishDir)Assets\RuntimeCppOfficial\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(Vc14RepairPayload)" DestinationFiles="@(Vc14RepairPayload->'$(PublishDir)Assets\Vc14FileRepair14.42\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
 
   <!-- 无省电电源计划（CPU实验室导入用，显示名「无省电释放模式」） -->
   <ItemGroup>
     <Content Include="Assets\NoPowerSave-Scheme.pow" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
-  <Target Name="CopyRepairRuntimePayloadToBuildOutput" AfterTargets="Build" Condition="'$(IsDesignTimeBuild)' != 'true'">
-    <MakeDir Directories="@(RepairRuntimePayload->'$(OutDir)Assets\VCRedistRepair\%(RecursiveDir)')" />
-    <Copy SourceFiles="@(RepairRuntimePayload)"
-          DestinationFiles="@(RepairRuntimePayload->'$(OutDir)Assets\VCRedistRepair\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-  </Target>
-
-  <Target Name="CopyRepairRuntimePayloadToPublish" AfterTargets="Publish">
-    <MakeDir Directories="@(RepairRuntimePayload->'$(PublishDir)Assets\VCRedistRepair\%(RecursiveDir)')" />
-    <Copy SourceFiles="@(RepairRuntimePayload)"
-          DestinationFiles="@(RepairRuntimePayload->'$(PublishDir)Assets\VCRedistRepair\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-  </Target>
-
-  <!-- Offline .NET repair payload: copied as files, excluded from WinUI PRI indexing. -->
+  <!-- Retired repair assets must not leak from an old local checkout into a new build. -->
   <ItemGroup>
-    <Content Remove="Assets\DotNetRepair\**\*" />
-    <None Remove="Assets\DotNetRepair\**\*" />
-    <DotNetRepairPayload Include="Assets\DotNetRepair\**\*" />
+    <Content Remove="Assets\DotNetRepair\**\*;Assets\VCRedistRepair\**\*;Assets\DirectXRepair\**\*;Assets\VCRedist2015-2022-*.exe;Assets\VCRedistRepair.exe" />
+    <None Remove="Assets\DotNetRepair\**\*;Assets\VCRedistRepair\**\*;Assets\DirectXRepair\**\*;Assets\VCRedist2015-2022-*.exe;Assets\VCRedistRepair.exe" />
   </ItemGroup>
-  <Target Name="CopyDotNetRepairToBuild" AfterTargets="Build" Condition="'$(IsDesignTimeBuild)' != 'true'">
-    <Copy SourceFiles="@(DotNetRepairPayload)" DestinationFiles="@(DotNetRepairPayload->'$(OutDir)Assets\DotNetRepair\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-  </Target>
-  <Target Name="CopyDotNetRepairToPublish" AfterTargets="Publish">
-    <Copy SourceFiles="@(DotNetRepairPayload)" DestinationFiles="@(DotNetRepairPayload->'$(PublishDir)Assets\DotNetRepair\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-  </Target>
 
-  <!-- Microsoft legacy DirectX redistributable: data files, excluded from WinUI PRI indexing. -->
+<!-- 前后端分离 C2/C3：把各官方后端 EXE 随构建复制到输出目录 Backends\<模块>\ 下（BackendPaths 的部署约定）。 -->
   <ItemGroup>
-    <Content Remove="Assets\DirectXRepair\**\*" />
-    <None Remove="Assets\DirectXRepair\**\*" />
-    <CompatibilityDirectXPayload Include="Assets\DirectXRepair\**\*" />
-  </ItemGroup>
-  <Target Name="CopyCompatibilityDirectXToBuild" AfterTargets="Build" Condition="'$(IsDesignTimeBuild)' != 'true'">
-    <MakeDir Directories="$(OutDir)Assets\DirectXRepair" />
-    <Copy SourceFiles="@(CompatibilityDirectXPayload)" DestinationFiles="@(CompatibilityDirectXPayload->'$(OutDir)Assets\DirectXRepair\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-  </Target>
-  <Target Name="CopyCompatibilityDirectXToPublish" AfterTargets="Publish">
-    <MakeDir Directories="$(PublishDir)Assets\DirectXRepair" />
-    <Copy SourceFiles="@(CompatibilityDirectXPayload)" DestinationFiles="@(CompatibilityDirectXPayload->'$(PublishDir)Assets\DirectXRepair\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-  </Target>
-
-  <!-- 前后端分离 C2/C3：把各官方后端 EXE 随构建复制到输出目录 Backends\<模块>\ 下（BackendPaths 的部署约定）。 -->
-  <ItemGroup>
+    <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.FileUpdater\DeltaNFD.FileUpdater.csproj">
+      <ModuleFolder>updater</ModuleFolder>
+    </OfficialBackend>
     <OfficialBackend Include="$(MSBuildThisFileDirectory)..\DeltaNFD.Backend.Ace\DeltaNFD.Backend.Ace.csproj">
       <ModuleFolder>ace</ModuleFolder>
     </OfficialBackend>
@@ -180,11 +160,11 @@
           Outputs="$(OutDir)Backends\%(OfficialBackend.ModuleFolder)\.build-stamp">
     <MSBuild Projects="%(OfficialBackend.Identity)"
              Targets="Restore;Build"
-             Properties="Configuration=$(Configuration);Platform=x64;NuGetAudit=$(NuGetAudit)"
+             Properties="Configuration=$(Configuration);Platform=x64;SelfContained=true;NuGetAudit=$(NuGetAudit)"
              RemoveProperties="TargetFramework;RuntimeIdentifier;TargetPlatformVersion;TargetPlatformMinVersion;BaseIntermediateOutputPath;BaseOutputPath;MSBuildProjectExtensionsPath;IntermediateOutputPath;OutputPath;OutDir" />
     <MSBuild Projects="%(OfficialBackend.Identity)"
              Targets="GetTargetPath"
-             Properties="Configuration=$(Configuration);Platform=x64"
+             Properties="Configuration=$(Configuration);Platform=x64;SelfContained=true"
              RemoveProperties="TargetFramework;RuntimeIdentifier;TargetPlatformVersion;TargetPlatformMinVersion;BaseIntermediateOutputPath;BaseOutputPath;MSBuildProjectExtensionsPath;IntermediateOutputPath;OutputPath;OutDir">
       <Output TaskParameter="TargetOutputs" ItemName="_OfficialBackendTargetPath" />
     </MSBuild>

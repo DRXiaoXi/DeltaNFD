@@ -33,7 +33,7 @@ internal static class RuntimeGuardRecoveryChecks
             var repo = new DirectoryInfo(AppContext.BaseDirectory);
             while (repo is not null && !File.Exists(Path.Combine(repo.FullName, "src/DeltaNFD/ViewModels/RuntimeViewModel.cs"))) repo = repo.Parent;
             var vmSource = File.ReadAllText(Path.Combine(repo!.FullName, "src/DeltaNFD/ViewModels/RuntimeViewModel.cs"));
-            Check(vmSource.Contains("GuardCleanupEnabled => !GuardIsBusy && !IsRepairing && !UninstallV14Busy"),
+            Check(vmSource.Contains("GuardCleanupEnabled => !GuardIsBusy"),
                 "强制清理入口不依赖已开启、残留判断或读取状态成功");
             Check(vmSource.Contains("(enable && !_guardStateKnown)"), "状态未知仍允许关闭重试，但禁止未知状态启用");
 
@@ -42,21 +42,6 @@ internal static class RuntimeGuardRecoveryChecks
                 "完全防护写入十一项并标记归属");
             Check(f.State.Value.Acls.Count == 0 && f.Files.Writes == 0, "开启不再写 UE4 文件权限");
             Check(f.Guard.RepairBlocker(null) is not null, "防护开启时拒绝修复");
-            var progress = 0;
-            var repair = await new RuntimeGuardService(f.Guard).RepairVcRedistAsync(new InlineProgress(_ => progress++));
-            var compatibility = await new RuntimeGuardService(f.Guard).RepairCompatibilityAsync(new InlineProgress(_ => progress++));
-            Check(!compatibility.Success && progress == 0, "新版防护也在资源校验和修改前阻止兼容性修复");
-            var strongRepair = await new RuntimeGuardService(f.Guard).RepairVcRedistAsync(strongRepairMode: true);
-            var strongCompatibility = await new RuntimeGuardService(f.Guard).RepairCompatibilityAsync(strongRepairMode: true);
-            Check(!strongRepair.Success && !strongCompatibility.Success, "强力模式的两个真实入口仍服从新版防护门禁，不启动 DISM/SFC");
-            if (ElevationHelper.IsElevated)
-                Check(!repair.Success && repair.Message.Contains("尚未卸载") && progress == 0, "真实修复入口在卸载及包校验前短路");
-            else
-            {
-                Check(!repair.Success && repair.Message == ElevationHelper.NotElevatedMessage && progress == 0,
-                    "未提权修复在诊断、校验和卸载前拒绝");
-                Console.WriteLine("[SKIP] 真实修复入口的防护短路需管理员；注入防护策略检查已通过，不能替代该实测。");
-            }
             Check(f.Guard.Enable(null).Success && f.Registry.Values.Count == 11, "重复开启幂等");
             Check(f.Guard.Disable(default(string?)).Success && Clean(f), "关闭完整移除并删除空键");
             Check(f.Guard.RepairBlocker(null) is null, "关闭后修复不再被拦");

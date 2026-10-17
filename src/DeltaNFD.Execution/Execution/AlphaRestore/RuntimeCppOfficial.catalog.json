@@ -1,0 +1,272 @@
+[
+  {
+    "Year": "2005",
+    "Arch": "x64",
+    "Version": "8.0.61000",
+    "Url": "https://download.microsoft.com/download/8/B/4/8B42259F-5D70-43F4-AC2E-4B208FD8D66A/vcredist_x64.EXE",
+    "Files": [
+      {
+        "Path": "2005/x64/vcredis1.cab",
+        "Bytes": 319566,
+        "Sha256": "20A26ED9A1EDF7763A9B515522C5E29720048A482C7FBC8B7FF6BBDD27E61038"
+      },
+      {
+        "Path": "2005/x64/vcredist.exe",
+        "Bytes": 3179000,
+        "Sha256": "4487570BD86E2E1AAC29DB2A1D0A91EB63361FCAAC570808EB327CD4E0E2240D"
+      },
+      {
+        "Path": "2005/x64/vcredist.msi",
+        "Bytes": 3186176,
+        "Sha256": "200FEF5D4994523A02C4DAA00060DB28EB289B99D47FC6C1305183101E72BDEB"
+      }
+    ]
+  },
+  {
+    "Year": "2005",
+    "Arch": "x86",
+    "Version": "8.0.61001",
+    "Url": "https://download.microsoft.com/download/8/B/4/8B42259F-5D70-43F4-AC2E-4B208FD8D66A/vcredist_x86.EXE",
+    "Files": [
+      {
+        "Path": "2005/x86/vcredis1.cab",
+        "Bytes": 253512,
+        "Sha256": "913EE5A1CAE3E5A1872B3A5EFAAA00C58E4BEB692492B138F76967DA671B0477"
+      },
+      {
+        "Path": "2005/x86/vcredist.exe",
+        "Bytes": 2710520,
+        "Sha256": "8648C5FC29C44B9112FE52F9A33F80E7FC42D10F3B5B42B2121542A13E44ADFD"
+      },
+      {
+        "Path": "2005/x86/vcredist.msi",
+        "Bytes": 2770944,
+        "Sha256": "91BDD063F6C53126737791C9ECCF0B2F4CF44927831527245BC89A0BE06C0CB4"
+      }
+    ]
+  },
+  {
+    "Year": "2008",
+    "Arch": "x64",
+    "Version": "9.0.30729.6161",
+    "Url": "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x64.exe",
+    "Files": [
+      {
+        "Path": "2008/x64/vc_red.cab",
+        "Bytes": 4516273,
+        "Sha256": "9F218CEFE505A28A589B10F4E7C28AC479ECA159E438012A9666E6F709BCF82F"
+      },
+      {
+        "Path": "2008/x64/vc_red.msi",
+        "Bytes": 235520,
+        "Sha256": "017E62A7A046ACF00F5565E60F8EED4C5F409913E7DDC2F431D4236BBFDABAB8"
+      },
+      {
+        "Path": "2008/x64/vcredist.exe",
+        "Bytes": 5211080,
+        "Sha256": "C5E273A4A16AB4D5471E91C7477719A2F45DDADB76C7F98A38FA5074A6838654"
+      }
+    ]
+  },
+  {
+    "Year": "2008",
+    "Arch": "x86",
+    "Version": "9.0.30729.6161",
+    "Url": "https://download.microsoft.com/download/5/D/8/5D8C65CB-C849-4025-8E95-C3966CAFD8AE/vcredist_x86.exe",
+    "Files": [
+      {
+        "Path": "2008/x86/vc_red.cab",
+        "Bytes": 3831766,
+        "Sha256": "461D575BC1A07F64C14F1DA885D2F310BD282CBBEDCD0A5CF8FFA7057411805D"
+      },
+      {
+        "Path": "2008/x86/vc_red.msi",
+        "Bytes": 227328,
+        "Sha256": "34C5E7D7EA270EE67F92D34843D89603D6D3B6D9EF5247B43AE3C59C909D380D"
+      },
+      {
+        "Path": "2008/x86/vcredist.exe",
+        "Bytes": 4483040,
+        "Sha256": "8742BCBF24EF328A72D2A27B693CC7071E38D3BB4B9B44DEC42AA3D2C8D61D92"
+      }
+    ]
+  },
+  {
+    "Year": "2010",
+    "Arch": "x64",
+    "Version": "10.0.40219.325",
+    "Url": "https://download.microsoft.com/download/1/6/5/165255E7-1014-4D0A-B094-B6A430A6BFFC/vcredist_x64.exe",
+    "Files": [
+      {
+        "Path": "2010/x64/vc_red.cab",
+        "Bytes": 4877975,
+        "Sha256": "387E94A26165E4E5F035D89F9C6589A8A9D223978ABBCC728B4C45C0115267A6"
+      },
+      {
+        "Path": "2010/x64/vc_red.msi",
+        "Bytes": 177664,
+        "Sha256": "5763364634BDB2097B6DF6CDE79AC5CCE6069ACECF27254C589E3CABFFE53C2B"
+      },
+      {
+        "Path": "2010/x64/vcredist.exe",
+        "Bytes": 10277328,
+        "Sha256": "F3B7A76D84D23F91957AA18456A14B4E90609E4CE8194C5653384ED38DADA6F3"
+      }
+    ]
+  },
+  {
+    "Year": "2010",
+    "Arch": "x86",
+    "Version": "10.0.40219.325",
+    "Url": "https://download.microsoft.com/download/1/6/5/165255E7-1014-4D0A-B094-B6A430A6BFFC/vcredist_x86.exe",
+    "Files": [
+      {
+        "Path": "2010/x86/vc_red.cab",
+        "Bytes": 4224705,
+        "Sha256": "71C0ACC75EECDF39051819DC7C26503583F6BE6C43AB2C320853DE15BECE9978"
+      },
+      {
+        "Path": "2010/x86/vc_red.msi",
+        "Bytes": 163840,
+        "Sha256": "9ECF3980B29C6AA20067F9F45C64B45AD310A3D83606CD9667895AD35F106E66"
+      },
+      {
+        "Path": "2010/x86/vcredist.exe",
+        "Bytes": 8993744,
+        "Sha256": "99DCE3C841CC6028560830F7866C9CE2928C98CF3256892EF8E6CF755147B0D8"
+      }
+    ]
+  },
+  {
+    "Year": "2012",
+    "Arch": "x64",
+    "Version": "11.0.61030.0",
+    "Url": "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x64.exe",
+    "Files": [
+      {
+        "Path": "2012/x64/packages/vcRuntimeAdditional_amd64/cab1.cab",
+        "Bytes": 5800228,
+        "Sha256": "F96B762251EE88B41BBCCB2C3F93CA0CE0010478F4C8119587FD4D450F3737BC"
+      },
+      {
+        "Path": "2012/x64/packages/vcRuntimeAdditional_amd64/vc_runtimeAdditional_x64.msi",
+        "Bytes": 151552,
+        "Sha256": "11AC7AA797DEC10C7DB3B132C7BD838D6DC9EF817404D795A6F4C42313B1B2EB"
+      },
+      {
+        "Path": "2012/x64/packages/vcRuntimeMinimum_amd64/cab1.cab",
+        "Bytes": 809765,
+        "Sha256": "A1E0EEA427985D00A4BC6A90EDE9E6843024B78C0985EC28F238767449BA8FAB"
+      },
+      {
+        "Path": "2012/x64/packages/vcRuntimeMinimum_amd64/vc_runtimeMinimum_x64.msi",
+        "Bytes": 151552,
+        "Sha256": "A7DA165E4DC6CF3BE4FC800223BA1242908558878B926DC132AB6523D347A798"
+      },
+      {
+        "Path": "2012/x64/vcredist.exe",
+        "Bytes": 7186992,
+        "Sha256": "681BE3E5BA9FD3DA02C09D7E565ADFA078640ED66A0D58583EFAD2C1E3CC4064"
+      }
+    ]
+  },
+  {
+    "Year": "2012",
+    "Arch": "x86",
+    "Version": "11.0.61030.0",
+    "Url": "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x86.exe",
+    "Files": [
+      {
+        "Path": "2012/x86/packages/vcRuntimeAdditional_x86/cab1.cab",
+        "Bytes": 5153816,
+        "Sha256": "4DF25B3EAB53A92E66913F8ADF3628C1FE1A5BF4EA09826EB359E314050600F8"
+      },
+      {
+        "Path": "2012/x86/packages/vcRuntimeAdditional_x86/vc_runtimeAdditional_x86.msi",
+        "Bytes": 151552,
+        "Sha256": "AD12C204CF4B9F98824668E36EE23F61266465BEBFE810EB3E0111343EFE12C6"
+      },
+      {
+        "Path": "2012/x86/packages/vcRuntimeMinimum_x86/cab1.cab",
+        "Bytes": 821681,
+        "Sha256": "BC7FE32506819BDA26EB4159BD5531CA5BBD8AE1657D33D69E6D9EA5B1D642A9"
+      },
+      {
+        "Path": "2012/x86/packages/vcRuntimeMinimum_x86/vc_runtimeMinimum_x86.msi",
+        "Bytes": 151552,
+        "Sha256": "6FA830D2F4BCD43CE06683E2DBBEE328400D4EE16E591928D3405DCC343C8081"
+      },
+      {
+        "Path": "2012/x86/vcredist.exe",
+        "Bytes": 6554576,
+        "Sha256": "B924AD8062EAF4E70437C8BE50FA612162795FF0839479546CE907FFA8D6E386"
+      }
+    ]
+  },
+  {
+    "Year": "2013",
+    "Arch": "x64",
+    "Version": "12.0.40664.0",
+    "Url": "https://download.visualstudio.microsoft.com/download/pr/10912041/cee5d6bca2ddbcd039da727bf4acb48a/vcredist_x64.exe",
+    "Files": [
+      {
+        "Path": "2013/x64/packages/vcRuntimeAdditional_amd64/cab1.cab",
+        "Bytes": 5588515,
+        "Sha256": "1F2F8F5D60DADBC6E4D3D36C88CC54F22AF0A615B609609E748782DC26231174"
+      },
+      {
+        "Path": "2013/x64/packages/vcRuntimeAdditional_amd64/vc_runtimeAdditional_x64.msi",
+        "Bytes": 143360,
+        "Sha256": "8909E5C1D917064983595A4E4717F758C2A8DF8F59D7B31A5B79B2F95BD8F7CC"
+      },
+      {
+        "Path": "2013/x64/packages/vcRuntimeMinimum_amd64/cab1.cab",
+        "Bytes": 1034428,
+        "Sha256": "E95D29CBB06BB323D9D43FC2CE61D4565B0866622A83D93DF76430A0C252B433"
+      },
+      {
+        "Path": "2013/x64/packages/vcRuntimeMinimum_amd64/vc_runtimeMinimum_x64.msi",
+        "Bytes": 143360,
+        "Sha256": "E88D0915814E622CD1DECA849EFA23A0D58D5D756BE44EBBB4D460D3DAC9E816"
+      },
+      {
+        "Path": "2013/x64/vcredist.exe",
+        "Bytes": 7200744,
+        "Sha256": "A4BBA7701E355AE29C403431F871A537897C363E215CAFE706615E270984F17C"
+      }
+    ]
+  },
+  {
+    "Year": "2013",
+    "Arch": "x86",
+    "Version": "12.0.40664.0",
+    "Url": "https://download.visualstudio.microsoft.com/download/pr/10912113/5da66ddebb0ad32ebd4b922fd82e8e25/vcredist_x86.exe",
+    "Files": [
+      {
+        "Path": "2013/x86/packages/vcRuntimeAdditional_x86/cab1.cab",
+        "Bytes": 4932928,
+        "Sha256": "E12EFC1BC0C61A7B9BA10A07502EF6833297D028368760DA26E63218B744DA79"
+      },
+      {
+        "Path": "2013/x86/packages/vcRuntimeAdditional_x86/vc_runtimeAdditional_x86.msi",
+        "Bytes": 143360,
+        "Sha256": "7CEF0419F52C47F41B9546065E6788F20DE07A7F1E647589AB52D88F6C7E50A5"
+      },
+      {
+        "Path": "2013/x86/packages/vcRuntimeMinimum_x86/cab1.cab",
+        "Bytes": 997193,
+        "Sha256": "80A29D5CE27C6794B9A38E5D5B98D535F877AC3363F450EE7AC0BE9394426E49"
+      },
+      {
+        "Path": "2013/x86/packages/vcRuntimeMinimum_x86/vc_runtimeMinimum_x86.msi",
+        "Bytes": 143360,
+        "Sha256": "60714FCDAC0A7CBFC45E6ED9BC6D4B7F8536947F630016E5FACA5CCE1745ADCF"
+      },
+      {
+        "Path": "2013/x86/vcredist.exe",
+        "Bytes": 6510136,
+        "Sha256": "53B605D1100AB0A88B867447BBF9274B5938125024BA01F5105A9E178A3DCDBD"
+      }
+    ]
+  }
+]

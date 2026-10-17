@@ -70,7 +70,7 @@ internal static class EmergencyPolicyUpdateService
             {
                 try
                 {
-                    var bytes = await FetchAsync(SourceRoot + channel + ".json", settings.GitHubAccelerateEnabled, linked.Token).ConfigureAwait(false);
+                    var bytes = await FetchAsync(SourceRoot + channel + ".json", linked.Token).ConfigureAwait(false);
                     var current = AppSettingsStore.Read();
                     if (!current.EmergencyPolicyEnabled || current.UpdateChannel != settings.UpdateChannel) return;
                     var policy = EmergencyPolicies.Store.Accept(bytes, channel, DateTimeOffset.UtcNow);
@@ -127,19 +127,13 @@ internal static class EmergencyPolicyUpdateService
     private static bool Allowed(Uri uri) => uri.Scheme == "https" && uri.IsDefaultPort
         && uri.UserInfo.Length == 0 && uri.Fragment.Length == 0
         && uri.Host is "raw.githubusercontent.com" or "github.com" or "objects.githubusercontent.com"
-            or "release-assets.githubusercontent.com" or "gh-proxy.com";
+            or "release-assets.githubusercontent.com";
 
-    private static async Task<byte[]> FetchAsync(string url, bool accelerate, CancellationToken token)
+    private static async Task<byte[]> FetchAsync(string url, CancellationToken token)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(20));
-        try { return await FetchBoundedAsync(Client, new Uri(url), deadline.Token).ConfigureAwait(false); }
-        catch (Exception) when (accelerate && !token.IsCancellationRequested)
-        {
-            using var fallback = CancellationTokenSource.CreateLinkedTokenSource(token);
-            fallback.CancelAfter(TimeSpan.FromSeconds(20));
-            return await FetchBoundedAsync(Client, new Uri("https://gh-proxy.com/" + url), fallback.Token).ConfigureAwait(false);
-        }
+        return await FetchBoundedAsync(Client, new Uri(url), deadline.Token).ConfigureAwait(false);
     }
 
     private static void SetStatus(string message)

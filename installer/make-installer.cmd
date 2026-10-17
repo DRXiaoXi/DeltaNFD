@@ -16,14 +16,6 @@ rem ============================================================
 setlocal
 cd /d "%~dp0\.." || goto :fail
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\installer\prepare-directx-resources.ps1"
-if errorlevel 1 goto :fail
-
-if not exist "src\DeltaNFD\Assets\VCRedistRepair\Installer.cmd" goto :missing_runtime
-if not exist "src\DeltaNFD\Assets\VCRedistRepair\payload_manifest_sha256.csv" goto :missing_runtime
-if not exist "src\DeltaNFD\Assets\VCRedist2015-2022-x64.exe" goto :missing_runtime
-if not exist "src\DeltaNFD\Assets\VCRedist2015-2022-x86.exe" goto :missing_runtime
-
 set "BUILD_ID=%RANDOM%%RANDOM%"
 set "PUB=%CD%\_buildcheck\installer-publish-%BUILD_ID%"
 set "ART=%CD%\_buildcheck\installer-artifacts-%BUILD_ID%"
@@ -66,11 +58,6 @@ goto :eof
 :fail
 echo.
 echo BUILD FAILED.
-exit /b 1
-
-:missing_runtime
-echo [ERROR] VC++ runtime repair assets are missing from src\DeltaNFD\Assets.
-echo Restore VCRedistRepair\Installer.cmd, its payload manifest, and the x86/x64 2015-2022 installers.
 exit /b 1
 
 :missing_background

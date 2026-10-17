@@ -372,17 +372,13 @@ internal static class BackendContractChecks
         Check(BackendModules.IsAllowed(BackendModules.Runtime, BackendCommands.RuntimeGuardEnable) &&
               BackendModules.IsAllowed(BackendModules.Runtime, BackendCommands.RuntimeGuardDisable),
             "运行库拦截开关在白名单内");
-        Check(BackendModules.TimeoutFor(BackendModules.Runtime, BackendCommands.RuntimeRepair) >= TimeSpan.FromMinutes(20),
-            "运行库重装超时足够长");
+        Check(!BackendModules.IsAllowed(BackendModules.Runtime, BackendCommands.RuntimeRepair),
+            "运行库修复已从命令白名单移除");
 
         using var isolation = BackendIsolation.Create();
         Check(await RunExitCodeAsync(exe, ["--describe"]) == 0, "运行库后端 --describe 正常（白名单与处理器一致）");
 
         await using var client = await BackendClient.StartAsync(BackendModules.Runtime, CancellationToken.None);
-
-        var invalidRepair = await client.InvokeAsync(BackendCommands.RuntimeRepair, new RuntimeRepairArgs { Mode = (RuntimeRepairMode)99 }, null, CancellationToken.None);
-        Check(invalidRepair.Status == BackendResultStatuses.Failed && invalidRepair.Message.Contains("模式无效"),
-            "真实 IPC 拒绝未知修复模式，未启动安装器");
 
         // 读取机器级防护状态需要对 ProgramData 强化目录的 ACL 读取权限（需管理员）。
         // 未提权时如实记为 SKIP，不伪造成功；判定逻辑本身由 RuntimeGuardSafetyChecks 用注入夹具覆盖。
@@ -400,21 +396,6 @@ internal static class BackendContractChecks
         else
         {
             throw new Exception($"官方后端合同检查失败：runtime.status 未返回 ok 且非权限受限｜status={status.Status}｜message={status.Message}");
-        }
-
-        var scan = await client.InvokeAsync(BackendCommands.RuntimeRedistScan, new { }, null, CancellationToken.None);
-        if (scan.Status == BackendResultStatuses.Ok && scan.Data is not null)
-        {
-            var report = BackendJson.Deserialize<VcRedistScanReport>(scan.Data.Value);
-            Check(report.All is not null && report.Abnormal is not null, "运行库扫描报告字段完整");
-        }
-        else if (IsElevationLimited(scan.Message))
-        {
-            Console.WriteLine("  [SKIP] runtime.redist.scan 需管理员（未提权）；已按失败如实返回。");
-        }
-        else
-        {
-            throw new Exception($"官方后端合同检查失败：runtime.redist.scan 未返回 ok 且非权限受限｜status={scan.Status}｜message={scan.Message}");
         }
 
         using var owned = CaptureOwnedProcess(client);

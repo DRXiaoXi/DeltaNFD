@@ -73,17 +73,8 @@ public sealed class CpuFrameStatusSnapshot
     /// <summary>系统定时器高分辨率是否实际已请求。</summary>
     public bool TimerActive { get; init; }
 
-    /// <summary>核心常驻轮询环是否正在运行。</summary>
-    public bool CoreParkingActive { get; init; }
-
-    /// <summary>当前停靠核心数（未知为 null）。</summary>
-    public int? ParkedCoreCount { get; init; }
-
     /// <summary>最近一次内存清理的实际状态文字。</summary>
     public string MemoryCleanStatus { get; init; } = "";
-
-    /// <summary>EcoQoS 电源限制是否已对游戏进程禁用（实际生效）。</summary>
-    public bool EcoQosApplied { get; init; }
 
     /// <summary>本轮监控是否已因游戏启动重启过 DWM。</summary>
     public bool DwmRestartedThisSession { get; init; }
@@ -151,11 +142,15 @@ public sealed class CpuFrameTempArgs
     public bool LaptopExcluded { get; set; }
 }
 
-/// <summary>加速系统响应模式（响应提升）的期望状态；由前端按帧格开关与机箱形态编排后下发。</summary>
+/// <summary>高分辨率计时器的期望状态；旧版字段仅用于明确拒绝已移除的功能。</summary>
 public sealed class CpuFrameBoostArgs
 {
+    /// <summary>退休协议字段；true 时拒绝整个请求。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public bool CoreParking { get; set; }
 
+    /// <summary>退休协议字段；true 时拒绝整个请求。</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public bool EcoQos { get; set; }
 
     public bool Timer { get; set; }

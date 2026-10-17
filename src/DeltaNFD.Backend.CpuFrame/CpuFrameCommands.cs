@@ -213,7 +213,9 @@ internal static class CpuFrameCommands
     private static async Task<BackendResult> BoostApplyAsync(BackendCommandContext context)
     {
         var args = context.ArgsAs<CpuFrameBoostArgs>();
-        var result = await Engine.ApplyBoostAsync(args.CoreParking, args.EcoQos, args.Timer);
+        if (args.CoreParking || args.EcoQos)
+            return Wrap(context.Command, OperationResult.Fail("核心常驻和游戏进程禁电源限制已移除，请使用新版帧格设置。"));
+        var result = await Engine.ApplyBoostAsync(args.Timer);
         return Wrap(context.Command, result);
     }
 

@@ -83,7 +83,7 @@ public sealed class GpuSpoofService : IGpuSpoofService
 
                 var deviceDesc = instanceKey.GetValue("DeviceDesc") as string ?? "";
                 var relativePath = $@"{EnumPciPath}\{deviceKeyName}\{instanceKeyName}";
-                var hasBackup = _backups.Get(relativePath, "DeviceDesc") is not null;
+                var hasBackup = _backups.GetStrict("HKLM", relativePath, "DeviceDesc") is not null;
 
                 // 伪装判定与“是否有备份”无关（仅备份未修改过的适配器也存在备份记录）：
                 // Windows 原生 DeviceDesc 恒为 "@oemXX.inf,%id%;名称" 的 INF 引用格式，
@@ -203,7 +203,7 @@ public sealed class GpuSpoofService : IGpuSpoofService
 
         try
         {
-            var backup = _backups.Get(registryPath, "DeviceDesc");
+            var backup = _backups.GetStrict("HKLM", registryPath, "DeviceDesc");
             if (backup is null)
             {
                 Log.Warn("显卡恢复失败：无备份记录");
@@ -218,10 +218,16 @@ public sealed class GpuSpoofService : IGpuSpoofService
                 return OperationResult.Fail($"打开注册表键失败：HKLM\\{registryPath}");
             }
 
-            key.SetValue("DeviceDesc", backup.Data, RegistryValueKind.String);
-            if (key.GetValue("DeviceDesc") as string != backup.Data) return OperationResult.Fail("原始型号恢复复核失败，备份保留。");
-            GpuSpoofWatch.Remove(registryPath);
-            _backups.Remove(registryPath, "DeviceDesc");
+            var pending = GpuSpoofRestoreState.Capture(AppSettingsStore.ReadRequired());
+            GpuSpoofRestoreState.Finish(() =>
+            {
+                key.SetValue("DeviceDesc", backup.Data, RegistryValueKind.String);
+                if (key.GetValue("DeviceDesc") as string != backup.Data) throw new IOException("原始型号恢复复核失败，备份保留。");
+            }, () => GpuSpoofRestoreState.Complete(pending, registryPath), () =>
+            {
+                GpuSpoofWatch.Remove(registryPath);
+                _backups.RemoveStrict("HKLM", registryPath, "DeviceDesc");
+            });
             Log.Info("显卡伪装：恢复成功");
             return OperationResult.Ok("已恢复原始显卡型号，重启电脑后生效。", requiresReboot: true);
         }

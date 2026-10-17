@@ -1,8 +1,8 @@
 ; 三角帧不掉洲（Delta No FPS Drops / Delta NFD）安装脚本 · Inno Setup 6
 ; 编译：ISCC.exe DeltaNFD.iss
-; 产物：三角帧不掉洲_DeltaNFD_安装包_0.915_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
+; 产物：三角帧不掉洲_DeltaNFD_安装包_0.9200_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
 ;
-; 当前源码版本：0.915 / Alpha0.915。发布清单须在安装包生成后重新生成。
+; 当前源码版本：0.9200 / Beta0.92。内部更新数值保持递增；发布显示为 Beta0.92。
 ;
 ; 安装/卸载统一安全交接：先封锁新启动，通知主程序完成恢复并退出，再核对所有官方执行者。
 ; 卸载保留备份时，在删除程序前复制并校验完整数据；历史记录仍待核对时保留原目录。
@@ -14,8 +14,8 @@
 #define MyAppShortName "Delta NFD"
 #define MyAppEnglishName "Delta No FPS Drops"
 #define MyAppDisplayName "三角帧不掉洲（Delta NFD）"
-#define MyAppVersion "0.915"
-#define MyAppDisplayVersion "Alpha0.915"
+#define MyAppVersion "0.9200"
+#define MyAppDisplayVersion "Beta0.92"
 #define MyAppExeName "DeltaNFD.exe"
 ; 登录任务名（与 AppControlService / FrameService 创建的一致）
 #define AutoStartTaskName "DeltaNFD_AutoStart"
@@ -25,11 +25,6 @@
 #define LegacyDataDirName "DeltaOptimizer"
 #ifndef PublishDir
   #define PublishDir "publish\DeltaNFD"
-#endif
-
-; An incomplete publish layout must not silently produce an installer without offline .NET repair.
-#if !FileExists(PublishDir + "\Assets\DotNetRepair\dotnet-runtime-8.0.31-win-x64.exe")
-  #error "Missing bundled .NET 8 x64 repair installer; publish the current source first."
 #endif
 
 [Setup]
@@ -79,6 +74,9 @@ Name: "chinese"; MessagesFile: "ChineseSimplified.isl"
 [InstallDelete]
 ; Delete old executable/assembly and PRI files after Restart Manager has closed a previous instance.
 Type: files; Name: "{app}\DeltaOptimizer.*"
+; Remove the retired product-owned repair payload and shortcut on upgrade.
+Type: filesandordirs; Name: "{app}\Assets\DotNetRepair"
+Type: files; Name: "{group}\.NET 环境修复.lnk"
 
 [CustomMessages]
 chinese.CreateDesktopIcon=在桌面创建「三角帧不掉洲」快捷方式(&D)
@@ -89,14 +87,12 @@ chinese.RunAfterInstall=安装完成后启动 {#MyAppDisplayName}
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "DeploymentControl.ps1"; DestDir: "{app}\Tools"; Flags: ignoreversion
 Source: "DeploymentControl.ps1"; Flags: dontcopy
-Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "Assets\DotNetRepair\*,Assets\VCRedistRepair\*,Assets\VCRedistRepair_unpacked\*,Assets\DirectXRepair\*,Assets\VCRedist2015-2022-*.exe,Assets\VCRedistRepair.exe"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppShortcutName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\卸载 {#MyAppShortcutName}"; Filename: "{uninstallexe}"
-Name: "{group}\.NET 环境修复"; Filename: "{app}\Assets\DotNetRepair\RepairDotNet.cmd"; WorkingDir: "{app}\Assets\DotNetRepair"
 Name: "{autodesktop}\{#MyAppShortcutName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
@@ -524,6 +520,7 @@ var
   TaskWarning: String;
   FrameWarning: String;
   OldRuntimeDir: String;
+  RetiredIndex: Integer;
   ChannelInstallId: String;
 begin
   if CurStep = ssPostInstall then
@@ -561,14 +558,30 @@ begin
         MsgBox('新程序已安装，但' + TaskWarning + '。请在任务计划程序中检查登录任务。', mbError, MB_OK);
     end;
     { Files and task migration are complete. Release before [Run] starts the new GUI. }
-    OldRuntimeDir := ExpandConstant('{app}\Assets\VCRedistRepair_unpacked');
-    if DirExists(OldRuntimeDir) then
+    for RetiredIndex := 0 to 6 do
     begin
+      case RetiredIndex of
+        0: OldRuntimeDir := ExpandConstant('{app}\Assets\VCRedistRepair');
+        1: OldRuntimeDir := ExpandConstant('{app}\Assets\VCRedistRepair_unpacked');
+        2: OldRuntimeDir := ExpandConstant('{app}\Assets\DirectXRepair');
+        3: OldRuntimeDir := ExpandConstant('{app}\Assets\VCRedist2015-2022-x64.exe');
+        4: OldRuntimeDir := ExpandConstant('{app}\Assets\VCRedist2015-2022-x86.exe');
+        5: OldRuntimeDir := ExpandConstant('{app}\Assets\VCRedistRepair.exe');
+        6: OldRuntimeDir := ExpandConstant('{app}\Assets\DirectXRepair_unpacked');
+      end;
       if FileExists(ExpandConstant('{userappdata}\Delta NFD\runtime-repair-active.json')) or
         FileExists(ExpandConstant('{userappdata}\Delta NFD\official-backend-unconfirmed\runtime.json')) then
-        Log('旧运行库资源有未完成操作记录，暂时保留恢复来源：' + OldRuntimeDir)
-      else if not DelTree(OldRuntimeDir, OldRuntimeDir) then
-        Log('旧运行库资源目录未能完全清理：' + OldRuntimeDir);
+        Log('旧操作尚待核对，暂时保留其安装资源证据：' + OldRuntimeDir)
+      else if DirExists(OldRuntimeDir) then
+      begin
+        if not DelTree(OldRuntimeDir, OldRuntimeDir) then
+          Log('退休的运行库资源未能完全清理：' + OldRuntimeDir);
+      end
+      else if FileExists(OldRuntimeDir) and not HasReparseAncestor(OldRuntimeDir) then
+      begin
+        if not DeleteFile(OldRuntimeDir) then
+          Log('退休的运行库安装器未能清理：' + OldRuntimeDir);
+      end;
     end;
     ReleaseDeploymentMutex();
   end;

@@ -1,7 +1,16 @@
-namespace DeltaNFD.Services;
+﻿namespace DeltaNFD.Services;
 
 public sealed record ProcmanMemoryCandidate(ProcessIdentityArgs Identity, string Name, long WorkingSetBytes, double CpuPercent);
-public sealed record ProcmanMemoryPreview(string Id, DateTimeOffset ExpiresUtc, IReadOnlyList<ProcmanMemoryCandidate> Candidates, string Message);
+public sealed record ProcmanMemoryPreview(string Id, DateTimeOffset ExpiresUtc, IReadOnlyList<ProcmanMemoryCandidate> Candidates, string Message)
+{
+    public string Mode { get; init; } = ProcmanMemoryModes.Normal;
+}
+public static class ProcmanMemoryModes
+{
+    public const string Normal = "normal";
+    public const string Aggressive = "aggressive";
+    public const string DeltaStable = "delta-stable";
+}
 public sealed class ProcmanMemoryTrimArgs
 {
     public string PreviewId { get; set; } = "";
@@ -18,10 +27,29 @@ public sealed record ProcmanBackgroundConfig
     public int SchemaVersion { get; init; } = 1;
     public bool AutomaticMemoryEnabled { get; init; }
     public int MemoryPressurePercent { get; init; } = 85;
+    /// <summary>手动/自动共用的单次候选上限，默认 5，范围 1–256。</summary>
+    public int MemoryBatchLimit { get; init; } = 5;
+    /// <summary>自动批次及同一进程重复回收的最短间隔，默认 600 秒，范围 60–86400。</summary>
+    public int MemoryCooldownSeconds { get; init; } = 600;
+    public string MemoryMode { get; init; } = ProcmanMemoryModes.Normal;
     public List<string> ExcludedExecutablePaths { get; init; } = [];
+    public ProcmanSuppressionOptions Suppression { get; init; } = new();
+}
+
+public sealed record ProcmanSuppressionOptions
+{
+    public int DefaultsVersion { get; init; } = 2;
+    public int CpuBusyThreshold { get; init; } = 65;
+    public int CpuBusySeconds { get; init; } = 3;
+    public int CpuIdleThreshold { get; init; } = 50;
+    public int CpuIdleSeconds { get; init; } = 6;
+    public int CooldownSeconds { get; init; } = 15;
+    public int CandidateCpuFloorPercent { get; init; } = 0;
+    public int MaxAdjustPerRound { get; init; } = 1;
 }
 public sealed record ProcmanBackgroundStatus(ProcmanBackgroundConfig Config, bool AutomaticMemoryActive,
-    DateTimeOffset? LastCheckUtc, ProcmanMemoryTrimReport? LastReport, string Note = "", string Feedback = "");
+    DateTimeOffset? LastCheckUtc, ProcmanMemoryTrimReport? LastReport, string Note = "", string Feedback = "", int EffectiveCandidateCpuFloorPercent = 0,
+    int EffectiveMemoryCooldownSeconds = 600);
 
 // ---------------- 进程管理（procman）合同 ----------------
 // 设计约束（notes/进程管理与响应性保护待做清单.md）：
@@ -223,12 +251,17 @@ public sealed class ProcmanReleaseArgs
 public sealed class ProcmanStatusSnapshot
 {
     public string Module { get; init; } = "procman";
+    public int BackendPid { get; init; }
+    public string BackendPriorityClass { get; init; } = "";
 
     /// <summary>规则引擎是否在运行。</summary>
     public bool RulesEngineRunning { get; init; }
 
     /// <summary>后台抑制是否启用（默认关闭）。协议字段名称保留兼容。</summary>
     public bool ResponsivenessEnabled { get; init; }
+
+    /// <summary>当前后台抑制参数，供帧格页重新打开时准确回显；null 表示尚未配置。</summary>
+    public ProcmanResponsivenessConfigArgs? ResponsivenessConfig { get; init; }
 
     /// <summary>当前持有的修改记录总数。</summary>
     public int HeldChangeCount { get; init; }
@@ -277,6 +310,29 @@ public sealed class ProcmanRecoverArgs
 public sealed class ProcmanTopologyResult
 {
     public List<ProcmanGroupMask> Groups { get; init; } = [];
+    public List<ProcmanLogicalCpu> Processors { get; init; } = [];
+    public string ProcessorName { get; init; } = "";
+    public string DetectionNote { get; init; } = "";
+}
+
+/// <summary>进程管理独立拓扑；编号仅用于当前机器，未知字段不按逻辑编号推算。</summary>
+public sealed class ProcmanLogicalCpu
+{
+    public ushort Group { get; init; }
+    public int Index { get; init; }
+    public int? Core { get; set; }
+    public int? Thread { get; set; }
+    public int ThreadCount { get; set; }
+    public uint? CpuSetId { get; set; }
+    public byte? EfficiencyClass { get; set; }
+    /// <summary>P/E 只由逐核 CPUID 确认；空字符串表示未确认。</summary>
+    public string CoreKind { get; set; } = "";
+    public int? Package { get; set; }
+    public int? Die { get; set; }
+    public int? NumaNode { get; set; }
+    public int? L3 { get; set; }
+    public uint? L3Bytes { get; set; }
+    public int? Ccd { get; set; }
 }
 
 // ---------------- P2：持久规则 ----------------
@@ -323,26 +379,26 @@ public sealed class ProcmanResponsivenessConfigArgs
 {
     public bool Enabled { get; set; }
 
-    /// <summary>系统 CPU 使用率阈值（%，默认 80；本项目自行制定的保守值）。</summary>
-    public int CpuBusyThreshold { get; set; } = 80;
+    /// <summary>系统 CPU 使用率阈值（%，默认 35；本项目自行制定的保守值）。</summary>
+    public int CpuBusyThreshold { get; set; } = 65;
 
-    /// <summary>持续时长秒（默认 6）。</summary>
-    public int CpuBusySeconds { get; set; } = 6;
+    /// <summary>持续时长秒（默认 3）。</summary>
+    public int CpuBusySeconds { get; set; } = 3;
 
-    /// <summary>恢复阈值（%，默认 60）。</summary>
-    public int CpuIdleThreshold { get; set; } = 60;
+    /// <summary>恢复阈值（%，默认 50）。</summary>
+    public int CpuIdleThreshold { get; set; } = 50;
 
-    /// <summary>低于恢复阈值持续秒（默认 8）。</summary>
-    public int CpuIdleSeconds { get; set; } = 8;
+    /// <summary>低于恢复阈值持续秒（默认 6）。</summary>
+    public int CpuIdleSeconds { get; set; } = 6;
 
-    /// <summary>恢复后冷却秒（默认 10）。</summary>
-    public int CooldownSeconds { get; set; } = 10;
+    /// <summary>恢复后冷却秒（默认 15；轮内为其一半）。</summary>
+    public int CooldownSeconds { get; set; } = 15;
 
-    /// <summary>候选进程最低 CPU 占比（%，默认 10）。</summary>
-    public int CandidateCpuFloorPercent { get; set; } = 10;
+    /// <summary>候选进程最低全机 CPU 占比（%；0 = 根据逻辑 CPU 数自动取 1–5）。</summary>
+    public int CandidateCpuFloorPercent { get; set; } = 0;
 
-    /// <summary>每轮最多调整进程数（默认 2）。</summary>
-    public int MaxAdjustPerRound { get; set; } = 2;
+    /// <summary>每轮最多调整进程数（默认 1）。</summary>
+    public int MaxAdjustPerRound { get; set; } = 1;
 
     /// <summary>兼容旧请求字段；新版固定排除三角洲主进程与系统进程，不再使用此额外排除列表。</summary>
     public List<string> Exclusions { get; set; } = [];

@@ -29,7 +29,7 @@ internal static class UpdateChecks
             RunSemanticsChecks();
             RunConfigChecks(tempRoot);
             RunEffectiveConfigChecks(tempRoot);
-            RunAccelerationChecks();
+            RunSourceMigrationChecks();
             if (includeGameCompatibility) RunGameCompatibilityChecks();
             RunEnvironmentReport();
         }
@@ -195,6 +195,7 @@ internal static class UpdateChecks
         var primary = GitHubReleaseSource.ReleasesUrl;
         var mirror = "https://mirror.example/update.json";
         config.ManifestUrls = [primary, mirror];
+        config.InternalManifestUrls = []; // 本夹具验证旧自定义配置：两个通道共用这组来源。
         config.AllowedHosts!.Add("mirror.example");
         var requests = new List<string>();
         Task<string> Fetch(string url, CancellationToken ct)
@@ -202,15 +203,15 @@ internal static class UpdateChecks
             requests.Add(url);
             return url == primary ? Task.FromException<string>(new HttpRequestException("offline")) : Task.FromResult(json);
         }
-        var fallback = service.CheckSourcesAsync(config, new AppSettings(), new Version(0, 82, 0), true, Fetch)
+        var fallback = service.CheckSourcesAsync(config, new AppSettings { UpdateServer = UpdateServer.Automatic }, new Version(0, 82, 0), true, Fetch)
             .GetAwaiter().GetResult();
         Check(fallback.HasUpdate && requests.SequenceEqual(new[] { primary, mirror }), "主站访问失败时才尝试已配置备用源");
         requests.Clear();
-        var healthy = service.CheckSourcesAsync(config, new AppSettings(), new Version(0, 84, 0), true,
+        var healthy = service.CheckSourcesAsync(config, new AppSettings { UpdateServer = UpdateServer.Automatic }, new Version(0, 84, 0), true,
             (url, ct) => { requests.Add(url); return Task.FromResult(json); }).GetAwaiter().GetResult();
         Check(healthy.Status == UpdateCheckStatus.UpToDate && requests.Count == 1, "主站可达且版本较低时不使用镜像制造更新");
         requests.Clear();
-        var rejected = service.CheckSourcesAsync(config, new AppSettings(), new Version(0, 82, 0), true,
+        var rejected = service.CheckSourcesAsync(config, new AppSettings { UpdateServer = UpdateServer.Automatic }, new Version(0, 82, 0), true,
             (url, ct) => { requests.Add(url); return Task.FromResult(invalid); }).GetAwaiter().GetResult();
         Check(rejected.Status == UpdateCheckStatus.ManifestInvalid && requests.Count == 1, "主站新版校验缺失时不回退旧镜像");
     }
@@ -355,7 +356,7 @@ internal static class UpdateChecks
         Section("每次启动检查与仅新版提醒");
         var config = UpdateService.LoadConfig(null);
         var service = new UpdateService(config);
-        var settings = new AppSettings { AutoUpdateCheckEnabled = true, SkippedUpdateVersion = "2.0.0" };
+        var settings = new AppSettings { AutoUpdateCheckEnabled = true, SkippedUpdateVersion = "2.0.0", UpdateServer = UpdateServer.Automatic };
         var manifest = new UpdateManifest { Version = "2.0.0", Installers = [new UpdateInstallerInfo
             { Url = "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v2.0.0/setup.exe", SizeBytes = 100, Sha256 = new string('a', 64) }] };
         var json = JsonSerializer.Serialize(manifest);
@@ -457,6 +458,9 @@ internal static class UpdateChecks
         var defaults = UpdateService.LoadConfig(null);
         Check(defaults.ManifestUrls is { Count: > 0 }, "配置缺失时使用内置清单地址");
         Check(defaults.AllowedHosts is { Count: > 0 }, "配置缺失时使用内置主机白名单");
+        Check(defaults.ManifestUrls![0] == GitHubReleaseSource.ReleasesUrl && defaults.InternalManifestUrls[0] == GitHubReleaseSource.ReleasesUrl,
+            "缺失配置时公测与内测均 GitHub 优先");
+        Check(UpdateService.IsAllowedUrl(UpdateService.OfficialManifestUrl, defaults, out _), "默认白名单允许官方国内更新站");
         Check(defaults.AutoCheckThrottleHours == 6, "默认节流 6 小时");
 
         var broken = Path.Combine(tempRoot, "broken.json");
@@ -473,7 +477,7 @@ internal static class UpdateChecks
         }
         """);
         var fromPartial = UpdateService.LoadConfig(partial);
-        Check(fromPartial.ManifestUrls is { Count: 1 }, "自定义清单地址生效");
+        Check(fromPartial.ManifestUrls is { Count: 2 }, "旧官方清单自动补齐自建备用源");
         Check(fromPartial.ManifestUrls![0] == GitHubReleaseSource.ReleasesUrl, "旧默认 main 清单配置自动迁移到发布列表");
         Check(fromPartial.AutoCheckThrottleHours == 6, "非法节流值回退默认");
         Check(fromPartial.AllowedHosts is { Count: > 0 }, "未声明的白名单回退默认");
@@ -549,34 +553,23 @@ internal static class UpdateChecks
         Check(UpdateService.TryReadConfigText(UpdateService.UserConfigTemplate, out var fromText, out var templateReason) &&
               fromText.ManifestUrls is { Count: > 0 },
             "模板文本可直接解析：" + templateReason);
+        Check(templateConfig.ManifestUrls![0] == GitHubReleaseSource.ReleasesUrl
+            && templateConfig.InternalManifestUrls[0] == GitHubReleaseSource.ReleasesUrl,
+            "用户模板与公测/内测 GitHub 优先约定一致");
     }
 
-    private static void RunAccelerationChecks()
+    private static void RunSourceMigrationChecks()
     {
-        Section("GitHub 加速（gh-proxy）");
-
-        // gh-proxy 前缀改写
-        Check(UpdateUrlRewriter.TryPrefixGhProxy("https://api.github.com/repos/a/b") ==
-              "https://gh-proxy.com/https://api.github.com/repos/a/b",
-            "api.github.com 被正确前缀");
-        Check(UpdateUrlRewriter.TryPrefixGhProxy("https://github.com/a/b/releases/download/v1/x.exe") ==
-              "https://gh-proxy.com/https://github.com/a/b/releases/download/v1/x.exe",
-            "github.com Release 资产被正确前缀");
-        Check(UpdateUrlRewriter.TryPrefixGhProxy("https://raw.githubusercontent.com/a/b/main/c.json") ==
-              "https://gh-proxy.com/https://raw.githubusercontent.com/a/b/main/c.json",
-            "raw.githubusercontent.com 被正确前缀");
-        Check(UpdateUrlRewriter.TryPrefixGhProxy("https://example.com/x") is null,
-            "非白名单主机不改写");
-        Check(UpdateUrlRewriter.TryPrefixGhProxy("https://gh-proxy.com/https://github.com/a/b") is null,
-            "已是 gh-proxy 地址不再二次前缀");
-        Check(UpdateUrlRewriter.TryPrefixGhProxy("") is null, "空地址不改写");
-        Check(UpdateUrlRewriter.TryPrefixGhProxy(null) is null, "null 不改写");
-
-        // gh-proxy 地址识别
-        Check(UpdateUrlRewriter.IsGhProxyUrl("https://gh-proxy.com/https://github.com/a/b"),
-            "识别 gh-proxy 前缀");
-        Check(!UpdateUrlRewriter.IsGhProxyUrl("https://github.com/a/b"), "普通 GitHub 地址不识别为 gh-proxy");
-        Check(!UpdateUrlRewriter.IsGhProxyUrl(""), "空地址不识别为 gh-proxy");
+        Section("GitHub 直连与历史配置迁移");
+        var direct = "https://github.com/a/b/releases/download/v1/x.exe";
+        Check(UpdateUrlRewriter.RestoreOfficialUrl("https://gh-proxy.com/" + direct) == direct, "旧代理下载地址恢复直连");
+        Check(UpdateUrlRewriter.RestoreOfficialUrl("https://gh-proxy.com/https://gh-proxy.com/" + direct) == direct, "嵌套旧代理恢复直连");
+        Check(UpdateUrlRewriter.RestoreOfficialUrl(direct) == direct, "直连地址保持原样");
+        Check(UpdateUrlRewriter.RestoreOfficialUrl("https://example.com/x") == "https://example.com/x", "自定义地址保持原样");
+        Check(!UpdateUrlRewriter.IsGitHubUrl("https://github.com.evil.test/x"), "相似主机不当作 GitHub");
+        Check(!UpdateUrlRewriter.IsSelfHostedUrl("https://deltaxiaoxi.xin.evil.test/x"), "相似主机不当作自建服务器");
+        Check(!UpdateService.IsAllowedUrl("https://gh-proxy.com/" + direct, new UpdateConfig { AllowedHosts = ["gh-proxy.com"] }, out _),
+            "即使旧白名单含代理也拒绝访问");
 
         // Releases API 识别（含代理前缀和 query 后缀）
         Check(GitHubReleaseSource.IsRepositoryReleasesApi(

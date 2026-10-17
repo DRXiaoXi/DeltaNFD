@@ -63,18 +63,12 @@ public interface IFrameService : INotifyPropertyChanged
     /// <summary>帧格功能：双CCD调度是否随帧格模式自动应用/撤销（登记存在时可关）。</summary>
     bool DualCcdSchedulingEnabled { get; set; }
 
-    // ---- 帧格功能：加速系统响应模式（不改电源计划，总开关 + 三个子开关） ----
+    // ---- 帧格功能：加速系统响应模式（高分辨率计时器，不改电源计划） ----
 
     /// <summary>加速系统响应模式总开关（关 = 全部机制不生效）。</summary>
     bool ResponseBoostEnabled { get; set; }
 
-    /// <summary>子开关①：核心常驻（防核心停放，PDH 轮询 + 亲和性轮转；帧格激活全程）。</summary>
-    bool ResponseBoostCoreParkingEnabled { get; set; }
-
-    /// <summary>子开关②：游戏进程禁用电源限制 EcoQoS（游戏进程存在时逐个应用）。</summary>
-    bool ResponseBoostEcoQosEnabled { get; set; }
-
-    /// <summary>子开关③：系统定时器 0.5ms（帧格激活且游戏运行时）。</summary>
+    /// <summary>系统定时器 0.5ms（帧格激活且游戏运行时）。</summary>
     bool ResponseBoostTimerEnabled { get; set; }
 
     // ---- 帧格功能：前台加速响应（调度参数临时改写，退出帧格自动还原） ----

@@ -40,6 +40,7 @@ internal static class ProcmanCommands
     public static readonly BackendHostOptions Options = new()
     {
         Module = BackendModules.Require(BackendModules.Procman),
+        InitialPriorityClass = System.Diagnostics.ProcessPriorityClass.BelowNormal,
         OnStopping = () => EngineLazy.IsValueCreated && (_sessionModified || Engine.Snapshot().RulesEngineRunning || Engine.ResponsivenessEnabled)
             ? Engine.RestoreAllAsync() : Task.FromResult(OperationResult.Ok("只读会话已停止；遗留日志保持不变。")),
         StatusSource = BuildStatus,
@@ -69,6 +70,11 @@ internal static class ProcmanCommands
             {
                 var result = Engine.SaveBackgroundConfig(context.ArgsAs<ProcmanBackgroundConfig>());
                 return Task.FromResult(result.Success ? BackendResult.Ok(context.Command, result.Message, Engine.BackgroundStatus()) : BackendResult.Failed(context.Command, result.Message));
+            },
+            [BackendCommands.ProcmanFrameBackgroundSync] = context =>
+            {
+                var result = Engine.SyncFrameBackground();
+                return Task.FromResult(result.Success ? BackendResult.Ok(context.Command, result.Message, result) : BackendResult.Failed(context.Command, result.Message));
             },
             [BackendCommands.ProcmanNativeProbe] = NativeProbeAsync,
         },
@@ -134,10 +140,10 @@ internal static class ProcmanCommands
 
     private static Task<BackendResult> TopologyAsync(BackendCommandContext context)
     {
-        var masks = ProcmanTopology.SystemGroupMasks();
+        var topology = ProcmanCpuTopologyReader.Read();
         return Task.FromResult(BackendResult.Ok(context.Command,
-            $"本机 {masks.Count} 个处理器组：{ProcmanTopology.Describe(masks)}。",
-            new ProcmanTopologyResult { Groups = masks.Select(m => new ProcmanGroupMask(m.Group, m.Mask)).ToList() }));
+            $"本机 {topology.Groups.Count} 个处理器组，{topology.Processors.Count} 个逻辑 CPU。",
+            topology));
     }
 
     private static Task<BackendResult> ReconcileAsync(BackendCommandContext context)

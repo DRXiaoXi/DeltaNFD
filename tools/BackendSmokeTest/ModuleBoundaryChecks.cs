@@ -141,11 +141,13 @@ internal static class ModuleBoundaryChecks
 
     private static void CheckMigratedExecutionPrimitives(string repo)
     {
-        foreach (var name in new[] { "MemoryPurge", "CoreParkingLoop", "ProcessPerf", "NvApiDrs", "Privilege", "CpuSets" })
+        foreach (var name in new[] { "MemoryPurge", "ProcessPerf", "NvApiDrs", "Privilege", "CpuSets" })
         {
             Check(!File.Exists(Path.Combine(repo, "src", "DeltaNFD.Shared", "Native", name + ".cs")), name + " 不编入前端共享库");
             Check(File.Exists(Path.Combine(repo, "src", "DeltaNFD.Execution", "Native", name + ".cs")), name + " 由执行库持有");
         }
+        Check(!File.Exists(Path.Combine(repo, "src", "DeltaNFD.Execution", "Native", "CoreParkingLoop.cs")),
+            "退休的核心常驻轮询不再编入执行库");
         var frontendService = File.ReadAllText(Path.Combine(repo, "src", "DeltaNFD", "Services", "GameProcessService.cs"));
         Check(!frontendService.Contains("EmptyWorkingSet(", StringComparison.Ordinal)
             && !frontendService.Contains(".Kill(", StringComparison.Ordinal)

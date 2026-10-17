@@ -33,6 +33,9 @@ public static class ProcmanTopology
 
     private static IReadOnlyList<ProcmanGroupMaskValue> ReadSystem()
     {
+        // UI 选择和后端掩码校验采用相同的实际 ActiveProcessorMask，支持稀疏编号。
+        var nativeMasks = ProcmanCpuTopologyReader.ReadGroupMasks();
+        if (nativeMasks.Count > 0) return nativeMasks;
         var result = new List<ProcmanGroupMaskValue>();
         try
         {

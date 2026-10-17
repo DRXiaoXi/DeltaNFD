@@ -28,17 +28,22 @@ public partial class DashboardViewModel : ObservableObject
     // ---- 组件健康检测（与着色器 / ACE / 运行库服务的扫描结果同步） ----
     [ObservableProperty] private string shaderStatusText = "检测中…";
     [ObservableProperty] private DashboardHealthState shaderHealthState = DashboardHealthState.Checking;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShaderActionText))]
+    private bool shaderCacheNeedsAttention;
+    public string ShaderActionText => ShaderCacheNeedsAttention ? "缓存修复与预热" : "去处理";
     [ObservableProperty] private string aceStatusText = "检测中…";
     [ObservableProperty] private DashboardHealthState aceHealthState = DashboardHealthState.Checking;
     [ObservableProperty] private string runtimeStatusText = "检测中…";
     [ObservableProperty] private DashboardHealthState runtimeHealthState = DashboardHealthState.Checking;
-    [ObservableProperty] private string dotNetStatusText = "检测中…";
-    [ObservableProperty] private DashboardHealthState dotNetHealthState = DashboardHealthState.Checking;
     [ObservableProperty] private bool isHealthScanning;
 
     public bool CanRefreshHealth => !IsHealthScanning;
+    public bool RuntimeUiEnabled => ReleaseFeatures.RuntimeUiEnabled;
+    public bool IsLimitedTestBuild => !RuntimeUiEnabled;
+    public string RuntimeActionText => RuntimeHealthState == DashboardHealthState.Disabled ? "检测设置" : "去处理";
 
-    public string HealthSummary => DashboardHealthPresentation.Summary(IsHealthScanning, ShaderHealthState, AceHealthState, RuntimeHealthState, DotNetHealthState);
+    public string HealthSummary => DashboardHealthPresentation.Summary(IsHealthScanning, ShaderHealthState, AceHealthState, RuntimeHealthState);
     [ObservableProperty] private string targetName = "三角洲";
     [ObservableProperty] private string targetModeText = "三角洲模式";
     [ObservableProperty] private string targetPathText = "三角洲默认主进程";
@@ -66,8 +71,24 @@ public partial class DashboardViewModel : ObservableObject
 
     partial void OnShaderHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
     partial void OnAceHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
-    partial void OnRuntimeHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
-    partial void OnDotNetHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
+    partial void OnRuntimeHealthStateChanged(DashboardHealthState value)
+    { OnPropertyChanged(nameof(HealthSummary)); OnPropertyChanged(nameof(RuntimeActionText)); }
+
+    public void RefreshRuntimeDetectionPreference()
+    {
+        RuntimeDetectionPreference.Shared.Reload();
+        if (!RuntimeUiEnabled) return;
+        if (!RuntimeDetectionPreference.Shared.Enabled)
+        {
+            RuntimeHealthState = DashboardHealthState.Disabled;
+            RuntimeStatusText = "运行库检测已关闭，可在运行库页重新开启。";
+        }
+        else if (RuntimeHealthState == DashboardHealthState.Disabled)
+        {
+            RuntimeHealthState = DashboardHealthState.Information;
+            RuntimeStatusText = "运行库检测已开启，等待重新检测。";
+        }
+    }
     partial void OnIsHealthScanningChanged(bool value)
     { OnPropertyChanged(nameof(CanRefreshHealth)); OnPropertyChanged(nameof(HealthSummary)); }
 
@@ -128,16 +149,17 @@ public partial class DashboardViewModel : ObservableObject
     /// <summary>刷新主页组件状态；调用真实页面后端使用的同一组扫描服务。</summary>
     public async Task RefreshHealthAsync()
     {
+        RefreshRuntimeDetectionPreference();
         if (IsHealthScanning)
         {
             return;
         }
 
         IsHealthScanning = true;
-        ShaderHealthState = AceHealthState = RuntimeHealthState = DotNetHealthState = DashboardHealthState.Checking;
-        ShaderStatusText = AceStatusText = RuntimeStatusText = DotNetStatusText = "检测中…";
-        // Local .NET inspection must not wait for a backend that itself cannot start without .NET.
-        var dotNetCheck = LoadDotNetHealthAsync();
+        ShaderCacheNeedsAttention = false;
+        ShaderHealthState = AceHealthState = RuntimeHealthState = DashboardHealthState.Checking;
+        ShaderStatusText = AceStatusText = RuntimeStatusText = "检测中…";
+        RefreshRuntimeDetectionPreference();
 
         try
         {
@@ -163,7 +185,8 @@ public partial class DashboardViewModel : ObservableObject
 
         try
         {
-            await LoadRuntimeHealthAsync();
+            if (RuntimeUiEnabled) await LoadRuntimeHealthAsync();
+            else { RuntimeHealthState = DashboardHealthState.NotApplicable; RuntimeStatusText = "此测试版未开放运行库，请更新到完整版。"; }
         }
         catch (Exception ex)
         {
@@ -172,22 +195,9 @@ public partial class DashboardViewModel : ObservableObject
             Log.Error("主页：运行库组件检测失败", ex);
         }
 
-        try
-        {
-            await dotNetCheck;
-        }
-        catch (Exception ex)
-        {
-            DotNetHealthState = DashboardHealthState.Failed;
-            DotNetStatusText = "检测失败：" + ex.Message;
-            Log.Error("主页：.NET 环境检测失败", ex);
-        }
-        finally
-        {
-            LastHealthCheckText = "最近检测 " + DateTimeOffset.Now.ToString("HH:mm:ss");
-            RefreshTargetDisplay();
-            IsHealthScanning = false;
-        }
+        LastHealthCheckText = "最近检测 " + DateTimeOffset.Now.ToString("HH:mm:ss");
+        RefreshTargetDisplay();
+        IsHealthScanning = false;
     }
 
     private async Task LoadShaderHealthAsync()
@@ -198,35 +208,10 @@ public partial class DashboardViewModel : ObservableObject
             ShaderStatusText = GameTargetService.DeltaOnlyMessage;
             return;
         }
-        // 与着色器页读取同一后端：PSOCache GameVer 通用临时判定 + NVIDIA 驱动体检。
-        var diag = await ServiceLocator.Shader.DiagnoseAsync();
-        var status = await ServiceLocator.Shader.GetStatusAsync();
-        var driverBad = status.DriverState is ShaderDriverState.TooOld or ShaderDriverState.ProblemSeries;
-
-        if (diag.Level is ShaderDiagLevel.Abnormal or ShaderDiagLevel.AbnormalDriverIssue)
-        {
-            ShaderHealthState = DashboardHealthState.Abnormal;
-            ShaderStatusText = diag.Summary;
-        }
-        else if (driverBad)
-        {
-            ShaderHealthState = DashboardHealthState.Abnormal;
-            ShaderStatusText = status.DriverState == ShaderDriverState.TooOld
-                ? $"驱动过老（{status.DriverVersion}）"
-                : $"问题驱动（{status.DriverVersion}）";
-        }
-        else
-        {
-            ShaderHealthState = diag.Level switch
-            {
-                ShaderDiagLevel.Normal => DashboardHealthState.Normal,
-                ShaderDiagLevel.Info => DashboardHealthState.Information,
-                _ => DashboardHealthState.NotApplicable,
-            };
-            ShaderStatusText = diag.Level == ShaderDiagLevel.Normal && status.IsNvidia && status.DriverVersion.Length > 0
-                ? $"正常（{status.DriverVersion}）"
-                : diag.Summary;
-        }
+        var result = await DashboardShaderHealth.CheckAsync(ServiceLocator.Shader, ServiceLocator.NvProfile);
+        ShaderCacheNeedsAttention = result.OpenCacheRecovery;
+        ShaderStatusText = result.Text;
+        ShaderHealthState = result.State;
     }
 
     private async Task LoadAceHealthAsync()
@@ -285,33 +270,37 @@ public partial class DashboardViewModel : ObservableObject
 
     private async Task LoadRuntimeHealthAsync()
     {
-        // 与运行库页共用同一检测结果：问题 v14 包为异常，缺失/低于推荐版本为提醒。
-        var report = await ServiceLocator.Guard.ScanVcRedistsAsync();
-        RuntimeHealthState = report.HasAbnormal
-            ? DashboardHealthState.Abnormal
-            : report.HasSuboptimal
-                ? DashboardHealthState.Warning
-                : DashboardHealthState.Normal;
-        RuntimeStatusText = report.HasAbnormal
-            ? $"检测到 {report.Abnormal.Count} 个 v14 问题运行库"
-            : report.HasSuboptimal
-                ? $"{report.Suboptimal.Count} 项运行库非最适版本（低于推荐版本或未安装）"
-                : "各分支运行库均为最适版本";
-    }
-
-    private async Task LoadDotNetHealthAsync()
-    {
-        var result = await DotNetEnvironmentService.CheckAsync();
-
-        DotNetHealthState = result.Level switch
+        var preference = RuntimeDetectionPreference.Shared;
+        var read = await preference.ReadAsync(async () =>
         {
-            DotNetCheckLevel.Complete => DashboardHealthState.Normal,
-            DotNetCheckLevel.Incomplete => DashboardHealthState.Warning,
-            DotNetCheckLevel.Failed => DashboardHealthState.Failed,
-            _ => DashboardHealthState.Checking
-        };
-
-        DotNetStatusText = result.Summary;
+            var snapshot = preference.Capture();
+            var status = await ServiceLocator.Guard.GetStatusAsync();
+            if (!preference.IsCurrent(snapshot)) throw new OperationCanceledException();
+            var scan = await ServiceLocator.Guard.Scan14Async();
+            return (Status: status, Scan: scan);
+        });
+        if (!preference.IsCurrent(read.Snapshot))
+        {
+            RefreshRuntimeDetectionPreference();
+            if (preference.Enabled)
+            {
+                RuntimeHealthState = DashboardHealthState.Information;
+                RuntimeStatusText = "检测设置已变化，请刷新组件状态重新检测。";
+            }
+            return;
+        }
+        if (read.Error is { } error) throw error;
+        var (status, scan) = read.Value;
+        RuntimeHealthState = scan.HasAbnormal ? DashboardHealthState.Abnormal : scan.HasWarning || status.GuardIssue.Length > 0 || status.IfeoRestorePending || status.Ue4RestorePending || status.Ue4PrereqDenied || status.IfeoManagedCount > 0 && !status.IfeoApplied
+            ? DashboardHealthState.Warning : DashboardHealthState.Normal;
+        RuntimeStatusText = scan.IsMissing ? "缺少 C++ 14.x 运行库，可能导致三角洲无法启动；请进入运行库页安装 14.42"
+            : scan.HasAbnormal ? "14.x 兼容性异常：检测到 14.51 或 Visual C++ v14 组件，请进入运行库页核对"
+            : scan.HasWarning ? "14.x 版本非 14.42 或状态待核对，请进入运行库页查看"
+            : status.GuardIssue.Length > 0 ? "防护状态待核对：" + status.GuardIssue
+            : status.IfeoRestorePending || status.Ue4RestorePending ? "旧防护有待恢复记录"
+            : status.IfeoApplied ? $"防护已开启，拦截 {status.ScopeManagedCount}/{status.IfeoTotal} 个安装器"
+            : status.IfeoManagedCount > 0 || status.Ue4PrereqDenied ? "防护部分生效或有残留，可进入防护页核对"
+            : "14.x 未发现版本异常；防护未开启";
     }
 
     [RelayCommand]

@@ -30,6 +30,9 @@ internal static class ProcmanRepairChecks
         ProcmanEngine Engine(string name) => new(Path.Combine(root, name + ".json"))
         {
             ForegroundForTests = () => Environment.ProcessId,
+            FrameModeActiveForTests = () => true,
+            FrameSuppressionSelectedForTests = () => true,
+            FrameMemorySelectedForTests = () => true,
             // Hosted Windows CI runs in service session 0. Model only this unique fixture as a user app;
             // the native system classifier is verified separately below and never bypassed in production.
             ResponsivenessExcludedForTests = candidate => candidate != identity,
@@ -197,6 +200,10 @@ internal static class ProcmanRepairChecks
                 engine.ForegroundForTests = () => Environment.ProcessId;
                 now = now.AddSeconds(7); await engine.ResponsivenessOnceForTests();
                 Check(Priority() == "BelowNormal", "普通应用离开前台后才参与响应性调整");
+                engine.FrameModeActiveForTests = () => false;
+                await engine.ResponsivenessOnceForTests();
+                Check(Priority() == "Normal" && !engine.Snapshot().ResponsivenessEnabled,
+                    "帧格关闭即还原自身后台抑制，不等待新的独立开关操作");
                 await engine.RestoreAllAsync();
             }
             using (var engine = Engine("resp-tool-exclusion"))
