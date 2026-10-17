@@ -1,0 +1,23 @@
+{
+  "name": "deltanfd-docs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DeltaNFD 官方网站与使用文档",
+  "scripts": {
+    "sync-assets": "node sync-assets.mjs",
+    "build": "npm run docs:build",
+    "docs:dev": "npm run sync-assets && vitepress dev",
+    "docs:build": "npm run sync-assets && vitepress build",
+    "docs:preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.5.0",
+    "vue": "^3.5.0"
+  },
+  "overrides": {
+    "vite": "^6.4.4"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true
+  }
+}

@@ -1,0 +1,66 @@
+name: Deploy Docs to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'web/**'
+      - 'update.json'
+      - 'src/DeltaNFD/Assets/**'
+      - '.github/workflows/deploy-docs.yml'
+  # 支持在 GitHub Actions 页面手动点击按钮触发重新部署
+  workflow_dispatch:
+
+# 赋予 GitHub Pages 官方部署所需的最小权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只运行一个部署任务，避免并发冲突
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. 检出仓库源码
+        uses: actions/checkout@v7
+
+      - name: 2. 配置 GitHub Pages 环境
+        id: pages
+        uses: actions/configure-pages@v6
+
+      - name: 3. 安装 Node.js 环境
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: 4. 安装前端依赖并打包网页
+        working-directory: ./web
+        env:
+          # 自动获取当前仓库的 Pages 子路径（如 /deltanfd/），防止大小写不一致导致样式 404
+          VITEPRESS_BASE: ${{ steps.pages.outputs.base_path }}/
+        run: |
+          npm ci
+          npm run docs:build
+
+      - name: 5. 上传静态网页构建产物
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: web/.vitepress/dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 6. 发布至 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

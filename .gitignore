@@ -84,6 +84,11 @@ src/DeltaNFD/Assets/background.png
 *.tmp
 .tmp
 
+# ---------- 前端文档站 ----------
+node_modules/
+/web/.vitepress/cache/
+/web/public/
+
 # ---------- ZCode 工作区 ----------
 .zcode/
 
