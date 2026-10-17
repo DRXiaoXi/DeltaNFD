@@ -1,0 +1,8 @@
+# 审计材料：保持下载到的上游产物逐字节不变
+#
+# live-files-0.9210.json 是线上 files.json 的原始下载副本（814,719 字节），
+# 其 SHA256 必须保持 c00a7c7e4734ae645569ddf8f11ff48d64760353ea5bea8263d856020ab6cf34，
+# 用于核对审计结论中的体积统计口径。
+# 仓库根 .gitattributes 的 `*.json text eol=lf` 会在入库时把 CRLF 换成 LF 并改变哈希，
+# 因此这里对本目录下的该文件禁用文本转换。
+live-files-0.9210.json -text
