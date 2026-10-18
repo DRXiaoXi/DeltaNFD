@@ -95,8 +95,8 @@ internal static class FramePowerSafetyChecks
             AppSettingsStore.Update(s => { s.FramePowerPreviousSchemeGuid = Other; s.FramePowerLockedSchemeGuid = Other; s.FramePowerRestorePending = true; });
             using (var engine = new DeltaNFD.Execution.CpuFrame.CpuFrameEngine(new FakePowerService(fake), service))
             {
-                Assert((await engine.SetPowerLockAsync(false, "")).Success && !service.HasPowerSchemeContentSnapshot
-                    && !AppSettingsStore.Read().FramePowerRestorePending, "历史计划元数据与快照不一致：按快照归属恢复再切原计划");
+                Assert((await engine.SetPowerLockAsync(false, "")).Success && !service.HasPowerSchemeContentSnapshot && !AppSettingsStore.Read().FramePowerRestorePending,
+                    "历史计划元数据与快照不一致：按快照归属恢复再切原计划");
                 fake.Active = Scheme;
                 await service.SnapshotPowerSchemeContentAsync(Scheme);
                 AppSettingsStore.Update(s => { s.FramePowerPreviousSchemeGuid = Other; s.FramePowerLockedSchemeGuid = Other; s.FramePowerRestorePending = true; });
@@ -104,6 +104,37 @@ internal static class FramePowerSafetyChecks
                     "带旧备份再次开启：先恢复旧会话，成功后新建而非覆盖");
                 Assert((await engine.SetPowerLockAsync(false, "")).Success, "新会话可完整关闭恢复");
             }
+
+            // 卓越性能模板 GUID 必须归一化为导入副本 GUID；旧设置里的模板 GUID 不能再造成目标/实际错位。
+            AppSettingsStore.Update(s =>
+            {
+                s.FramePowerLockTargetGuid = PowerSchemes.UltimateSchemeTemplateGuid;
+                s.UltimatePowerSchemeGuid = "";
+                s.FramePowerPreviousSchemeGuid = "";
+                s.FramePowerLockedSchemeGuid = "";
+                s.FramePowerRestorePending = false;
+            });
+            fake.Active = Scheme;
+            using (var engine = new DeltaNFD.Execution.CpuFrame.CpuFrameEngine(new FakePowerService(fake), service))
+            {
+                var locked = await engine.SetPowerLockAsync(true, PowerSchemes.UltimateSchemeTemplateGuid);
+                Assert(locked.Success, "卓越性能模板导入后锁定成功");
+                Assert(fake.Active == FakePowerService.ImportedScheme
+                    && AppSettingsStore.Read().FramePowerLockTargetGuid == FakePowerService.ImportedScheme,
+                    "锁定目标/实际计划都归一化为导入副本 GUID");
+                Assert(service.PowerSchemeSnapshotGuid == FakePowerService.ImportedScheme, "内容快照使用真实导入计划 GUID");
+                Assert((await engine.SetPowerLockAsync(false, "")).Success, "模板锁定可正常解除");
+            }
+            using (var engine = new DeltaNFD.Execution.CpuFrame.CpuFrameEngine(new FakePowerService(fake), service))
+            {
+                const string missing = "99999999-9999-9999-9999-999999999999";
+                var before = fake.Active;
+                var failedLock = await engine.SetPowerLockAsync(true, missing);
+                Assert(!failedLock.Success && fake.Active == before,
+                    "选择的计划不存在时明确失败，不得静默锁定当前计划");
+            }
+            Assert(!PowerService.ValidateActiveScheme(Scheme, Other).Success, "切换后活动计划不一致必须失败");
+            Assert(PowerService.ValidateActiveScheme(Scheme, Scheme.ToUpperInvariant()).Success, "GUID 大小写不影响成功复核");
             await service.SnapshotPowerSchemeContentAsync(Scheme);
             fake.HideFromFull = true; fake.Ac = 99;
             Assert((await service.VerifyAndRestorePowerSchemeContentAsync(Scheme)).Success && fake.Ac == 10,
@@ -248,9 +279,33 @@ internal static class FramePowerSafetyChecks
 
     private sealed class FakePowerService(FakePower fake) : IPowerService
     {
-        public Task<List<PowerSchemeInfo>> GetSchemesAsync() => Task.FromResult(new List<PowerSchemeInfo>
-        { new() { Guid = Scheme, Name = "fixture", IsActive = fake.Active == Scheme }, new() { Guid = Other, Name = "previous", IsActive = fake.Active == Other } });
-        public Task<OperationResult> SetSchemeAsync(string guid) { fake.Active = guid; return Task.FromResult(OperationResult.Ok("fixture")); }
+        public const string ImportedScheme = "55555555-5555-5555-5555-555555555555";
+        private bool _ultimateImported;
+
+        public Task<List<PowerSchemeInfo>> GetSchemesAsync()
+        {
+            var list = new List<PowerSchemeInfo>
+            {
+                new() { Guid = Scheme, Name = "fixture", IsActive = fake.Active == Scheme },
+                new() { Guid = Other, Name = "previous", IsActive = fake.Active == Other },
+            };
+            if (_ultimateImported)
+                list.Add(new() { Guid = ImportedScheme, Name = "卓越性能", IsActive = fake.Active == ImportedScheme });
+            return Task.FromResult(list);
+        }
+
+        public Task<OperationResult> SetSchemeAsync(string guid)
+        {
+            if (guid.Equals(PowerSchemes.UltimateSchemeTemplateGuid, StringComparison.OrdinalIgnoreCase))
+            {
+                _ultimateImported = true;
+                fake.Active = ImportedScheme;
+                AppSettingsStore.Update(s => s.UltimatePowerSchemeGuid = ImportedScheme);
+                return Task.FromResult(OperationResult.Ok("fixture import"));
+            }
+            fake.Active = guid;
+            return Task.FromResult(OperationResult.Ok("fixture"));
+        }
         public Task<OperationResult> ImportNoPowerSaveSchemeAsync() => throw new InvalidOperationException("unexpected fixture operation");
         public Task<OperationResult> EnsureNoPowerSaveSchemeNameAsync() => throw new InvalidOperationException("unexpected fixture operation");
         public Task<bool> IsHibernateEnabledAsync() => throw new InvalidOperationException("unexpected fixture operation");

@@ -8,7 +8,7 @@ internal static class ShaderCachePathChecks
         var version = Path.Combine(root, "GameVer_Test");
         var sm5 = Path.Combine(version, "SM5", "DXCache");
         var sm6 = Path.Combine(version, "SM6", "DXCache");
-        var service = new ShaderService(null, () => (ShaderGpuDetectionState.Nvidia, "596.36"));
+        var service = new ShaderService(null, () => new ShaderDriverReading(ShaderGpuDetectionState.Nvidia, "596.36"));
         try
         {
             Directory.CreateDirectory(version);
@@ -21,7 +21,7 @@ internal static class ShaderCachePathChecks
             Require(diagnosis.Level == ShaderDiagLevel.Abnormal && diagnosis.Summary.Contains("0 KB"), "SM5 file actually diagnosed");
             Require(diagnosis.Details.Any(d => d.Contains("SM5\\DXCache")), "chosen path visible");
             Require(ShaderService.HasProblemDriverCacheSignature(ShaderGpuDetectionState.Nvidia, "617.14", root), "homepage uses SM5 fallback");
-            var unknown = new ShaderService(null, () => (ShaderGpuDetectionState.Nvidia, ""));
+            var unknown = new ShaderService(null, () => new ShaderDriverReading(ShaderGpuDetectionState.Nvidia, ""));
             Require(unknown.DiagnoseAt(root).Level == ShaderDiagLevel.NotApplicable, "unknown driver still refuses structural conclusion");
             Directory.CreateDirectory(sm6);
             Require(ShaderService.FindDxCachePath(version) == sm6, "SM6 priority when both exist");

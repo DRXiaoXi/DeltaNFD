@@ -4,13 +4,20 @@ using Microsoft.Win32;
 
 namespace DeltaNFD.Services;
 
+/// <summary>
+/// 一次 NVIDIA 驱动探测结果；除显示版本外保留 Windows 原始值、来源与适配器名，
+/// 供界面同时显示两种格式并写入只读反馈诊断（避免“设备管理器/工具版本不一致”的误判）。
+/// </summary>
+internal sealed record ShaderDriverReading(
+    ShaderGpuDetectionState State, string Version, string Raw = "", string Source = "", string Adapter = "");
+
 /// <summary>着色器维护的真实实现。</summary>
 public sealed class ShaderService : IShaderService
 {
     private readonly GameTargetService _target;
-    private readonly Func<(ShaderGpuDetectionState State, string Version)> _driverReader;
+    private readonly Func<ShaderDriverReading> _driverReader;
     public ShaderService(GameTargetService? target = null) : this(target, ReadNvidiaDriver) { }
-    internal ShaderService(GameTargetService? target, Func<(ShaderGpuDetectionState State, string Version)> driverReader)
+    internal ShaderService(GameTargetService? target, Func<ShaderDriverReading> driverReader)
     { _target = target ?? GameTargetService.Default; _driverReader = driverReader; }
     private const string DisplayClassPath = @"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
 
@@ -34,7 +41,9 @@ public sealed class ShaderService : IShaderService
             IsNvidia = false, DriverState = ShaderDriverState.NotApplicable,
             DriverAdvice = GameTargetService.DeltaOnlyMessage, IsGameRunning = false,
         };
-        var (gpuState, driverVersion) = _driverReader();
+        var reading = _driverReader();
+        var gpuState = reading.State;
+        var driverVersion = reading.Version;
         var isNvidia = gpuState == ShaderGpuDetectionState.Nvidia;
 
         double psoSizeMb = 0;
@@ -64,6 +73,9 @@ public sealed class ShaderService : IShaderService
             IsNvidia = isNvidia,
             GpuDetectionState = gpuState,
             DriverVersion = driverVersion,
+            DriverVersionRaw = reading.Raw,
+            DriverVersionSource = reading.Source,
+            DriverAdapterName = reading.Adapter,
             DriverState = state,
             DriverAdvice = advice,
             PsoCachePath = psoPath,
@@ -156,65 +168,23 @@ public sealed class ShaderService : IShaderService
 
     // ---------------- N 卡驱动读取与判定 ----------------
 
-    /// <summary>从显示适配器注册表和当前显卡枚举读取 NVIDIA 驱动版本。</summary>
-    private static (ShaderGpuDetectionState State, string Version) ReadNvidiaDriver()
+    /// <summary>
+    /// 读取 NVIDIA 驱动版本。优先枚举“当前存在”的显示适配器（WMI），避免把已拔掉/换卡的残留注册表条目
+    /// 当成当前驱动；WMI 不可用时才回退注册表，并保留来源与原始值供反馈诊断。
+    /// </summary>
+    private static ShaderDriverReading ReadNvidiaDriver()
     {
-        var foundNvidia = false;
-        var bestVersion = "";
-        try
-        {
-            using var displayClass = Registry.LocalMachine.OpenSubKey(DisplayClassPath);
-            if (displayClass is not null)
-            {
-                foreach (var subName in displayClass.GetSubKeyNames())
-                {
-                    if (subName.Length != 4 || !subName.All(char.IsDigit)) continue;
-                    try
-                    {
-                        using var key = displayClass.OpenSubKey(subName);
-                        if (key is null || !IsNvidiaAdapter(
-                            key.GetValue("ProviderName") as string,
-                            key.GetValue("DriverDesc") as string,
-                            key.GetValue("MatchingDeviceId") as string)) continue;
-
-                        foundNvidia = true;
-                        // 取所有 NVIDIA 条目中最高的版本：换卡后旧驱动的 Class 子键可能残留，
-                        // 且子键按字母序遍历（0000 先于 0001），取第一个会把旧卡的旧版本误报为当前驱动。
-                        // 使用数值比较而非字符串比较，避免 "596.36" < "61.23" 的错误判断。
-                        if (TryFormatDriverVersion(key.GetValue("DriverVersion") as string, out var version))
-                        {
-                            var versionNumber = ToVersionNumber(version) ?? 0;
-                            var bestVersionNumber = bestVersion.Length > 0 ? (ToVersionNumber(bestVersion) ?? 0) : 0;
-                            if (bestVersion.Length == 0 || versionNumber > bestVersionNumber)
-                            {
-                                bestVersion = version;
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Error($"显卡检测：读取显示适配器 {subName} 失败", ex);
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Error("显卡检测：显示类注册表读取失败", ex);
-        }
-
-        if (bestVersion.Length > 0)
-        {
-            return (ShaderGpuDetectionState.Nvidia, bestVersion);
-        }
-
+        var foundNvidiaWmi = false;
+        var present = new List<(string Name, string Pnp, string Raw, string Version, bool Healthy)>();
+        var wmiOk = false;
+        var anyAdapter = false;
+        var hadAdapterError = false;
         try
         {
             using var searcher = new ManagementObjectSearcher(
-                "SELECT Name, PNPDeviceID, DriverVersion FROM Win32_VideoController");
+                "SELECT Name, PNPDeviceID, DriverVersion, Status, ConfigManagerErrorCode FROM Win32_VideoController");
             using var adapters = searcher.Get();
-            var anyAdapter = false;
-            var hadAdapterError = false;
+            wmiOk = true;
             foreach (ManagementObject adapter in adapters)
             {
                 using (adapter)
@@ -222,20 +192,15 @@ public sealed class ShaderService : IShaderService
                     anyAdapter = true;
                     try
                     {
-                        if (!IsNvidiaAdapter(null, adapter["Name"] as string, adapter["PNPDeviceID"] as string))
-                            continue;
-                        foundNvidia = true;
-                        // WMI 枚举顺序同样不稳定，取所有 NVIDIA 条目中最高的版本
-                        // 使用数值比较而非字符串比较
-                        if (TryFormatDriverVersion(adapter["DriverVersion"] as string, out var version))
-                        {
-                            var versionNumber = ToVersionNumber(version) ?? 0;
-                            var bestVersionNumber = bestVersion.Length > 0 ? (ToVersionNumber(bestVersion) ?? 0) : 0;
-                            if (bestVersion.Length == 0 || versionNumber > bestVersionNumber)
-                            {
-                                bestVersion = version;
-                            }
-                        }
+                        var name = adapter["Name"] as string ?? "";
+                        var pnp = adapter["PNPDeviceID"] as string ?? "";
+                        if (!IsNvidiaAdapter(null, name, pnp)) continue;
+                        foundNvidiaWmi = true;
+                        var raw = adapter["DriverVersion"] as string ?? "";
+                        if (!TryFormatDriverVersion(raw, out var version)) continue;
+                        var healthy = string.Equals(adapter["Status"] as string, "OK", StringComparison.OrdinalIgnoreCase)
+                            || Convert.ToInt32(adapter["ConfigManagerErrorCode"] ?? 0) == 0;
+                        present.Add((name, pnp, raw, version, healthy));
                     }
                     catch (Exception ex)
                     {
@@ -244,21 +209,94 @@ public sealed class ShaderService : IShaderService
                     }
                 }
             }
-            if (bestVersion.Length > 0)
-            {
-                return (ShaderGpuDetectionState.Nvidia, bestVersion);
-            }
-            if (anyAdapter && !hadAdapterError && !foundNvidia)
-                return (ShaderGpuDetectionState.NotPresent, "");
         }
         catch (Exception ex)
         {
             Log.Error("显卡检测：WMI 显卡枚举失败", ex);
         }
 
-        return foundNvidia
-            ? (ShaderGpuDetectionState.Nvidia, "")
-            : (ShaderGpuDetectionState.Unknown, "");
+        if (present.Count > 0)
+        {
+            var chosen = present.Where(p => p.Healthy)
+                .OrderByDescending(p => ToVersionNumber(p.Version) ?? 0)
+                .FirstOrDefault();
+            if (chosen == default)
+                chosen = present.OrderByDescending(p => ToVersionNumber(p.Version) ?? 0).First();
+            return LogDriverReading(new ShaderDriverReading(
+                ShaderGpuDetectionState.Nvidia, chosen.Version, chosen.Raw, "WMI", chosen.Name));
+        }
+
+        // WMI 可用且明确列出了显示适配器、但没有 NVIDIA：不采用注册表里的残留/旧卡条目。
+        if (wmiOk && anyAdapter && !hadAdapterError)
+        {
+            return foundNvidiaWmi
+                ? LogDriverReading(new ShaderDriverReading(ShaderGpuDetectionState.Nvidia, "", "", "WMI", ""))
+                : new ShaderDriverReading(ShaderGpuDetectionState.NotPresent, "");
+        }
+
+        var registry = ReadNvidiaFromRegistry(out var foundNvidiaRegistry);
+        if (registry is not null)
+            return LogDriverReading(new ShaderDriverReading(
+                ShaderGpuDetectionState.Nvidia, registry.Value.Version, registry.Value.Raw, "注册表", registry.Value.Adapter));
+        return foundNvidiaWmi || foundNvidiaRegistry
+            ? new ShaderDriverReading(ShaderGpuDetectionState.Nvidia, "")
+            : new ShaderDriverReading(ShaderGpuDetectionState.Unknown, "");
+    }
+
+    private static (string Version, string Raw, string Adapter)? ReadNvidiaFromRegistry(out bool foundNvidia)
+    {
+        foundNvidia = false;
+        (string Version, string Raw, string Adapter)? best = null;
+        var bestNumber = -1;
+        try
+        {
+            using var displayClass = Registry.LocalMachine.OpenSubKey(DisplayClassPath);
+            if (displayClass is null) return null;
+            foreach (var subName in displayClass.GetSubKeyNames())
+            {
+                if (subName.Length != 4 || !subName.All(char.IsDigit)) continue;
+                try
+                {
+                    using var key = displayClass.OpenSubKey(subName);
+                    if (key is null || !IsNvidiaAdapter(
+                        key.GetValue("ProviderName") as string,
+                        key.GetValue("DriverDesc") as string,
+                        key.GetValue("MatchingDeviceId") as string)) continue;
+                    foundNvidia = true;
+                    var raw = key.GetValue("DriverVersion") as string ?? "";
+                    if (!TryFormatDriverVersion(raw, out var version)) continue;
+                    var number = ToVersionNumber(version) ?? 0;
+                    if (number <= bestNumber) continue;
+                    bestNumber = number;
+                    best = (version, raw, key.GetValue("DriverDesc") as string ?? subName);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"显卡检测：读取显示适配器 {subName} 失败", ex);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("显卡检测：显示类注册表读取失败", ex);
+        }
+        return best;
+    }
+
+    private static readonly object DriverLogGate = new();
+    private static string _lastDriverLogKey = "";
+
+    /// <summary>同一组读数只记录一次，避免主页刷新时重复刷日志。</summary>
+    private static ShaderDriverReading LogDriverReading(ShaderDriverReading reading)
+    {
+        var key = $"{reading.State}|{reading.Version}|{reading.Raw}|{reading.Source}|{reading.Adapter}";
+        lock (DriverLogGate)
+        {
+            if (key == _lastDriverLogKey) return reading;
+            _lastDriverLogKey = key;
+        }
+        Log.Info($"显卡检测：适配器={reading.Adapter}；原始版本={reading.Raw}；显示版本={reading.Version}；来源={reading.Source}；状态={reading.State}");
+        return reading;
     }
 
     internal static bool IsNvidiaAdapter(string? provider, string? description, string? deviceId)
@@ -388,7 +426,9 @@ public sealed class ShaderService : IShaderService
         }
 
         // GameVer = 1：进入 NVPH 深度检测（仅 N 卡 + 驱动 ≥576.88）
-        var (gpuState, driverVersion) = _driverReader();
+        var driver = _driverReader();
+        var gpuState = driver.State;
+        var driverVersion = driver.Version;
         if (gpuState != ShaderGpuDetectionState.Nvidia)
         {
             if (gpuState == ShaderGpuDetectionState.NotPresent)

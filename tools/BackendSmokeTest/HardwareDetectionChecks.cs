@@ -153,7 +153,7 @@ internal static class HardwareDetectionChecks
             ("592.71", ShaderDriverState.ProblemSeries),
             ("610.03", ShaderDriverState.ProblemSeries),
             ("616.24", ShaderDriverState.ProblemSeries),
-            ("617.14", ShaderDriverState.Ok),               // 617.14 按特殊基线处理，不走 majors
+            ("617.14", ShaderDriverState.ProblemSeries),     // 617 全系已在问题驱动列表（与 ShaderService 策略一致）
             ("572.83", ShaderDriverState.TooOld),           // 低于 576.88，过老
             ("576.88", ShaderDriverState.Ok),               // 恰好是下限，正常
             ("596.36", ShaderDriverState.Ok),               // 正常系列
@@ -167,7 +167,7 @@ internal static class HardwareDetectionChecks
             if (tuple.State != expected)
                 throw new Exception($"{ver} 预期 {expected}，实际 {tuple.State}（{tuple.Advice}）");
         }
-        Console.WriteLine("  Problem-driver majors: 591/592/610/616 ProblemSeries, 617.14 OK, 572.83 TooOld, 576.88/596.36 OK");
+        Console.WriteLine("  Problem-driver majors: 591/592/610/616/617 ProblemSeries, 572.83 TooOld, 576.88/596.36 OK");
     }
 
     /// <summary>

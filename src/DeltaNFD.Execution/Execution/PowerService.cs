@@ -99,10 +99,10 @@ public sealed class PowerService : IPowerService
                 return OperationResult.Fail($"切换电源计划失败：{FirstLine(reason)}");
             }
 
-            if (!string.IsNullOrWhiteSpace(afterGuid) && !afterGuid.Equals(targetGuid, StringComparison.OrdinalIgnoreCase))
-                Log.Warn($"电源计划：命令返回成功但活动计划不是目标，目标={DisplayGuid(targetGuid)}，实际={afterGuid}");
-            else if (string.IsNullOrWhiteSpace(afterGuid))
-                Log.Warn("电源计划：命令返回成功，但无法解析切换后的活动 GUID");
+            // 命令退出码成功不等于切换成功：必须确认活动计划就是目标，否则如实失败。
+            // 旧实现只记 Warn 仍返回成功，会造成“显示成功但系统计划没有写入”。
+            var validation = ValidateActiveScheme(targetGuid, afterGuid);
+            if (!validation.Success) return validation;
 
             var name = await GetSchemeNameAsync(targetGuid);
             return OperationResult.Ok($"已切换电源计划为「{name}」（立即生效）。");
@@ -112,6 +112,19 @@ public sealed class PowerService : IPowerService
             Log.Error($"电源计划：切换异常，目标 GUID={DisplayGuid(schemeGuid)}", ex);
             return OperationResult.Fail($"切换电源计划失败：{ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// 切换后的活动计划复核（供 /setactive 成功路径与隔离测试共用）：
+    /// 空 GUID 或与目标不一致都不得返回成功。
+    /// </summary>
+    internal static OperationResult ValidateActiveScheme(string targetGuid, string afterGuid)
+    {
+        if (string.IsNullOrWhiteSpace(afterGuid))
+            return OperationResult.Fail("切换电源计划后无法确认活动计划 GUID，未认定为成功。");
+        if (!afterGuid.Equals(targetGuid, StringComparison.OrdinalIgnoreCase))
+            return OperationResult.Fail($"切换电源计划后活动计划不一致：目标 {DisplayGuid(targetGuid)}，实际 {DisplayGuid(afterGuid)}。");
+        return OperationResult.Ok("");
     }
 
     public async Task<bool> IsHibernateEnabledAsync()
@@ -208,6 +221,13 @@ public sealed class PowerService : IPowerService
         var cachedGuid = AppSettingsStore.Read().AtlasPowerSchemeGuid;
         var schemes = await GetSchemesAsync();
         Log.Info($"无省电电源计划：导入前检测，缓存 GUID={DisplayGuid(cachedGuid)}，系统计划数={schemes.Count(s => s.Guid != PowerSchemes.UltimateSchemeTemplateGuid)}，活动 GUID={DisplayGuid(schemes.FirstOrDefault(s => s.IsActive)?.Guid)}");
+        if (!string.IsNullOrWhiteSpace(cachedGuid) &&
+            schemes.All(s => !s.Guid.Equals(cachedGuid, StringComparison.OrdinalIgnoreCase)))
+        {
+            Log.Warn($"无省电电源计划：缓存 GUID 已不存在，清除旧缓存后再按名称/重新导入：{cachedGuid}");
+            AppSettingsStore.Update(s => s.AtlasPowerSchemeGuid = "");
+            cachedGuid = "";
+        }
         var legacySchemes = schemes.Where(s => PowerSchemes.LegacyNoPowerSaveNames.Contains(s.Name)).ToList();
         var renameFailures = 0;
         foreach (var legacyScheme in legacySchemes)
@@ -243,8 +263,6 @@ public sealed class PowerService : IPowerService
             $"/import \"{powPath}\" {newGuid}", TimeSpan.FromSeconds(30));
         Log.Info($"无省电电源计划：/import 退出码={code}，GUID={newGuid}" +
             (code == 0 ? "" : $"，原因={PowerCfgDetail(stdout, stderr)}"));
-        if (code == 0)
-            AppSettingsStore.Update(s => s.AtlasPowerSchemeGuid = newGuid);
 
         var (verifyCode, verifyOut, verifyErr) = await RunPowerCfgAsync($"/query {newGuid}", TimeSpan.FromSeconds(20));
         Log.Info($"无省电电源计划：/query 复核退出码={verifyCode}，GUID={newGuid}" +
@@ -258,7 +276,9 @@ public sealed class PowerService : IPowerService
                 : $"导入无省电电源计划失败：{FirstLine(reason)}");
         }
 
-        if (code != 0)
+        // 只有 /query 复核成功（或导入命令失败但计划可查询）才写缓存；
+        // 导入命令成功但无法复核时不留下“看似已导入”的过期 GUID。
+        if (verifyCode == 0)
             AppSettingsStore.Update(s => s.AtlasPowerSchemeGuid = newGuid);
 
         // 覆盖 .pow 内嵌的「Atlas Power Scheme」名；改名失败时保留已导入的 GUID。
@@ -463,13 +483,33 @@ public sealed class PowerService : IPowerService
         return guid;
     }
 
+    /// <summary>卓越性能显示名（登录项/旧缓存按名字收养用；模板 GUID 本身不可直接激活）。</summary>
+    private const string UltimateSchemeName = "卓越性能";
+
     private async Task<OperationResult> EnsureUltimateSchemeAsync()
     {
-        // 已导入过：直接用缓存的 GUID
+        var schemes = await GetSchemesAsync();
+
+        // 已导入过：缓存 GUID 必须仍在计划列表里；过期缓存不能直接信任。
         var cached = AppSettingsStore.Read().UltimatePowerSchemeGuid;
-        if (!string.IsNullOrWhiteSpace(cached))
+        if (!string.IsNullOrWhiteSpace(cached) &&
+            schemes.Any(s => s.Guid.Equals(cached, StringComparison.OrdinalIgnoreCase)))
         {
             return OperationResult.Ok(cached);
+        }
+        if (!string.IsNullOrWhiteSpace(cached))
+        {
+            Log.Warn($"电源计划：卓越性能缓存 GUID 已不在计划列表，清除缓存并重新导入：{cached}");
+            AppSettingsStore.Update(s => s.UltimatePowerSchemeGuid = "");
+        }
+
+        // 缓存丢失但系统已有导入副本（如用户清过设置/换过配置）：按显示名收养，避免重复导入。
+        var adopted = schemes.FirstOrDefault(s => s.Name.Equals(UltimateSchemeName, StringComparison.Ordinal));
+        if (adopted is not null)
+        {
+            AppSettingsStore.Update(s => s.UltimatePowerSchemeGuid = adopted.Guid);
+            Log.Info($"电源计划：按名称收养已存在的卓越性能计划，GUID={adopted.Guid}，未重复导入");
+            return OperationResult.Ok(adopted.Guid);
         }
 
         var (code, stdout, stderr) = await RunPowerCfgAsync(

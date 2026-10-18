@@ -623,17 +623,64 @@ public sealed class CpuFrameEngine : IDisposable
             }
 
             var savedPrevious = settings.FramePowerPreviousSchemeGuid;
-            var targetGuid = resume
+            var requested = resume
                 ? (!string.IsNullOrWhiteSpace(settings.FramePowerLockedSchemeGuid) ? settings.FramePowerLockedSchemeGuid
                     : !string.IsNullOrWhiteSpace(settings.FramePowerLockTargetGuid) ? settings.FramePowerLockTargetGuid : savedPrevious)
                 : settings.FramePowerLockTargetGuid;
-            if (!string.IsNullOrWhiteSpace(targetGuid) && schemes.All(s => !s.Guid.Equals(targetGuid, StringComparison.OrdinalIgnoreCase)))
+
+            // 卓越性能模板 GUID 不是可直接激活的计划：首次导入后的真实计划是随机副本 GUID。
+            // 必须在快照/守护/还原之前归一化为真实 GUID，否则会出现“目标=模板、实际=副本”的错位。
+            if (!string.IsNullOrWhiteSpace(requested) &&
+                requested.Equals(PowerSchemes.UltimateSchemeTemplateGuid, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!resume)
+                {
+                    AppSettingsStore.Update(s =>
+                    {
+                        s.FramePowerPreviousSchemeGuid = active.Guid;
+                        s.FramePowerLockedSchemeGuid = "";
+                        s.FramePowerRestorePending = true;
+                    });
+                }
+                var imported = await _power.SetSchemeAsync(PowerSchemes.UltimateSchemeTemplateGuid).ConfigureAwait(false);
+                if (!imported.Success)
+                {
+                    var back = await _power.SetSchemeAsync(active.Guid).ConfigureAwait(false);
+                    GameTargetService.Default.SetRestoreFailure("帧格电源计划", true);
+                    SetError("卓越性能计划导入失败：" + imported.Message);
+                    return OperationResult.Fail("卓越性能计划导入失败：" + imported.Message
+                        + (back.Success ? " 已切回原计划。" : " 切回原计划也失败，已保留恢复记录。"));
+                }
+                var actual = AppSettingsStore.Read().UltimatePowerSchemeGuid;
+                if (string.IsNullOrWhiteSpace(actual))
+                {
+                    SetError("卓越性能计划导入后没有取得真实计划 GUID。");
+                    return OperationResult.Fail("卓越性能计划导入后没有取得真实计划 GUID，未继续锁定。");
+                }
+                schemes = await _power.GetSchemesAsync().ConfigureAwait(false);
+                if (schemes.All(s => !s.Guid.Equals(actual, StringComparison.OrdinalIgnoreCase)))
+                {
+                    SetError("卓越性能计划导入后未出现在计划列表中：" + actual);
+                    return OperationResult.Fail("卓越性能计划导入后未出现在计划列表中，未继续锁定。");
+                }
+                requested = actual;
+                AppSettingsStore.Update(s =>
+                {
+                    s.FramePowerLockTargetGuid = actual;
+                    s.FramePowerLockedSchemeGuid = actual;
+                });
+                settings = AppSettingsStore.Read();
+            }
+
+            if (!string.IsNullOrWhiteSpace(requested) && schemes.All(s => !s.Guid.Equals(requested, StringComparison.OrdinalIgnoreCase)))
             {
                 if (resume) { SetError("原锁定计划已不存在，未切换。"); return OperationResult.Fail("原锁定计划已不存在。"); }
-                targetGuid = "";
+                // 不再静默改成“当前计划”：用户选择已失效时明确失败，避免“显示成功但计划没有写入”。
+                SetError("选择的电源计划已不存在：" + requested);
+                return OperationResult.Fail("选择的电源计划已不存在，请刷新电源计划列表后重新选择。");
             }
             if (resume && string.IsNullOrWhiteSpace(savedPrevious)) return OperationResult.Fail("原计划恢复记录缺失。");
-            var lockGuid = string.IsNullOrWhiteSpace(targetGuid) ? active.Guid : targetGuid;
+            var lockGuid = string.IsNullOrWhiteSpace(requested) ? active.Guid : requested;
             if (!resume)
             {
                 AppSettingsStore.Update(s =>
@@ -734,6 +781,12 @@ public sealed class CpuFrameEngine : IDisposable
             if (string.IsNullOrWhiteSpace(expected)) return;
             var schemes = await _power.GetSchemesAsync().ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
+            if (schemes.All(s => !s.Guid.Equals(expected, StringComparison.OrdinalIgnoreCase)))
+            {
+                // 锁定的计划被外部删除：不能盲目再切，保留快照与恢复记录等待人工核对。
+                SetError("锁定的电源计划已不存在，电源守护已停止：" + expected);
+                return;
+            }
             var active = schemes.FirstOrDefault(s => s.IsActive);
             if (active is not null && !active.Guid.Equals(expected, StringComparison.OrdinalIgnoreCase))
                 await _power.SetSchemeAsync(expected).ConfigureAwait(false);

@@ -86,6 +86,30 @@ internal static class ProcmanRepairChecks
                 Check(ProcmanResponsivenessFilter.IsExcluded(identity) == expectedExcluded,
                     "真实夹具账户与会话核对符合分类；CI 服务会话也保持排除");
             }
+            // ---- CPU 集合组掩码不可用（Windows 10）：明确失败、不产生恢复义务、拒绝规则 ----
+            ProcmanCapabilities.SetCpuSetMasksSupportedForTests(false);
+            try
+            {
+                var unsupportedRead = ProcmanCapabilities.ReadCpuSet(child.Id);
+                Check(!unsupportedRead.Ok && unsupportedRead.Error.Contains("不支持", StringComparison.Ordinal),
+                    "不支持 CPU 集合时读取明确失败而不是抛异常");
+                using (var engine = Engine("cpu-set-unsupported"))
+                {
+                    var set = engine.Set(new() { Identity = request, CpuSetMasks = [new(0, 1)] });
+                    Check(set.IdentityOk && set.Outcomes.Count == 1 && set.Outcomes[0].Status == "failed",
+                        "不支持 CPU 集合时修改如实失败");
+                    Check(!set.RequiresReview && !set.Outcomes[0].RequiresReview,
+                        "不支持 CPU 集合的已知失败不建立未确认恢复义务");
+                    var rule = new ProcmanRuleEntry
+                    {
+                        ExecutablePath = identity.ExecutablePath, Capability = "cpuSet", Value = "g0:0x1",
+                    };
+                    Check(!engine.SaveRule(rule).Success, "不支持 CPU 集合时拒绝保存 cpuSet 总是规则");
+                    await engine.ApplyRulesOnceAsync();
+                }
+            }
+            finally { ProcmanCapabilities.SetCpuSetMasksSupportedForTests(null); }
+
             using (var engine = Engine("manual"))
             {
                 Check(!identity.ExecutablePath.EndsWith("dotnet.exe", StringComparison.OrdinalIgnoreCase), "唯一夹具 EXE，规则不会匹配共享 dotnet.exe");
@@ -111,8 +135,11 @@ internal static class ProcmanRepairChecks
                     var first = originalMasks[0]; var bit = first.Mask & (~first.Mask + 1);
                     Check(engine.Set(new() { Identity = request, AffinityMasks = [new(first.Group, bit)] }).Outcomes.Single().Status == "applied", "单组硬亲和性使用有效公开 API");
                     Check(engine.Reset(new() { Identity = request }).Outcomes.Single().Status == "restored" && ProcmanCapabilities.ReadAffinity(child.Id).Value == originalAffinity.Value, "硬亲和性精确恢复");
-                    Check(engine.Set(new() { Identity = request, CpuSetMasks = [new(first.Group, bit)] }).Outcomes.Single().Status == "applied", "CPU 集合写入并读取已分配集合");
-                    Check(engine.Reset(new() { Identity = request }).Outcomes.Single().Status == "restored", "CPU 集合恢复");
+                    if (ProcmanCapabilities.CpuSetMasksSupported)
+                    {
+                        Check(engine.Set(new() { Identity = request, CpuSetMasks = [new(first.Group, bit)] }).Outcomes.Single().Status == "applied", "CPU 集合写入并读取已分配集合");
+                        Check(engine.Reset(new() { Identity = request }).Outcomes.Single().Status == "restored", "CPU 集合恢复");
+                    }
                 }
                 var multiple = (List<ProcmanGroupMaskValue>)typeof(ProcmanEngine).GetMethod("ParseGroupMasks", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, ["g0:0x3;g1:0x5"])!;
                 Check(multiple.Count == 2, "多组掩码解析保留所有组");
@@ -320,6 +347,22 @@ internal static class ProcmanRepairChecks
                 Check(generic.Module == "procman" && generic.RecoveryScopes.Any(s => s.Id == "all" && s.Available), "核对兼容统一恢复合同");
                 var restore = await backend.InvokeAsync(DeltaNFD.Backends.BackendCommands.ProcmanRestoreAll, new { }, null, CancellationToken.None);
                 Check(restore.Status == DeltaNFD.Backends.BackendResultStatuses.Ok && Priority() == "Normal", "真实 IPC 全量还原");
+
+                // 已知拒绝（实时优先级）：partial 但 requiresReview=false，必须落定而不是留下未确认记录。
+                var rejectedRealTime = await backend.InvokeAsync(DeltaNFD.Backends.BackendCommands.ProcmanSet,
+                    new ProcmanSetArgs { Identity = request, CpuPriority = "RealTime" }, null, CancellationToken.None);
+                Check(rejectedRealTime.Status == DeltaNFD.Backends.BackendResultStatuses.Partial && !rejectedRealTime.RequiresReview,
+                    "真实 IPC：逐项已知拒绝返回 partial 但不要求复核");
+                Check(!DeltaNFD.Services.Backends.BackendUnconfirmedStore.PendingModules().Contains(DeltaNFD.Backends.BackendModules.Procman),
+                    "真实 IPC：已知 partial 不留下未确认阻塞记录");
+
+                // 没有可还原记录的“还原”：Ok，不生成阻塞（旧版这里返回 partial 并锁死模块）。
+                var emptyReset = await backend.InvokeAsync(DeltaNFD.Backends.BackendCommands.ProcmanReset,
+                    new ProcmanResetArgs { Identity = request }, null, CancellationToken.None);
+                Check(emptyReset.Status == DeltaNFD.Backends.BackendResultStatuses.Ok,
+                    "真实 IPC：没有记录的还原是已知成功");
+                Check(!DeltaNFD.Services.Backends.BackendUnconfirmedStore.PendingModules().Contains(DeltaNFD.Backends.BackendModules.Procman),
+                    "真实 IPC：空还原不生成未确认记录");
                 await backend.DrainAsync(TimeSpan.FromSeconds(15));
                 Check(backend.ExitConfirmed, "真实后端正常停止并确认退出");
             }

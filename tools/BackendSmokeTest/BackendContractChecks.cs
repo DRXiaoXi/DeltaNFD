@@ -125,6 +125,21 @@ internal static class BackendContractChecks
             "progress：百分比越界被拒绝");
         Check(Throws<BackendContractException>(() => BackendMessages.ParseResult(Obj("""{"status":"maybe","code":"x","message":"y","pendingRestore":false}"""))),
             "result：未知状态被拒绝");
+        var knownPartial = BackendMessages.ParseResult(Obj("""{"status":"partial","code":"x","message":"y","pendingRestore":false,"requiresReview":false}"""));
+        Check(!knownPartial.RequiresReview, "result：已知 partial 的 requiresReview=false 被保留");
+        var legacyPartial = BackendMessages.ParseResult(Obj("""{"status":"partial","code":"x","message":"y","pendingRestore":false}"""));
+        Check(legacyPartial.RequiresReview, "result：旧 partial 缺少 requiresReview 时按需要复核处理");
+        var knownOk = BackendMessages.ParseResult(Obj("""{"status":"ok","code":"x","message":"y","pendingRestore":false,"requiresReview":false}"""));
+        Check(!knownOk.RequiresReview, "result：成功结果不要求复核");
+        var itemStatuses = BackendMessages.ParseResult(Obj("""{"status":"partial","code":"x","message":"y","pendingRestore":false,"requiresReview":false,"items":[{"id":"priority","status":"applied","message":""},{"id":"cpuSet","status":"rejected","message":"需要接管"},{"id":"x","status":"exited","message":""}]}"""));
+        Check(itemStatuses.Items.Select(i => i.Status).SequenceEqual(["applied", "rejected", "exited"]),
+            "result：逐项 applied/rejected/exited 等命令专用状态被接受");
+        Check(Throws<BackendContractException>(() => BackendMessages.ParseResult(
+                Obj("""{"status":"partial","code":"x","message":"y","pendingRestore":false,"items":[{"id":"a","status":"made-up","message":""}]}"""))),
+            "result：未知逐项状态仍被拒绝");
+        Check(Throws<BackendContractException>(() => BackendMessages.ParseResult(
+                Obj("""{"status":"ok","code":"x","message":"y","pendingRestore":false,"requiresReview":"no"}"""))),
+            "result：requiresReview 非布尔被拒绝");
         Check(Throws<BackendContractException>(() => BackendMessages.ParseCancel(Obj("""{"referencedRequestId":"nope"}"""))),
             "cancel：非 UUID 被拒绝");
     }
@@ -132,6 +147,7 @@ internal static class BackendContractChecks
     private static void ModuleChecks()
     {
         Check(BackendModules.All.Count == 6, "注册了 6 个官方后端模块（ace/gpu/runtime/cpuframe/procman/system）");
+        Check(!BackendModules.All.ContainsKey("shaderstutter"), "Beta0.922 公测排除未发布卡顿采集后端");
         Check(!BackendModules.All.ContainsKey("diagnostics"), "已撤下的卡顿诊断后端不再注册");
         Check(BackendModules.IsAllowed(BackendModules.Procman, BackendCommands.ProcmanSet), "procman.process.set 在白名单内");
         Check(BackendModules.IsReadOnly(BackendModules.Procman, BackendCommands.ProcmanList), "procman.process.list 为只读");

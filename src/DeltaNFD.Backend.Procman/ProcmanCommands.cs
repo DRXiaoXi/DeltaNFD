@@ -167,14 +167,19 @@ internal static class ProcmanCommands
         var args = context.ArgsAs<ProcmanSetArgs>();
         var result = Engine.Set(args);
         if (!result.IdentityOk) return Task.FromResult(BackendResult.Failed(context.Command, result.IdentityError));
+        if (result.Outcomes.Count == 0)
+            return Task.FromResult(BackendResult.Failed(context.Command,
+                string.IsNullOrEmpty(result.IdentityError) ? "没有可执行的属性修改。" : result.IdentityError));
         var applied = result.Outcomes.Count(o => o.Status == "applied");
         var rejected = result.Outcomes.Count(o => o.Status == "rejected");
         var failed = result.Outcomes.Count(o => o.Status == "failed");
         var message = $"修改完成：生效 {applied}，拒绝 {rejected}，失败 {failed}。";
-        if (applied == 0 || rejected != 0 || failed != 0)
-            return Task.FromResult(BackendResult.PartialResult(context.Command, message,
-                result.Outcomes.Select(o => new BackendResultItem(o.Capability, o.Status, o.Message)).ToArray(), result));
-        return Task.FromResult(BackendResult.Ok(context.Command, message, result));
+        if (applied == result.Outcomes.Count)
+            return Task.FromResult(BackendResult.Ok(context.Command, message, result));
+        // 逐项结果全部已知（拒绝/已回滚/受保护零操作）不建立未确认阻塞；只有真正留下恢复义务的项 requiresReview=true。
+        return Task.FromResult(BackendResult.PartialResult(context.Command, message,
+            result.Outcomes.Select(o => new BackendResultItem(o.Capability, o.Status, o.Message)).ToArray(),
+            result, requiresReview: result.RequiresReview));
     }
 
     private static Task<BackendResult> ResetAsync(BackendCommandContext context)
@@ -217,14 +222,17 @@ internal static class ProcmanCommands
 
     private static BackendResult WrapOutcomes(string command, string what, ProcmanSetResult result)
     {
+        if (result.Outcomes.Count == 0)
+            return BackendResult.Ok(command, $"{what}：没有需要处理的修改记录。", result);
         var restored = result.Outcomes.Count(o => o.Status == "restored");
         var conflict = result.Outcomes.Count(o => o.Status == "conflict");
         var failed = result.Outcomes.Count(o => o.Status == "failed");
         var message = $"{what}完成：成功 {restored}，冲突 {conflict}，失败 {failed}。";
-        return restored > 0 && failed == 0 && conflict == 0
+        return restored == result.Outcomes.Count
             ? BackendResult.Ok(command, message, result)
             : BackendResult.PartialResult(command, message,
-                result.Outcomes.Select(o => new BackendResultItem(o.Capability, o.Status, o.Message)).ToArray(), result);
+                result.Outcomes.Select(o => new BackendResultItem(o.Capability, o.Status, o.Message)).ToArray(),
+                result, requiresReview: result.RequiresReview);
     }
 
     // ---------------- P2：持久规则 ----------------

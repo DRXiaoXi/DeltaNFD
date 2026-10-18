@@ -34,6 +34,15 @@ public sealed class ShaderStatus
     /// <summary>游戏惯用格式驱动版本（如 "572.83"）；读取失败为空。</summary>
     public string DriverVersion { get; init; } = "";
 
+    /// <summary>Windows 原始驱动版本（如 "32.0.15.9649"）；用于同时显示两种格式并诊断来源。</summary>
+    public string DriverVersionRaw { get; init; } = "";
+
+    /// <summary>驱动版本来源（WMI / 注册表）；空 = 未取得。</summary>
+    public string DriverVersionSource { get; init; } = "";
+
+    /// <summary>本次选中的 NVIDIA 适配器名（多卡/残留时用于核对）。</summary>
+    public string DriverAdapterName { get; init; } = "";
+
     public required ShaderDriverState DriverState { get; init; }
 
     /// <summary>给玩家看的驱动体检结论（含建议）。</summary>

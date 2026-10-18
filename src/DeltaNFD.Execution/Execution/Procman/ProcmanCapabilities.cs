@@ -234,27 +234,72 @@ public static partial class ProcmanCapabilities
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetProcessDefaultCpuSetMasks(SafeProcessHandle process, [In] GROUP_AFFINITY[]? masks, ushort maskCount);
 
+    /// <summary>测试注入：null = 使用真实探测；false/true = 强制模拟不支持/支持。</summary>
+    private static bool? _cpuSetMasksSupportedOverride;
+
+    private static readonly Lazy<bool> CpuSetMasksSupportProbe = new(ProbeCpuSetMasksSupport);
+
+    /// <summary>
+    /// 本机是否导出 CPU 集合组掩码 API。该 API 最低仅 Windows 11 / Server 2022 提供；
+    /// Windows 10 上 DllImport 会在首次调用时抛 EntryPointNotFoundException，必须提前探测。
+    /// </summary>
+    internal static bool CpuSetMasksSupported => _cpuSetMasksSupportedOverride ?? CpuSetMasksSupportProbe.Value;
+
+    /// <summary>测试用：覆盖能力探测结果；传 null 恢复真实探测。</summary>
+    internal static void SetCpuSetMasksSupportedForTests(bool? supported) => _cpuSetMasksSupportedOverride = supported;
+
+    private static bool ProbeCpuSetMasksSupport()
+    {
+        try
+        {
+            if (!NativeLibrary.TryLoad("kernel32.dll", out var kernel32)) return false;
+            try
+            {
+                return NativeLibrary.TryGetExport(kernel32, "GetProcessDefaultCpuSetMasks", out _)
+                       && NativeLibrary.TryGetExport(kernel32, "SetProcessDefaultCpuSetMasks", out _);
+            }
+            finally { NativeLibrary.Free(kernel32); }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private const string CpuSetMasksUnsupportedMessage =
+        "当前系统不支持 CPU 集合组掩码（需要 Windows 11 / Server 2022 及以上）；请改用 CPU 亲和性。";
+
     /// <summary>读取进程默认 CPU 集合；成功且空字符串 = 未设置默认集合（系统默认）。</summary>
     public static ProcmanCapabilityResult ReadCpuSet(int pid)
     {
+        if (!CpuSetMasksSupported) return ProcmanCapabilityResult.Failure(CpuSetMasksUnsupportedMessage);
         var handle = TryOpen(pid, AccessSetInformation);
         if (handle is null) return ProcmanCapabilityResult.Failure("打开进程失败（权限不足或进程已退出）。");
         using (handle)
         {
-            ushort required;
-            if (!GetProcessDefaultCpuSetMasks(handle, null, 0, out required) && Marshal.GetLastWin32Error() != 122)
-                return ProcmanCapabilityResult.Failure("读取 CPU 集合失败：Win32 错误 " + Marshal.GetLastWin32Error() + "（旧系统可能不支持组掩码形式）。");
-            if (required == 0) return ProcmanCapabilityResult.Success("(系统默认)");
-            if (required > 64) return ProcmanCapabilityResult.Failure("CPU 集合组数异常（>64）。");
-            var buffer = new GROUP_AFFINITY[required];
-            if (!GetProcessDefaultCpuSetMasks(handle, buffer, (ushort)buffer.Length, out var written) || written == 0)
-                return ProcmanCapabilityResult.Failure("读取 CPU 集合组掩码失败。");
-            return ProcmanCapabilityResult.Success(string.Join(";", buffer.Take(written).OrderBy(m => m.Group).Select(m => $"g{m.Group}:0x{(ulong)m.Mask:X}")));
+            try
+            {
+                ushort required;
+                if (!GetProcessDefaultCpuSetMasks(handle, null, 0, out required) && Marshal.GetLastWin32Error() != 122)
+                    return ProcmanCapabilityResult.Failure("读取 CPU 集合失败：Win32 错误 " + Marshal.GetLastWin32Error() + "（旧系统可能不支持组掩码形式）。");
+                if (required == 0) return ProcmanCapabilityResult.Success("(系统默认)");
+                if (required > 64) return ProcmanCapabilityResult.Failure("CPU 集合组数异常（>64）。");
+                var buffer = new GROUP_AFFINITY[required];
+                if (!GetProcessDefaultCpuSetMasks(handle, buffer, (ushort)buffer.Length, out var written) || written == 0)
+                    return ProcmanCapabilityResult.Failure("读取 CPU 集合组掩码失败。");
+                return ProcmanCapabilityResult.Success(string.Join(";", buffer.Take(written).OrderBy(m => m.Group).Select(m => $"g{m.Group}:0x{(ulong)m.Mask:X}")));
+            }
+            catch (Exception ex) when (ex is EntryPointNotFoundException or DllNotFoundException)
+            {
+                // 探测与真实调用之间系统/模块被替换等极端情况：明确失败，绝不让异常穿到调用方。
+                return ProcmanCapabilityResult.Failure(CpuSetMasksUnsupportedMessage + "（" + ex.GetType().Name + "）");
+            }
         }
     }
 
     public static ProcmanCapabilityResult SetCpuSet(int pid, IReadOnlyList<ProcmanGroupMaskValue> masks)
     {
+        if (!CpuSetMasksSupported) return ProcmanCapabilityResult.Failure(CpuSetMasksUnsupportedMessage);
         if (masks.Count > 64) return ProcmanCapabilityResult.Failure("CPU 集合组数异常。");
         if (masks.Any(m => m.Mask == 0)) return ProcmanCapabilityResult.Failure("CPU 集合掩码不能包含 0。");
         if (masks.Select(m => m.Group).Distinct().Count() != masks.Count) return ProcmanCapabilityResult.Failure("CPU 集合存在重复的处理器组。");
@@ -264,9 +309,16 @@ public static partial class ProcmanCapabilities
         if (handle is null) return ProcmanCapabilityResult.Failure("打开进程失败（权限不足或进程已退出）。");
         using (handle)
         {
-            var values = masks.Count == 0 ? null : masks.OrderBy(m => m.Group).Select(m => new GROUP_AFFINITY { Mask = (nuint)m.Mask, Group = m.Group }).ToArray();
-            if (!SetProcessDefaultCpuSetMasks(handle, values, (ushort)masks.Count))
-                return ProcmanCapabilityResult.Failure("设置 CPU 集合失败：Win32 错误 " + Marshal.GetLastWin32Error());
+            try
+            {
+                var values = masks.Count == 0 ? null : masks.OrderBy(m => m.Group).Select(m => new GROUP_AFFINITY { Mask = (nuint)m.Mask, Group = m.Group }).ToArray();
+                if (!SetProcessDefaultCpuSetMasks(handle, values, (ushort)masks.Count))
+                    return ProcmanCapabilityResult.Failure("设置 CPU 集合失败：Win32 错误 " + Marshal.GetLastWin32Error());
+            }
+            catch (Exception ex) when (ex is EntryPointNotFoundException or DllNotFoundException)
+            {
+                return ProcmanCapabilityResult.Failure(CpuSetMasksUnsupportedMessage + "（" + ex.GetType().Name + "）");
+            }
         }
         var verify = ReadCpuSet(pid);
         if (!verify.Ok) return ProcmanCapabilityResult.Failure("回读失败：" + verify.Error);

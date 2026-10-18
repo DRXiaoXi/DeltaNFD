@@ -33,6 +33,8 @@ internal sealed class BackendClient : IAsyncDisposable
     private int _dead;
     private volatile bool _readerEnded;
     private string? _lastCommand;
+    /// <summary>最近一次带写前意图的写入命令；收尾失败时用它建立正确的恢复证据（而不是被只读轮询覆盖）。</summary>
+    private volatile string? _lastMutatingCommand;
 
     private readonly object _pendingLock = new();
     private PendingRequest? _pending;
@@ -350,9 +352,9 @@ internal sealed class BackendClient : IAsyncDisposable
                 var outcome = BackendJson.Deserialize<OperationResult>(data);
                 if (!outcome.Success)
                 {
-                    _unconfirmedOperation = true;
-                    RetainRestoreFailure(ModuleId == BackendModules.System ? BackendCommands.SystemDefenderPostApply
-                        : ModuleId == BackendModules.CpuFrame ? BackendCommands.CpuFrameRestore : _lastCommand ?? "");
+                    // 收尾失败必须落到一条可核对记录上：优先使用最近的写入命令，否则使用模块固定的恢复命令。
+                    // 不能把只读轮询命令当成写入证据，也不能只置内存标志导致"退出被拦但核对入口说没有记录"。
+                    RetainRestoreFailure(CleanupFailureCommand());
                     Log.Warn("后端已停止，但收尾恢复失败，证据保留：" + outcome.Message);
                 }
                 else if (_spec.Id == BackendModules.CpuFrame) _cpuRestoreConfirmed = true;
@@ -498,6 +500,7 @@ internal sealed class BackendClient : IAsyncDisposable
             var mutating = BackendModules.RequiresWriteIntent(_spec.Id, command);
             if (mutating)
             {
+                _lastMutatingCommand = command;
                 BackendUnconfirmedStore.BeginIntent(new BackendUnconfirmedStore.OperationIntent(
                     _spec.Id, command, requestId, _sessionId, Digest(argsElement), _process.Id, _processStartTicks, _processImagePath));
             }
@@ -537,13 +540,14 @@ internal sealed class BackendClient : IAsyncDisposable
                 if (mutating && !pending.ReaderFailed)
                 {
                     BackendUnconfirmedStore.ResolveIntent(_spec.Id, requestId, result.Status, result.PendingRestore,
-                        result.Items.Select(i => $"{i.Id}:{i.Status}").ToArray());
+                        result.Items.Select(i => $"{i.Id}:{i.Status}").ToArray(), result.RequiresReview);
                     _unconfirmedOperation = BackendUnconfirmedStore.PendingModules().Contains(ModuleId);
                     if (_unconfirmedOperation && result.Status != BackendResultStatuses.Ok)
                         BackendAttention.Report(ModuleId);
                 }
                 else if (!pending.ReaderFailed && BackendModules.IsMutating(ModuleId, command)
-                    && (result.PendingRestore || result.Status == BackendResultStatuses.Partial))
+                    && (result.PendingRestore
+                        || (result.Status == BackendResultStatuses.Partial && result.RequiresReview)))
                     RetainRestoreFailure(command);
                 if (command == BackendCommands.SystemDefenderPostApply && result.Status == BackendResultStatuses.Ok
                     && result.Data is { } cleanup && BackendJson.Deserialize<DefenderPostApplyResult>(cleanup).CleanupSucceeded
@@ -674,9 +678,21 @@ internal sealed class BackendClient : IAsyncDisposable
 
     internal void RetainRestoreFailure(string command)
     {
-        _unconfirmedOperation = true;
         PromoteUnknownAsync(Guid.NewGuid(), command, "restore-failed").GetAwaiter().GetResult();
+        // 只有确实写入了可核对证据才阻止交接；落盘失败时保留错误日志，不让用户面对无法解除且无记录的阻塞。
+        _unconfirmedOperation = BackendUnconfirmedStore.PendingModules().Contains(ModuleId);
+        if (!_unconfirmedOperation)
+            Log.Error("后端收尾失败未能建立可核对记录；未阻止交接，请检查磁盘/权限：" + ModuleId + "；" + command);
     }
+
+    /// <summary>收尾失败时用于建立恢复证据的命令：最近写入命令优先，否则用该模块的固定恢复义务命令。</summary>
+    private string CleanupFailureCommand() => _lastMutatingCommand ?? ModuleId switch
+    {
+        BackendModules.Procman => BackendCommands.ProcmanRestoreAll,
+        BackendModules.System => BackendCommands.SystemDefenderPostApply,
+        BackendModules.CpuFrame => BackendCommands.CpuFrameRestore,
+        _ => _lastCommand ?? "",
+    };
 
     internal void RetainCpuRestoreFailure()
     {

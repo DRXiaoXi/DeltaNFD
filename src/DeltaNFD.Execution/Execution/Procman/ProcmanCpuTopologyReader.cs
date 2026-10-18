@@ -89,7 +89,8 @@ public static class ProcmanCpuTopologyReader
         return new ProcmanTopologyResult
         {
             Groups = result.Groups, Processors = result.Processors, ProcessorName = name,
-            DetectionNote = string.Join(" ", notes)
+            DetectionNote = string.Join(" ", notes),
+            CpuSetMasksSupported = ProcmanCapabilities.CpuSetMasksSupported,
         };
     }
 

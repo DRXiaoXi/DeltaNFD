@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using DeltaNFD.Services;
 
 namespace DeltaNFD.Execution.Procman;
@@ -43,6 +43,8 @@ public sealed partial class ProcmanEngine : IDisposable
     private bool _rulesEngineRunning;
     private string _lastAction = "";
     private string _lastError = "";
+    /// <summary>本系统不支持的能力规则只提示一次，避免每 tick 刷错误（规则仍保留，不自动删除）。</summary>
+    private readonly HashSet<string> _unsupportedRuleWarnings = new(StringComparer.OrdinalIgnoreCase);
 
     public ProcmanEngine() : this(LogPath, RulesPath, Path.Combine(AppDataPaths.Root, "procman-background.json")) { }
 
@@ -277,13 +279,15 @@ public sealed partial class ProcmanEngine : IDisposable
         {
             void Apply(string capability, Func<ProcmanCapabilityOutcome> write)
             {
+                // 句柄/控制权获取失败发生在任何写入之前：属于已知未执行，不建立恢复义务。
                 try
                 {
                     using var pin = ProcmanCapabilities.Pin(current);
                     using var property = _properties.Enter(current, capability);
-                    outcomes.Add(write());
+                    try { outcomes.Add(write()); }
+                    catch (Exception ex) { outcomes.Add(Outcome(capability, "failed", "未确认完成，证据保留：" + ex.Message, requiresReview: true)); }
                 }
-                catch (Exception ex) { outcomes.Add(Outcome(capability, "failed", "未确认完成，证据保留：" + ex.Message)); }
+                catch (Exception ex) { outcomes.Add(Outcome(capability, "failed", "未执行（" + ex.Message + "）")); }
             }
             if (args.CpuPriority is { } priority) Apply(CapabilityPriority, () => SetPriorityCore(current, priority, args.ConfirmedTakeover == true));
             if (args.AffinityMasks is { } affinity) Apply(CapabilityAffinity, () => SetAffinityCore(current, affinity, args.ConfirmedTakeover == true));
@@ -296,11 +300,17 @@ public sealed partial class ProcmanEngine : IDisposable
             if (args.GpuPriority is { } gpuPriority) Apply(CapabilityGpuPriority, () => SetNumericCore(current, CapabilityGpuPriority, gpuPriority, args.ConfirmedTakeover == true));
         }
         SetAction($"已处理 PID {current.Pid} 的 {outcomes.Count} 项属性修改请求。");
-        return new ProcmanSetResult { IdentityOk = true, Outcomes = outcomes };
+        return new ProcmanSetResult
+        {
+            IdentityOk = true,
+            Outcomes = outcomes,
+            RequiresReview = outcomes.Any(o => o.RequiresReview),
+        };
     }
 
-    private ProcmanCapabilityOutcome Outcome(string capability, string status, string message, string actual = "")
-        => new() { Capability = capability, Status = status, Message = message, ActualValue = actual };
+    private ProcmanCapabilityOutcome Outcome(string capability, string status, string message, string actual = "",
+        bool requiresReview = false)
+        => new() { Capability = capability, Status = status, Message = message, ActualValue = actual, RequiresReview = requiresReview };
 
     /// <summary>通用写入骨架：控制权 → 写前记录 → 执行+回读 → 成功后更新记录 / 失败保留或回滚。</summary>
     private ProcmanCapabilityOutcome WriteCore(
@@ -355,7 +365,8 @@ public sealed partial class ProcmanEngine : IDisposable
             catch { }
         }
         SetError($"PID {pid} {capability} 修改失败：{result.Error}");
-        return Outcome(capability, "failed", result.Error + " 已保留修改记录供核对（如需还原请用「还原」）。");
+        // 回滚未成功：原值可能已被改写且记录保留，属于确实需要人工核对的恢复义务。
+        return Outcome(capability, "failed", result.Error + " 已保留修改记录供核对（如需还原请用「还原」）。", requiresReview: true);
     }
 
     private ProcmanCapabilityOutcome SetPriorityCore(ProcmanProcessIdentity identity, string priorityText, bool takeover = false)
@@ -522,7 +533,12 @@ public sealed partial class ProcmanEngine : IDisposable
         var outcomes = new List<ProcmanCapabilityOutcome>();
         lock (_gate)
             foreach (var record in records) outcomes.Add(RestoreRecord(record, current));
-        return new ProcmanSetResult { IdentityOk = true, Outcomes = outcomes };
+        return new ProcmanSetResult
+        {
+            IdentityOk = true,
+            Outcomes = outcomes,
+            RequiresReview = outcomes.Any(o => o.RequiresReview),
+        };
     }
 
     /// <summary>GPU 首选项还原：原值“(未设置)”= 删除该 EXE 的设置行；否则整行写回（保留其他图形选项）。</summary>
@@ -567,7 +583,8 @@ public sealed partial class ProcmanEngine : IDisposable
         var appliedDisplay = record.Capability == CapabilityGpuPreference
             ? ProcmanCapabilities.GpuPreferenceName(ProcmanCapabilities.GpuPreferenceFromName(record.AppliedValue.Contains("=2") ? "高性能" : record.AppliedValue.Contains("=1") ? "省电" : "默认"))
             : record.AppliedValue;
-        if (current is null || !current.Ok) return Outcome(record.Capability, "failed", "无法读取当前值，未恢复且记录保留。");
+        if (current is null || !current.Ok)
+            return Outcome(record.Capability, "failed", "无法读取当前值，未恢复且记录保留。", requiresReview: true);
         if (current.Value != record.OriginalValue && current.Value != appliedDisplay)
         {
             SetError($"PID {record.Pid} {record.Capability} 当前值（{current.Value}）与记录（{appliedDisplay}）不一致，疑似外部修改，保留冲突记录。");
@@ -591,7 +608,7 @@ public sealed partial class ProcmanEngine : IDisposable
         if (!restore.Ok)
         {
             SetError($"PID {record.Pid} {record.Capability} 还原失败：{restore.Error}");
-            return Outcome(record.Capability, "failed", "还原失败：" + restore.Error + "，记录已保留。");
+            return Outcome(record.Capability, "failed", "还原失败：" + restore.Error + "，记录已保留。", requiresReview: true);
         }
 
         if (record.Parent is not null) _changeLog.Replace(record.Parent);
@@ -804,6 +821,12 @@ public sealed partial class ProcmanEngine : IDisposable
                         foreach (var rule in matched)
                         {
                             token.ThrowIfCancellationRequested();
+                            // 本系统不支持的规则（Windows 10 的 CPU 集合组掩码）只跳过该项，绝不拖垮整个 tick。
+                            if (rule.Capability == CapabilityCpuSet && !ProcmanCapabilities.CpuSetMasksSupported)
+                            {
+                                WarnUnsupportedRule(rule);
+                                continue;
+                            }
                             // 已由手动/其他规则持有的属性不重复写入（手动设置优先于规则）。
                             var existing = held.FirstOrDefault(h => h.Capability == rule.Capability);
                             if (existing is not null)
@@ -815,9 +838,11 @@ public sealed partial class ProcmanEngine : IDisposable
                             ApplyRuleToProcess(identity, rule);
                         }
                     }
-                    catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or ArgumentException)
+                    catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException
+                        or ArgumentException or TypeLoadException)
                     {
-                        // 访问被拒/进程已退出：跳过（不影响其他进程的规则应用）。
+                        // 访问被拒/进程已退出/本机缺少导出：跳过（不影响其他进程的规则应用）。
+                        if (ex is TypeLoadException) Log.Warn("进程管理：规则能力不可用，已跳过该进程：" + ex.Message);
                     }
                 }
             }
@@ -827,6 +852,14 @@ public sealed partial class ProcmanEngine : IDisposable
             foreach (var process in snapshot) process.Dispose();
         }
         await Task.CompletedTask;
+    }
+
+    private void WarnUnsupportedRule(ProcmanRuleEntry rule)
+    {
+        var key = rule.ExecutablePath + "|" + rule.Capability;
+        if (!_unsupportedRuleWarnings.Add(key)) return;
+        Log.Warn("进程管理：本系统不支持 CPU 集合组掩码（需要 Windows 11 / Server 2022 及以上），已跳过规则：" + rule.ExecutablePath
+            + "；请删除该规则或改用 CPU 亲和性。");
     }
 
     private void ApplyRuleToProcess(ProcmanProcessIdentity identity, ProcmanRuleEntry rule)
@@ -905,6 +938,9 @@ public sealed partial class ProcmanEngine : IDisposable
 
     private ProcmanCapabilityOutcome ApplyRuleMasks(ProcmanProcessIdentity identity, ProcmanRuleEntry rule)
     {
+        // 防御性复核：UI/旧规则文件可能绕过保存校验；不支持时如实拒绝而不是抛异常。
+        if (rule.Capability == CapabilityCpuSet && !ProcmanCapabilities.CpuSetMasksSupported)
+            return new() { Status = "rejected", Message = "本系统不支持 CPU 集合组掩码（需要 Windows 11 / Server 2022 及以上）。", Capability = rule.Capability };
         // 规则值保存逻辑处理器描述（g{group}:0x{mask};…），空 = 清除。
         var masks = ParseGroupMasks(rule.Value);
         if (rule.Value.Length > 0 && masks.Count == 0)
@@ -930,6 +966,8 @@ public sealed partial class ProcmanEngine : IDisposable
     {
         if (string.IsNullOrWhiteSpace(rule.Capability) || !KnownCapabilities.Contains(rule.Capability))
             return OperationResult.Fail("未知能力：" + rule.Capability);
+        if (rule.Capability == CapabilityCpuSet && !ProcmanCapabilities.CpuSetMasksSupported)
+            return OperationResult.Fail("当前系统不支持 CPU 集合组掩码（需要 Windows 11 / Server 2022 及以上），不能保存 CPU 集合规则；请改用 CPU 亲和性。");
         if (rule.Capability == CapabilityGpuPreference) return OperationResult.Fail("GPU 首选项是持久应用设置，请使用手动设置入口，不作为运行时规则反复写入。");
         if (rule.Capability == CapabilityIoPriority && ProcmanCapabilities.IoPriorityFromName(rule.Value) < 0) return OperationResult.Fail("I/O 规则档位无效。");
         if (rule.Capability is CapabilityMemoryPriority or CapabilityGpuPriority

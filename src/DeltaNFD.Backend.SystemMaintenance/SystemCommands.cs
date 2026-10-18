@@ -624,12 +624,14 @@ internal static class SystemCommands
         var message = $"完成 {report.Completed}/{report.Items.Count} 项" + (report.Cancelled ? "，后续已取消。" : "。");
         if (!trim) message += "结束进程的内存量为原工作集估算。";
         var items = report.Items.Select(p => new BackendResultItem(p.Pid.ToString(), p.Status, p.Message)).ToArray();
-        if (report.Completed == 0 && report.Items.All(p => p.Status != "unknown"))
+        // 进程已退出/身份变化/受保护拒绝都是已知结果；只有"已请求结束但未确认退出"才需要人工复核。
+        var unknown = report.Items.Any(p => p.Status == "unknown");
+        if (report.Completed == 0 && !unknown)
             return new BackendResult(report.Cancelled ? BackendResultStatuses.Cancelled : BackendResultStatuses.Failed,
                 context.Command, message, items, false, System.Text.Json.JsonSerializer.SerializeToElement(report, BackendJson.SerializerOptions));
         return !report.Cancelled && report.Items.All(p => p.Status == "ok")
             ? BackendResult.Ok(context.Command, message, report)
-            : BackendResult.PartialResult(context.Command, message, items, report);
+            : BackendResult.PartialResult(context.Command, message, items, report, requiresReview: unknown);
     }
 
     // ---------------- 内存整理（system.memory.*） ----------------
@@ -712,7 +714,8 @@ internal static class SystemCommands
             return BackendResult.Ok(context.Command, $"优化完成，执行 {report.AppliedSteps.Count} 步。", report);
         var items = failures.Select((f, index) => new BackendResultItem("step-" + index, "failed", f)).ToList();
         return report.AppliedSteps.Count > 0
-            ? BackendResult.PartialResult(context.Command, $"部分完成 {report.AppliedSteps.Count} 步，失败 {failures.Count} 步。", items, report)
+            ? BackendResult.PartialResult(context.Command, $"部分完成 {report.AppliedSteps.Count} 步，失败 {failures.Count} 步。", items, report,
+                requiresReview: false)
             : BackendResult.Failed(context.Command, "优化未完成：" + string.Join("；", failures));
     }
 }

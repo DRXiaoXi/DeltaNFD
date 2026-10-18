@@ -36,17 +36,53 @@ public sealed record BackendInvoke(string Command, JsonElement Args);
 /// <summary>progress（后端→宿主）：0..100 或 null 的百分比 + 纯文本 + 阶段标识。</summary>
 public sealed record BackendProgress(int? Percent, string Message, string Stage);
 
-/// <summary>结果明细项：部分成功时逐项标注。</summary>
+/// <summary>
+/// 逐项结果状态白名单。它比整体结果状态（ok/failed/cancelled/partial）更宽：
+/// 各命令会返回 applied/rejected/restored/conflict/exited/unknown 等已知逐项结论。
+/// 旧版解析器误用整体状态集合校验 items，导致真实 partial 结果被判成协议错误、
+/// 连接被主动断开并升级为"结果未知"，是进程管理/进程清理频发问题的主因之一。
+/// </summary>
+public static class BackendItemStatuses
+{
+    public const string Ok = "ok";
+    public const string Failed = "failed";
+    public const string Partial = "partial";
+    public const string Cancelled = "cancelled";
+    public const string Applied = "applied";
+    public const string Rejected = "rejected";
+    public const string Restored = "restored";
+    public const string Conflict = "conflict";
+    public const string Exited = "exited";
+    public const string Unknown = "unknown";
+    public const string Skipped = "skipped";
+
+    private static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
+    {
+        Ok, Failed, Partial, Cancelled, Applied, Rejected, Restored, Conflict, Exited, Unknown, Skipped,
+    };
+
+    public static bool IsValid(string status) => All.Contains(status);
+}
+
+/// <summary>结果明细项：部分成功时逐项标注；<see cref="Status"/> 取值见 <see cref="BackendItemStatuses"/>。</summary>
 public sealed record BackendResultItem(string Id, string Status, string Message);
 
-/// <summary>result（后端→宿主）。data 为各命令专用结果对象（可为空）。</summary>
+/// <summary>
+/// result（后端→宿主）。data 为各命令专用结果对象（可为空）。
+/// <para>
+/// <see cref="RequiresReview"/> 明确区分「部分完成但每一项结果已知」与「结果未知/有恢复义务」：
+/// 前端只对 RequiresReview=true（或 pendingRestore=true）保留未确认记录；已知 partial 正常落定，
+/// 不得因为状态字符串是 partial 就阻塞模块与退出。
+/// </para>
+/// </summary>
 public sealed record BackendResult(
     string Status,
     string Code,
     string Message,
     IReadOnlyList<BackendResultItem> Items,
     bool PendingRestore,
-    JsonElement? Data)
+    JsonElement? Data,
+    bool RequiresReview = false)
 {
     public static BackendResult Ok(string code, string message, object? data = null, bool pendingRestore = false) =>
         new(BackendResultStatuses.Ok, code, message, [], pendingRestore, data is null ? null : ToElement(data));
@@ -57,8 +93,13 @@ public sealed record BackendResult(
     public static BackendResult Cancelled(string code, string message, IReadOnlyList<BackendResultItem>? items = null) =>
         new(BackendResultStatuses.Cancelled, code, message, items ?? [], false, null);
 
-    public static BackendResult PartialResult(string code, string message, IReadOnlyList<BackendResultItem> items, object? data = null, bool pendingRestore = false) =>
-        new(BackendResultStatuses.Partial, code, message, items, pendingRestore, data is null ? null : ToElement(data));
+    /// <summary>
+    /// partial 结果。默认 requiresReview=true 保持旧语义（兼容所有既有调用点）；
+    /// 只有逐项结果全部已知、没有恢复义务的调用点才显式传 false。
+    /// </summary>
+    public static BackendResult PartialResult(string code, string message, IReadOnlyList<BackendResultItem> items,
+        object? data = null, bool pendingRestore = false, bool requiresReview = true) =>
+        new(BackendResultStatuses.Partial, code, message, items, pendingRestore, data is null ? null : ToElement(data), requiresReview);
 
     private static JsonElement ToElement(object data) =>
         JsonSerializer.SerializeToElement(data, BackendJson.SerializerOptions);
@@ -178,7 +219,7 @@ public static class BackendMessages
     public static BackendResult ParseResult(JsonElement payload)
     {
         BackendJson.EnsureNoExtraProperties(payload,
-            ["status", "code", "message", "items", "pendingRestore", "data"], "result");
+            ["status", "code", "message", "items", "pendingRestore", "data", "requiresReview"], "result");
         if (!BackendJson.TryGetString(payload, "status", out var status) || !BackendResultStatuses.All.Contains(status))
             throw new BackendContractException("result：status 取值非法。");
         var code = BackendJson.RequireString(payload, "code", "result");
@@ -187,6 +228,17 @@ public static class BackendMessages
             throw new BackendContractException($"result：message 必须是 ≤{BackendProtocol.MaxUiTextChars} 字符的文本。");
         if (!BackendJson.TryGetBool(payload, "pendingRestore", out var pendingRestore))
             throw new BackendContractException("result：pendingRestore 必须是布尔值。");
+        // 旧后端/旧夹具没有该字段时，partial 仍按"需要复核"处理，保持旧语义不削弱安全性。
+        bool requiresReview;
+        if (payload.TryGetProperty("requiresReview", out _))
+        {
+            if (!BackendJson.TryGetBool(payload, "requiresReview", out requiresReview))
+                throw new BackendContractException("result：requiresReview 必须是布尔值。");
+        }
+        else
+        {
+            requiresReview = status == BackendResultStatuses.Partial;
+        }
 
         var items = new List<BackendResultItem>();
         if (payload.TryGetProperty("items", out var itemsElement))
@@ -200,7 +252,7 @@ public static class BackendMessages
                 BackendJson.EnsureNoExtraProperties(item, ["id", "status", "message"], "result.items");
                 var id = BackendJson.RequireString(item, "id", "result.items");
                 if (!BackendJson.TryGetString(item, "status", out var itemStatus) ||
-                    !BackendResultStatuses.All.Contains(itemStatus))
+                    !BackendItemStatuses.IsValid(itemStatus))
                     throw new BackendContractException("result：items 项 status 取值非法。");
                 var itemMessage = BackendJson.TryGetString(item, "message", out var im) ? im : "";
                 items.Add(new BackendResultItem(id, itemStatus, itemMessage));
@@ -211,7 +263,7 @@ public static class BackendMessages
         if (payload.TryGetProperty("data", out var dataElement) && dataElement.ValueKind is not JsonValueKind.Null)
             data = dataElement.Clone();
 
-        return new BackendResult(status, code, message, items, pendingRestore, data);
+        return new BackendResult(status, code, message, items, pendingRestore, data, requiresReview);
     }
 
     public static Guid ParseCancel(JsonElement payload)

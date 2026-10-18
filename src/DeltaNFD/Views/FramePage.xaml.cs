@@ -216,16 +216,49 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
                 Guid = "",
             });
 
+            // 旧设置可能保存的是卓越性能“模板 GUID”，而实际导入的是随机副本 GUID。
+            // 这里先归一化到副本/缓存 GUID，避免列表匹配不到后静默回落到“当前计划”。
+            var saved = FrameSrv.FramePowerLockTargetGuid;
+            if (!string.IsNullOrWhiteSpace(saved) &&
+                saved.Equals(PowerSchemes.UltimateSchemeTemplateGuid, StringComparison.OrdinalIgnoreCase))
+            {
+                var cachedUltimate = AppSettingsStore.Read().UltimatePowerSchemeGuid;
+                if (!string.IsNullOrWhiteSpace(cachedUltimate) &&
+                    schemes.Any(s => s.Guid.Equals(cachedUltimate, StringComparison.OrdinalIgnoreCase)))
+                {
+                    saved = cachedUltimate;
+                }
+                else
+                {
+                    var byName = schemes.FirstOrDefault(s => s.Name == "卓越性能");
+                    if (byName is not null) saved = byName.Guid;
+                }
+                if (!saved.Equals(FrameSrv.FramePowerLockTargetGuid, StringComparison.OrdinalIgnoreCase))
+                    FrameSrv.FramePowerLockTargetGuid = saved;
+            }
+
             var selected = 0;
+            var matched = false;
             foreach (var scheme in schemes)
             {
                 var label = scheme.Name + (scheme.IsActive ? "（当前激活）" : "");
                 PowerLockTargets.Add(new PowerLockTargetItem { Label = label, Guid = scheme.Guid });
-                if (!string.IsNullOrEmpty(FrameSrv.FramePowerLockTargetGuid) &&
-                    scheme.Guid.Equals(FrameSrv.FramePowerLockTargetGuid, StringComparison.OrdinalIgnoreCase))
+                if (!string.IsNullOrEmpty(saved) && scheme.Guid.Equals(saved, StringComparison.OrdinalIgnoreCase))
                 {
                     selected = PowerLockTargets.Count - 1;
+                    matched = true;
                 }
+            }
+
+            if (!matched && !string.IsNullOrWhiteSpace(saved))
+            {
+                // 不静默把用户选择改成“当前计划”：保留原 GUID 并明确提示重新选择。
+                PowerLockTargets.Add(new PowerLockTargetItem
+                {
+                    Label = "已保存的计划（当前列表中未找到，请重新选择）",
+                    Guid = saved,
+                });
+                selected = PowerLockTargets.Count - 1;
             }
 
             PowerLockTargetCombo.ItemsSource = PowerLockTargets;

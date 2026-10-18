@@ -1,28 +1,28 @@
 {
   "schemaVersion": 1,
-  "version": "0.9212",
-  "displayVersion": "Beta0.921-RC2",
+  "version": "0.9220",
+  "displayVersion": "Beta0.922",
   "channel": "beta",
   "mandatory": false,
   "minimumSupportedVersion": "",
-  "publishedAtUtc": "2026-10-17T16:09:26Z",
-  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9212",
-  "notes": "Beta0.921-RC2 公测版\n\n- 放宽 C++ 14.x 兼容判定：已核验安装的 14.44.x 按绿色正常版本显示，主页和运行库页同步生效；14.44.x 使用 Visual C++ v14 名称时也适用。\n- 14.51 等原有异常规则继续保留。未核验登记、残留或扫描失败仍提示待核对；14.44 不会掩盖同时安装的异常组件。\n- 本次只调整兼容提醒，手动修复仍使用工具已有的 14.42.34433 双架构原包。其他功能沿用 Beta0.921。\n- 默认使用自建更新服务器和替换变更文件，保留玩家手动选择；完整安装包及受控整包回退继续可用。\n\n显示版本 Beta0.921-RC2，内部数值版本 0.9212，高于 Beta0.921 的 0.9210。公测和内测均可接收，非强制更新。\n验证包含隔离兼容规则和更新检查、自包含发布布局及六后端真实只读通信；未在开发机实际重装运行库或执行安装包，不把颜色策略等同于所有游戏环境的性能结论。",
+  "publishedAtUtc": "2026-10-18T16:00:39Z",
+  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9220",
+  "notes": "Beta0.922 公测版\n\n- 修复进程管理逐项结果被误判成协议错误，导致“结果未知/后端断开”的问题；已知的部分成功结果正常落定，实际未知或需要恢复的结果继续要求核对。\n- 修复不支持 CPU 集合组掩码的系统上相关能力未正确禁用的问题；明确提示改用 CPU 亲和性，旧 CPU 集合规则在不支持时跳过。\n- 电源计划切换后核对实际活动 GUID，处理失效缓存与卓越性能模板/副本不一致，避免已保存计划找不到时静默锁定当前计划。\n- NVIDIA 驱动版本优先读取当前存在的适配器，增加 Windows 原始版本、来源与适配器诊断，主页同时显示两种版本格式。\n- 保留 14.44.x 绿色兼容判定，运行库修复原包仍为 14.42.34433。\n- 本次公测不包含当前开发中的着色器卡顿检测页面、后端、采集服务接口或探针；原有着色器缓存维护、NVIDIA 缓存设置修复与预热继续保留。\n\n显示 Beta0.922，内部数值版本 0.9220，高于 Beta0.921-RC2 的 0.9212。非强制更新，默认自建服务器与替换文件更新；已有手动选择保留，继续支持完整安装包与受控回退。\n验证包含隔离模拟、六后端只读启动和更新布局；未在开发机执行安装包、真实运行库重装或实际电源计划切换，尚未完成所有硬件与游戏环境的性能验收。",
   "installers": [
     {
-      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9212/DeltaNFD_Setup_0.9212_x64.exe",
-      "sizeBytes": 248924366,
-      "sha256": "1872831d3f04ca75ee7413c27abc8fd3e4ee6679fc4152555fbc1fc5034f6f07"
+      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9220/DeltaNFD_Setup_0.9220_x64.exe",
+      "sizeBytes": 250088555,
+      "sha256": "1ca6984dbd219408acce690be56d819e141adf69a224f174e24bc2135e3b1778"
     },
     {
-      "url": "https://deltaxiaoxi.xin/updates/packages/0.9212/DeltaNFD_Setup_0.9212_x64.exe",
-      "sizeBytes": 248924366,
-      "sha256": "1872831d3f04ca75ee7413c27abc8fd3e4ee6679fc4152555fbc1fc5034f6f07"
+      "url": "https://deltaxiaoxi.xin/updates/packages/0.9220/DeltaNFD_Setup_0.9220_x64.exe",
+      "sizeBytes": 250088555,
+      "sha256": "1ca6984dbd219408acce690be56d819e141adf69a224f174e24bc2135e3b1778"
     }
   ],
   "fileUpdate": {
-    "url": "https://deltaxiaoxi.xin/updates/packages/0.9212/files.json",
-    "sizeBytes": 814723,
-    "sha256": "bb6f0294f887b3c74330cd225e3fed2e2488e1d160f9bd1031235adf01ad673f"
+    "url": "https://deltaxiaoxi.xin/updates/packages/0.9220/files.json",
+    "sizeBytes": 814728,
+    "sha256": "3b79bd188934585621dba714daab90d675052d6446b4297a1b5667f54151ae63"
   }
 }

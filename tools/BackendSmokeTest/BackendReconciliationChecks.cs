@@ -107,6 +107,16 @@ internal static class BackendReconciliationChecks
             BackendUnconfirmedStore.ResolveIntent("system", Guid.NewGuid(), BackendResultStatuses.Ok, pendingRestore: false);
             Check(BackendUnconfirmedStore.PendingModules().Count == 1, "不匹配的 requestId 不会误删他人证据");
 
+            // ---- 已知 partial（requiresReview=false）：逐项拒绝/已回滚必须正常落定，不得锁死模块 ----
+            File.Delete(source);
+            var knownPartialReq = Guid.NewGuid();
+            BackendUnconfirmedStore.BeginIntent(new BackendUnconfirmedStore.OperationIntent(
+                "system", "system.tweaks.apply", knownPartialReq, Guid.NewGuid(), "cc", int.MaxValue, 1, Environment.ProcessPath!));
+            BackendUnconfirmedStore.ResolveIntent("system", knownPartialReq, BackendResultStatuses.Partial, pendingRestore: false,
+                completedItems: ["a:rejected", "b:failed"], requiresReview: false);
+            Check(BackendUnconfirmedStore.PendingModules().Count == 0, "已知部分完成不建立未确认阻塞");
+            Check(BackendUnconfirmedStore.ReviewAll().Count == 0, "已知部分完成不进入人工核对队列");
+
             // ---- 超时：意图提升为未确认并关联子进程 ----
             File.Delete(source);
             Check(BackendUnconfirmedStore.PendingModules().Count == 0, "清理夹具记录");
@@ -200,7 +210,7 @@ internal static class BackendReconciliationChecks
             File.Delete(source);
 
             await Task.CompletedTask;
-            Console.WriteLine("Backend reconciliation passed: intent write-ahead, resolve/partial/timeout, missing command, PID reuse, live process, orphan child, stale consent, corruption, write failure, recovery failure/retry, crash recovery. Isolated data only; no process killed or system modified.");
+            Console.WriteLine("Backend reconciliation passed: intent write-ahead, resolve/partial(known+unknown)/timeout, missing command, PID reuse, live process, orphan child, stale consent, corruption, write failure, recovery failure/retry, crash recovery. Isolated data only; no process killed or system modified.");
         }
         finally
         {

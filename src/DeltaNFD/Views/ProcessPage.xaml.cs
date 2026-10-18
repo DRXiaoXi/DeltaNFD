@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using DeltaNFD.Backends;
 using DeltaNFD.Services;
 using DeltaNFD.Services.Backends;
@@ -289,6 +289,7 @@ public sealed partial class ProcessPage : Page
         TopologyNoteText.Text = _topology is { Groups.Count: > 0 }
             ? _topology.DetectionNote
             : "处理器组拓扑读取失败：亲和性只能整组设置，不做猜测。";
+        ApplyCpuSetSupportUi();
         RebuildAffinityPanel();
         BuildCpuSelectionPanel(RuleCpuGroupPanel, _ruleProcessorToggles);
         SetRuleCpuSelection(RuleValueBox.Text);
@@ -297,6 +298,34 @@ public sealed partial class ProcessPage : Page
     }
 
     private void RebuildAffinityPanel() => BuildCpuSelectionPanel(AffinityGroupPanel, _processorToggles);
+
+    /// <summary>
+    /// CPU 集合组掩码是 Windows 11 / Server 2022 才有的 API。不支持时必须禁用入口，
+    /// 不能像旧版一样让用户点到"必失败 + 生成未确认记录"的路径；CPU 亲和性仍可用。
+    /// </summary>
+    private void ApplyCpuSetSupportUi()
+    {
+        var supported = _topology is { CpuSetMasksSupported: true };
+        ApplyCpuSetButton.IsEnabled = supported;
+        ClearCpuSetButton.IsEnabled = supported;
+        ApplyCpuSetButton.Content = supported ? "应用 CPU 集合" : "应用 CPU 集合（本系统不支持）";
+        ClearCpuSetButton.Content = supported ? "清除 CPU 集合" : "清除 CPU 集合（本系统不支持）";
+        if (!supported && _topology is { Groups.Count: > 0 } topology
+            && !topology.DetectionNote.Contains("CPU 集合组掩码", StringComparison.Ordinal))
+        {
+            TopologyNoteText.Text = topology.DetectionNote
+                + " 本系统不支持 CPU 集合组掩码（需要 Windows 11 / Server 2022 及以上）；请使用 CPU 亲和性。";
+        }
+        if (RuleCapabilityCombo.Items.Count > 4 && RuleCapabilityCombo.Items[4] is ComboBoxItem cpuSetItem)
+            cpuSetItem.IsEnabled = supported;
+    }
+
+    private bool RequireCpuSetSupport()
+    {
+        if (_topology is { CpuSetMasksSupported: true }) return true;
+        ShowResult(false, "当前系统不支持 CPU 集合组掩码（需要 Windows 11 / Server 2022 及以上）；请改用 CPU 亲和性。");
+        return false;
+    }
 
     // ---------------- 选中与详情 ----------------
 
@@ -536,6 +565,7 @@ public sealed partial class ProcessPage : Page
 
     private async void ApplyCpuSet_Click(object sender, RoutedEventArgs e)
     {
+        if (!RequireCpuSetSupport()) return;
         if (CurrentIdentity() is not { } identity) return;
         var masks = CollectAffinityMasks();
         if (masks.Count == 0) { ShowResult(false, "请至少选择一个 CPU；解除设置请使用“清除 CPU 集合”。"); return; }
@@ -543,6 +573,7 @@ public sealed partial class ProcessPage : Page
     }
     private async void ClearCpuSet_Click(object sender, RoutedEventArgs e)
     {
+        if (!RequireCpuSetSupport()) return;
         if (CurrentIdentity() is { } identity) await ApplySetAsync(new() { Identity = identity, CpuSetMasks = [] }, "清除 CPU 集合");
     }
     private async void ApplyMemoryPriority_Click(object sender, RoutedEventArgs e)
@@ -659,6 +690,13 @@ public sealed partial class ProcessPage : Page
             if (result is null || !result.IdentityOk)
             {
                 ShowResult(false, "还原未完成：" + (result?.IdentityError ?? "无响应"));
+                return;
+            }
+            if (result.Outcomes.Count == 0)
+            {
+                // 没有记录是可核实的"无需还原"，不是失败，更不应生成未确认记录。
+                ShowResult(true, "没有需要还原的修改。");
+                if (_selected is { } emptyRow) await LoadDetailAsync(emptyRow, syncControls: true);
                 return;
             }
             var restored = result.Outcomes.Count(o => o.Status == "restored");

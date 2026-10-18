@@ -48,7 +48,7 @@ internal static class DashboardShaderHealth
             issues.Add(diagnosis.Summary);
         if (status?.DriverState is ShaderDriverState.TooOld or ShaderDriverState.ProblemSeries)
             issues.Add(status.DriverState == ShaderDriverState.TooOld
-                ? $"驱动过老（{status.DriverVersion}）" : $"问题驱动（{status.DriverVersion}）");
+                ? $"驱动过老（{DisplayVersion(status)}）" : $"问题驱动（{DisplayVersion(status)}）");
         if (incomplete)
             notes.Add(nonDefault ? "部分缓存大小设置未能读取，请同时核对"
                 : "着色器缓存大小检测不完整，无法确认是否为驱动默认" + (cacheError.Length > 0 ? "：" + cacheError : ""));
@@ -68,6 +68,13 @@ internal static class DashboardShaderHealth
             _ => DashboardHealthState.NotApplicable,
         };
         return new(state, diagnosis.Level == ShaderDiagLevel.Normal && status!.IsNvidia && status.DriverVersion.Length > 0
-            ? $"正常（{status.DriverVersion}）" : diagnosis.Summary, false);
+            ? $"正常（{DisplayVersion(status)}）" : diagnosis.Summary, false);
     }
+
+    /// <summary>同时显示 NVIDIA 习惯格式与 Windows 原始格式，避免与设备管理器对照时误判。</summary>
+    private static string DisplayVersion(ShaderStatus status) =>
+        status.DriverVersion.Length > 0 && status.DriverVersionRaw.Length > 0 &&
+        !status.DriverVersionRaw.Equals(status.DriverVersion, StringComparison.OrdinalIgnoreCase)
+            ? $"{status.DriverVersion} / Windows {status.DriverVersionRaw}"
+            : status.DriverVersion;
 }

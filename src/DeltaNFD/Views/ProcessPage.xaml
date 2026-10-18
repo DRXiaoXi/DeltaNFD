@@ -193,8 +193,8 @@
                               <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <Button Content="应用亲和性" Click="ApplyAffinity_Click" Grid.Row="0" Grid.Column="0" HorizontalAlignment="Stretch" />
-                            <Button Content="应用 CPU 集合" Click="ApplyCpuSet_Click" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Stretch" />
-                            <Button Content="清除 CPU 集合" Click="ClearCpuSet_Click" Grid.Row="1" Grid.Column="0" HorizontalAlignment="Stretch" />
+                            <Button x:Name="ApplyCpuSetButton" Content="应用 CPU 集合" Click="ApplyCpuSet_Click" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Stretch" />
+                            <Button x:Name="ClearCpuSetButton" Content="清除 CPU 集合" Click="ClearCpuSet_Click" Grid.Row="1" Grid.Column="0" HorizontalAlignment="Stretch" />
                             <Button Content="解除亲和性限制" Click="ClearAffinity_Click" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch" />
                           </Grid>
                           <TextBlock x:Name="TopologyNoteText" FontSize="11" Opacity="0.7" TextWrapping="Wrap" Text="正在读取进程管理独立 CPU 拓扑…" />

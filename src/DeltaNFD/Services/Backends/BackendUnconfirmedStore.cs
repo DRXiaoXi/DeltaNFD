@@ -134,7 +134,7 @@ internal static class BackendUnconfirmedStore
     /// 已成功静态优化 → 解除执行意图，原值备份不动；partial / 临时恢复义务 → 保留为 unconfirmed。
     /// </summary>
     public static void ResolveIntent(string module, Guid requestId, string status, bool pendingRestore,
-        IReadOnlyList<string>? completedItems = null)
+        IReadOnlyList<string>? completedItems = null, bool requiresReview = true)
     {
         var path = RecordPath(module);
         var evidence = TryRead(path);
@@ -143,12 +143,17 @@ internal static class BackendUnconfirmedStore
         if (!string.Equals(evidence.RequestId, requestId.ToString("D"), StringComparison.OrdinalIgnoreCase)) return;
 
         var retainedBackup = status == BackendResultStatuses.Ok && BackendModules.RetainsStaticBackup(module, evidence.Command ?? "");
-        var keep = (!retainedBackup && pendingRestore) || status is BackendResultStatuses.Partial;
+        // 只有"结果未知/有恢复义务"才保留阻塞。requiresReview=false 的 partial 表示逐项结果全部已知，
+        // 必须正常落定，否则一次拒绝/空操作就会锁死整个模块并阻止退出。
+        var keep = (!retainedBackup && pendingRestore) || (status is BackendResultStatuses.Partial && requiresReview);
         if (!keep)
         {
             File.Delete(path);
             if (retainedBackup)
                 Log.Info($"官方后端静态优化已确认完成：module={module}；command={evidence.Command}；request={requestId}；仅解除执行意图，原值备份保留。");
+            else if (status is BackendResultStatuses.Partial)
+                Log.Info($"官方后端已知部分完成已落定，不建立未确认记录：module={module}；command={evidence.Command}；request={requestId}；"
+                    + (completedItems is { Count: > 0 } ? string.Join(",", completedItems.Take(5)) : "无逐项明细"));
             return;
         }
 

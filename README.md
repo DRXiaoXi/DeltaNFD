@@ -4,16 +4,16 @@ Windows 10/11 x64 游戏优化工具，使用 .NET 8 与 WinUI 3。原创代码�
 
 ## 下载与版本
 
-- 已发布公测版：[Beta0.921-RC2 / v0.9212](https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9212)。显示版本为 Beta0.921-RC2，数值版本使用 0.9212，以兼容旧客户端的整数版本排序。
-- [GitHub 完整安装包](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9212/DeltaNFD_Setup_0.9212_x64.exe) / [自建服务器完整安装包](https://deltaxiaoxi.xin/updates/packages/0.9212/DeltaNFD_Setup_0.9212_x64.exe)。大小 248924366 字节，SHA256：`1872831d3f04ca75ee7413c27abc8fd3e4ee6679fc4152555fbc1fc5034f6f07`。
-- 对应安装包的源码：[v0.9212 标签](https://github.com/DRXiaoXi/DeltaNFD/tree/v0.9212) / [发布源码 ZIP](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9212/DeltaNFD_Source_0.9212.zip)。ZIP 的 `SOURCE_FILES_SHA256.json` 记录完整构建源码输入。
+- 已发布公测版：[Beta0.922 / v0.9220](https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9220)。显示版本为 Beta0.922，数值版本使用 0.9220，以兼容旧客户端的整数版本排序。
+- [GitHub 完整安装包](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9220/DeltaNFD_Setup_0.9220_x64.exe) / [自建服务器完整安装包](https://deltaxiaoxi.xin/updates/packages/0.9220/DeltaNFD_Setup_0.9220_x64.exe)。大小 250088555 字节，SHA256：`1ca6984dbd219408acce690be56d819e141adf69a224f174e24bc2135e3b1778`。
+- 对应安装包的源码：[v0.9220 标签](https://github.com/DRXiaoXi/DeltaNFD/tree/v0.9220) / [发布源码 ZIP](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9220/DeltaNFD_Source_0.9220.zip)。ZIP 的 `SOURCE_FILES_SHA256.json` 记录完整构建源码输入。
 - **main 与当前发布源码同步**；复现某次发布时使用对应标签或源码 ZIP，后续维护变化不会覆盖旧版本包。
 
 ### 旧版本检查更新提示“清单体积异常”
 
 Beta0.92 的文件更新对象使 GitHub Releases API 返回超过旧客户端的 262144 字符限制。这是客户端与发布布局的兼容问题。旧程序内置的限制不能由远端清单修改，请完全退出旧程序后，手动下载上方完整安装包覆盖安装。Beta0.92 安装包默认使用自建服务器与仅替换变更文件更新；已经保存的服务器选择会保留，必要时在设置中手动切换自建服务器。
 
-GitHub 发布列表现使用独立的有界读取：每次响应最多 8 MiB，累计分页最多 16 Mi 字符，普通清单继续保持小体积限制。修正已包含在 Beta0.921-RC2 安装包。
+GitHub 发布列表现使用独立的有界读取：每次响应最多 8 MiB，累计分页最多 16 Mi 字符，普通清单继续保持小体积限制。修正已包含在 Beta0.922 安装包。
 
 ## 当前功能范围
 

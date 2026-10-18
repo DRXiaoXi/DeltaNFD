@@ -1,4 +1,4 @@
-﻿namespace DeltaNFD.Services;
+namespace DeltaNFD.Services;
 
 public sealed record ProcmanMemoryCandidate(ProcessIdentityArgs Identity, string Name, long WorkingSetBytes, double CpuPercent);
 public sealed record ProcmanMemoryPreview(string Id, DateTimeOffset ExpiresUtc, IReadOnlyList<ProcmanMemoryCandidate> Candidates, string Message)
@@ -214,6 +214,12 @@ public sealed class ProcmanSetResult
     public string IdentityError { get; init; } = "";
 
     public List<ProcmanCapabilityOutcome> Outcomes { get; init; } = [];
+
+    /// <summary>
+    /// 是否仍有"结果未知/已保留修改记录待核对"的属性。只有它为 true 时才应建立未确认阻塞；
+    /// 全部拒绝、全部回滚成功、受保护零操作等已知结果必须为 false。
+    /// </summary>
+    public bool RequiresReview { get; init; }
 }
 
 /// <summary>单项能力的修改结果。</summary>
@@ -228,6 +234,9 @@ public sealed class ProcmanCapabilityOutcome
 
     /// <summary>回读到的实际值（applied 时非空）。</summary>
     public string ActualValue { get; init; } = "";
+
+    /// <summary>该属性的失败是否留下恢复义务（结果未知/记录已保留）；前置拒绝与已回滚失败为 false。</summary>
+    public bool RequiresReview { get; init; }
 }
 
 /// <summary>还原属性请求：释放指定或全部本工具持有的修改。</summary>
@@ -313,6 +322,12 @@ public sealed class ProcmanTopologyResult
     public List<ProcmanLogicalCpu> Processors { get; init; } = [];
     public string ProcessorName { get; init; } = "";
     public string DetectionNote { get; init; } = "";
+
+    /// <summary>
+    /// 本机是否支持 CPU 集合组掩码 API（Get/SetProcessDefaultCpuSetMasks，Windows 11 / Server 2022 及以上）。
+    /// false 时界面必须禁用 CPU 集合入口，后端拒绝保存 CPU 集合规则；CPU 亲和性不受影响。
+    /// </summary>
+    public bool CpuSetMasksSupported { get; init; }
 }
 
 /// <summary>进程管理独立拓扑；编号仅用于当前机器，未知字段不按逻辑编号推算。</summary>
