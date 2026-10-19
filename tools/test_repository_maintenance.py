@@ -52,7 +52,7 @@ class CleanupSafetyTests(unittest.TestCase):
         def remove_readonly(function, path, exception):
             os.chmod(path, 0o700)
             function(path)
-        shutil.rmtree(self.repo, onexc=remove_readonly)
+        shutil.rmtree(self.repo, onerror=remove_readonly)
 
     def invoke(self, paths, apply=True, extra=()):
         self.plan.write_text(json.dumps({"root": str(self.repo), "targets": [{"path": p} for p in paths]}), encoding="utf-8")
