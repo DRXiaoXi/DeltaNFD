@@ -1,5 +1,8 @@
 # Windows 默认 CRLF，仓库统一 LF 由 git 处理换行转换
 * text=auto
+.gitignore text eol=lf
+.gitattributes text eol=lf
+.editorconfig text eol=lf
 
 # 源码文件强制 LF 入库
 *.cs text eol=lf
@@ -9,12 +12,35 @@
 *.md text eol=lf
 *.json text eol=lf
 *.yml text eol=lf
+*.yaml text eol=lf
 *.manifest text eol=lf
+*.ps1 text eol=lf
+*.py text eol=lf
+*.props text eol=lf
+*.targets text eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.sh text eol=lf
 
 # 二进制文件
 *.png binary
 *.ico binary
+*.jpg binary
+*.jpeg binary
+*.exe binary
+*.dll binary
+*.lib binary
+*.pdb binary
+*.zip binary
+*.7z binary
+*.pow binary
 
 # 固定哈希的修复脚本和清单保持原始 CRLF 字节。
 src/DeltaNFD/Assets/RuntimeHighFps/Installer.cmd -text
 src/DeltaNFD/Assets/RuntimeHighFps/payload_manifest_sha256.csv -text
+tools/Repair-GpuSpoofPending.ps1 -text
+
+# GitHub 语言统计聚焦现行源码；历史实现和验收夹具继续保留。
+retired/** -text linguist-vendored
+tools/**/vendor/** -text linguist-vendored
+notes/** linguist-documentation

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 下载与使用说明
+    url: https://github.com/DRXiaoXi/DeltaNFD#readme
+    about: 安装与更新入口、构建说明及已知限制。
