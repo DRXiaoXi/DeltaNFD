@@ -62,7 +62,7 @@ public sealed partial class ShaderPage : Page
             await new ContentDialog
             {
                 XamlRoot = XamlRoot,
-                Title = "清理完成",
+                Title = result.IsPartial ? "清理部分完成" : "清理完成",
                 Content = result.Message + "\n\n"
                           + "⚠ 请记得：进入游戏后重新预热着色器——\n"
                           + "首次进图会重新编译着色器，出现卡顿 / 掉帧属正常现象，多跑两图即恢复。",
@@ -83,12 +83,13 @@ public sealed partial class ShaderPage : Page
         {
             XamlRoot = XamlRoot,
             Title = "清理系统级着色器缓存？",
-            Content = "将清空以下目录的内容（保留目录本身）：\n"
+            Content = "将清空以下目录的内容（保留目录本身；存在时清理）：\n"
                       + "· %LocalAppData%\\D3DSCache\n"
-                      + "· %LocalAppData%\\NVIDIA\\DXCache\n"
-                      + "· %LocalAppData%\\AMD\\DxCache\n\n"
+                      + "· %LocalAppData%\\NVIDIA\\DXCache / GLCache\n"
+                      + "· %LocalAppData%\\AMD\\DxCache / DxcCache / GLCache\n"
+                      + "· %LocalAppData%\\Intel\\ShaderCache\n\n"
                       + "清理后所有游戏首次启动都会重新编译着色器，首局可能出现卡顿，属正常现象。"
-                      + "被占用的文件会自动跳过。确定继续？",
+                      + "链接/重解析项会跳过；被占用或无法删除的项目会逐项报告。确定继续？",
             PrimaryButtonText = "清理",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
@@ -108,7 +109,7 @@ public sealed partial class ShaderPage : Page
         await new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = result.Success ? "清理完成" : "清理失败",
+            Title = result.IsPartial ? "清理部分完成" : result.Success ? "清理完成" : "清理失败",
             Content = result.Message,
             CloseButtonText = "知道了",
             DefaultButton = ContentDialogButton.Close,

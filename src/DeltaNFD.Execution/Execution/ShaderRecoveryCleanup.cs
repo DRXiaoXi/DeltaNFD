@@ -1,6 +1,9 @@
 namespace DeltaNFD.Services;
 
-/// <summary>Hidden recovery page cleanup: fixed cache roots, no driver settings/database or linked paths.</summary>
+/// <summary>
+/// 隐藏恢复页的缓存清理：只使用固定缓存根；链接/重解析项会被跳过并报告；
+/// 开始前校验所有根，清理过程中持续检查三角洲是否启动。
+/// </summary>
 public static class ShaderRecoveryCleanup
 {
     public static Task<OperationResult> RunAsync(bool gameCache, bool nvidiaCache, CancellationToken token = default) => Task.Run(() =>
@@ -19,50 +22,28 @@ public static class ShaderRecoveryCleanup
 
     internal static OperationResult CleanRoots(IEnumerable<string> roots, Func<bool> gameRunning, CancellationToken token = default)
     {
-        var deleted = 0; var failed = new List<string>();
-        try
-        {
-            token.ThrowIfCancellationRequested();
-            if (gameRunning()) return OperationResult.Fail("三角洲正在运行，请完全退出后再清理。");
-            var targets = roots.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            foreach (var root in targets) VerifyPath(root); // Validate all roots before the first deletion.
-            foreach (var root in targets)
-            {
-                if (!Directory.Exists(root)) continue;
-                var folders = new Stack<string>(); folders.Push(root);
-                while (folders.TryPop(out var folder))
-                {
-                    token.ThrowIfCancellationRequested();
-                    if (gameRunning()) throw new IOException("检测到三角洲启动，已停止剩余清理。");
-                    VerifyPath(folder);
-                    foreach (var entry in Directory.EnumerateFileSystemEntries(folder))
-                    {
-                        token.ThrowIfCancellationRequested();
-                        if (gameRunning()) throw new IOException("检测到三角洲启动，已停止剩余清理。");
-                        try
-                        {
-                            var attributes = File.GetAttributes(entry);
-                            if ((attributes & FileAttributes.ReparsePoint) != 0) throw new IOException("链接或重解析项已跳过");
-                            if ((attributes & FileAttributes.Directory) != 0) { folders.Push(entry); continue; }
-                            VerifyPath(entry);
-                            File.Delete(entry); deleted++;
-                        }
-                        catch (Exception ex) { failed.Add(entry + "：" + ex.Message); }
-                    }
-                }
-            }
-        }
-        catch (Exception ex) { failed.Add(ex.Message); }
-        return new OperationResult { Success = failed.Count == 0, IsPartial = deleted > 0 && failed.Count > 0,
-            Message = $"已删除 {deleted} 个缓存文件；目录保留。"
-                + (failed.Count > 0 ? $"\n有 {failed.Count} 项未完成：\n" + string.Join("\n", failed.Take(12)) : "\n所选缓存清理完成或原本为空。")
-                + "\n请恢复驱动默认，再进入游戏重新预热着色器；缓存删除无法撤销。" };
-    }
+        var report = ShaderCacheCleanup.CleanRoots(roots, gameRunning, token);
 
-    private static void VerifyPath(string path)
-    {
-        for (var current = path; !string.IsNullOrEmpty(current); current = Path.GetDirectoryName(current))
-            if ((File.Exists(current) || Directory.Exists(current)) && (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
-                throw new IOException("缓存路径包含链接/重解析目录，未清理：" + current);
+        var details = report.Skipped.Take(12).ToList();
+        var success = report.FailedItems == 0 && report.SkippedLinks == 0
+            && !report.GameStarted && !report.Cancelled;
+        var partial = !success && report.DeletedFiles > 0;
+        var message = report.Message;
+        if (details.Count > 0)
+        {
+            message += $"\n有 {details.Count} 项未完成/已跳过：\n" + string.Join("\n", details);
+        }
+        else
+        {
+            message += "\n所选缓存清理完成或原本为空。";
+        }
+        message += "\n请恢复驱动默认，再进入游戏重新预热着色器；缓存删除无法撤销。";
+
+        return new OperationResult
+        {
+            Success = success,
+            IsPartial = partial,
+            Message = message,
+        };
     }
 }

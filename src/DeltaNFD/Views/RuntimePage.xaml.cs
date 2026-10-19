@@ -57,7 +57,7 @@ public sealed partial class RuntimePage : Page
             var dialog = new ContentDialog
             {
                 XamlRoot = XamlRoot, Title = mode == Vc14RepairMode.UninstallOnly ? "确认仅卸载 C++ 14.x？"
-                    : installMissing ? "确认补装 C++ 14.42？" : mode == Vc14RepairMode.InstallOnly ? "确认继续安装 14.42？" : "确认全量重装 C++ 14.x？",
+                    : installMissing ? "确认补装 C++ 14.42？" : mode == Vc14RepairMode.InstallOnly ? "确认继续安装 14.42？" : "确认仅修复 C++ 14.x？",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
                     Text = (installMissing
                         ? "已完成检测，未发现已安装的 C++ 14.x 组件。将安装 2015–2022 x64/x86 14.42.34433 微软原包，并复检组件与实际 DLL。失败时保留待安装记录，供下次继续安装。\n本次不会执行运行库卸载；安装前会核对并受控处理旧包装残留，无法确认时停止。\n"
@@ -73,7 +73,7 @@ public sealed partial class RuntimePage : Page
                         + "\n请先关闭游戏与其他应用及运行库防护。共享运行库降级可能影响需要较新版本的软件。"
                         + (mode == Vc14RepairMode.UninstallOnly ? "" : "\n普通原包修复后DLL仍是错误版本时，将自动尝试一次忽略文件版本的14.42原始MSI重装，并再次检查实际DLL。")
                         + "\n失败、身份变化、需要重启或结果未确认时停止；不会强杀安装器。" } },
-                PrimaryButtonText = mode == Vc14RepairMode.UninstallOnly ? "确认仅卸载" : installMissing || mode == Vc14RepairMode.InstallOnly ? "确认安装" : "确认全量重装",
+                PrimaryButtonText = mode == Vc14RepairMode.UninstallOnly ? "确认仅卸载" : installMissing || mode == Vc14RepairMode.InstallOnly ? "确认安装" : "确认仅修复",
                 CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
             };
             CheckBox? installerConsent = null;
@@ -95,7 +95,7 @@ public sealed partial class RuntimePage : Page
             if (installerConsent is not null && installerConsent.IsChecked != true) return;
             var result = await ViewModel.RepairAsync(preview.Fingerprint, cancellation.Token, mode, allowTemporary);
             var stageMessage = fullUninstallStage && result.Success
-                ? RuntimeRepairGuidance.OriginalText(result) + "\n\n这是全量修复的 V14 卸载阶段。恢复临时 Installer 设置后，请手动重启回正常模式，再点击“预览全量修复”重新确认；2005–2013 与其他组件尚未安装，不会自动续跑。"
+                ? RuntimeRepairGuidance.OriginalText(result) + "\n\n这是全量修复的 V14 卸载阶段。临时 Installer 设置会随本次操作自动恢复（若失败会在结果中提示并可手动恢复）；请手动重启回正常模式，再点击“预览全量修复”重新确认；2005–2013 与其他组件尚未安装，不会自动续跑。"
                 : RuntimeRepairGuidance.OriginalText(result);
             ViewModel.RepairStatusText = stageMessage;
             ViewModel.RecordRepairResult(result, cancellation.IsCancellationRequested);
@@ -143,6 +143,87 @@ public sealed partial class RuntimePage : Page
         finally { ViewModel.RepairIsBusy = false; await ViewModel.LoadGuardAsync(); }
     }
 
+    private async Task RunSafeUninstallAllCppAsync()
+    {
+        ViewModel.ManualRepairGuidanceText = "";
+        ViewModel.RepairIsBusy = true;
+        using var cancellation = new CancellationTokenSource();
+        _repairCancellation = cancellation;
+        try
+        {
+            ViewModel.RepairStatusText = "正在核对安全模式 C++ 卸载清单与 Installer 状态…";
+            var preview = await ViewModel.PreviewSafeUninstallAsync(cancellation.Token);
+            if (!preview.CanRun) { ViewModel.RecordRepairBlocker(preview.Blocker); return; }
+            if (!await HandleRuntimeFileUseAsync(cancellation.Token, RuntimeFileUseScope.FullRepair)) return;
+
+            var shown = preview.Entries.Take(30).Select(e => "· " + e.Name + " · " + e.Architecture + " · " + e.Version);
+            var body = new StackPanel { Spacing = 10 };
+            body.Children.Add(new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                Text = "将卸载检测到的全部 C++ 运行库（2005–2013 / 2015–2022 / 14.x，共 " + preview.Entries.Count + " 项）。"
+                    + "依赖其他安装包、身份变化、卸载器要求重启或结果未知时会停止。"
+                    + "卸载完成后必须回正常模式重新预览全量修复，由正常模式安装 C++ 基线；不会自动重启或续跑。",
+            });
+            body.Children.Add(new ScrollViewer
+            {
+                MaxHeight = 300,
+                Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = string.Join("\n", shown) + (preview.Entries.Count > 30 ? "\n…" : "") },
+            });
+            CheckBox? consent = null;
+            if (preview.RequiresTemporaryInstaller)
+            {
+                body.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, Text = preview.TemporaryInstallerDetail });
+                consent = new CheckBox { Content = "允许工具临时启用 Windows Installer，执行后恢复；中断时保留恢复记录" };
+                body.Children.Add(consent);
+            }
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "安全模式：卸载全部 C++（高风险）",
+                Content = new ScrollViewer { MaxHeight = 420, Content = body },
+                PrimaryButtonText = "确认卸载全部 C++",
+                CloseButtonText = "取消",
+                DefaultButton = ContentDialogButton.Close,
+                IsPrimaryButtonEnabled = consent is null,
+            };
+            if (consent is not null)
+            {
+                consent.Checked += (_, _) => dialog.IsPrimaryButtonEnabled = true;
+                consent.Unchecked += (_, _) => dialog.IsPrimaryButtonEnabled = false;
+            }
+            if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary || cancellation.IsCancellationRequested)
+            {
+                ViewModel.RepairStatusText = "已取消，未卸载任何运行库。";
+                return;
+            }
+            if (consent is not null && consent.IsChecked != true) return;
+
+            var result = await ViewModel.SafeUninstallAllCppAsync(preview.Fingerprint, preview.RequiresTemporaryInstaller, cancellation.Token);
+            ViewModel.RepairStatusText = RuntimeRepairGuidance.OriginalText(result);
+            var resultText = ViewModel.RecordRepairResult(result, cancellation.IsCancellationRequested);
+            await new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = result.Success ? "安全模式卸载完成，请回正常模式安装" : "安全模式卸载未完成",
+                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = resultText, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } },
+                CloseButtonText = "知道了",
+            }.ShowWithBackendRecoveryAsync();
+        }
+        catch (Exception ex)
+        {
+            ViewModel.RepairStatusText = "操作未完成：" + ex.Message;
+            ViewModel.RecordRepairResult(new OperationResult { Message = ViewModel.RepairStatusText, OutcomeUnknown = true }, cancellation.IsCancellationRequested || ex is OperationCanceledException);
+            await ShowRuntimeExceptionAsync(ex);
+        }
+        finally
+        {
+            _repairCancellation = null;
+            ViewModel.RepairIsBusy = false;
+            if (!_startupExitPending) await ViewModel.LoadGuardAsync();
+        }
+    }
+
     private async void RepairHighFps_Click(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.GuardCleanupEnabled) return;
@@ -150,16 +231,30 @@ public sealed partial class RuntimePage : Page
         if (AdvancedStartupRestart.IsSafeMode)
         {
             var proceed = false;
+            var stageResult = ContentDialogResult.None;
             ViewModel.RepairIsBusy = true;
             try
             {
-                var stage = await new ContentDialog { XamlRoot = XamlRoot, Title = "全量修复：安全模式卸载阶段",
-                    Content = "安全模式下仅处理 V14 卸载，2005–2013、VSTO 等安装步骤将在正常模式手动继续。下一步仍须预览确认；临时启用 Installer 必须单独勾选。不会自动重启或执行安装。",
-                    PrimaryButtonText = "预览 V14 卸载阶段", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close }.ShowWithBackendRecoveryAsync();
-                proceed = stage == ContentDialogResult.Primary;
+                var stageDialog = new ContentDialog
+                {
+                    XamlRoot = XamlRoot, Title = "全量修复：安全模式卸载阶段",
+                    Content = "安全模式下可选择只卸载 V14，或显式确认“卸载全部 C++（高风险）”。卸载全部 C++ 会处理检测到的 2005–2013、2015–2022 和 14.x 运行库；依赖阻塞、身份变化或结果未知时停止。2005–2013、VSTO 等安装步骤仍需回正常模式手动继续。\n\n临时启用 Installer 必须单独确认；若系统仍禁止启动 Windows Installer（如 1084），会停止并提示回正常模式；不会自动重启或执行安装。",
+                    PrimaryButtonText = "预览 V14 卸载阶段",
+                    SecondaryButtonText = "卸载全部 C++（高风险）",
+                    CloseButtonText = "取消",
+                    DefaultButton = ContentDialogButton.Close,
+                };
+                stageResult = await stageDialog.ShowWithBackendRecoveryAsync();
+                proceed = stageResult == ContentDialogResult.Primary;
             }
             catch (Exception ex) { ViewModel.RepairStatusText = "操作未完成：" + ex.Message; await ShowRuntimeExceptionAsync(ex); }
             finally { ViewModel.RepairIsBusy = false; }
+            if (stageResult == ContentDialogResult.Secondary)
+            {
+                // 必须等 finally 清除 RepairIsBusy 后再进入新入口，否则入口的忙碌守卫会直接返回。
+                await RunSafeUninstallAllCppAsync();
+                return;
+            }
             if (proceed) Repair14_Click(new Button { Tag = "full-uninstall" }, e);
             return;
         }

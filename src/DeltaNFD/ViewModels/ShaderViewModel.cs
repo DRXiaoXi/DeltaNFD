@@ -17,7 +17,7 @@ public partial class ShaderViewModel : ObservableObject
     [ObservableProperty] private bool canClear;
     [ObservableProperty] private string diagText = "正在检测着色器缓存结构…";
     [ObservableProperty] private bool diagBusy;
-    [ObservableProperty] private string sysCacheText = "系统级着色器缓存（D3DSCache / NVIDIA DXCache / AMD DxCache）";
+    [ObservableProperty] private string sysCacheText = "系统级着色器缓存（D3DSCache / NVIDIA DXCache+GLCache / AMD DxCache+DxcCache+GLCache / Intel ShaderCache）";
     [ObservableProperty] private bool isCleaningSystem;
     [ObservableProperty] private bool shaderCacheNonDefault;
     [ObservableProperty] private bool shaderCacheCheckFailed;
@@ -197,7 +197,10 @@ public partial class ShaderViewModel : ObservableObject
         _ => "— ",
     };
 
-    /// <summary>清理系统级着色器缓存（D3DSCache / NVIDIA DXCache / AMD DxCache）。返回结果供页面弹窗。</summary>
+    /// <summary>
+    /// 清理系统级着色器缓存（D3DSCache / NVIDIA DXCache+GLCache / AMD DxCache+DxcCache+GLCache / Intel ShaderCache）。
+    /// 返回结果供页面弹窗；链接、权限、占用等未完成项不能被包装成完整成功。
+    /// </summary>
     public async Task<OperationResult?> CleanSystemShadersAsync()
     {
         if (IsCleaningSystem)
@@ -208,11 +211,29 @@ public partial class ShaderViewModel : ObservableObject
         IsCleaningSystem = true;
         try
         {
-            var (freedMb, skipped) = await _cleanup.CleanShaderCachesAsync();
-            var skippedNote = skipped.Count > 0
-                ? "\n被占用已跳过：\n" + string.Join("\n", skipped)
+            var report = await _cleanup.CleanShaderCachesAsync();
+            var skippedNote = report.Skipped.Count > 0
+                ? "\n未完成/已跳过：\n" + string.Join("\n", report.Skipped.Take(12))
                 : "";
-            return OperationResult.Ok($"已清理系统级着色器缓存，释放 {freedMb:0.0} MB。{skippedNote}");
+
+            if (report.GameStarted && report.DeletedFiles == 0)
+                return OperationResult.Fail("清理已停止：三角洲正在运行。" + skippedNote);
+            if (report.Cancelled && report.DeletedFiles == 0)
+                return OperationResult.Fail("清理已取消。" + skippedNote);
+            if (report.FailedItems > 0 && report.DeletedFiles == 0)
+                return OperationResult.Fail(report.Message + skippedNote);
+
+            if (report.Partial || report.GameStarted || report.Cancelled)
+            {
+                return new OperationResult
+                {
+                    Success = true,
+                    IsPartial = true,
+                    Message = report.Message + skippedNote,
+                };
+            }
+
+            return OperationResult.Ok(report.Message + skippedNote);
         }
         catch (Exception ex)
         {

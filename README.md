@@ -4,16 +4,16 @@ Windows 10/11 x64 游戏优化工具，使用 .NET 8 与 WinUI 3。原创代码�
 
 ## 下载与版本
 
-- 已发布公测版：[Beta0.922 / v0.9220](https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9220)。显示版本为 Beta0.922，数值版本使用 0.9220，以兼容旧客户端的整数版本排序。
-- [GitHub 完整安装包](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9220/DeltaNFD_Setup_0.9220_x64.exe) / [自建服务器完整安装包](https://deltaxiaoxi.xin/updates/packages/0.9220/DeltaNFD_Setup_0.9220_x64.exe)。大小 250088555 字节，SHA256：`1ca6984dbd219408acce690be56d819e141adf69a224f174e24bc2135e3b1778`。
-- 对应安装包的源码：[v0.9220 标签](https://github.com/DRXiaoXi/DeltaNFD/tree/v0.9220) / [发布源码 ZIP](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9220/DeltaNFD_Source_0.9220.zip)。ZIP 的 `SOURCE_FILES_SHA256.json` 记录完整构建源码输入。
+- 已发布公测版：[Beta0.922-RC2 / v0.9222](https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9222)。显示版本为 Beta0.922-RC2，数值版本使用 0.9222，以兼容旧客户端的整数版本排序。
+- [GitHub 完整安装包](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9222/DeltaNFD_Setup_0.9222_x64.exe) / [自建服务器完整安装包](https://deltaxiaoxi.xin/updates/packages/0.9222/DeltaNFD_Setup_0.9222_x64.exe)。大小 250103853 字节，SHA256：`24cc3cc56a51a0a138218659e3ab1e6b85cdadb42f1803ce47f138a9f88d2c69`。
+- 对应安装包的源码：[v0.9222 标签](https://github.com/DRXiaoXi/DeltaNFD/tree/v0.9222) / [发布源码 ZIP](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9222/DeltaNFD_Source_0.9222.zip)。ZIP 的 `SOURCE_FILES_SHA256.json` 记录完整构建源码输入。
 - **main 与当前发布源码同步**；复现某次发布时使用对应标签或源码 ZIP，后续维护变化不会覆盖旧版本包。
 
 ### 旧版本检查更新提示“清单体积异常”
 
 Beta0.92 的文件更新对象使 GitHub Releases API 返回超过旧客户端的 262144 字符限制。这是客户端与发布布局的兼容问题。旧程序内置的限制不能由远端清单修改，请完全退出旧程序后，手动下载上方完整安装包覆盖安装。Beta0.92 安装包默认使用自建服务器与仅替换变更文件更新；已经保存的服务器选择会保留，必要时在设置中手动切换自建服务器。
 
-GitHub 发布列表现使用独立的有界读取：每次响应最多 8 MiB，累计分页最多 16 Mi 字符，普通清单继续保持小体积限制。修正已包含在 Beta0.922 安装包。
+GitHub 发布列表现使用独立的有界读取：每次响应最多 8 MiB，累计分页最多 16 Mi 字符，普通清单继续保持小体积限制。修正已包含在 Beta0.922-RC2 安装包。
 
 ## 当前功能范围
 
@@ -30,8 +30,8 @@ GitHub 发布列表现使用独立的有界读取：每次响应最多 8 MiB，�
 ```powershell
 git clone https://github.com/DRXiaoXi/DeltaNFD.git
 cd DeltaNFD
-# 复现已发布代码时切换到 v0.9200；维护 main 时无需切换。
-# git switch --detach v0.9200
+# 复现当前已发布代码时切换到 v0.9220；维护 main 时无需切换。
+# git switch --detach v0.9220
 ```
 
 建议克隆到较短路径，避免旧 VSTO 资源触及 Windows MAX_PATH。需要 Windows x64、.NET 8 SDK、Python 3.11+；完整安装包另需 Inno Setup 6。固定的二进制输入未全部放进 Git，维护 main 提供只下载和校验、不执行安装器的准备脚本：
@@ -52,6 +52,7 @@ dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --update-ch
 
 ## 开发与发布约定
 
+- 参与开发见 [贡献指南](CONTRIBUTING.md)，目录职责与安全清理见 [工作区维护](docs/WORKSPACE-MAINTENANCE.md)，安全问题见 [反馈说明](SECURITY.md)。提交前运行 `python tools/check_repository.py --include-untracked`。
 - main 和 `codex/**` 分支、`v*` 标签及 Pull Request 运行构建检查；CI 与本地检查不能代替真实游戏、弱 CPU、安全模式或运行库修复实测。
 - [文件更新发布说明](installer/FILE-UPDATES.md) 包含整包回退、服务器选择、上传顺序和恢复要求。
 - 已发布版本目录、安装包、源码 ZIP、文件清单及对象保持不可变。产品变更重新发布时必须使用更高的数值版本。

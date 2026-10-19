@@ -82,12 +82,50 @@ internal static class ShaderRecoveryChecks
         Directory.Delete(link); // Remove only the temporary link itself, never its target.
         Check(ShaderRecoveryCleanup.CleanRoots([cache], () => false).Success && Directory.Exists(cache) && File.Exists(keep),
             "重复清理可幂等，保留根目录和范围外文件");
+
+        // 0 字节文件也必须被删除，不能因为总大小为 0 而整目录跳过。
+        var zeroRoot = Path.Combine(root, "zero"); Directory.CreateDirectory(zeroRoot);
+        var zeroFile = Path.Combine(zeroRoot, "zero.bin"); File.WriteAllBytes(zeroFile, []);
+        var zero = ShaderCacheCleanup.CleanRoots([zeroRoot], () => false);
+        Check(zero.DeletedFiles == 1 && zero.FreedMb == 0 && !zero.Partial && !File.Exists(zeroFile),
+            "0 字节缓存文件仍会删除，结果不伪装成有释放");
+
+        // 被占用/共享冲突要如实报告失败，不能显示为完整成功。
+        var lockedRoot = Path.Combine(root, "locked"); Directory.CreateDirectory(lockedRoot);
+        var lockedFile = Path.Combine(lockedRoot, "locked.bin"); File.WriteAllText(lockedFile, "fixture");
+        using (var hold = new FileStream(lockedFile, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
+        {
+            var locked = ShaderCacheCleanup.CleanRoots([lockedRoot], () => false);
+            Check(locked.FailedItems > 0 && locked.Partial && File.Exists(lockedFile),
+                "被占用文件逐项报告，不显示为完整成功");
+        }
+        File.Delete(lockedFile);
+
         var stopCache = Path.Combine(root, "stop"); Directory.CreateDirectory(stopCache);
         for (var i = 0; i < 4; i++) File.WriteAllText(Path.Combine(stopCache, i + ".bin"), "fixture");
         var polls = 0;
         var stopped = ShaderRecoveryCleanup.CleanRoots([stopCache], () => ++polls > 3);
         Check(!stopped.Success && stopped.IsPartial && Directory.GetFiles(stopCache).Length == 3,
             "清理中游戏启动及时停止，不假装全部完成");
+        var cleanupDto = new ShaderCacheCleanupResult
+        {
+            FreedMb = 1.5,
+            DeletedFiles = 3,
+            FailedItems = 1,
+            SkippedLinks = 1,
+            Partial = true,
+            Message = "partial fixture",
+            Skipped = ["fixture: locked"],
+        };
+        var cleanupResult = BackendResult.PartialResult("system.cleanup.shader-cache", "partial fixture", [], cleanupDto, requiresReview: false);
+        Check(cleanupResult.Status == BackendResultStatuses.Partial && cleanupResult.RequiresReview == false && cleanupResult.Data is not null,
+            "着色器清理 partial 结果已知且不需恢复核对");
+        var cleanupData = cleanupResult.Data!.Value;
+        var cleanupRoundTrip = BackendJson.Deserialize<ShaderCacheCleanupResult>(cleanupData);
+        Check(cleanupRoundTrip.DeletedFiles == 3 && cleanupRoundTrip.FailedItems == 1
+            && cleanupRoundTrip.SkippedLinks == 1 && cleanupRoundTrip.Partial
+            && cleanupRoundTrip.Skipped.Count == 1, "着色器清理结果可被前端合同解析");
+
         Check(BackendModules.Require(BackendModules.Gpu).Commands.Contains(BackendCommands.GpuShaderCacheApply)
             && BackendModules.Require(BackendModules.System).Commands.Contains(BackendCommands.SystemShaderRecoveryClean)
             && !BackendModules.IsReadOnly(BackendModules.Gpu, BackendCommands.GpuShaderCacheApply), "新写入/清理命令注册并保留修改语义");

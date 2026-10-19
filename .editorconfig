@@ -1,0 +1,24 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml}]
+indent_size = 2
+
+[*.{sln,cmd,bat}]
+end_of_line = crlf
+
+# These byte-verified inputs must keep their original encoding and line endings.
+[src/DeltaNFD/Assets/RuntimeHighFps/{Installer.cmd,payload_manifest_sha256.csv}]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+
+# The recovery script is also launched by Windows PowerShell 5.1.
+[tools/Repair-GpuSpoofPending.ps1]
+charset = utf-8-bom

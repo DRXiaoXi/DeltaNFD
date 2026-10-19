@@ -32,6 +32,13 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Check source repository boundaries
+        run: |
+          python tools/check_repository.py
+          if ($LASTEXITCODE -ne 0) { throw "Repository boundary violation" }
+          python -m unittest discover -s tools -p test_repository_maintenance.py -v
+          if ($LASTEXITCODE -ne 0) { throw "Workspace maintenance safety regression" }
+
       - name: Restore verified binary build inputs
         id: source-assets-cache
         uses: actions/cache/restore@v4

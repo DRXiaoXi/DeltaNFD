@@ -268,9 +268,27 @@ internal static class SystemCommands
     private static async Task<BackendResult> CleanupShaderCacheAsync(BackendCommandContext context)
     {
         var progress = new RelayProgress(context, "shader-cache");
-        var (freedMb, skipped) = await new CleanupService().CleanShaderCachesAsync(progress);
-        var message = $"着色器缓存清理完成：释放 {freedMb:0.0} MB" + (skipped.Count > 0 ? $"，跳过 {skipped.Count} 项" : "") + "。";
-        return BackendResult.Ok("system.cleanup.shader-cache", message, new CleanupResultDto { FreedMb = freedMb, Skipped = skipped });
+        var report = await new CleanupService().CleanShaderCachesAsync(progress, context.CancellationToken);
+        var items = report.Skipped
+            .Select((detail, index) => new BackendResultItem(
+                "skip-" + index,
+                detail.Contains("链接", StringComparison.Ordinal) ? BackendItemStatuses.Skipped : BackendItemStatuses.Failed,
+                detail))
+            .ToList();
+
+        if (report.Cancelled)
+            return BackendResult.Cancelled(context.Command, report.Message);
+        if (report.GameStarted)
+        {
+            return report.DeletedFiles > 0
+                ? BackendResult.PartialResult(context.Command, report.Message, items, report, requiresReview: false)
+                : BackendResult.Failed(context.Command, report.Message);
+        }
+        if (report.FailedItems > 0 && report.DeletedFiles == 0)
+            return BackendResult.Failed(context.Command, report.Message);
+        if (report.Partial)
+            return BackendResult.PartialResult(context.Command, report.Message, items, report, requiresReview: false);
+        return BackendResult.Ok(context.Command, report.Message, report);
     }
 
     // ---------------- 电源 ----------------

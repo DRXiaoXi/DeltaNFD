@@ -218,7 +218,7 @@ public static partial class Vc14Reinstall
         }
         catch (Exception ex) { return new(scan, [], "", false, "卸载前依赖核验未通过：" + ex.Message); }
         if (blocker is null && plan.Count == 0 && mode == Vc14RepairMode.UninstallOnly)
-            blocker = "未发现可卸载的 C++ 14.x 登记。如需补装，请返回正常模式，选择预览并全量重装 14.x 或安装 14.42。";
+            blocker = "未发现可卸载的 C++ 14.x 登记。如需补装，请返回正常模式，选择预览并仅修复 14.x 或安装 14.42。";
         if (blocker is null && plan.Count == 0 && mode == Vc14RepairMode.Full && !scan.IsMissing)
             blocker = "检测到 14.x 组件但未生成卸载计划，请重新检测，不能跳过未确认的组件直接安装。";
         var temporary = environment.TemporaryInstaller();
@@ -380,7 +380,7 @@ public static partial class Vc14Reinstall
                     + "\n未处理 2005–2013、SDK/Debug、ARM64 或 DirectX；此结果不代表已验证游戏帧率改善。" };
         }
         catch (OperationCanceledException) { return Fail("已取消等待或后续步骤。", changed); }
-        catch (Exception ex) { return Fail("14.x 全量重装已停止：" + ex.Message, changed); }
+        catch (Exception ex) { return Fail("14.x 修复已停止：" + ex.Message, changed); }
     }
 }
 

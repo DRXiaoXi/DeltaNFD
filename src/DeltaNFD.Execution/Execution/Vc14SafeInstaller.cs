@@ -254,7 +254,10 @@ internal sealed class SafeInstallerWindowsPlatform : ISafeInstallerPlatform
                 if (start ? !StartService(handle, 0, IntPtr.Zero) : !ControlService(handle, 1, out _))
                 {
                     var error = Marshal.GetLastWin32Error();
-                    if (!(!start && error == 1062)) throw new IOException("Installer 服务控制失败或已由其他程序启动，错误 " + error);
+                    if (!start && error == 1062) { /* Already stopped by another program is acceptable. */ }
+                    else if (start && error == 1084)
+                        throw new IOException("Windows Installer 服务在当前安全模式下被系统禁止启动（错误 1084）。无法在此环境卸载运行库；请回到正常模式操作，本工具不会修改系统启动配置。");
+                    else throw new IOException("Installer 服务控制失败或已由其他程序启动，错误 " + error);
                 }
                 var deadline = Stopwatch.StartNew();
                 while (deadline.Elapsed < TimeSpan.FromSeconds(12))

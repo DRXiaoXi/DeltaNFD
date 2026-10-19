@@ -73,6 +73,16 @@ internal sealed class BackendRuntimeGuardService : IRuntimeGuardService
         => Map(await InvokeAsync(BackendCommands.RuntimeHighFpsRepair,
             new RuntimeHighFpsArgs { StrongMode = strongMode, Fingerprint = fingerprint }, progress, token), "全量修复");
 
+    public async Task<RuntimeSafeUninstallPreview> PreviewSafeUninstallAsync(CancellationToken token)
+        => RequireData<RuntimeSafeUninstallPreview>(
+            await InvokeAsync(BackendCommands.RuntimeSafeUninstallPreview, new { }, null, token), "安全模式 C++ 全量卸载预览");
+
+    public async Task<OperationResult> SafeUninstallAllCppAsync(string fingerprint, bool allowTemporaryInstaller,
+        IProgress<string>? progress, CancellationToken token)
+        => Map(await InvokeAsync(BackendCommands.RuntimeSafeUninstall,
+            new RuntimeSafeUninstallArgs { Fingerprint = fingerprint, AllowTemporaryInstaller = allowTemporaryInstaller }, progress, token),
+            "安全模式 C++ 全量卸载");
+
     public async Task<OperationResult> EnableAsync()
     {
         var result = await InvokeAsync(BackendCommands.RuntimeGuardEnable, new { }, null, CancellationToken.None);

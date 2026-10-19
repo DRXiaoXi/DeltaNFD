@@ -42,6 +42,8 @@ public static class BackendCommands
     public const string RuntimeGuardSelectMode = "runtime.guard.select-mode";
     public const string RuntimeGuardCleanupLegacy = "runtime.guard.cleanup-legacy";
     public const string RuntimeUe4RepairAcl = "runtime.ue4.repair-acl";
+    public const string RuntimeSafeUninstallPreview = "runtime.safe-uninstall.preview";
+    public const string RuntimeSafeUninstall = "runtime.safe-uninstall";
     public const string RuntimeRedistScan = "runtime.redist.scan";
     public const string RuntimeRepairEnvironment = "runtime.repair.environment";
     public const string ProcmanMemoryPreview = "procman.memory.preview";
@@ -251,6 +253,8 @@ public static class BackendModules
                     [BackendCommands.RuntimeGuardSelectMode] = TwoMinutes,
                     [BackendCommands.RuntimeGuardCleanupLegacy] = FiveMinutes,
                     [BackendCommands.RuntimeUe4RepairAcl] = FiveMinutes,
+                    [BackendCommands.RuntimeSafeUninstallPreview] = FiveMinutes,
+                    [BackendCommands.RuntimeSafeUninstall] = TimeSpan.FromMinutes(120),
                     [BackendCommands.RuntimeReconcile] = FiveMinutes,
                     [BackendCommands.RuntimeRecover] = FifteenMinutes,
                 }, FiveMinutes),
@@ -407,6 +411,7 @@ public static class BackendModules
         BackendCommands.ProcmanCpuTopology, BackendCommands.ProcmanReconcile,
         BackendCommands.ProcmanNativeProbe,
         BackendCommands.ProcmanRulesList, BackendCommands.ProcmanResponsivenessEvents,
+        BackendCommands.RuntimeSafeUninstallPreview,
         BackendCommands.SystemCleanupScan, BackendCommands.SystemTweaksStatus,
         BackendCommands.SystemTweaksBackups, BackendCommands.SystemTweaksHyperV, BackendCommands.SystemTweaksVbs,
         BackendCommands.SystemAdvancedStatus, BackendCommands.SystemPowerSchemes,

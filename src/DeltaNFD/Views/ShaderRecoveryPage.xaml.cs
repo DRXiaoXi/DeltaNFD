@@ -52,7 +52,8 @@ public sealed partial class ShaderRecoveryPage : Page
         var env = await _nv.GetEnvironmentAsync();
         var game = await ServiceLocator.Shader.GetStatusAsync();
         _ready = env.IsNvidia && env.NvApiAvailable && !game.IsGameRunning;
-        _canClean = env.IsNvidia && !game.IsGameRunning;
+        // 清理不依赖 N 卡：AMD/Intel 也可清理游戏 PSOCache 与 D3DSCache；缓存大小设置仍由 _ready 控制。
+        _canClean = !game.IsGameRunning;
         CurrentText.Text = env.ShaderCache?.Details ?? "后端未返回缓存大小，无法确认。";
         StatusBar.Severity = env.ShaderCache?.HasNonDefault == true ? InfoBarSeverity.Error
             : env.ShaderCache?.Complete != true || game.IsGameRunning || env.DrsFilesLocked ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;

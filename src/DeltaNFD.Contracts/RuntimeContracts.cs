@@ -49,13 +49,15 @@ public sealed class RuntimeGuardStatus
     public required bool Ue4PrereqDenied { get; init; }
 }
 
-/// <summary>安装器防护、历史事务核对与 14.x 全量重装（卸载全部 14.x 后安装内置 14.42 基线）。</summary>
+/// <summary>安装器防护、历史事务核对与 14.x 修复（范围仅 C++ 14.x：卸载检测到的 14.x 后安装内置 14.42 基线）。</summary>
 public interface IRuntimeGuardService
 {
     Task<RuntimeFileUseScan> ScanFileUseAsync(CancellationToken token, RuntimeFileUseScope scope = RuntimeFileUseScope.Vc14) => throw new NotSupportedException();
     Task<RuntimeFileUseCloseResult> CloseFileUseAsync(RuntimeFileUseCloseArgs args, CancellationToken token) => throw new NotSupportedException();
     Task<RuntimeHighFpsPreview> PreviewHighFpsAsync(bool strongMode) => throw new NotSupportedException();
     Task<OperationResult> RepairHighFpsAsync(string fingerprint, bool strongMode, IProgress<string>? progress, CancellationToken token) => throw new NotSupportedException();
+    Task<RuntimeSafeUninstallPreview> PreviewSafeUninstallAsync(CancellationToken token) => throw new NotSupportedException();
+    Task<OperationResult> SafeUninstallAllCppAsync(string fingerprint, bool allowTemporaryInstaller, IProgress<string>? progress, CancellationToken token) => throw new NotSupportedException();
     Task<Vc14Scan> Scan14Async() => throw new NotSupportedException();
     Task<Vc14ReinstallPreview> Preview14RepairAsync(Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false) => throw new NotSupportedException();
     Task<OperationResult> Repair14Async(string fingerprint, IProgress<string>? progress, CancellationToken token, Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false) => throw new NotSupportedException();

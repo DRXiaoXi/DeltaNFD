@@ -1,6 +1,6 @@
 namespace DeltaNFD.Services;
 
-/// <summary>全新 14.x 全量重装入口（2026-10-15 用户授权）；旧 AIO/DirectX 命令保持下线。</summary>
+/// <summary>14.x 修复入口（原“全量重装”命名，范围仅 C++ 14.x）；旧 AIO/DirectX 命令保持下线。</summary>
 public static class Vc14Maintenance
 {
     public static Task<Vc14Scan> ScanAsync() => Task.Run(() =>

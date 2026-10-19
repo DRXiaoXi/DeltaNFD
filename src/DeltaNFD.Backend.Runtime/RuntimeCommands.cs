@@ -1,5 +1,6 @@
 using DeltaNFD.Backends;
 using DeltaNFD.Services;
+using DeltaNFD.Services.AlphaRestore;
 
 namespace DeltaNFD.Backend.Runtime;
 
@@ -19,6 +20,8 @@ internal static class RuntimeCommands
             [BackendCommands.RuntimeFileUseClose] = FileUseCloseAsync,
             [BackendCommands.RuntimeHighFpsPreview] = HighFpsPreviewAsync,
             [BackendCommands.RuntimeHighFpsRepair] = HighFpsRepairAsync,
+            [BackendCommands.RuntimeSafeUninstallPreview] = SafeUninstallPreviewAsync,
+            [BackendCommands.RuntimeSafeUninstall] = SafeUninstallAsync,
             [BackendCommands.Vc14Scan] = VcScanAsync,
             [BackendCommands.Vc14Preview] = VcPreviewAsync,
             [BackendCommands.Vc14Repair] = VcRepairAsync,
@@ -159,8 +162,20 @@ internal static class RuntimeCommands
         return Wrap(BackendCommands.Vc14Repair, await Vc14Maintenance.RepairAsync(args.Fingerprint, progress, context.CancellationToken, args.Mode, args.AllowTemporaryInstaller));
     }
 
+    private static async Task<BackendResult> SafeUninstallPreviewAsync(BackendCommandContext context) =>
+        BackendResult.Ok(BackendCommands.RuntimeSafeUninstallPreview, "安全模式 C++ 全量卸载预览",
+            await RuntimeSafeUninstall.PreviewAsync(context.CancellationToken));
+
+    private static async Task<BackendResult> SafeUninstallAsync(BackendCommandContext context)
+    {
+        var args = context.ArgsAs<RuntimeSafeUninstallArgs>();
+        var progress = new Progress<string>(s => context.ReportProgress(s, null, "safe-uninstall"));
+        return Wrap(BackendCommands.RuntimeSafeUninstall, await RuntimeSafeUninstall.RunAsync(
+            args.Fingerprint, args.AllowTemporaryInstaller, progress, context.CancellationToken));
+    }
+
     private static async Task<BackendResult> VcLegacyCleanAsync(BackendCommandContext context) =>
-        BackendResult.Failed(BackendCommands.Vc14LegacyClean, "旧包装单独处理已并入 14.x 全量重装，不再单独执行。");
+        BackendResult.Failed(BackendCommands.Vc14LegacyClean, "旧包装单独处理已并入 14.x 修复，不再单独执行。");
 
     private static BackendResult Wrap(string code, OperationResult result) =>
         new(result.Success ? BackendResultStatuses.Ok : BackendResultStatuses.Failed, code, result.Message, [],

@@ -12,6 +12,16 @@ internal static class RuntimeRepairRetirementChecks
             "runtime.redist.uninstall-all", "runtime.redist.preview-all", "runtime.repair.environment",
             "runtime.redist.scan", "runtime.redist.list-v14" })
             Check(!BackendModules.IsAllowed(BackendModules.Runtime, command), "retired command must not be callable: " + command);
+        Check(BackendModules.IsAllowed(BackendModules.Runtime, BackendCommands.RuntimeSafeUninstallPreview)
+            && BackendModules.IsReadOnly(BackendModules.Runtime, BackendCommands.RuntimeSafeUninstallPreview),
+            "safe-mode all-C++ preview is registered read-only");
+        Check(BackendModules.IsAllowed(BackendModules.Runtime, BackendCommands.RuntimeSafeUninstall)
+            && !BackendModules.IsReadOnly(BackendModules.Runtime, BackendCommands.RuntimeSafeUninstall),
+            "safe-mode all-C++ uninstall is registered as mutating");
+        var normalPreview = DeltaNFD.Services.AlphaRestore.RuntimeSafeUninstall.PreviewAsync(default).GetAwaiter().GetResult();
+        Check(!normalPreview.CanRun && normalPreview.Blocker.Contains("安全模式"), "all-C++ uninstall is unavailable outside safe mode");
+        var normalRun = DeltaNFD.Services.AlphaRestore.RuntimeSafeUninstall.RunAsync("", false, null, default).GetAwaiter().GetResult();
+        Check(!normalRun.Success && normalRun.Message.Contains("安全模式"), "normal-mode all-C++ run is rejected before any uninstall");
         foreach (var command in new[] { BackendCommands.RuntimeStatus, BackendCommands.RuntimeGuardEnable,
             BackendCommands.RuntimeGuardDisable, BackendCommands.RuntimeGuardSelectMode, BackendCommands.RuntimeGuardCleanupLegacy,
             BackendCommands.RuntimeUe4RepairAcl, BackendCommands.RuntimeReconcile, BackendCommands.RuntimeRecover })

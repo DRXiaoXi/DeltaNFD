@@ -3,7 +3,7 @@ using DeltaNFD.Services;
 
 namespace DeltaNFD.ViewModels;
 
-/// <summary>运行库防护、14.x 兼容性检测与全量重装（卸载全部 14.x 后安装内置 14.42 基线）。</summary>
+/// <summary>运行库防护、14.x 兼容性检测与仅修复 14.x（原全量重装：卸载检测到的 14.x 后安装内置 14.42 基线）。</summary>
 public partial class RuntimeViewModel : ObservableObject
 {
     public Task<RuntimeFileUseScan> ScanFileUseAsync(CancellationToken token, RuntimeFileUseScope scope = RuntimeFileUseScope.Vc14) => _guard.ScanFileUseAsync(token, scope);
@@ -67,6 +67,10 @@ public partial class RuntimeViewModel : ObservableObject
     public Task<RuntimeHighFpsPreview> PreviewHighFpsAsync(bool strongMode) => _guard.PreviewHighFpsAsync(strongMode);
     public Task<OperationResult> RepairHighFpsAsync(string fingerprint, bool strongMode, CancellationToken token)
         => _guard.RepairHighFpsAsync(fingerprint, strongMode, new Progress<string>(s => RepairStatusText = s), token);
+    public Task<RuntimeSafeUninstallPreview> PreviewSafeUninstallAsync(CancellationToken token)
+        => _guard.PreviewSafeUninstallAsync(token);
+    public Task<OperationResult> SafeUninstallAllCppAsync(string fingerprint, bool allowTemporaryInstaller, CancellationToken token)
+        => _guard.SafeUninstallAllCppAsync(fingerprint, allowTemporaryInstaller, new Progress<string>(s => RepairStatusText = s), token);
     public Task<OperationResult> RepairAsync(string fingerprint, CancellationToken token, Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false)
         => _guard.Repair14Async(fingerprint, new Progress<string>(s => RepairStatusText = s), token, mode, allowTemporaryInstaller);
     public Task<OperationResult> RestoreTemporaryInstallerAsync() => _guard.RestoreTemporaryInstallerAsync();

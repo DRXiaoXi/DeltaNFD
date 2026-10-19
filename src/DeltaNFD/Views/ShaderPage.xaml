@@ -76,6 +76,34 @@
                 </StackPanel>
             </Border>
 
+            <!-- 系统级着色器缓存 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="系统级着色器缓存" Style="{StaticResource SectionTitleStyle}" />
+                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
+                                   Text="清理 Windows / 显卡驱动的系统着色器缓存（%LocalAppData% 下的 D3DSCache、NVIDIA DXCache+GLCache、AMD DxCache+DxcCache+GLCache、Intel ShaderCache，存在时清理），不含游戏目录内的 PSOCache。链接/重解析项会跳过并报告；清理后游戏首次启动会重新编译着色器。" />
+                        <TextBlock Text="{x:Bind ViewModel.SysCacheText, Mode=OneWay}"
+                                   FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <ProgressRing Width="24" Height="24"
+                                      IsActive="{x:Bind ViewModel.IsCleaningSystem, Mode=OneWay}"
+                                      Foreground="{StaticResource AppAccentBrush}" />
+                        <Button Style="{StaticResource AccentButtonStyle}"
+                                Content="{x:Bind ViewModel.CleanSystemButtonText, Mode=OneWay}"
+                                IsEnabled="{x:Bind ViewModel.CanCleanSystem, Mode=OneWay}"
+                                Click="CleanSystemButton_Click" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
             <!-- 着色器健康检测 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
@@ -105,34 +133,6 @@
                                Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                FontFamily="Consolas" />
                 </StackPanel>
-            </Border>
-
-            <!-- 系统级着色器缓存 -->
-            <Border Style="{StaticResource CardBorderStyle}">
-                <Grid ColumnSpacing="16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="系统级着色器缓存" Style="{StaticResource SectionTitleStyle}" />
-                        <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                   Text="清理 Windows / 显卡驱动的着色器缓存（%LocalAppData% 下的 D3DSCache、NVIDIA DXCache、AMD DxCache），不含游戏目录内的 PSOCache。清理后游戏首次启动会重新编译着色器。" />
-                        <TextBlock Text="{x:Bind ViewModel.SysCacheText, Mode=OneWay}"
-                                   FontSize="11" Opacity="0.75" TextWrapping="Wrap" />
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                        <ProgressRing Width="24" Height="24"
-                                      IsActive="{x:Bind ViewModel.IsCleaningSystem, Mode=OneWay}"
-                                      Foreground="{StaticResource AppAccentBrush}" />
-                        <Button Style="{StaticResource AccentButtonStyle}"
-                                Content="{x:Bind ViewModel.CleanSystemButtonText, Mode=OneWay}"
-                                IsEnabled="{x:Bind ViewModel.CanCleanSystem, Mode=OneWay}"
-                                Click="CleanSystemButton_Click" />
-                    </StackPanel>
-                </Grid>
             </Border>
 
             <!-- 说明 -->

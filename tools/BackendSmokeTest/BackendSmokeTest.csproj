@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>BackendSmokeTest</RootNamespace>
     <!-- 与产品同版本：官方后端客户端（已链接进本测试）按 AppVersion 校验后端版本。 -->
-    <Version>0.9220</Version>
-    <InformationalVersion>Beta0.922</InformationalVersion>
+    <Version>0.9222</Version>
+    <InformationalVersion>Beta0.922-RC2</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -119,6 +119,7 @@
     <Compile Include="..\..\src\DeltaNFD\Services\UpdateChannelInstallation.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\UpdateUrlRewriter.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CleanupService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\ShaderCacheCleanup.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\DefenderGuard.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\GpuSpoofService.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\GpuSpoofWatch.cs" />

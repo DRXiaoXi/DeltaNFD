@@ -99,71 +99,25 @@ public sealed class ShaderService : IShaderService
             return OperationResult.Fail("未找到 PSOCache 目录（可能游戏尚未生成过着色器缓存，无需清理）。");
         }
 
-        double totalFreedMb = 0;
-        var failedPaths = new List<string>();
-        foreach (var psoPath in psoPaths)
+        // 使用固定根安全清理：链接/重解析项跳过，游戏启动时立即停止，逐项记录失败。
+        var report = ShaderCacheCleanup.CleanRoots(psoPaths, DeltaForceLocator.IsGameRunning);
+        var summary = $"已处理 {psoPaths.Count} 个安装的旧着色器缓存：删除 {report.DeletedFiles} 个文件，释放 {report.FreedMb:0.0} MB。";
+        if (report.GameStarted) summary += " 检测到三角洲启动，已停止剩余清理。";
+        if (report.Cancelled) summary += " 清理已取消。";
+        if (report.Skipped.Count > 0)
         {
-            try
-            {
-                var before = GetDirectorySizeMb(psoPath);
-                var failedFiles = 0;
-                var failedDirs = 0;
-
-                // 先删除文件，记录失败的文件路径用于诊断
-                foreach (var file in Directory.EnumerateFiles(psoPath, "*", SearchOption.AllDirectories))
-                {
-                    try
-                    {
-                        File.Delete(file);
-                    }
-                    catch (Exception ex)
-                    {
-                        failedFiles++;
-                        Log.Warn($"着色器清理：文件删除失败 {file}：{ex.Message}");
-                    }
-                }
-
-                // 再删除目录（按路径长度降序，从深层到浅层）
-                foreach (var dir in Directory.EnumerateDirectories(psoPath).OrderByDescending(d => d.Length))
-                {
-                    try
-                    {
-                        Directory.Delete(dir, recursive: true);
-                    }
-                    catch (Exception ex)
-                    {
-                        failedDirs++;
-                        Log.Warn($"着色器清理：目录删除失败 {dir}：{ex.Message}");
-                    }
-                }
-
-                var after = GetDirectorySizeMb(psoPath);
-                var freedMb = Math.Max(0, before - after);
-                totalFreedMb += freedMb;
-                
-                if (failedFiles > 0 || failedDirs > 0)
-                {
-                    var detail = $"{psoPath}（释放 {freedMb:0.0} MB";
-                    if (failedFiles > 0) detail += $"，{failedFiles} 个文件被占用";
-                    if (failedDirs > 0) detail += $"，{failedDirs} 个目录未清空";
-                    detail += "）";
-                    failedPaths.Add(detail);
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error($"着色器清理：处理目录 {psoPath} 时异常", ex);
-                failedPaths.Add($"{psoPath}：{ex.Message}");
-            }
-        }
-
-        var summary = $"已清除 {psoPaths.Count} 个安装的旧着色器缓存，共释放 {totalFreedMb:0.0} MB。";
-        if (failedPaths.Count > 0)
-        {
-            summary += " 部分目录清理不完整：" + string.Join("；", failedPaths);
+            summary += " 部分目录/文件未完成：" + string.Join("；", report.Skipped.Take(8));
         }
         summary += "下次进入游戏会重新编译着色器，首局可能出现卡顿 / 掉帧，属正常现象。";
-        return OperationResult.Ok(summary);
+
+        var success = report.FailedItems == 0 && report.SkippedLinks == 0
+            && !report.GameStarted && !report.Cancelled;
+        return new OperationResult
+        {
+            Success = success || report.DeletedFiles > 0,
+            IsPartial = !success && report.DeletedFiles > 0,
+            Message = summary,
+        };
     });
 
     // ---------------- N 卡驱动读取与判定 ----------------

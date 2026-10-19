@@ -146,8 +146,8 @@ internal static class BackendContractChecks
 
     private static void ModuleChecks()
     {
-        Check(BackendModules.All.Count == 6, "注册了 6 个官方后端模块（ace/gpu/runtime/cpuframe/procman/system）");
-        Check(!BackendModules.All.ContainsKey("shaderstutter"), "Beta0.922 公测排除未发布卡顿采集后端");
+        Check(BackendModules.All.Count == 6, "Six public backend modules");
+        Check(!BackendModules.All.ContainsKey("shaderstutter"), "Research collector excluded from release");
         Check(!BackendModules.All.ContainsKey("diagnostics"), "已撤下的卡顿诊断后端不再注册");
         Check(BackendModules.IsAllowed(BackendModules.Procman, BackendCommands.ProcmanSet), "procman.process.set 在白名单内");
         Check(BackendModules.IsReadOnly(BackendModules.Procman, BackendCommands.ProcmanList), "procman.process.list 为只读");
