@@ -30,8 +30,8 @@ GitHub 发布列表现使用独立的有界读取：每次响应最多 8 MiB，�
 ```powershell
 git clone https://github.com/DRXiaoXi/DeltaNFD.git
 cd DeltaNFD
-# 复现已发布代码时切换到 v0.9200；维护 main 时无需切换。
-# git switch --detach v0.9200
+# 复现当前已发布代码时切换到 v0.9220；维护 main 时无需切换。
+# git switch --detach v0.9220
 ```
 
 建议克隆到较短路径，避免旧 VSTO 资源触及 Windows MAX_PATH。需要 Windows x64、.NET 8 SDK、Python 3.11+；完整安装包另需 Inno Setup 6。固定的二进制输入未全部放进 Git，维护 main 提供只下载和校验、不执行安装器的准备脚本：
@@ -52,6 +52,7 @@ dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --update-ch
 
 ## 开发与发布约定
 
+- 参与开发见 [贡献指南](CONTRIBUTING.md)，目录职责与安全清理见 [工作区维护](docs/WORKSPACE-MAINTENANCE.md)，安全问题见 [反馈说明](SECURITY.md)。提交前运行 `python tools/check_repository.py --include-untracked`。
 - main 和 `codex/**` 分支、`v*` 标签及 Pull Request 运行构建检查；CI 与本地检查不能代替真实游戏、弱 CPU、安全模式或运行库修复实测。
 - [文件更新发布说明](installer/FILE-UPDATES.md) 包含整包回退、服务器选择、上传顺序和恢复要求。
 - 已发布版本目录、安装包、源码 ZIP、文件清单及对象保持不可变。产品变更重新发布时必须使用更高的数值版本。

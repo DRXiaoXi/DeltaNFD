@@ -83,6 +83,34 @@ src/DeltaNFD/Assets/background.png
 # ---------- 本机运行时生成的文件 ----------
 *.tmp
 .tmp
+/.tmp_logs*/
+/-p/
+/dwmhighcpu-analysis/
+
+# ---------- 本地配置与凭据（示例文件可入库） ----------
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+/.aws/
+/.codex/
+/.agents/
+*.pem
+*.key
+*.pfx
+*.p12
+
+# ---------- 原生/研究工具的构建缓存与诊断输出 ----------
+.pytest_cache/
+.venv/
+*.VC.db
+*.VC.VC.opendb
+*.dmp
+*.etl
+
+# 已退休实现的原始输入留作本地档案；源码和依赖锁/许可仍可入库。
+/retired/**/Assets/Vc14Baseline14.42/*.exe
 
 # ---------- ZCode 工作区 ----------
 .zcode/
