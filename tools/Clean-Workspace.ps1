@@ -21,7 +21,9 @@ $protected = @(
     '_buildcheck/Beta0.922/publish', '_buildcheck/Beta0.922/source',
     '_buildcheck/Beta0.922/files', '_buildcheck/Beta0.922/package',
     '_buildcheck/Beta0.922-RC2/publish', '_buildcheck/Beta0.922-RC2/source',
-    '_buildcheck/Beta0.922-RC2/files', '_buildcheck/Beta0.922-RC2/package'
+    '_buildcheck/Beta0.922-RC2/files', '_buildcheck/Beta0.922-RC2/package',
+    '_buildcheck/Beta0.922-RC3/publish', '_buildcheck/Beta0.922-RC3/source',
+    '_buildcheck/Beta0.922-RC3/files', '_buildcheck/Beta0.922-RC3/package'
 )
 
 function Get-CheckedTarget([string]$Relative) {

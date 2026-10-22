@@ -1,5 +1,12 @@
 using DeltaNFD.Services;
 
+if (args is ["--pso-cleanup-checks"])
+{
+    try { PsoCacheCleanupChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args.Length is 1 or 2 && args[0] == "--update-response-checks")
 {
     try { await UpdateResponseChecks.RunAsync(args.Length == 2 ? args[1] : null); }

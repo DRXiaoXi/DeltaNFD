@@ -363,7 +363,7 @@ internal static class SystemCommands
     }
 
     private static async Task<BackendResult> ShaderClearAsync(BackendCommandContext context) =>
-        Wrap("system.shader.clear-cache", await new ShaderService().ClearPsoCacheAsync());
+        Wrap("system.shader.clear-cache", await new ShaderService().ClearPsoCacheAsync(context.CancellationToken));
 
     // ---------------- 虚拟内存 ----------------
 

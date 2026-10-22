@@ -17,8 +17,8 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>0.9222</Version>
-    <InformationalVersion>Beta0.922-RC2</InformationalVersion>
+    <Version>0.9223</Version>
+    <InformationalVersion>Beta0.922-RC3</InformationalVersion>
     <WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
 

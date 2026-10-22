@@ -210,22 +210,24 @@ internal static class DeltaForceLocator
         (await FindUe4PrereqPathsAsync()).FirstOrDefault() ?? "";
 
     /// <summary>枚举所有安装下的着色器缓存目录（{游戏根}\[DeltaForce\]Saved\PSOCache）。</summary>
-    public static IReadOnlyList<string> FindPsoCachePaths()
+    public static IReadOnlyList<string> FindPsoCachePaths() => FindPsoCachePaths(FindRoots());
+
+    internal static IReadOnlyList<string> FindPsoCachePaths(IEnumerable<string> gameRoots)
     {
         var results = new List<string>();
-        foreach (var gameRoot in FindRoots())
+        foreach (var gameRoot in gameRoots)
         {
+            if (!TryGetValidGameRoot(gameRoot, out var validRoot)) continue;
             // 兼容两种手动指定层级：安装根目录（含 DeltaForce 子目录）或 DeltaForce 子目录本身
             var candidates = new[]
             {
-                Path.Combine(gameRoot, "DeltaForce", "Saved", "PSOCache"),
-                Path.Combine(gameRoot, "Saved", "PSOCache"),
+                Path.Combine(validRoot, "DeltaForce", "Saved", "PSOCache"),
+                Path.Combine(validRoot, "Saved", "PSOCache"),
             };
 
             foreach (var candidate in candidates.Where(Directory.Exists))
             {
                 results.Add(candidate);
-                break; // 每份安装只取第一个存在的 PSOCache
             }
         }
         return results.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();

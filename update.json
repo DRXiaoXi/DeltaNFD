@@ -1,28 +1,28 @@
 {
   "schemaVersion": 1,
-  "version": "0.9222",
-  "displayVersion": "Beta0.922-RC2",
+  "version": "0.9223",
+  "displayVersion": "Beta0.922-RC3",
   "channel": "beta",
   "mandatory": false,
   "minimumSupportedVersion": "",
-  "publishedAtUtc": "2026-10-19T13:22:17Z",
-  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9222",
-  "notes": "## 下载安装包\n\n**普通用户请直接下载：[DeltaNFD_Setup_0.9222_x64.exe（Windows x64 安装包）](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9222/DeltaNFD_Setup_0.9222_x64.exe)。**\n\n[国内服务器下载同一安装包](https://deltaxiaoxi.xin/updates/packages/0.9222/DeltaNFD_Setup_0.9222_x64.exe) · [查看校验值](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9222/SHA256SUMS.txt)\n\n无需下载源码、JSON 清单或更新分块。替换更新分块位于独立的“更新数据”资源发布，由软件自动获取。\n\n## Beta0.922-RC2\n\n- 安全模式全量修复增加明确确认的“卸载全部 C++（高风险）”选项，默认仍仅卸载 14.x。处理前展示清单，并要求单独同意临时启用 Installer；遇到依赖阻塞、重启要求、未知结果或恢复失败时停止并报告。卸载后需回正常模式重新预览安装。\n- 修复高风险卸载入口因忙碌状态而无法进入预览的问题。\n- “14.x 全量重装”更名为“仅修复 C++ 14.x”，明确与全量修复的范围区别；完善 Installer 不可用时的提示。\n- 改进着色器缓存清理：校验固定目录和链接、跳过占用文件、支持取消，清理部分完成时显示实际结果；原有缓存维护及预热继续保留。\n- 本版不包含开发中的着色器卡顿研究页面、采集后端或 PresentMon 探针。\n- GitHub 主发布整理为安装包、源码和校验/更新清单，替换更新数据分离至资源发布，继续支持从 GitHub 下载整包与变更文件。\n\n显示版本 Beta0.922-RC2，内部数值版本 0.9222，高于 Beta0.922 的 0.9220。公测非强制更新；默认自建服务器、替换文件更新，已有用户手选保留。\n\n本轮验证包含构建、隔离模拟、六后端只读通信和线上更新文件核验。未在开发机执行运行库安装/卸载或实际安全模式卸载，不能将模拟通过视为所有机器上的实机验证。",
+  "publishedAtUtc": "2026-10-22T07:27:27Z",
+  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9223",
+  "notes": "## 下载安装包\n\n**普通用户直接下载：[DeltaNFD_Setup_0.9223_x64.exe（Windows x64 安装包）](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9223/DeltaNFD_Setup_0.9223_x64.exe)。**\n\n[国内服务器下载同一安装包](https://deltaxiaoxi.xin/updates/packages/0.9223/DeltaNFD_Setup_0.9223_x64.exe) · [查看 SHA256](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9223/SHA256SUMS.txt)\n\n源码、JSON 清单和更新分块供开发者或软件自动更新使用，无需手动下载。\n\n## Beta0.922-RC3\n\n- 修复 PSOCache 漏清：检查所选游戏目录下两种缓存布局，所有有效目标去重处理。\n- 处理缓存文件的只读属性，对短暂文件占用作有限重试；持续占用或权限失败时列出未完成路径及处理指引。\n- 修复残留体积显示为 0.0 MB 后无法再次清理的问题。\n- 清理已清空的版本子目录，避免文件删完后仍因空目录误报旧缓存残留；缓存根目录保留。\n- 清理后核对剩余文件数量；新生成文件、链接跳过或读取失败不再被当作完整清空。保留游戏运行保护、目录边界及链接保护。\n- 沿用 RC2 的公开页面和功能范围，本版不包含开发中的新页面、着色器卡顿研究、采集后端或独立实验客户端。\n\n显示版本 Beta0.922-RC3，内部数值版本 0.9223，高于 RC2 的 0.9222。公测非强制更新；默认自建服务器、替换文件更新，已有用户选择保留，完整安装包继续可用。\n\n验证包括精确发布源码构建、隔离缓存夹具、六后端只读通信及更新文件校验；未执行真实游戏缓存清理、运行库卸载/安装或 GUI 人工验收。",
   "installers": [
     {
-      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9222/DeltaNFD_Setup_0.9222_x64.exe",
-      "sizeBytes": 250103853,
-      "sha256": "24cc3cc56a51a0a138218659e3ab1e6b85cdadb42f1803ce47f138a9f88d2c69"
+      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9223/DeltaNFD_Setup_0.9223_x64.exe",
+      "sizeBytes": 250103578,
+      "sha256": "79edf6f2cae22a9a7db009c51ab788b56b3e5fcd8b3b29c8901beeb036853440"
     },
     {
-      "url": "https://deltaxiaoxi.xin/updates/packages/0.9222/DeltaNFD_Setup_0.9222_x64.exe",
-      "sizeBytes": 250103853,
-      "sha256": "24cc3cc56a51a0a138218659e3ab1e6b85cdadb42f1803ce47f138a9f88d2c69"
+      "url": "https://deltaxiaoxi.xin/updates/packages/0.9223/DeltaNFD_Setup_0.9223_x64.exe",
+      "sizeBytes": 250103578,
+      "sha256": "79edf6f2cae22a9a7db009c51ab788b56b3e5fcd8b3b29c8901beeb036853440"
     }
   ],
   "fileUpdate": {
-    "url": "https://deltaxiaoxi.xin/updates/packages/0.9222/files.json",
-    "sizeBytes": 853998,
-    "sha256": "7d96bc73ec634d944d7e454ebe839baa7b6f05dd38a1a4c7d181d9545196fb66"
+    "url": "https://deltaxiaoxi.xin/updates/packages/0.9223/files.json",
+    "sizeBytes": 839374,
+    "sha256": "6bd7f5f887b49749d3bf9c1c0fdd8e39973c569f8c5920225f82e4153995e839"
   }
 }

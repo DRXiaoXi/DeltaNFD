@@ -9,6 +9,7 @@ public static class ShaderRecoveryCleanup
     public static Task<OperationResult> RunAsync(bool gameCache, bool nvidiaCache, CancellationToken token = default) => Task.Run(() =>
     {
         if (!gameCache && !nvidiaCache) return OperationResult.Fail("请至少选择一种缓存。");
+        using var shaderGate = ShaderCacheOperationGate.Acquire();
         var roots = new List<string>();
         if (gameCache) roots.AddRange(DeltaForceLocator.FindPsoCachePaths());
         if (nvidiaCache)
@@ -17,23 +18,23 @@ public static class ShaderRecoveryCleanup
             roots.Add(Path.Combine(local, "NVIDIA", "DXCache"));
             roots.Add(Path.Combine(local, "D3DSCache"));
         }
-        return CleanRoots(roots, DeltaForceLocator.IsGameRunning, token);
+        return CleanRoots(roots, DeltaForceLocator.IsGameRunning, token, gameCache);
     });
 
-    internal static OperationResult CleanRoots(IEnumerable<string> roots, Func<bool> gameRunning, CancellationToken token = default)
+    internal static OperationResult CleanRoots(IEnumerable<string> roots, Func<bool> gameRunning, CancellationToken token = default, bool gameCache = false)
     {
-        var report = ShaderCacheCleanup.CleanRoots(roots, gameRunning, token);
+        var report = ShaderCacheCleanup.CleanRoots(roots, gameRunning, token,
+            options: gameCache ? ShaderCacheCleanupOptions.PsoCache : null);
 
         var details = report.Skipped.Take(12).ToList();
-        var success = report.FailedItems == 0 && report.SkippedLinks == 0
-            && !report.GameStarted && !report.Cancelled;
+        var success = !report.Partial;
         var partial = !success && report.DeletedFiles > 0;
         var message = report.Message;
         if (details.Count > 0)
         {
             message += $"\n有 {details.Count} 项未完成/已跳过：\n" + string.Join("\n", details);
         }
-        else
+        else if (success)
         {
             message += "\n所选缓存清理完成或原本为空。";
         }

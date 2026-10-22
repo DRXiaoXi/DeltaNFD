@@ -79,46 +79,56 @@ public sealed class ShaderService : IShaderService
             DriverState = state,
             DriverAdvice = advice,
             PsoCachePath = psoPath,
+            PsoCachePaths = psoPaths.ToList(),
             PsoCacheSizeMb = Math.Round(psoSizeMb, 1),
             IsGameRunning = DeltaForceLocator.IsGameRunning(),
         };
     });
 
-    public Task<OperationResult> ClearPsoCacheAsync() => Task.Run(() =>
+    public Task<OperationResult> ClearPsoCacheAsync() => ClearPsoCacheAsync(CancellationToken.None);
+
+    public Task<OperationResult> ClearPsoCacheAsync(CancellationToken token) => Task.Run(() =>
     {
         using var operation = _target.BeginOperation();
         if (_target.IsCustom) return OperationResult.Fail(GameTargetService.DeltaOnlyMessage);
-        if (DeltaForceLocator.IsGameRunning())
+        using var shaderGate = ShaderCacheOperationGate.Acquire();
+        return ClearPsoCache(DeltaForceLocator.FindPsoCachePaths(), DeltaForceLocator.IsGameRunning, token);
+    });
+
+    internal static OperationResult ClearPsoCache(IEnumerable<string> paths, Func<bool> gameRunning, CancellationToken token = default)
+    {
+        if (gameRunning())
         {
             return OperationResult.Fail("三角洲正在运行，PSOCache 文件被游戏锁定。请先完全退出游戏再清理。");
         }
 
-        var psoPaths = DeltaForceLocator.FindPsoCachePaths().Where(Directory.Exists).ToList();
+        var psoPaths = paths.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (psoPaths.Count == 0)
         {
             return OperationResult.Fail("未找到 PSOCache 目录（可能游戏尚未生成过着色器缓存，无需清理）。");
         }
 
         // 使用固定根安全清理：链接/重解析项跳过，游戏启动时立即停止，逐项记录失败。
-        var report = ShaderCacheCleanup.CleanRoots(psoPaths, DeltaForceLocator.IsGameRunning);
-        var summary = $"已处理 {psoPaths.Count} 个安装的旧着色器缓存：删除 {report.DeletedFiles} 个文件，释放 {report.FreedMb:0.0} MB。";
-        if (report.GameStarted) summary += " 检测到三角洲启动，已停止剩余清理。";
-        if (report.Cancelled) summary += " 清理已取消。";
+        var report = ShaderCacheCleanup.CleanRoots(psoPaths, gameRunning, token, options: ShaderCacheCleanupOptions.PsoCache);
+        var summary = $"已检查 {psoPaths.Count} 处 PSOCache。{report.Message}";
         if (report.Skipped.Count > 0)
         {
             summary += " 部分目录/文件未完成：" + string.Join("；", report.Skipped.Take(8));
         }
-        summary += "下次进入游戏会重新编译着色器，首局可能出现卡顿 / 掉帧，属正常现象。";
+        if (report.Partial)
+            summary += "\n请按上述路径核对原因；占用时退出对应程序，权限不足时以管理员身份运行，然后再次清理。链接目录不会被强制清理。";
+        summary += "\n下次进入游戏会重新编译着色器，首局可能出现卡顿 / 掉帧，属正常现象。";
 
-        var success = report.FailedItems == 0 && report.SkippedLinks == 0
-            && !report.GameStarted && !report.Cancelled;
+        var success = !report.Partial;
+        Log.Info($"PSOCache 清理：位置={string.Join("；", psoPaths)}；{report.Message}");
+        foreach (var detail in report.Skipped.Take(12)) Log.Warn($"PSOCache 未完成：{detail}");
         return new OperationResult
         {
             Success = success || report.DeletedFiles > 0,
             IsPartial = !success && report.DeletedFiles > 0,
             Message = summary,
         };
-    });
+    }
 
     // ---------------- N 卡驱动读取与判定 ----------------
 

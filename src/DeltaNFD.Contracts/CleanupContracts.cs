@@ -26,6 +26,9 @@ public sealed class ShaderCacheCleanupResult
     public int DeletedFiles { get; init; }
     public int FailedItems { get; init; }
     public int SkippedLinks { get; init; }
+    /// <summary>清理结束时实际枚举到的剩余文件数量；核验不完整时仅为已知下限。</summary>
+    public int RemainingFiles { get; init; }
+    public bool VerificationComplete { get; init; }
     public bool GameStarted { get; init; }
     public bool Cancelled { get; init; }
     public bool Partial { get; init; }

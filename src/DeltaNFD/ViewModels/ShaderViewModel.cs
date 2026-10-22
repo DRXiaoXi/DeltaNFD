@@ -117,11 +117,13 @@ public partial class ShaderViewModel : ObservableObject
             }
             else ShaderCacheAdvice = "";
             IsGameRunning = status.IsGameRunning;
-            CanClear = status.PsoCachePath.Length > 0 && status.PsoCacheSizeMb > 0;
+            // 0 字节或舍入为 0.0 MB 的残留也必须允许再次清理。
+            CanClear = status.PsoCachePaths.Count > 0 || status.PsoCachePath.Length > 0;
 
-            CacheText = status.PsoCachePath.Length == 0
+            CacheText = !CanClear
                 ? "未找到 PSOCache 目录（游戏尚未生成过着色器缓存）"
-                : $"PSOCache：{status.PsoCacheSizeMb:0.0} MB\n{status.PsoCachePath}";
+                : $"PSOCache：{status.PsoCacheSizeMb:0.0} MB\n"
+                    + string.Join("\n", status.PsoCachePaths.Count > 0 ? status.PsoCachePaths : [status.PsoCachePath]);
 
             // 进页自动做一次健康检测
             await DiagnoseAsync();
@@ -146,8 +148,13 @@ public partial class ShaderViewModel : ObservableObject
         try
         {
             var result = await _shader.ClearPsoCacheAsync();
-            await LoadAsync();
+            try { await LoadAsync(); }
+            catch (Exception ex) { CacheText = "清理后的状态刷新失败，请重新检测：" + ex.Message; }
             return result;
+        }
+        catch (Exception ex)
+        {
+            return OperationResult.Fail("PSOCache 清理未完成：" + ex.Message + "\n请核对原因后再次清理。");
         }
         finally
         {

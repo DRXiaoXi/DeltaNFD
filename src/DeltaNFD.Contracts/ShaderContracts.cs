@@ -51,6 +51,9 @@ public sealed class ShaderStatus
     /// <summary>PSOCache 目录路径（未找到为空）。</summary>
     public string PsoCachePath { get; init; } = "";
 
+    /// <summary>本次发现的全部 PSOCache 位置；保留单路径字段供旧客户端兼容。</summary>
+    public List<string> PsoCachePaths { get; init; } = [];
+
     /// <summary>PSOCache 体积（MB）；目录不存在为 0。</summary>
     public double PsoCacheSizeMb { get; init; }
 

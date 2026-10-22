@@ -1,7 +1,13 @@
 namespace DeltaNFD.Services;
 
+internal sealed record ShaderCacheCleanupOptions(
+    bool ClearReadOnlyFiles = false, bool RemoveEmptyDirectories = false, int SharingViolationRetries = 0)
+{
+    internal static readonly ShaderCacheCleanupOptions PsoCache = new(true, true, 2);
+}
+
 /// <summary>
-/// 固定缓存根的安全清理实现：只清文件、保留目录；跳过链接/重解析项和被占用文件；
+/// 固定缓存根的安全清理实现：保留根目录；PSOCache 可清理只读文件和空子目录；
 /// 根目录/祖先验证在所有删除之前完成，避免通过 junction 把删除带到缓存范围之外。
 /// </summary>
 internal static class ShaderCacheCleanup
@@ -10,8 +16,10 @@ internal static class ShaderCacheCleanup
         IEnumerable<string> roots,
         Func<bool>? gameRunning,
         CancellationToken token = default,
-        IProgress<string>? progress = null)
+        IProgress<string>? progress = null,
+        ShaderCacheCleanupOptions? options = null)
     {
+        options ??= new();
         const int maxSkippedDetails = 200;
         var skipped = new List<string>();
         var validRoots = new List<string>();
@@ -21,6 +29,12 @@ internal static class ShaderCacheCleanup
         var freedBytes = 0L;
         var gameStarted = false;
         var cancelled = false;
+        var remainingFiles = 0;
+        var verificationComplete = false;
+        var retryWaitMs = 0;
+        var failedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var linkedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var visitedFolders = new List<string>();
 
         bool TokenStopped()
         {
@@ -40,6 +54,10 @@ internal static class ShaderCacheCleanup
         void Skip(string detail)
         {
             if (skipped.Count < maxSkippedDetails) skipped.Add(detail);
+        }
+        void SkipLink(string path)
+        {
+            if (linkedPaths.Add(path)) { skippedLinks++; Skip($"{path}：链接/重解析项已跳过"); }
         }
 
         if (ShouldStop()) return Build();
@@ -135,8 +153,7 @@ internal static class ShaderCacheCleanup
                         var attributes = File.GetAttributes(folder);
                         if ((attributes & FileAttributes.ReparsePoint) != 0)
                         {
-                            skippedLinks++;
-                            Skip($"{folder}：链接/重解析目录已跳过");
+                            SkipLink(folder);
                             continue;
                         }
                         if ((attributes & FileAttributes.Directory) == 0)
@@ -173,8 +190,7 @@ internal static class ShaderCacheCleanup
                             var attributes = File.GetAttributes(entry);
                             if ((attributes & FileAttributes.ReparsePoint) != 0)
                             {
-                                skippedLinks++;
-                                Skip($"{entry}：链接/重解析项已跳过");
+                                SkipLink(entry);
                                 continue;
                             }
                             if ((attributes & FileAttributes.Directory) != 0)
@@ -183,50 +199,183 @@ internal static class ShaderCacheCleanup
                                 continue;
                             }
 
-                            long length = 0;
-                            try { length = new FileInfo(entry).Length; } catch { }
-                            File.Delete(entry);
-                            deletedFiles++;
-                            freedBytes += length;
+                            if (!DeleteFile(entry)) break;
                         }
                         catch (FileNotFoundException) { }
                         catch (DirectoryNotFoundException) { }
                         catch (Exception ex)
                         {
+                            failedFiles.Add(entry);
                             Skip($"{entry}：{ex.Message}");
                             failures++;
                         }
                     }
 
+                    visitedFolders.Add(folder);
+
                     if (gameStarted || cancelled) break;
                 }
                 if (gameStarted || cancelled) break;
             }
+
+            if (!gameStarted && !cancelled && options.RemoveEmptyDirectories)
+            {
+                // 只删除已遍历过的空子目录，不递归删除，不删除缓存根。
+                foreach (var folder in visitedFolders.AsEnumerable().Reverse())
+                {
+                    if (validRoots.Contains(folder, StringComparer.OrdinalIgnoreCase)) continue;
+                    if (ShouldStop()) break;
+                    try
+                    {
+                        if (TryFindReparseAncestor(folder, out _)) continue;
+                        if (!Directory.EnumerateFileSystemEntries(folder).Any()) Directory.Delete(folder, false);
+                    }
+                    catch (DirectoryNotFoundException) { }
+                    catch (Exception ex) { failures++; Skip($"{folder}：空目录未能删除：{ex.Message}"); }
+                }
+            }
+
+            if (!gameStarted && !cancelled) VerifyRemaining();
         }
 
         return Build();
 
         ShaderCacheCleanupResult Build()
         {
-            var partial = failures > 0 || skippedLinks > 0 || gameStarted || cancelled;
+            var partial = failures > 0 || skippedLinks > 0 || gameStarted || cancelled || remainingFiles > 0
+                || (!verificationComplete && validRoots.Count > 0);
             var freedMb = Math.Round(freedBytes / 1024.0 / 1024.0, 1);
             var message = $"已删除 {deletedFiles} 个缓存文件，释放 {freedMb:0.0} MB。";
             if (gameStarted) message += " 检测到三角洲已启动，已停止剩余清理。";
             else if (cancelled) message += " 清理已取消。";
             else if (failures > 0) message += $" {failures} 项未完成。";
             else if (skippedLinks > 0) message += $" {skippedLinks} 个链接/重解析项已跳过。";
+            message += verificationComplete
+                ? $" 已核对剩余 {remainingFiles} 个文件。"
+                : " 残留核对未完成，请按未完成原因处理后重试。";
             return new ShaderCacheCleanupResult
             {
                 FreedMb = freedMb,
                 DeletedFiles = deletedFiles,
                 FailedItems = failures,
                 SkippedLinks = skippedLinks,
+                RemainingFiles = remainingFiles,
+                VerificationComplete = verificationComplete,
                 GameStarted = gameStarted,
                 Cancelled = cancelled,
                 Partial = partial,
                 Message = message,
                 Skipped = skipped,
             };
+        }
+
+        bool DeleteFile(string path)
+        {
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    // 每次重试都复核祖先和文件类型，不能沿重解析路径改属性或删除。
+                    if (TryFindReparseAncestor(path, out _))
+                        throw new IOException("删除前路径变成链接/重解析项，已拒绝");
+                    var attributes = File.GetAttributes(path);
+                    if ((attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)
+                        throw new IOException("删除前文件类型改变，已拒绝");
+                    long length = 0;
+                    try { length = new FileInfo(path).Length; } catch { }
+                    var readOnlyChanged = false;
+                    try
+                    {
+                        if (options.ClearReadOnlyFiles && (attributes & FileAttributes.ReadOnly) != 0)
+                        {
+                            File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
+                            readOnlyChanged = true;
+                        }
+                        File.Delete(path);
+                        deletedFiles++;
+                        freedBytes += length;
+                        return true;
+                    }
+                    finally
+                    {
+                        // 文件未删除时恢复只读位，不让失败清理留下属性修改。
+                        if (readOnlyChanged && File.Exists(path) && !TryFindReparseAncestor(path, out _))
+                        {
+                            try { File.SetAttributes(path, File.GetAttributes(path) | FileAttributes.ReadOnly); }
+                            catch (Exception ex) { failures++; Skip($"{path}：恢复只读属性失败：{ex.Message}"); }
+                        }
+                    }
+                }
+                catch (IOException ex) when ((ex.HResult & 0xffff) is 32 or 33
+                    && attempt < Math.Clamp(options.SharingViolationRetries, 0, 2) && retryWaitMs < 2000)
+                {
+                    // 每文件最多重试两次，全批等待累计最多两秒；取消会立即唤醒。
+                    if (ShouldStop()) return false;
+                    retryWaitMs += 100;
+                    if (token.WaitHandle.WaitOne(100)) { cancelled = true; return false; }
+                    if (GameStopped()) return false;
+                }
+            }
+        }
+
+        void VerifyRemaining()
+        {
+            verificationComplete = true;
+            foreach (var root in validRoots)
+            {
+                var pending = new Stack<string>();
+                pending.Push(root);
+                while (pending.TryPop(out var folder))
+                {
+                    if (ShouldStop()) { verificationComplete = false; return; }
+                    try
+                    {
+                        if (TryFindReparseAncestor(folder, out _))
+                        {
+                            verificationComplete = false;
+                            SkipLink(folder);
+                            continue;
+                        }
+                        foreach (var entry in Directory.GetFileSystemEntries(folder))
+                        {
+                            if (ShouldStop()) { verificationComplete = false; return; }
+                            try
+                            {
+                                var attributes = File.GetAttributes(entry);
+                                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                                {
+                                    verificationComplete = false;
+                                    SkipLink(entry);
+                                    continue;
+                                }
+                                if ((attributes & FileAttributes.Directory) != 0) { pending.Push(entry); continue; }
+                                remainingFiles++;
+                                if (failedFiles.Add(entry))
+                                {
+                                    failures++;
+                                    Skip($"{entry}：清理后仍存在或重新生成，请重试");
+                                }
+                            }
+                            catch (FileNotFoundException) { }
+                            catch (DirectoryNotFoundException) { }
+                            catch (Exception ex)
+                            {
+                                verificationComplete = false;
+                                failures++;
+                                Skip($"{entry}：无法核对残留：{ex.Message}");
+                            }
+                        }
+                    }
+                    catch (DirectoryNotFoundException) { }
+                    catch (FileNotFoundException) { }
+                    catch (Exception ex)
+                    {
+                        verificationComplete = false;
+                        failures++;
+                        Skip($"{folder}：无法核对残留：{ex.Message}");
+                    }
+                }
+            }
         }
     }
 
