@@ -8,6 +8,7 @@ namespace DeltaNFD.Views;
 
 public sealed partial class RuntimePage : Page
 {
+    private readonly DeltaNFD.Services.Backends.PageBackendLease? _pageOwner = DeltaNFD.Services.Backends.PageBackendSessions.Manager.Current;
     public RuntimeViewModel ViewModel { get; } = RuntimeViewModel.Current;
     private bool _guardToggleHandling;
     private CancellationTokenSource? _repairCancellation;
@@ -90,7 +91,7 @@ public sealed partial class RuntimePage : Page
                 installerConsent.Checked += (_, _) => dialog.IsPrimaryButtonEnabled = true;
                 installerConsent.Unchecked += (_, _) => dialog.IsPrimaryButtonEnabled = false;
             }
-            if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary || cancellation.IsCancellationRequested)
+            if (await dialog.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary || cancellation.IsCancellationRequested)
             { ViewModel.RepairStatusText = "已取消，未执行卸载或安装。"; return; }
             if (installerConsent is not null && installerConsent.IsChecked != true) return;
             var result = await ViewModel.RepairAsync(preview.Fingerprint, cancellation.Token, mode, allowTemporary);
@@ -102,7 +103,7 @@ public sealed partial class RuntimePage : Page
             await new ContentDialog { XamlRoot = XamlRoot, Title = result.Success
                     ? mode == Vc14RepairMode.UninstallOnly ? "卸载阶段完成，等待正常模式安装" : "14.x 安装及复检完成" : "14.x 操作未完成",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = RuntimeRepairGuidance.DialogText(stageMessage, ViewModel.ManualRepairGuidanceText), TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } },
-                CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
+                CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
         catch (Exception ex)
         {
@@ -120,6 +121,78 @@ public sealed partial class RuntimePage : Page
         InitializeComponent(); _ = ViewModel.LoadGuardAsync();
     }
 
+    private async void ForceReplace14_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.GuardCleanupEnabled) return;
+        ViewModel.ManualRepairGuidanceText = "";
+        ViewModel.RepairIsBusy = true;
+        using var cancellation = new CancellationTokenSource();
+        _repairCancellation = cancellation;
+        try
+        {
+            ViewModel.RepairStatusText = "正在核对内置 14.42 载荷与系统 14.x DLL…";
+            var preview = await ViewModel.PreviewForceReplaceAsync(cancellation.Token);
+            if (!preview.CanRun) { ViewModel.RecordRepairBlocker(preview.Blocker); return; }
+            var list = string.Join("\n", preview.Items.Where(item => item.Status == "replace").Select(item =>
+                item.Architecture + " " + item.File + "：" + (item.CurrentVersion.Length == 0 ? "版本未知" : item.CurrentVersion)
+                + " → " + item.ExpectedVersion + (item.Downgrade ? "（降级）" : "") + (item.InUse ? "（占用，将安排重启后替换）" : "")));
+            var warning = "将绕过 Windows Installer，直接覆盖 %SystemRoot%\\System32 与 SysWOW64 中的 14.x DLL。\n"
+                + "待替换 " + preview.ReplaceCount + " 个，已匹配 " + preview.SkipCount + " 个。\n\n" + (list.Length == 0 ? "（无）" : list)
+                + (preview.DowngradeCount > 0 ? "\n\n注意：其中 " + preview.DowngradeCount + " 个当前版本较新，执行后会降级。" : "")
+                + "\n\n执行前自动备份并生成 restore.ps1、README.txt；被占用文件安排到下次启动替换。\n"
+                + "不会修改 MSI/ARP 安装登记；如需登记一致，请改用“预览并仅修复 14.x”。\n"
+                + "请先关闭游戏、其他应用和运行库防护；共享运行库降级可能影响需要较新版本的软件。";
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "确认强制替换 14.x DLL？（高风险）",
+                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = warning, TextWrapping = TextWrapping.Wrap } },
+                PrimaryButtonText = "确认强制替换",
+                CloseButtonText = "取消",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            if (await dialog.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary
+                || cancellation.IsCancellationRequested)
+            {
+                ViewModel.RepairStatusText = "已取消，未修改系统 DLL。";
+                return;
+            }
+            var result = await ViewModel.ForceReplaceAsync(preview.Fingerprint, cancellation.Token);
+            var message = RuntimeRepairGuidance.OriginalText(result);
+            ViewModel.RepairStatusText = message;
+            ViewModel.RecordRepairResult(result, cancellation.IsCancellationRequested);
+            await new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = result.Success && !result.RequiresReboot ? "强制替换完成"
+                    : result.Success ? "已替换，部分文件待重启生效" : "强制替换未完全成功",
+                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock
+                {
+                    Text = RuntimeRepairGuidance.DialogText(message, ViewModel.ManualRepairGuidanceText),
+                    TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
+                } },
+                CloseButtonText = "知道了",
+                DefaultButton = ContentDialogButton.Close,
+            }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
+        }
+        catch (Exception ex)
+        {
+            ViewModel.RepairStatusText = "强制替换未完成：" + ex.Message;
+            ViewModel.RecordRepairResult(new OperationResult
+            {
+                Message = ViewModel.RepairStatusText,
+                OutcomeUnknown = true,
+            }, cancellation.IsCancellationRequested || ex is OperationCanceledException);
+            await ShowRuntimeExceptionAsync(ex);
+        }
+        finally
+        {
+            _repairCancellation = null;
+            ViewModel.RepairIsBusy = false;
+            if (!_startupExitPending) await ViewModel.LoadGuardAsync();
+        }
+    }
+
     private async void RestoreInstaller_Click(object sender, RoutedEventArgs e)
     {
         if (ViewModel.RepairIsBusy || ViewModel.GuardIsBusy) return;
@@ -129,7 +202,7 @@ public sealed partial class RuntimePage : Page
             Content = "将核对保存的原值及工具归属，恢复临时服务实例和安全模式准入。安装事务仍忙、安装器身份未确认或原值被外部修改时会保留记录，不强停、不覆盖。此操作不会安装或卸载运行库。",
             PrimaryButtonText = "核对并恢复", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
         };
-        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
+        if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary) return;
         ViewModel.RepairIsBusy = true;
         try
         {
@@ -137,7 +210,7 @@ public sealed partial class RuntimePage : Page
             ViewModel.RepairStatusText = result.Message;
             await new ContentDialog { XamlRoot = XamlRoot, Title = result.Success ? "临时 Installer 设置已恢复" : "恢复未完成",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = result.Message, TextWrapping = TextWrapping.Wrap } },
-                CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
+                CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
         catch (Exception ex) { ViewModel.RepairStatusText = ex.Message; await ShowRuntimeExceptionAsync(ex); }
         finally { ViewModel.RepairIsBusy = false; await ViewModel.LoadGuardAsync(); }
@@ -192,7 +265,7 @@ public sealed partial class RuntimePage : Page
                 consent.Checked += (_, _) => dialog.IsPrimaryButtonEnabled = true;
                 consent.Unchecked += (_, _) => dialog.IsPrimaryButtonEnabled = false;
             }
-            if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary || cancellation.IsCancellationRequested)
+            if (await dialog.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary || cancellation.IsCancellationRequested)
             {
                 ViewModel.RepairStatusText = "已取消，未卸载任何运行库。";
                 return;
@@ -208,7 +281,7 @@ public sealed partial class RuntimePage : Page
                 Title = result.Success ? "安全模式卸载完成，请回正常模式安装" : "安全模式卸载未完成",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = resultText, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } },
                 CloseButtonText = "知道了",
-            }.ShowWithBackendRecoveryAsync();
+            }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
         catch (Exception ex)
         {
@@ -244,7 +317,7 @@ public sealed partial class RuntimePage : Page
                     CloseButtonText = "取消",
                     DefaultButton = ContentDialogButton.Close,
                 };
-                stageResult = await stageDialog.ShowWithBackendRecoveryAsync();
+                stageResult = await stageDialog.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
                 proceed = stageResult == ContentDialogResult.Primary;
             }
             catch (Exception ex) { ViewModel.RepairStatusText = "操作未完成：" + ex.Message; await ShowRuntimeExceptionAsync(ex); }
@@ -289,14 +362,14 @@ public sealed partial class RuntimePage : Page
                         + "\n失败、需要重启或状态未确认时停止。取消会停止后续步骤，不强杀正在运行的安装器或撤销已完成操作。" } },
                 PrimaryButtonText = "确认修复", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
             };
-            if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary || cancellation.IsCancellationRequested)
+            if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary || cancellation.IsCancellationRequested)
             { ViewModel.RepairStatusText = "已取消，未执行修复。"; return; }
             var result = await ViewModel.RepairHighFpsAsync(preview.Fingerprint, false, cancellation.Token);
             ViewModel.RepairStatusText = RuntimeRepairGuidance.OriginalText(result);
             var resultText = ViewModel.RecordRepairResult(result, cancellation.IsCancellationRequested);
             await new ContentDialog { XamlRoot = XamlRoot, Title = result.Success ? "修复及复检完成" : "修复未完成",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = resultText, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } },
-                CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
+                CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
         catch (Exception ex)
         {
@@ -331,7 +404,7 @@ public sealed partial class RuntimePage : Page
                 {
                     XamlRoot = XamlRoot, Title = "操作失败", Content = result.Message,
                     CloseButtonText = "知道了", DefaultButton = ContentDialogButton.Close,
-                }.ShowWithBackendRecoveryAsync();
+                }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
             }
         }
         catch (Exception ex)
@@ -364,7 +437,7 @@ public sealed partial class RuntimePage : Page
                 } },
                 PrimaryButtonText = "强制清理", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
             };
-            if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
+            if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary) return;
             var result = await ViewModel.ForceCleanupGuardAsync();
             if (result is not null) await new ContentDialog
             {
@@ -373,7 +446,7 @@ public sealed partial class RuntimePage : Page
                     MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = result.Message },
                 },
                 CloseButtonText = "知道了",
-            }.ShowWithBackendRecoveryAsync();
+            }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
         catch (Exception ex)
         {
@@ -394,7 +467,7 @@ public sealed partial class RuntimePage : Page
             if (result is { Success: false }) await new ContentDialog
             {
                 XamlRoot = XamlRoot, Title = "范围切换失败", Content = result.Message, CloseButtonText = "知道了",
-            }.ShowWithBackendRecoveryAsync();
+            }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
         catch (Exception ex)
         {
@@ -411,7 +484,7 @@ public sealed partial class RuntimePage : Page
         {
             await new ContentDialog { XamlRoot = XamlRoot, Title = "运行库操作未完成", Content = exception.Message,
                 CloseButtonText = "知道了", DefaultButton = ContentDialogButton.Close }
-                .ShowWithBackendRecoveryAsync();
+                .ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
         catch (Exception dialogError) { DeltaNFD.Services.Log.Error("运行库错误及日志引导弹窗无法显示", dialogError); }
     }

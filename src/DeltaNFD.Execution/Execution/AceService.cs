@@ -104,7 +104,8 @@ public sealed class AceService : IAceService
 
     // ---------------- 扫描 ----------------
 
-    public Task<AceScanResult> ScanAsync() => Task.Run(() =>
+    public Task<AceScanResult> ScanAsync() => _environment is RealAceCleanupEnvironment ? new DeltaNFD.Inspection.AceInspection(_target, _deltaRunning).ScanAsync() : ScanAsyncFixtureAsync();
+private Task<AceScanResult> ScanAsyncFixtureAsync() => Task.Run(() =>
     {
         using var operation = _target.BeginOperation();
         if (_target.IsCustom) return new AceScanResult
@@ -492,7 +493,8 @@ public sealed class AceService : IAceService
 
     // ---------------- ACE-CORE 冗余检测 ----------------
 
-    public Task<AceCoreCheckResult> CheckCoreFilesAsync() => Task.Run(() =>
+    public Task<AceCoreCheckResult> CheckCoreFilesAsync() => _environment is RealAceCleanupEnvironment ? new DeltaNFD.Inspection.AceInspection(_target, _deltaRunning).CheckCoreFilesAsync() : CheckCoreFilesAsyncFixtureAsync();
+private Task<AceCoreCheckResult> CheckCoreFilesAsyncFixtureAsync() => Task.Run(() =>
     {
         using var operation = _target.BeginOperation();
         if (_target.IsCustom) return new AceCoreCheckResult

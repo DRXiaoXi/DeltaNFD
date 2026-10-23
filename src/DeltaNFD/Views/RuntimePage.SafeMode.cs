@@ -22,7 +22,7 @@ public sealed partial class RuntimePage
                 + "默认安全模式通常不启动 Installer，卸载确认窗口可单独同意临时启用，执行后恢复。\n\n临时启用失败时会停止并报告原因；进入安全模式本身不能解决安装依赖引用或组件损坏。",
             PrimaryButtonText = "在当前环境继续", SecondaryButtonText = "安全模式引导",
             CloseButtonText = "取消修复", DefaultButton = ContentDialogButton.Close,
-        }.ShowWithBackendRecoveryAsync();
+        }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         if (token.IsCancellationRequested) return false;
         if (choice == ContentDialogResult.Primary) return true;
         ViewModel.RepairStatusText = "已取消本次修复，未执行卸载或安装。";
@@ -58,7 +58,7 @@ public sealed partial class RuntimePage
         };
         consent.Checked += (_, _) => guide.IsPrimaryButtonEnabled = true;
         consent.Unchecked += (_, _) => guide.IsPrimaryButtonEnabled = false;
-        if (await guide.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary || token.IsCancellationRequested) return false;
+        if (await guide.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary || token.IsCancellationRequested) return false;
         if (!await recheck() || token.IsCancellationRequested) return false;
         var window = App.MainWindow ?? throw new InvalidOperationException("主窗口不可用，未请求重启。");
         ViewModel.RepairStatusText = "正在停止工具后台功能，准备进入 Windows 高级启动…";
@@ -85,7 +85,7 @@ public sealed partial class RuntimePage
                 XamlRoot = XamlRoot, Title = "未能进入高级启动",
                 Content = result.Request.Message + "\n\n已停止的后台功能需按需重新开启。可重新打开引导使用恢复设置，或按住 Shift 点击 Windows 的“重启”。",
                 CloseButtonText = "知道了", DefaultButton = ContentDialogButton.Close,
-            }.ShowWithBackendRecoveryAsync();
+            }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
         catch
         {

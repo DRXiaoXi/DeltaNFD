@@ -251,67 +251,13 @@ public sealed class BxService : IBxService
     public async Task<BxState> GetItemStateAsync(BxItem item) =>
         (await GetItemStatesAsync([item]))[item];
 
-    public Task<Dictionary<BxItem, BxState>> GetItemStatesAsync(IReadOnlyList<BxItem> items) => Task.Run(async () =>
-    {
-        // 批量查询：一次性拉取系统全部计划任务状态，再在内存里逐条评估。
-        // 任务状态快照带 2 分钟 TTL 缓存（全库扫描/多栏目连续加载只起一次 PowerShell；
-        // ApplyTasks 写操作与显式失效会立即清空）。
-        var taskStates = _taskStateCache;
-        if (items.Any(i => i.Tweaks.Any(t => t.TweakType == "TASK")) &&
-            (!_taskStateCacheValid || DateTime.Now - _taskStateCacheTime > TimeSpan.FromMinutes(2)))
-        {
-            taskStates = QueryAllTaskStates();
-            _taskStateCache = taskStates;
-            _taskStateCacheTime = DateTime.Now;
-            _taskStateCacheValid = true;
-        }
+    public Task<Dictionary<BxItem, BxState>> GetItemStatesAsync(IReadOnlyList<BxItem> items) => new DeltaNFD.Inspection.BxInspection(() => _fullHyperV.Value.IsHyperVFullyDisabledAsync()).GetItemStatesAsync(items);
 
-        var result = new Dictionary<BxItem, BxState>();
-        bool? fullHyperVStatus = null;
-        if (items.Any(i => i.Name == FullHyperVItemName))
-        {
-            try { fullHyperVStatus = await _fullHyperV.Value.IsHyperVFullyDisabledAsync(); }
-            catch (Exception ex) { Log.Error("完整 Hyper-V 状态读取失败", ex); }
-        }
-        foreach (var item in items)
-        {
-            if (item.Name == FullHyperVItemName)
-            {
-                result[item] = fullHyperVStatus is null ? BxState.Unknown : fullHyperVStatus.Value ? BxState.On : BxState.Off;
-                continue;
-            }
-            BxTaskState Lookup(string path)
-            {
-                var normalized = "\\" + path.TrimStart('\\');
-                if (taskStates is null) return BxTaskState.Unknown;
-                return taskStates.TryGetValue(normalized, out var enabled)
-                    ? enabled ? BxTaskState.Enabled : BxTaskState.Disabled
-                    : BxTaskState.Missing;
-            }
+    
+    
+    
 
-            var diagnostics = new List<string>();
-            var state = EvaluateItem(item, Lookup, diagnostics);
-            result[item] = state;
-            if (diagnostics.Count > 0 || state is BxState.Mixed or BxState.Unknown or BxState.NotApplicable)
-            {
-                var evidence = diagnostics.Count > 0 ? string.Join("；", diagnostics) : "没有得到足以细分原因的状态证据";
-                Log.Info($"扩展库状态诊断：{item.Name} → {state}；依据：{evidence}");
-            }
-        }
-
-        return result;
-    });
-
-    private static Dictionary<string, bool>? _taskStateCache;
-    private static DateTime _taskStateCacheTime;
-    private static bool _taskStateCacheValid;
-
-    public void InvalidateTaskCache()
-    {
-        _taskStateCache = null;
-        _taskStateCacheTime = default;
-        _taskStateCacheValid = false;
-    }
+    public void InvalidateTaskCache() => new DeltaNFD.Inspection.BxInspection().InvalidateTaskCache();
 
     public Task InvalidateTaskCacheAsync()
     {
@@ -605,47 +551,7 @@ public sealed class BxService : IBxService
     internal BxState EvaluateItemForSnapshot(BxItem item, Func<string, BxTaskState> taskState) =>
         EvaluateItem(item, taskState);
 
-    public Task<BxState> GetServiceGroupStateAsync(BxServiceGroup group) => Task.Run(() =>
-    {
-        var services = ExpandServicePatterns(group.UseBlockedDb
-            ? BxCatalog.AllServices.Where(s => s.IsBlocked || s.IsBlocked11).Select(s => s.ServiceName)
-            : group.Services);
-
-        var existing = services.Where(ServiceExists).ToList();
-        if (existing.Count == 0)
-        {
-            Log.Info($"服务组状态判定：{group.Id} → 未知；数据库成员在本机均不存在；候选数={services.Count}");
-            return BxState.Unknown;
-        }
-
-        var disabled = 0;
-        var unreadable = new List<string>();
-        foreach (var name in existing)
-        {
-            using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + name);
-            if (key?.GetValue("Start") is not int start)
-            {
-                unreadable.Add(name);
-            }
-            else if (start == 4)
-            {
-                disabled++;
-            }
-        }
-
-        if (unreadable.Count > 0)
-        {
-            Log.Warn($"服务组状态判定：{group.Id} → 未知；无法读取 Start 值：{string.Join(",", unreadable)}");
-            return BxState.Unknown;
-        }
-
-        var state = disabled == existing.Count ? BxState.On
-            : disabled == 0 ? BxState.Off
-            : BxState.Mixed;
-        if (state == BxState.Mixed)
-            Log.Info($"服务组状态判定：{group.Id} → 混合；已禁用={disabled}/{existing.Count}");
-        return state;
-    });
+    public Task<BxState> GetServiceGroupStateAsync(BxServiceGroup group) => new DeltaNFD.Inspection.BxInspection().GetServiceGroupStateAsync(group);
 
     /// <summary>
     /// 单个注册表操作：返回 (匹配优化值?, 匹配默认值?)。
@@ -737,49 +643,7 @@ public sealed class BxService : IBxService
 
     // ---------------- 多档位（gear）支持 ----------------
 
-    public Task<BxGearInfo?> GetGearInfoAsync(BxItem item) => Task.Run(() =>
-    {
-        // 白名单制：只有 meta.json 标记 "g":"multi" 的条目才是多档位，其余一律走开关
-        if (!BxCatalog.IsGearItem(item.Name) || !IsGearItem(item))
-        {
-            return null;
-        }
-
-        var op = item.Tweaks[0];
-        var options = new List<BxGearOption>();
-        var currentIndex = -1;
-        var current = ReadReg(op);
-
-        for (var i = 0; i < op.Values.Count; i++)
-        {
-            var entry = op.Values[i];
-            if (string.IsNullOrEmpty(entry.Value))
-            {
-                continue;
-            }
-
-            var tag = entry.ValueTypes.Count > 0 ? entry.ValueTypes[0] : "";
-            var tagText = tag switch
-            {
-                "BEST" => "最优",
-                "OPTIMAL" => "流畅",
-                "DEFAULT" => "默认",
-                "ON" => "开",
-                "OFF" => "关",
-                _ => tag,
-            };
-            options.Add(new BxGearOption { Label = $"{tagText}（{entry.Value}）", Value = entry.Value });
-
-            if (CompareReg(current, entry, op.ValueFormat) == true)
-            {
-                currentIndex = options.Count - 1;
-            }
-        }
-
-        return options.Count >= 2
-            ? new BxGearInfo { Options = options, CurrentIndex = currentIndex }
-            : null;
-    });
+    public Task<BxGearInfo?> GetGearInfoAsync(BxItem item) => new DeltaNFD.Inspection.BxInspection().GetGearInfoAsync(item);
 
     public async Task<OperationResult> ApplyGearAsync(BxItem item, int gearIndex) => await Task.Run(() =>
     {
@@ -1166,6 +1030,7 @@ public sealed class BxService : IBxService
 
     public static void InvalidateAppxCache()
     {
+ new DeltaNFD.Inspection.BxInspection().InvalidateAppxCacheAsync().GetAwaiter().GetResult();
         lock (_appxGate)
         {
             _installedAppxCache = null;
@@ -1895,8 +1760,8 @@ public sealed class BxService : IBxService
 
     private static (bool Ok, int Count) ApplyTasks(List<BxTweak> ops, bool enable)
     {
-        _taskStateCache = null;
-        _taskStateCacheValid = false;
+        new DeltaNFD.Inspection.BxInspection().InvalidateTaskCache();
+        
         var snapshot = QueryAllTaskStates();
         if (snapshot is null)
         {

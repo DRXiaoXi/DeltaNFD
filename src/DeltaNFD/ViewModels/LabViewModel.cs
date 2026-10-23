@@ -31,6 +31,7 @@ public partial class HeteroPolicyVm : ObservableObject
     public bool Ready { get; set; }
 
     public bool Unsupported { get; set; }
+    public int LastReadIndex { get; set; } = -1;
 
     [ObservableProperty] private int selectedIndex = -1;
     [ObservableProperty] private string currentText = "";
@@ -99,9 +100,9 @@ public partial class LabViewModel : ObservableObject
     /// <summary>无省电电源计划 GUID（设置里有缓存时可直接切换）。</summary>
     public string? SchemeGuid { get; private set; }
 
-    public bool CanImportScheme => !SchemeBusy && (!SchemeImported || SchemeNeedsNameMigration);
+    public bool CanImportScheme => !SchemeBusy && !IntelPcoresBusy && (!SchemeImported || SchemeNeedsNameMigration);
 
-    public bool CanSwitchScheme => !SchemeBusy && SchemeImported;
+    public bool CanSwitchScheme => !SchemeBusy && !IntelPcoresBusy && SchemeImported;
 
     public string ImportSchemeButtonText => SchemeNeedsNameMigration
         ? "修正计划名称" : SchemeImported ? "已导入" : "导入无省电电源计划";
@@ -110,6 +111,8 @@ public partial class LabViewModel : ObservableObject
 
     partial void OnSchemeBusyChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanPreferIntelPcores));
+        OnPropertyChanged(nameof(IntelPcoreControlsEnabled));
         OnPropertyChanged(nameof(CanImportScheme));
         OnPropertyChanged(nameof(CanSwitchScheme));
     }
@@ -145,7 +148,7 @@ public partial class LabViewModel : ObservableObject
 
     private bool _isGameRunning;
 
-    public bool CanRefresh => !IsLoading;
+    public bool CanRefresh => !IsLoading && !IntelPcoresBusy;
 
     public bool DualCcdApplyEnabled => !IsApplying && !IsLoading && DualCcdVisible;
 
@@ -153,6 +156,8 @@ public partial class LabViewModel : ObservableObject
 
     partial void OnIsLoadingChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanPreferIntelPcores));
+        OnPropertyChanged(nameof(IntelPcoreControlsEnabled));
         OnPropertyChanged(nameof(CanRefresh));
         OnPropertyChanged(nameof(DualCcdApplyEnabled));
     }
@@ -161,6 +166,8 @@ public partial class LabViewModel : ObservableObject
 
     partial void OnIsApplyingChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanPreferIntelPcores));
+        OnPropertyChanged(nameof(IntelPcoreControlsEnabled));
         OnPropertyChanged(nameof(DualCcdApplyEnabled));
         OnPropertyChanged(nameof(DualCcdRevertEnabled));
     }
@@ -217,6 +224,9 @@ public partial class LabViewModel : ObservableObject
         var isDualCcd = _topology?.IsAmd == true &&
             (_topology.ModelCcdCount == 2 || _topology.CcdCount == 2);
         var isIntel = string.Equals(_topology?.Vendor, "Intel", StringComparison.OrdinalIgnoreCase); // 硬件检测：Intel
+        ShowIntelPcores = scenario == 1 || scenario == 0 && isIntel;
+        OnPropertyChanged(nameof(ShowIntelPcores));
+        OnPropertyChanged(nameof(CanPreferIntelPcores));
 
         if (scenario == 0)
         {
@@ -1052,7 +1062,8 @@ public partial class LabViewModel : ObservableObject
                     vm.Options.Add(label);
                 }
 
-                vm.Ready = true; // 初始化完成前页面 SelectionChanged 不触发应用
+                vm.LastReadIndex = vm.SelectedIndex;
+                vm.Ready = true; // Initial binding also compares LastReadIndex to avoid replaying a query as a write.
                 HeteroItems.Add(vm);
             }
 
@@ -1107,25 +1118,27 @@ public partial class LabViewModel : ObservableObject
     /// <summary>用户在下拉选择新值后应用（交流/直流同时设置）。</summary>
     public async Task<OperationResult?> ApplyHeteroPolicyAsync(HeteroPolicyVm item)
     {
-        if (!item.Ready || item.IsBusy || item.SelectedIndex < 0)
+        if (!item.Ready || item.IsBusy || item.Unsupported || IntelPcoresBusy || item.SelectedIndex < 0 || item.SelectedIndex == item.LastReadIndex)
         {
             return null;
         }
 
         var value = item.SelectedIndex;
         item.IsBusy = true;
+        OnPropertyChanged(nameof(CanPreferIntelPcores));
         try
         {
             var result = await ServiceLocator.Power.SetHeteroPolicyAsync(item.SettingGuid, value);
             var notice = PowerLockConflictNotice();
             HeteroStatusText = $"{item.Title}：{result.Message}" + (notice.Length > 0 ? "\n" + notice : "");
             RefreshPowerLockNotice();
-            item.CurrentText = $"当前值：{value}";
+            if (result.Success) { item.CurrentText = $"当前值：{value}"; item.LastReadIndex = value; }
             return result;
         }
         finally
         {
             item.IsBusy = false;
+            OnPropertyChanged(nameof(CanPreferIntelPcores));
         }
     }
 

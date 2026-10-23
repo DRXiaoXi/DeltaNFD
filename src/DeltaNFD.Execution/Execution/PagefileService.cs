@@ -17,27 +17,7 @@ public sealed class PagefileService : IPagefileService
     public bool HasOriginalBackup =>
         TweakBackupStore.Default.Get("HKLM", MemoryKeyPath, PagingFilesValue) is not null;
 
-    public Task<PagefileInfo> GetInfoAsync() => Task.Run(() =>
-    {
-        using var key = Registry.LocalMachine.OpenSubKey(MemoryKeyPath);
-        var raw = key?.GetValue(PagingFilesValue) as string[];
-        var entries = raw ?? Array.Empty<string>();
-        var automatic = IsAutomatic(entries);
-
-        var summary = automatic
-            ? "当前：系统托管（自动管理所有驱动器的大小）"
-            : entries.Length == 0
-                ? "当前：未配置任何页面文件"
-                : "当前：手动管理 — " + string.Join("；", entries.Select(FormatEntry));
-
-        return new PagefileInfo
-        {
-            AutomaticManaged = automatic,
-            HasPagefile = entries.Length > 0,
-            RawEntries = entries,
-            Summary = summary,
-        };
-    });
+    public Task<PagefileInfo> GetInfoAsync() => new DeltaNFD.Inspection.PagefileInspection().GetInfoAsync();
 
     public Task<OperationResult> SetCustomAsync(int minMb, int maxMb, char driveLetter) => Task.Run(() =>
     {

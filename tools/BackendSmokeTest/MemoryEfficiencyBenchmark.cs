@@ -75,7 +75,7 @@ internal static class MemoryEfficiencyBenchmark
                     FrameModeActiveForTests = () => false,
                     ForegroundForTests = () => Environment.ProcessId,
                     // 唯一候选分类注入是严格限定到自建进程；CPU采样、身份、工作集、锁和回收均走实际代码。
-                    ResponsivenessExcludedForTests = candidate => !identities.Contains(candidate),
+                    BackgroundExcludedForTests = candidate => !identities.Contains(candidate),
                     MemoryPolicyForTests = () => new([]),
                 };
                 engine.SaveBackgroundConfig(new() { MemoryBatchLimit = limit });

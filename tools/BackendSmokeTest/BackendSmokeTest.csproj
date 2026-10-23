@@ -8,11 +8,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>BackendSmokeTest</RootNamespace>
     <!-- 与产品同版本：官方后端客户端（已链接进本测试）按 AppVersion 校验后端版本。 -->
-    <Version>0.9223</Version>
-    <InformationalVersion>Beta0.922-RC3</InformationalVersion>
+    <Version>0.9290</Version>
+    <InformationalVersion>Alpha0.929</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="../../src/DeltaNFD/Services/OptimizationScan.cs" />
+    <Compile Include="../../src/DeltaNFD/Services/SystemInspectionCache.cs" />
+    <Compile Include="../../src/DeltaNFD/Services/DriveInspector.cs" />
     <ProjectReference Include="..\..\src\DeltaNFD.Contracts\DeltaNFD.Contracts.csproj" />
     <ProjectReference Include="..\..\src\DeltaNFD.Shared\DeltaNFD.Shared.csproj" />
     <ProjectReference Include="..\..\src\DeltaNFD.UpdateCore\DeltaNFD.UpdateCore.csproj" />
@@ -21,6 +24,7 @@
   <ItemGroup>
     <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\AlphaRestore\RuntimeCppOfficial.catalog.json" LogicalName="RuntimeCppOfficial.catalog.json" />
     <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\Vc14FileRepair.catalog.json" LogicalName="Vc14FileRepair.catalog.json" />
+    <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\Vc14ForceReplace.catalog.json" LogicalName="Vc14ForceReplace.catalog.json" />
     <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\Vc14OwnershipOriginals.catalog.json" LogicalName="Vc14OwnershipOriginals.catalog.json" />
     <Compile Remove="obj\**\*.cs" />
     <Compile Remove="**/obj-*/**/*.cs;**/bin-*/**/*.cs;_buildcheck/**/*.cs" />
@@ -126,6 +130,8 @@
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\NvProfileService.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\ShaderRecoveryCleanup.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\PowerService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\PowerService.IntelPcores.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\PowerService.NativeHetero.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeGuardService.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeHighFpsMaintenance.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AlphaRestore\*.cs" />
@@ -167,4 +173,5 @@
     <Content Include="Fixtures\Vc14BetaUninstall\*.inf" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup><ProjectReference Include="../../src/DeltaNFD.Inspection/DeltaNFD.Inspection.csproj" /></ItemGroup>
 </Project>

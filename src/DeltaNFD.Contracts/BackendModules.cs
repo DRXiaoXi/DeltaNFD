@@ -36,6 +36,8 @@ public static class BackendCommands
     public const string Vc14Scan = "runtime.vc14.scan";
     public const string Vc14Preview = "runtime.vc14.preview";
     public const string Vc14Repair = "runtime.vc14.repair";
+    public const string Vc14ForceReplacePreview = "runtime.vc14.force-replace.preview";
+    public const string Vc14ForceReplace = "runtime.vc14.force-replace";
     public const string Vc14LegacyClean = "runtime.vc14.legacy-clean";
     public const string RuntimeGuardEnable = "runtime.guard.enable";
     public const string RuntimeGuardDisable = "runtime.guard.disable";
@@ -108,6 +110,7 @@ public static class BackendCommands
     public const string ProcmanRulesList = "procman.rules.list";
     public const string ProcmanRulesSave = "procman.rules.save";
     public const string ProcmanRulesDelete = "procman.rules.delete";
+    // Retired identifiers only; neither command is admitted or registered by the backend.
     public const string ProcmanResponsivenessConfig = "procman.responsiveness.config";
     public const string ProcmanResponsivenessEvents = "procman.responsiveness.events";
     public const string ProcmanNativeProbe = "procman.native.probe";
@@ -133,6 +136,7 @@ public static class BackendCommands
     public const string SystemPowerHibernateSet = "system.power.hibernate.set";
     public const string SystemPowerHeteroList = "system.power.hetero.list";
     public const string SystemPowerHeteroSet = "system.power.hetero.set";
+    public const string SystemPowerIntelPcores = "system.power.intel-pcores.apply";
     public const string SystemShaderStatus = "system.shader.status";
     public const string SystemShaderDiagnose = "system.shader.diagnose";
     public const string SystemShaderClear = "system.shader.clear-cache";
@@ -165,6 +169,14 @@ public static class BackendCommands
     public const string SystemProcessesKill = "system.processes.kill";
     public const string SystemProcessesTrim = "system.processes.trim";
 
+    // ---- 着色器卡顿检测（模块 shaderstutter；PresentMon 服务只读采集，不写系统）----
+
+    public const string ShaderKillerCapabilities = "shaderkiller.capabilities";
+    public const string ShaderKillerScan = "shaderkiller.scan";
+    public const string ShaderKillerStart = "shaderkiller.start";
+    public const string ShaderKillerStatus = "shaderkiller.status";
+    public const string ShaderKillerStop = "shaderkiller.stop";
+
 }
 
 /// <summary>一个官方后端的静态规格：id、EXE 名、命令白名单、超时、退出语义。</summary>
@@ -187,6 +199,7 @@ public static class BackendModules
     public const string CpuFrame = "cpuframe";
     public const string Procman = "procman";
     public const string System = "system";
+    public const string ShaderKiller = "shaderkiller";
 
     private static readonly TimeSpan TwoMinutes = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan ThreeMinutes = TimeSpan.FromMinutes(3);
@@ -247,6 +260,8 @@ public static class BackendModules
                     [BackendCommands.Vc14Scan] = TwoMinutes,
                     [BackendCommands.Vc14Preview] = TwoMinutes,
                     [BackendCommands.Vc14Repair] = TimeSpan.FromMinutes(42),
+                    [BackendCommands.Vc14ForceReplacePreview] = FiveMinutes,
+                    [BackendCommands.Vc14ForceReplace] = TimeSpan.FromMinutes(15),
                     [BackendCommands.Vc14LegacyClean] = FiveMinutes,
                     [BackendCommands.RuntimeGuardEnable] = FiveMinutes,
                     [BackendCommands.RuntimeGuardDisable] = FiveMinutes,
@@ -311,8 +326,6 @@ public static class BackendModules
                     [BackendCommands.ProcmanRulesList] = TwoMinutes,
                     [BackendCommands.ProcmanRulesSave] = TwoMinutes,
                     [BackendCommands.ProcmanRulesDelete] = TwoMinutes,
-                    [BackendCommands.ProcmanResponsivenessConfig] = TwoMinutes,
-                    [BackendCommands.ProcmanResponsivenessEvents] = TwoMinutes,
                     [BackendCommands.ProcmanMemoryPreview] = TwoMinutes,
                     [BackendCommands.ProcmanMemoryTrim] = TwoMinutes,
                     [BackendCommands.ProcmanBackgroundGet] = TwoMinutes,
@@ -344,6 +357,7 @@ public static class BackendModules
                     [BackendCommands.SystemPowerHibernateSet] = TwoMinutes,
                     [BackendCommands.SystemPowerHeteroList] = TwoMinutes,
                     [BackendCommands.SystemPowerHeteroSet] = TwoMinutes,
+                    [BackendCommands.SystemPowerIntelPcores] = FifteenMinutes,
                     [BackendCommands.SystemShaderStatus] = TwoMinutes,
                     [BackendCommands.SystemShaderDiagnose] = TwoMinutes,
                     [BackendCommands.SystemShaderClear] = FiveMinutes,
@@ -377,7 +391,17 @@ public static class BackendModules
                     [BackendCommands.SystemProcessesTrim] = FiveMinutes,
                 }, FiveMinutes),
 
+
         };
+
+    // Retired identity is available only for existing evidence. It cannot be launched.
+    public static IReadOnlyDictionary<string, BackendModuleSpec> Retired { get; } =
+        new Dictionary<string, BackendModuleSpec>(StringComparer.Ordinal)
+        { [ShaderKiller] = Make(ShaderKiller, "着色卡顿杀手（已独立，旧记录）", "DeltaNFD.Backend.ShaderKiller.exe",
+            new Dictionary<string, TimeSpan>(StringComparer.Ordinal), TimeSpan.FromSeconds(30)) };
+    public static BackendModuleSpec RequireForReview(string moduleId) =>
+        All.TryGetValue(moduleId, out var live) ? live : Retired.TryGetValue(moduleId, out var old) ? old
+        : throw new BackendContractException($"未知的记录模块：{moduleId}");
 
     public static BackendModuleSpec Require(string moduleId) =>
         All.TryGetValue(moduleId, out var spec)
@@ -401,6 +425,7 @@ public static class BackendModules
         BackendCommands.GpuSpoofStatus, BackendCommands.GpuWatchEvaluate,
         BackendCommands.GpuDriverStatus, BackendCommands.GpuDriverRead, BackendCommands.GpuReconcile,
         BackendCommands.RuntimeStatus, BackendCommands.RuntimeReconcile, BackendCommands.Vc14Scan, BackendCommands.Vc14Preview,
+        BackendCommands.Vc14ForceReplacePreview,
         BackendCommands.RuntimeHighFpsPreview, BackendCommands.RuntimeFileUseScan,
                 BackendCommands.CpuFrameStatus, BackendCommands.CpuFrameReconcile,
         BackendCommands.CpuFrameTopology, BackendCommands.CpuFrameAffinityCheck,
@@ -410,7 +435,7 @@ public static class BackendModules
         BackendCommands.ProcmanDetail, BackendCommands.ProcmanCapability,
         BackendCommands.ProcmanCpuTopology, BackendCommands.ProcmanReconcile,
         BackendCommands.ProcmanNativeProbe,
-        BackendCommands.ProcmanRulesList, BackendCommands.ProcmanResponsivenessEvents,
+        BackendCommands.ProcmanRulesList,
         BackendCommands.RuntimeSafeUninstallPreview,
         BackendCommands.SystemCleanupScan, BackendCommands.SystemTweaksStatus,
         BackendCommands.SystemTweaksBackups, BackendCommands.SystemTweaksHyperV, BackendCommands.SystemTweaksVbs,
@@ -425,6 +450,7 @@ public static class BackendModules
         BackendCommands.SystemDefenderPreflight, BackendCommands.SystemDefenderProtectionState,
         BackendCommands.SystemMemoryStatus,
         BackendCommands.SystemProcessesScan,
+        // 着色器卡顿检测：只读 PresentMon 服务/写自身会话目录，不修改系统状态。
     };
 
     public static bool IsReadOnly(string moduleId, string command) =>
@@ -452,7 +478,8 @@ public static class BackendModules
 
     /// <summary>这些成功的静态优化可在退出后保留，原值备份不是未确认事务。</summary>
     public static bool RetainsStaticBackup(string moduleId, string command) => moduleId == System && command is
-        BackendCommands.SystemBxApply or BackendCommands.SystemBxGearApply or BackendCommands.SystemBxServiceGroupApply;
+        BackendCommands.SystemBxApply or BackendCommands.SystemBxGearApply or BackendCommands.SystemBxServiceGroupApply
+        or BackendCommands.SystemPowerIntelPcores;
 
     /// <summary>公开只读集合（只读命令的负向校验用）。</summary>
     public static IReadOnlySet<string> ReadOnly => ReadOnlyCommands;

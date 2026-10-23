@@ -135,6 +135,7 @@ internal static class FramePowerSafetyChecks
             }
             Assert(!PowerService.ValidateActiveScheme(Scheme, Other).Success, "切换后活动计划不一致必须失败");
             Assert(PowerService.ValidateActiveScheme(Scheme, Scheme.ToUpperInvariant()).Success, "GUID 大小写不影响成功复核");
+            await CheckHeteroRestoreCommandsAsync();
             await service.SnapshotPowerSchemeContentAsync(Scheme);
             fake.HideFromFull = true; fake.Ac = 99;
             Assert((await service.VerifyAndRestorePowerSchemeContentAsync(Scheme)).Success && fake.Ac == 10,
@@ -275,6 +276,43 @@ internal static class FramePowerSafetyChecks
             if (parts[0] == "/setdcvalueindex") Dc = long.Parse(parts[^1]);
             return (0, "", "");
         }
+    }
+
+    private static async Task CheckHeteroRestoreCommandsAsync()
+    {
+        var calls = new List<string>();
+        var failPrefix = "";
+        var elevated = true;
+        var power = new PowerService((arguments, _) =>
+        {
+            calls.Add(arguments);
+            return Task.FromResult(failPrefix.Length > 0 && arguments.StartsWith(failPrefix)
+                ? (1, "", "fixture failure") : (0, "", ""));
+        }, () => elevated);
+        foreach (var (guid, _) in PowerSchemes.HeteroPolicySettings)
+            Assert((await power.SetHeteroPolicyValuesAsync(guid, 4, 0)).Success, "各项异类策略按原交流/直流值恢复");
+        Assert(calls.Count == 9 && calls.All(c => !c.StartsWith("/attributes")),
+            "三项策略恢复只执行九条必要命令，不再重复十五条显隐命令");
+        Assert(calls.Count(c => c.StartsWith("/setacvalueindex") && c.EndsWith(" 4")) == 3
+            && calls.Count(c => c.StartsWith("/setdcvalueindex") && c.EndsWith(" 0")) == 3,
+            "恢复保留不同交流/直流原值，不统一写默认值");
+        calls.Clear();
+        failPrefix = "/setacvalueindex";
+        var setting = PowerSchemes.HeteroPolicySettings[0].Guid;
+        Assert(!(await power.SetHeteroPolicyValuesAsync(setting, 4, 0)).Success && calls.Count == 1,
+            "交流恢复失败不继续激活或伪装成功");
+        calls.Clear(); failPrefix = "/setdcvalueindex";
+        Assert(!(await power.SetHeteroPolicyValuesAsync(setting, 4, 0)).Success && calls.Count == 2,
+            "直流恢复失败不激活或伪装成功");
+        calls.Clear(); failPrefix = "/setactive";
+        Assert(!(await power.SetHeteroPolicyValuesAsync(setting, 4, 0)).Success && calls.Count == 3,
+            "计划刷新失败仍如实失败");
+        calls.Clear(); failPrefix = "";
+        Assert(!(await power.SetHeteroPolicyValuesAsync("unknown", 4, 0)).Success && calls.Count == 0,
+            "未知策略不启动外部命令");
+        elevated = false;
+        Assert(!(await power.SetHeteroPolicyValuesAsync(setting, 4, 0)).Success && calls.Count == 0,
+            "非管理员不启动外部命令");
     }
 
     private sealed class FakePowerService(FakePower fake) : IPowerService

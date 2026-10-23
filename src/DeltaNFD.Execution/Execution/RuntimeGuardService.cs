@@ -10,13 +10,15 @@ namespace DeltaNFD.Services;
 public sealed class RuntimeGuardService : IRuntimeGuardService
 {
     private readonly RuntimeGuardProtection _protection;
+    private bool _sharedInspection;
     public RuntimeGuardService() : this(TweakBackupStore.Default) { }
-    public RuntimeGuardService(TweakBackupStore backups) => _protection = new RuntimeGuardProtection(backups);
+    public RuntimeGuardService(TweakBackupStore backups) { _protection = new RuntimeGuardProtection(backups); _sharedInspection = ReferenceEquals(backups, TweakBackupStore.Default); }
     internal RuntimeGuardService(RuntimeGuardProtection protection) => _protection = protection;
 
 
     public async Task<RuntimeGuardStatus> GetStatusAsync()
     {
+        if (_sharedInspection) return await new DeltaNFD.Inspection.RuntimeGuardInspection().GetStatusAsync();
         var redists = await Task.Run(GetInstalledRedists);
         var paths = await FindUe4PrereqPathsAsync();
         var path = paths.FirstOrDefault() ?? "";

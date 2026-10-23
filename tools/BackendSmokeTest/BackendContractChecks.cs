@@ -146,8 +146,10 @@ internal static class BackendContractChecks
 
     private static void ModuleChecks()
     {
-        Check(BackendModules.All.Count == 6, "Six public backend modules");
-        Check(!BackendModules.All.ContainsKey("shaderstutter"), "Research collector excluded from release");
+        Check(BackendModules.All.Count == 6, "仅注册现有仓库后端，独立预热不再注册");
+        Check(!BackendModules.All.ContainsKey(BackendModules.ShaderKiller) && BackendModules.Retired.ContainsKey(BackendModules.ShaderKiller)
+            && !BackendModules.IsAllowed(BackendModules.ShaderKiller, BackendCommands.ShaderKillerStart), "旧预热模块只能核对记录，禁止启动");
+        Check(!BackendModules.All.ContainsKey("shaderstutter"), "发布版本排除卡顿检测执行者");
         Check(!BackendModules.All.ContainsKey("diagnostics"), "已撤下的卡顿诊断后端不再注册");
         Check(BackendModules.IsAllowed(BackendModules.Procman, BackendCommands.ProcmanSet), "procman.process.set 在白名单内");
         Check(BackendModules.IsReadOnly(BackendModules.Procman, BackendCommands.ProcmanList), "procman.process.list 为只读");
@@ -312,15 +314,20 @@ internal static class BackendContractChecks
         using var owned = CaptureOwnedProcess(client);
         await client.DrainAsync(TimeSpan.FromSeconds(10));
         Check(owned.HasExited, "本次系统维护后端排空后实际退出");
-        await using var first = new BackendCaller(BackendModules.System);
-        await using var second = new BackendCaller(BackendModules.System);
+        var page = new PageBackendLease("system");
+        await using var first = new BackendCaller(BackendModules.System, page);
+        await using var second = new BackendCaller(BackendModules.System, page);
         Check((await first.InvokeAsync(BackendCommands.SystemTweaksBackups, new { }, null, CancellationToken.None)).Status == BackendResultStatuses.Ok,
             "系统调用器可读取后端备份清单");
         Check((await second.InvokeAsync(BackendCommands.SystemTweaksBackups, new { }, null, CancellationToken.None)).Status == BackendResultStatuses.Ok &&
             BackendSessions.Snapshot().Count(x => x.ModuleId == BackendModules.System) == 1,
-            "不同系统服务共享一个后端，不重复创建进程");
-        Check((await BackendSessions.DrainAllAsync(TimeSpan.FromSeconds(10))).Count == 0,
-            "共享后端读取停止应答后正常排空");
+            "同一栏目内不同系统服务共享一个后端，不重复创建进程");
+        page.Suspend("合同测试离页", true);
+        await page.Stopping.WaitAsync(TimeSpan.FromSeconds(10));
+        Check(!BackendSessions.Snapshot().Any(x => x.ModuleId == BackendModules.System), "离开栏目后共享后端实际退出");
+        await using var oneShot = new BackendCaller(BackendModules.System);
+        Check((await oneShot.InvokeAsync(BackendCommands.SystemTweaksBackups, new { }, null, CancellationToken.None)).Status == BackendResultStatuses.Ok
+            && !BackendSessions.Snapshot().Any(x => x.ModuleId == BackendModules.System), "非栏目一次性调用执行后关闭，不留下默认常驻后端");
 
         await CpuFrameProcessChecksAsync();
     }

@@ -1,4 +1,4 @@
-﻿using DeltaNFD.Backends;
+using DeltaNFD.Backends;
 using DeltaNFD.Native;
 using DeltaNFD.Services;
 
@@ -20,19 +20,10 @@ public sealed partial class ProcmanEngine
     internal TimeSpan MemoryPressureWindowForTests { get; set; } = TimeSpan.FromSeconds(30);
     internal Func<EmergencyPolicyDecision>? MemoryPolicyForTests { get; set; }
     internal bool BackgroundLoopDisabledForTests { get; set; }
-    internal Func<int>? LogicalProcessorCountForTests { get; set; }
-    internal static int AdaptiveCandidateThreshold(int logicalProcessors)
-        => Math.Clamp((int)Math.Round(50d / Math.Max(1, logicalProcessors), MidpointRounding.AwayFromZero), 1, 5);
-    private int ResolveCandidateThreshold(int configured)
-        => configured > 0 ? configured : AdaptiveCandidateThreshold(LogicalProcessorCountForTests?.Invoke()
-            ?? ProcmanTopology.SystemGroupMasks().Sum(g => System.Numerics.BitOperations.PopCount(g.Mask)));
     internal Func<bool>? FrameModeActiveForTests { get; set; }
-    internal Func<bool>? FrameSuppressionSelectedForTests { get; set; }
     internal Func<bool>? FrameMemorySelectedForTests { get; set; }
     private bool FrameBackgroundActive => (FrameModeActiveForTests?.Invoke() ?? AppSettingsStore.Read().FrameModeActive)
         && !OfflineModeGuard.BlocksNormalAutomation;
-    private bool FrameSuppressionActive => FrameBackgroundActive
-        && (FrameSuppressionSelectedForTests?.Invoke() ?? AppSettingsStore.Read().FrameBackgroundSuppressionEnabled);
     private bool FrameMemorySelected => FrameMemorySelectedForTests?.Invoke() ?? AppSettingsStore.Read().FrameAutomaticMemoryEnabled;
     private bool FrameAutomaticMemoryActive => FrameBackgroundActive && FrameMemorySelected;
     private EmergencyPolicyDecision MemoryPolicy() => MemoryPolicyForTests?.Invoke() ?? EmergencyPolicies.Current;
@@ -44,6 +35,7 @@ public sealed partial class ProcmanEngine
         {
             var policy = MemoryPolicy();
             var note = _backgroundLoadError;
+            if (note.Length == 0 && _changeLog.Records.Any(r => r.Owner == ProcmanControlCoordinator.OwnerResponsiveness)) note = "旧版后台抑制尚未还原，请核对与恢复。";
             if (note.Length == 0 && OfflineModeGuard.BlocksNormalAutomation) note = "旧版设置恢复期间暂停自动回收。";
             if (note.Length == 0 && !FrameMemorySelected) note = "未选择帧格中的“自动内存回收”功能。";
             if (note.Length == 0 && !FrameBackgroundActive) note = "等待开启一键帧格模式。";
@@ -52,7 +44,7 @@ public sealed partial class ProcmanEngine
             return new(_backgroundConfig with { ExcludedExecutablePaths = [.. _backgroundConfig.ExcludedExecutablePaths] },
                 _automaticMemoryActive && !_frozen && note.Length == 0,
                 _lastAutomaticCheck is { } time ? new DateTimeOffset(time, TimeSpan.Zero) : null, _automaticMemoryReport, note, _memoryFeedback,
-                ResolveCandidateThreshold(_backgroundConfig.Suppression.CandidateCpuFloorPercent),
+                0, // Retired suppression threshold; kept for older status readers.
                 policy.MemoryCooldown(_backgroundConfig.MemoryCooldownSeconds));
         }
     }
@@ -64,10 +56,9 @@ public sealed partial class ProcmanEngine
             return OperationResult.Fail("旧版设置恢复完成前不能启用自动内存回收。");
         // Compatibility field follows both frame switches, never an independent client-supplied enable flag.
         config = config with { AutomaticMemoryEnabled = FrameAutomaticMemoryActive };
-        bool suppressionChanged;
+        OperationResult legacyRecovery;
         lock (_gate)
         {
-            suppressionChanged = _backgroundConfig.Suppression != config.Suppression;
             _backgroundStore.Save(config);
             if (_backgroundConfig.MemoryBatchLimit != config.MemoryBatchLimit || _backgroundConfig.MemoryMode != config.MemoryMode) _memoryPreview = null;
             _backgroundConfig = config;
@@ -75,25 +66,18 @@ public sealed partial class ProcmanEngine
             _automaticMemoryActive = config.AutomaticMemoryEnabled && FrameAutomaticMemoryActive;
             _memoryHighSince = null;
             _frozen = false;
-            // The new exclusion also releases an existing suppression owned by us.
-            RestoreResponsivenessAdjustments(r => IsBackgroundExcluded(r.ExecutablePath));
-            if (_changeLog.Records.Any(r => r.Owner == ProcmanControlCoordinator.OwnerResponsiveness && IsBackgroundExcluded(r.ExecutablePath)))
-                SetError("排除名单已保存，部分已有后台抑制尚未还原，记录已保留，请核对与恢复。");
+            legacyRecovery = RestoreLegacySuppressionAdjustments();
+            if (!legacyRecovery.Success) _automaticMemoryActive = false;
         }
-        if (suppressionChanged || (_responsiveness is { Enabled: true }) != FrameSuppressionActive)
-        {
-            var adjusted = ConfigureResponsiveness(SuppressionArgs(config.Suppression, FrameSuppressionActive));
-            if (!adjusted.Success) return OperationResult.Fail("参数已保存，但后台抑制同步未完成：" + adjusted.Message);
-        }
-        if (_automaticMemoryActive || ResponsivenessEnabled || _rules.EnabledRules().Count > 0) _ = StartRulesEngine();
+        if (_automaticMemoryActive || _rules.EnabledRules().Count > 0) _ = StartRulesEngine();
         else
         {
             _ = StopRulesEngineAsync().GetAwaiter().GetResult();
             lock (_gate) _frozen = false; // A normal configuration change must still allow manual previews.
         }
-        var pending = _changeLog.Records.Any(r => r.Owner == ProcmanControlCoordinator.OwnerResponsiveness && IsBackgroundExcluded(r.ExecutablePath));
-        return OperationResult.Ok("后台管理设置已保存，后台功能由帧格总开关与各自的功能开关共同控制。"
-            + (pending ? "部分已有后台抑制尚未还原，记录保留，请在核对与恢复中处理。" : ""));
+        return legacyRecovery.Success
+            ? OperationResult.Ok("内存回收设置已保存，自动回收由帧格总开关与自动内存回收开关共同控制。")
+            : OperationResult.Fail("内存回收设置已保存。" + legacyRecovery.Message);
     }
 
     public OperationResult ActivateBackground()
@@ -116,35 +100,23 @@ public sealed partial class ProcmanEngine
     {
         var active = FrameBackgroundActive;
         var memoryActive = FrameAutomaticMemoryActive;
-        var suppressionActive = FrameSuppressionActive;
         if (!memoryActive) lock (_gate) _automaticMemoryActive = false;
         ProcmanBackgroundConfig config;
         try { config = _backgroundStore.Load(); }
         catch (InvalidDataException ex)
         {
             lock (_gate) { _backgroundLoadError = ex.Message; _automaticMemoryActive = false; }
-            var stopped = ConfigureResponsiveness(new() { Enabled = false });
-            return OperationResult.Fail(ex.Message + " " + stopped.Message);
+            return OperationResult.Fail(ex.Message);
         }
-        var suppression = ConfigureResponsiveness(SuppressionArgs(config.Suppression, suppressionActive));
-        if (!suppression.Success) return OperationResult.Fail("后台抑制随帧格同步未完成：" + suppression.Message);
         var memory = SaveBackgroundConfig(config with { AutomaticMemoryEnabled = memoryActive });
         if (!memory.Success) return memory;
         var status = BackgroundStatus();
         if (memoryActive && !status.AutomaticMemoryActive)
             return OperationResult.Fail("帧格后台功能同步后，自动内存回收当前暂停：" + status.Note);
         return OperationResult.Ok(active
-            ? $"帧格后台功能：后台抑制{(suppressionActive ? "已启用" : "未选择")}，自动内存回收{(memoryActive ? "已启用" : "未选择")}。"
-            : "后台抑制与自动内存回收已随帧格停用，功能选项和详细参数保留。");
+            ? $"帧格自动内存回收{(memoryActive ? "已启用" : "未选择")}。"
+            : "自动内存回收已随帧格停用，功能选项和详细参数保留。");
     }
-
-    private static ProcmanResponsivenessConfigArgs SuppressionArgs(ProcmanSuppressionOptions options, bool enabled) => new()
-    {
-        Enabled = enabled, CpuBusyThreshold = options.CpuBusyThreshold, CpuBusySeconds = options.CpuBusySeconds,
-        CpuIdleThreshold = options.CpuIdleThreshold, CpuIdleSeconds = options.CpuIdleSeconds,
-        CooldownSeconds = options.CooldownSeconds, CandidateCpuFloorPercent = options.CandidateCpuFloorPercent,
-        MaxAdjustPerRound = options.MaxAdjustPerRound,
-    };
 
     private uint? MemoryPressure()
     {

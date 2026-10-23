@@ -54,19 +54,7 @@ public sealed class NvProfileService : INvProfileService
 
     // ---------------- 环境与状态 ----------------
 
-    public Task<NvGpuEnvironmentInfo> GetEnvironmentAsync() => Task.Run(() =>
-    {
-        var (isNvidia, gpuName) = ReadNvidiaGpu();
-        return new NvGpuEnvironmentInfo
-        {
-            IsNvidia = isNvidia,
-            GpuName = gpuName,
-            NvApiAvailable = NvApiDrs.IsAvailable,
-            DrsFilesExist = DrsFiles.Any(File.Exists),
-            DrsFilesLocked = DrsFiles.Any(f => File.Exists(f) && (File.GetAttributes(f) & FileAttributes.ReadOnly) != 0),
-            ShaderCache = isNvidia ? ReadShaderCacheReport() : null,
-        };
-    });
+    public Task<NvGpuEnvironmentInfo> GetEnvironmentAsync() => DeltaNFD.Inspection.NvEnvironmentInspection.ReadAsync();
 
     private static NvShaderCacheReport ReadShaderCacheReport()
     {

@@ -10,7 +10,7 @@ internal static class BackendDialogExtensions
 {
     private static readonly SemaphoreSlim DialogGate = new(1, 1);
 
-    internal static Task<ContentDialogResult> ShowWithBackendRecoveryAsync(this ContentDialog dialog, bool hasReviewAction = false) => ShowAsync(dialog, false, hasReviewAction);
+    internal static Task<ContentDialogResult> ShowWithBackendRecoveryAsync(this ContentDialog dialog, bool hasReviewAction = false, PageBackendLease? pageOwner = null) => ShowAsync(dialog, false, hasReviewAction, pageOwner);
 
     internal static async Task<IDisposable> EnterReviewAsync()
     {
@@ -23,8 +23,17 @@ internal static class BackendDialogExtensions
         public void Dispose() { if (Interlocked.Exchange(ref _disposed, 1) == 0) DialogGate.Release(); }
     }
 
-    private static async Task<ContentDialogResult> ShowAsync(ContentDialog dialog, bool unsolicited, bool hasReviewAction = false)
+    private static async Task<ContentDialogResult> ShowAsync(ContentDialog dialog, bool unsolicited, bool hasReviewAction = false, PageBackendLease? pageOwner = null)
     {
+        var owner = unsolicited || BackendReviewFlow.IsReviewing ? null : pageOwner ?? PageBackendSessions.Manager.Current;
+        bool Revoked() => owner is { IsAvailable: false };
+        if (Revoked() || dialog.XamlRoot is null)
+        {
+            var confirmation = !string.IsNullOrEmpty(dialog.PrimaryButtonText) || !string.IsNullOrEmpty(dialog.SecondaryButtonText);
+            App.MainWindow?.ReportPageOperationResult(confirmation ? "操作未执行" : dialog.Title?.ToString() ?? "操作结果",
+                confirmation ? "栏目已离开或游戏状态变化，原确认已取消。" : dialog.Content?.ToString() ?? "栏目操作已暂停。");
+            return ContentDialogResult.None;
+        }
         // Review dialogs have their own sequence. Do not interrupt a recovery confirmation/result.
         while (true)
         {
@@ -38,6 +47,7 @@ internal static class BackendDialogExtensions
         ContentDialogResult result;
         try
         {
+            if (Revoked()) return ContentDialogResult.None;
             pending = BackendAttention.Snapshot(onlyUnshown: unsolicited);
             if (unsolicited && (pending.Count == 0 || BackendReviewFlow.IsReviewing)) return ContentDialogResult.None;
             offersReview = pending.Count > 0 && string.IsNullOrEmpty(dialog.PrimaryButtonText)
@@ -66,8 +76,13 @@ internal static class BackendDialogExtensions
             void Opened(ContentDialog _, ContentDialogOpenedEventArgs __)
             { if (offersReview || hasReviewAction) BackendAttention.Presented(pending); }
             dialog.Opened += Opened;
-            try { result = await dialog.ShowAsync(); }
-            finally { dialog.Opened -= Opened; }
+            void Changed()
+            {
+                if (Revoked()) dialog.DispatcherQueue.TryEnqueue(() => dialog.Hide());
+            }
+            if (owner is not null) owner.Changed += Changed;
+            try { result = await dialog.ShowAsync(); if (Revoked()) result = ContentDialogResult.None; }
+            finally { dialog.Opened -= Opened; if (owner is not null) owner.Changed -= Changed; }
         }
         finally { DialogGate.Release(); }
         if (offersReview && result == ContentDialogResult.Primary)

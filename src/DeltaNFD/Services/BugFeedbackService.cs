@@ -24,7 +24,7 @@ public static class BugFeedbackService
     public const int MaximumTitleCharacters = 100;
     public const int MinimumDescriptionCharacters = 10;
     public const int MaximumDescriptionCharacters = 8000;
-    public static readonly string[] Areas = ["运行库", "内存回收", "后台抑制", "帧格", "ACE相关", "着色器", "NVIDIA设置", "进程管理", "自动更新", "其他"];
+    public static readonly string[] Areas = ["运行库", "内存回收", "帧格", "ACE相关", "着色器", "NVIDIA设置", "进程管理", "自动更新", "其他"];
     private static readonly HttpClient Client = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(90) };
 
     public static int CharacterCount(string text) => text.Trim().EnumerateRunes().Count();

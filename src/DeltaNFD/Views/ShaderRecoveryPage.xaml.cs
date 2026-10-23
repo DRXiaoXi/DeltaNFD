@@ -9,8 +9,9 @@ namespace DeltaNFD.Views;
 
 public sealed partial class ShaderRecoveryPage : Page
 {
+    private readonly DeltaNFD.Services.Backends.PageBackendLease? _pageOwner = DeltaNFD.Services.Backends.PageBackendSessions.Manager.Current;
     private readonly INvProfileService _nv = ServiceLocator.NvProfile;
-    private readonly BackendCaller _system = new(BackendModules.System);
+    private readonly BackendCaller _system = new(BackendModules.System, PageBackendSessions.Manager.Current);
     private bool _busy, _ready, _canClean;
     private string _returnTag = "nvsettings";
 
@@ -65,7 +66,7 @@ public sealed partial class ShaderRecoveryPage : Page
 
     private async Task<bool> ConfirmAsync(string title, string message, string button) =>
         await new ContentDialog { XamlRoot = XamlRoot, Title = title, Content = message, PrimaryButtonText = button,
-            CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close }.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
+            CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) == ContentDialogResult.Primary;
 
     private async Task ApplyAsync(string scope, ComboBox combo)
     {

@@ -70,6 +70,7 @@ public sealed class CleanupService : ICleanupService
     public Task<(double FreedMb, List<string> Skipped)> CleanAsync(IProgress<string>? progress = null)
         => Task.Run(() =>
         {
+            using var shaderGate = ShaderCacheOperationGate.Acquire();
             var normal = CleanTargets(Targets.Where(t => !IsShaderTarget(t)).ToArray(), progress);
             var shader = CleanShaderCachesCore(progress, CancellationToken.None);
             var skipped = normal.Skipped.Concat(shader.Skipped).ToList();
@@ -84,7 +85,11 @@ public sealed class CleanupService : ICleanupService
 
     public Task<ShaderCacheCleanupResult> CleanShaderCachesAsync(IProgress<string>? progress = null, CancellationToken token = default)
         // 不让 Task.Run 直接吞掉已取消 token：核心会先返回“已取消”的已知结果，后端才能如实落定。
-        => Task.Run(() => CleanShaderCachesCore(progress, token));
+        => Task.Run(() =>
+        {
+            using var shaderGate = ShaderCacheOperationGate.Acquire();
+            return CleanShaderCachesCore(progress, token);
+        });
 
     private static ShaderCacheCleanupResult CleanShaderCachesCore(IProgress<string>? progress, CancellationToken token)
     {

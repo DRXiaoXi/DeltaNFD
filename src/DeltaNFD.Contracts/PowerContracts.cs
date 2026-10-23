@@ -60,7 +60,7 @@ public interface IPowerService
     Task<OperationResult> SetHibernateAsync(bool enable);
 
     /// <summary>
-    /// 读取当前电源计划的三个异类调度策略（隐藏属性，读取前自动取消隐藏）：
+    /// 只读获取当前电源计划的三个异类调度策略（包含隐藏属性，不改变显隐）：
     /// 生效的异类策略 / 异类线程调度策略 / 异类短线程调度策略。
     /// </summary>
     Task<List<HeteroPolicyInfo>> GetHeteroPoliciesAsync();
@@ -70,6 +70,12 @@ public interface IPowerService
 
     /// <summary>按交流/直流分别设置一个异类策略值（还原原值时两者可能不同）。</summary>
     Task<OperationResult> SetHeteroPolicyValuesAsync(string settingGuid, int acValue, int dcValue);
+
+    /// <summary>Intel 快捷预设：当前计划 AC/DC 三项设为 0/2/2，备份原值并回读。</summary>
+    Task<OperationResult> PreferIntelPcoresAsync() => Task.FromResult(OperationResult.Fail("此电源服务不支持 Intel P 核优先预设。"));
+
+    /// <summary>只按已保存记录还原 Intel P 核优先前的计划策略。</summary>
+    Task<OperationResult> RestoreIntelPcoresAsync() => Task.FromResult(OperationResult.Fail("此电源服务不支持 Intel P 核策略恢复。"));
 }
 
 /// <summary>休眠状态查询的线格式结果。</summary>

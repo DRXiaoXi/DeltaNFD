@@ -17,12 +17,14 @@ internal sealed class BackendCpuFrameService : IAsyncDisposable
     private BackendClient? _client;
     private CancellationTokenSource? _pumpCts;
     private Task? _pump;
+    private int _pumpGeneration;
 
     /// <summary>最近一次后端状态快照（实际生效状态；未收到为 null）。</summary>
     internal CpuFrameStatusSnapshot? Latest { get; private set; }
 
     /// <summary>后端状态快照到达事件（在后台线程触发，订阅方自行封送 UI）。</summary>
     internal event Action<CpuFrameStatusSnapshot>? StatusUpdated;
+    internal event Action? ConnectionEnded;
 
     private async Task<BackendClient> EnsureClientAsync(CancellationToken cancellationToken)
     {
@@ -49,6 +51,7 @@ internal sealed class BackendCpuFrameService : IAsyncDisposable
 
     private void StartPump(BackendClient client)
     {
+        var generation = Interlocked.Increment(ref _pumpGeneration);
         try { _pumpCts?.Cancel(); } catch (ObjectDisposedException) { }
         _pumpCts = new CancellationTokenSource();
         var token = _pumpCts.Token;
@@ -56,21 +59,41 @@ internal sealed class BackendCpuFrameService : IAsyncDisposable
         {
             try
             {
-                await foreach (var status in client.SubscribeStatusAsync(token))
+                await ConsumeStatusAsync(client.SubscribeStatusAsync(token), status =>
                 {
-                    if (status.Data is not { } data) continue;
+                    if (generation != Volatile.Read(ref _pumpGeneration) || status.Data is not { } data) return;
                     CpuFrameStatusSnapshot snapshot;
                     try { snapshot = BackendJson.Deserialize<CpuFrameStatusSnapshot>(data); }
-                    catch (BackendContractException) { continue; }
+                    catch (BackendContractException) { return; }
                     Latest = snapshot;
                     // 只读镜像：前端据此在状态展示/目标切换阻塞里读取后端实际生效的调度状态，不执行调度。
                     CpuFrameStatusState.DualCcdSchedulingActive = snapshot.DualCcdSchedulingActive;
                     CpuFrameStatusState.SingleCcdExcludeActive = snapshot.SingleCcdExcludeActive;
                     try { StatusUpdated?.Invoke(snapshot); } catch (Exception ex) { Log.Warn("CPU/帧格状态订阅处理失败：" + ex.Message); }
-                }
+                }, () => { if (generation == Volatile.Read(ref _pumpGeneration)) PageBackendSessions.Notify(ConnectionEnded); }, TimeSpan.FromSeconds(10), token);
             }
             catch { /* 连接结束或取消 */ }
+            finally { if (generation == Volatile.Read(ref _pumpGeneration)) PageBackendSessions.Notify(ConnectionEnded); }
         });
+    }
+
+    internal static async Task ConsumeStatusAsync(IAsyncEnumerable<BackendStatus> source, Action<BackendStatus> accept,
+        Action unavailable, TimeSpan timeout, CancellationToken token)
+    {
+        await using var reader = source.GetAsyncEnumerator(token);
+        while (true)
+        {
+            var next = reader.MoveNextAsync().AsTask();
+            bool available;
+            try { available = await next.WaitAsync(timeout, token); }
+            catch (TimeoutException)
+            {
+                unavailable(); // Invalidate the shared observation without spawning another monitor or executor.
+                available = await next.WaitAsync(token); // Keep exactly one outstanding read, including after a timeout.
+            }
+            if (!available) return;
+            accept(reader.Current);
+        }
     }
 
     /// <summary>确保后端监控已启动（幂等）。</summary>

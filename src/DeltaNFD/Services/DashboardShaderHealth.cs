@@ -7,18 +7,26 @@ internal sealed record DashboardShaderHealthResult(DashboardHealthState State, s
 /// <summary>合并主页的缓存文件、驱动版本及 NVAPI 缓存大小结论；已确认异常不被局部读取失败覆盖。</summary>
 internal static class DashboardShaderHealth
 {
-    internal static async Task<DashboardShaderHealthResult> CheckAsync(IShaderService shader, INvProfileService nv)
+    internal static async Task<DashboardShaderHealthResult> CheckAsync(IShaderService shader, INvProfileService nv, Func<bool>? canContinue = null)
     {
         ShaderStatus? status = null;
         ShaderDiagnosis? diagnosis = null;
         NvShaderCacheReport? cache = null;
         var failures = new List<string>();
         string cacheError = "";
+        void Check() { if (canContinue?.Invoke() == false) throw new OperationCanceledException(); }
+        Check();
         try { status = await shader.GetStatusAsync(); }
         catch (Exception ex) { failures.Add("驱动状态：" + ex.Message); }
+        if (status?.IsGameRunning == true && canContinue is not null)
+        {
+            DeltaNFD.Services.Backends.PageBackendSessions.Manager.ObserveDelta(true);
+            throw new OperationCanceledException();
+        }
         var checkCache = status is null || status.IsNvidia || status.GpuDetectionState == ShaderGpuDetectionState.Unknown;
         if (checkCache)
         {
+            Check();
             try
             {
                 var environment = await nv.GetEnvironmentAsync();
@@ -27,6 +35,7 @@ internal static class DashboardShaderHealth
             }
             catch (Exception ex) { cacheError = ex.Message; }
         }
+        Check();
         try { diagnosis = await shader.DiagnoseAsync(); }
         catch (Exception ex) { failures.Add("缓存文件：" + ex.Message); }
         return Evaluate(status, diagnosis, cache, checkCache, cacheError, string.Join("；", failures));

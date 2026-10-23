@@ -1,11 +1,63 @@
 using DeltaNFD.Services;
 
+if (args is ["--frame-close-checks"])
+{
+    try { await FrameCloseChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+if (args is ["--frame-close-native-readonly"])
+{
+    try { FrameCloseChecks.ReadNative(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--intel-pcore-preference-checks"])
+{
+    try { await IntelPcorePreferenceChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--procman-ace-protection-checks"])
+{
+    try { await ProcmanAceProtectionChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--page-busy-status-fixture")) { Environment.ExitCode = await PageBusyStatusChecks.RunChildAsync(args); return; }
+
+if (args is ["--page-backend-checks"] or ["--startup-inspection-readonly-checks"])
+{
+    try { if (args[0] == "--page-backend-checks") await PageBackendSessionChecks.RunAsync(); else await PageBackendSessionChecks.RunLiveInspectionAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args is ["--pso-cleanup-checks"])
 {
     try { PsoCacheCleanupChecks.Run(); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
+
+if (args is ["--retired-shaderkiller-checks"])
+{
+    try { await RetiredShaderKillerChecks.RunAsync(); }
+    catch(Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode=1; }
+    return;
+}
+
+
+
+
+
+
+
+
+
 
 if (args.Length is 1 or 2 && args[0] == "--update-response-checks")
 {
@@ -93,6 +145,13 @@ if (args is ["--vc14-dependency-log-replay", var logRoot, var ownershipSource])
 if (args is ["--vc14-dependency-log-replay", var logReplayRoot])
 {
     try { Vc14DependencyChecks.Replay(logReplayRoot); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--vc14-force-replace-checks", var forceReplaceRoot])
+{
+    try { await Vc14ForceReplaceChecks.RunAsync(forceReplaceRoot); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
@@ -320,10 +379,10 @@ if (args.Contains("--procman-soak-child"))
     BackgroundSustainedChecks.RunChild(args.Contains("--allocate-memory"));
     return;
 }
-if (args.Contains("--suppression-sustained-checks"))
+if (args.Contains("--suppression-sustained-checks") || args.Contains("--background-native-soak"))
 {
-    try { await BackgroundSustainedChecks.SuppressionAsync(); }
-    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    Console.Error.WriteLine("Background suppression has been retired; use --frame-background-checks / --memory-sustained-checks.");
+    Environment.ExitCode = 1;
     return;
 }
 if (args.Contains("--memory-sustained-checks"))
@@ -332,13 +391,6 @@ if (args.Contains("--memory-sustained-checks"))
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
-if (args.Contains("--background-native-soak"))
-{
-    try { await BackgroundSustainedChecks.NativeSoakAsync(); }
-    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
-    return;
-}
-
 if (args.Contains("--procman-topology-checks"))
 {
     try { ProcmanCpuTopologyChecks.Run(); }

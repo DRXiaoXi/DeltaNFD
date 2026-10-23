@@ -51,6 +51,32 @@ internal sealed class BackendPowerService : IPowerService
         return BackendResults.RequireData<List<HeteroPolicyInfo>>(result, "读取异构调度策略");
     }
 
+    public async Task<OperationResult> PreferIntelPcoresAsync()
+    {
+        var result = await _caller.InvokeAsync(BackendCommands.SystemPowerIntelPcores, new { }, null, CancellationToken.None);
+        return BackendResults.Map(result, "优先 P 核负载");
+    }
+
+    public async Task<OperationResult> RestoreIntelPcoresAsync()
+    {
+        var review = BackendUnconfirmedStore.ReviewAll().SingleOrDefault(r => r.Module == BackendModules.System);
+        if (review is not null)
+        {
+            if (review.Command != BackendCommands.SystemPowerIntelPcores || !review.CanRestore)
+                return OperationResult.Fail("系统维护仍有待核对操作或执行者未确认退出，请先在核对与恢复中处理。");
+            var recovered = await BackendRecovery.RestoreAsync(review, "intel-pcore");
+            var verified = recovered.Success && recovered.Verified && recovered.VerifiedSnapshot?.Complete == true;
+            return verified ? OperationResult.Ok(recovered.Message) : OperationResult.Fail(recovered.Message);
+        }
+        var result = await _caller.InvokeReconcileAsync(BackendCommands.SystemRecover, new RecoverArgs { Scope = "intel-pcore" }, null, CancellationToken.None);
+        if (result.Data is { } data)
+        {
+            var outcome = BackendJson.Deserialize<RecoverOutcome>(data);
+            return outcome.Success && outcome.Verified ? OperationResult.Ok(outcome.Message) : OperationResult.Fail(outcome.Message);
+        }
+        return BackendResults.Map(result, "还原 P 核策略");
+    }
+
     public async Task<OperationResult> SetHeteroPolicyAsync(string settingGuid, int value)
         => await SetHeteroPolicyValuesAsync(settingGuid, value, value);
 

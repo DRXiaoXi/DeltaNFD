@@ -3,7 +3,7 @@
 #
 #  Output (default <repo>/_buildcheck/t5/publish):
 #    DeltaNFD.exe                                frontend (WinUI + self-contained .NET/WindowsAppSDK)
-#    Backends/                                  six backends, one self-contained runtime
+#    Backends/                                  seven backends, one self-contained runtime
 #    Assets/...                                  TweakDb / UpdateConfig / VC++ repair payload, etc.
 #
 #  Components use one SDK ArtifactsPath with per-project subdirectories,

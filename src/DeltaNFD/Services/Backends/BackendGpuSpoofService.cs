@@ -1,32 +1,38 @@
 using DeltaNFD.Backends;
 
 namespace DeltaNFD.Services.Backends;
-
 /// <summary>
+ 
 /// 前端侧显卡伪装服务：枚举/伪装/恢复/失效检测全部经显卡后端 EXE 完成，前端不含执行实现。
+ 
 /// </summary>
 internal sealed class BackendGpuSpoofService : IGpuSpoofService
 {
-    private readonly SemaphoreSlim _gate = new(1, 1);
-    private BackendClient? _client;
-
+    private readonly PageBackendLease? _owner = PageBackendSessions.ConstructionOwner;
+    private readonly SemaphoreSlim _gate = PageBackendSessions.ModuleGate(BackendModules.Gpu);
+    private readonly BackendCaller _caller = new(BackendModules.Gpu);
+    private BackendClient? _client { get => _caller.SharedClient; set => _caller.SharedClient = value; }
     public IReadOnlyList<string> PresetNames => GpuSpoofPresets.Names;
 
     private async Task<BackendClient> EnsureClientAsync(CancellationToken cancellationToken)
     {
-        if (_client is { IsUsable: true }) return _client;
+        if (_client is { IsUsable: true })
+            return _client;
         if (_client is not null)
         {
-            await _client.DisposeAsync();
+            if (_client.RequiresAttention)
+                throw new BackendContractException("上次操作结果未确认，请先核对；未启动第二份后端。");
+            await _client.QuiesceAsync(BackendSessions.StopTimeoutFor(BackendModules.Gpu));
             _client = null;
         }
-        _client = await BackendClient.StartAsync(BackendModules.Gpu, cancellationToken);
+
+        _client = await BackendClient.StartAsync(BackendModules.Gpu, cancellationToken, _owner);
         return _client;
     }
 
     private async Task<BackendResult> InvokeAsync(string command, object args, IProgress<string>? progress, CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken);
+        await PageBackendSessions.WaitGateAsync(_gate, _owner, cancellationToken, BackendModules.Gpu);
         try
         {
             var client = await EnsureClientAsync(cancellationToken);
@@ -34,7 +40,14 @@ internal sealed class BackendGpuSpoofService : IGpuSpoofService
         }
         finally
         {
-            _gate.Release();
+            try
+            {
+                await PageBackendSessions.FinishUnownedAsync(_client, _owner);
+            }
+            finally
+            {
+                _gate.Release();
+            }
         }
     }
 
@@ -45,33 +58,21 @@ internal sealed class BackendGpuSpoofService : IGpuSpoofService
         return result.Data is { } data ? BackendJson.Deserialize<List<DisplayAdapterInfo>>(data) : [];
     }
 
-    public Task<OperationResult> SpoofAsync(DisplayAdapterInfo adapter, string fakeName) =>
-        SpoofByPathAsync(adapter.RegistryPath, fakeName);
-
-    public Task<OperationResult> RestoreAsync(DisplayAdapterInfo adapter) =>
-        RestoreByPathAsync(adapter.RegistryPath);
-
+    public Task<OperationResult> SpoofAsync(DisplayAdapterInfo adapter, string fakeName) => SpoofByPathAsync(adapter.RegistryPath, fakeName);
+    public Task<OperationResult> RestoreAsync(DisplayAdapterInfo adapter) => RestoreByPathAsync(adapter.RegistryPath);
     public async Task<OperationResult> SpoofByPathAsync(string registryPath, string fakeName)
     {
-        var result = await InvokeAsync(BackendCommands.GpuSpoofApply,
-            new GpuSpoofApplyArgs { RegistryPath = registryPath, FakeName = fakeName }, null, CancellationToken.None);
+        var result = await InvokeAsync(BackendCommands.GpuSpoofApply, new GpuSpoofApplyArgs { RegistryPath = registryPath, FakeName = fakeName }, null, CancellationToken.None);
         return ToOperationResult(result, "写入显卡伪装");
     }
 
     public async Task<OperationResult> RestoreByPathAsync(string registryPath)
     {
-        var result = await InvokeAsync(BackendCommands.GpuSpoofRestore,
-            new GpuSpoofPathArgs { RegistryPath = registryPath }, null, CancellationToken.None);
+        var result = await InvokeAsync(BackendCommands.GpuSpoofRestore, new GpuSpoofPathArgs { RegistryPath = registryPath }, null, CancellationToken.None);
         return ToOperationResult(result, "恢复显卡型号");
     }
 
-    public async Task<IReadOnlyList<GpuSpoofInvalidation>> CheckInvalidationAsync()
-    {
-        var result = await InvokeAsync(BackendCommands.GpuWatchEvaluate, new { }, null, CancellationToken.None);
-        RequireOk(result, "检测伪装失效");
-        return result.Data is { } data ? BackendJson.Deserialize<List<GpuSpoofInvalidation>>(data) : [];
-    }
-
+    public Task<IReadOnlyList<GpuSpoofInvalidation>> CheckInvalidationAsync() => DeltaNFD.Inspection.InspectionScheduler.Run(() => DeltaNFD.Inspection.GpuSpoofReadWatch.Check());
     private static void RequireOk(BackendResult result, string what)
     {
         if (result.Status != BackendResultStatuses.Ok)
@@ -80,9 +81,8 @@ internal sealed class BackendGpuSpoofService : IGpuSpoofService
 
     private static OperationResult ToOperationResult(BackendResult result, string what)
     {
-        if (result.Data is { } data) return BackendJson.Deserialize<OperationResult>(data);
-        return result.Status is BackendResultStatuses.Ok or BackendResultStatuses.Partial
-            ? OperationResult.Ok(result.Message)
-            : OperationResult.Fail($"{what}失败：{result.Message}");
+        if (result.Data is { } data)
+            return BackendJson.Deserialize<OperationResult>(data);
+        return result.Status is BackendResultStatuses.Ok or BackendResultStatuses.Partial ? OperationResult.Ok(result.Message) : OperationResult.Fail($"{what}失败：{result.Message}");
     }
 }

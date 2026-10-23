@@ -39,28 +39,7 @@ public static class GpuSpoofWatch
         s.GpuSpoofWatchJson = JsonSerializer.Serialize(entries);
     });
 
-    public static IReadOnlyList<GpuSpoofInvalidation> Check()
-    {
-        var result = new List<GpuSpoofInvalidation>();
-        foreach (var entry in Read(AppSettingsStore.Read().GpuSpoofWatchJson))
-        {
-            try
-            {
-            using var key = Registry.LocalMachine.OpenSubKey(entry.RegistryPath);
-            if (key is null || !string.Equals(key.GetValue("ClassGUID") as string, GpuSpoofService.DisplayClassGuid, StringComparison.OrdinalIgnoreCase))
-            { Log.Warn("伪装监测：原显卡实例不可确认，未判断为正常或失效：" + entry.RegistryPath); continue; }
-            var stamp = ReadDriverStamp(entry.RegistryPath);
-            var name = key.GetValue("DeviceDesc") as string;
-            if (IsInvalidated(entry, stamp, name))
-            {
-                result.Add(new(entry, stamp!, name!));
-                Log.Warn("显卡伪装已失效：目标=" + entry.RegistryPath + "；旧驱动=" + entry.DriverStamp + "；新驱动=" + stamp + "；当前名称=" + name);
-            }
-            }
-            catch (Exception ex) { Log.Error("伪装监测：单个适配器读取失败，继续检查其他显卡", ex); }
-        }
-        return result;
-    }
+    public static IReadOnlyList<GpuSpoofInvalidation> Check() => DeltaNFD.Inspection.GpuSpoofReadWatch.Check();
 
     private static string? ReadDriverStamp(string path)
     {

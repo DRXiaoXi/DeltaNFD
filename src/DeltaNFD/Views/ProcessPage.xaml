@@ -126,7 +126,7 @@
                     <Border Background="{ThemeResource ControlFillColorDefaultBrush}" CornerRadius="8" Padding="12">
                       <StackPanel Spacing="8">
                         <TextBlock x:Name="SelectedExclusionStatusText" Text="正在读取排除状态…" FontSize="12" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
-                        <Button x:Name="ExcludeSelectedButton" Content="排除后台抑制与内存回收" Click="ExcludeSelected_Click" HorizontalAlignment="Stretch" />
+                        <Button x:Name="ExcludeSelectedButton" Content="排除内存回收" Click="ExcludeSelected_Click" HorizontalAlignment="Stretch" />
                       </StackPanel>
                     </Border>
                     <!-- 能力面板 -->
@@ -312,7 +312,7 @@
                   <Button x:Name="DetectGameRulePathButton" Content="自动识别安装位置" Click="DetectGameRulePath_Click" />
                 </StackPanel>
                 <TextBlock x:Name="GameRuleStatusText" Text="进入此页后自动识别游戏安装位置；也可粘贴主进程路径。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
-                <TextBlock Text="后台抑制和自动内存回收请前往帧格页开启，三角洲主进程固定排除在这两项后台操作之外。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                <TextBlock Text="自动内存回收请前往帧格页开启，三角洲主进程固定排除在进程内存回收之外。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                 <Button Content="前往帧格开启后台功能" Click="OpenFrameBackground_Click" HorizontalAlignment="Left" />
               </StackPanel>
             </Border>
@@ -383,18 +383,9 @@
               <StackPanel Orientation="Vertical" Spacing="10">
                 <TextBlock Text="后台保护与手动回收" Style="{StaticResource SectionTitleStyle}" VerticalAlignment="Center" FontSize="20" />
               </StackPanel>
-              <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="请先在帧格页选择后台抑制或自动内存回收，再开启“一键帧格模式”。本页只调整具体参数、排除名单和手动回收；保存参数不会独立开启后台功能。" />
+              <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="请先在帧格页选择自动内存回收，再开启“一键帧格模式”。本页只调整具体参数、排除名单和手动回收；保存参数不会独立开启后台功能。" />
               <Button Content="前往帧格开启后台功能" Click="OpenFrameBackground_Click" HorizontalAlignment="Left" />
-              <TextBlock Text="帧格后台功能参数" FontSize="18" FontWeight="SemiBold" />
-              <Grid ColumnSpacing="12" RowSpacing="12">
-                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                <NumberBox x:Name="BusyThresholdBox" Header="触发 CPU%" Value="65" Minimum="10" Maximum="99" SpinButtonPlacementMode="Compact" />
-                <NumberBox x:Name="IdleThresholdBox" Grid.Column="1" Header="恢复 CPU%" Value="50" Minimum="5" Maximum="99" SpinButtonPlacementMode="Compact" />
-                <NumberBox x:Name="MaxAdjustBox" Grid.Row="1" Header="每轮抑制上限" Value="1" Minimum="1" Maximum="4" SpinButtonPlacementMode="Compact" />
-                <NumberBox x:Name="CooldownBox" Grid.Row="1" Grid.Column="1" Header="恢复后冷却秒数" Value="15" Minimum="0" Maximum="600" SpinButtonPlacementMode="Compact" />
-              </Grid>
-              <TextBlock x:Name="SuppressionPolicyText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="高负载持续 3 秒触发，低负载持续 6 秒恢复；候选占用门槛按逻辑 CPU 数自动调整。" />
+              <TextBlock Text="内存回收参数" FontSize="18" FontWeight="SemiBold" />
               <NumberBox x:Name="MemoryPressureBox" Header="自动回收的系统内存占用阈值（%）" Value="85" Minimum="30" Maximum="95" SpinButtonPlacementMode="Compact" />
               <ComboBox x:Name="MemoryModeCombo" Header="内存回收模式" SelectedIndex="0" SelectionChanged="MemoryMode_SelectionChanged" HorizontalAlignment="Stretch">
                 <ComboBoxItem Content="普通回收模式" />
@@ -408,12 +399,6 @@
               <TextBlock x:Name="MemoryBatchPolicyText" Text="普通模式默认每次最多 5 个进程，可设 1–256；其他两种模式不使用这个数量上限。修改后点击保存生效。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
               <TextBlock Text="自动回收需内存持续高压至少 30 秒，并满足用户设置的清理间隔。无明显效果或快速回涨不再额外延长至 20–30 分钟；紧急策略仍可能提高最短间隔。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
               <Button Content="保存后台参数" Click="SaveBackgroundParameters_Click" HorizontalAlignment="Left" />
-              <Expander Header="后台抑制事件" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                <StackPanel Spacing="8">
-                  <Button Content="刷新事件" Click="LoadResponsivenessEvents_Click" HorizontalAlignment="Left" />
-                  <TextBlock x:Name="ResponsivenessEventsText" Text="点击刷新查看最近调整。" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-                </StackPanel>
-              </Expander>
               <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,18,0,0">
                 <StackPanel Spacing="12">
                   <TextBlock Text="手动内存回收" FontSize="18" FontWeight="SemiBold" />
@@ -432,8 +417,8 @@
               </Border>
               <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="0,18,0,0">
                 <StackPanel Spacing="12">
-                  <TextBlock Text="共用排除名单" FontSize="18" FontWeight="SemiBold" />
-                  <TextBlock Text="名单内的应用同时免于后台抑制和内存回收，按完整程序路径匹配，重启后保留。在“进程与属性”中选择应用即可加入；也可粘贴完整 EXE 路径，排除当前未运行的应用。" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}" />
+                  <TextBlock Text="内存回收排除名单" FontSize="18" FontWeight="SemiBold" />
+                  <TextBlock Text="名单内的应用免于普通模式的内存回收，按完整程序路径匹配，重启后保留。在“进程与属性”中选择应用即可加入；也可粘贴完整 EXE 路径，排除当前未运行的应用。" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}" />
                   <TextBox x:Name="BackgroundExcludePathBox" Header="程序完整路径" PlaceholderText="C:\Apps\Example.exe" MaxLength="32760" />
                   <Button Content="添加排除" Click="AddExclusion_Click" />
                   <StackPanel x:Name="BackgroundExclusionsPanel" Spacing="8" />

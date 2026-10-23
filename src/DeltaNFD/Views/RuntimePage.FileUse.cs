@@ -67,7 +67,7 @@ public sealed partial class RuntimePage
                 body.Children.Add(choice);
             }
             dialog.Content = new ScrollViewer { MaxHeight = 420, Content = body };
-            var response = await dialog.ShowWithBackendRecoveryAsync();
+            var response = await dialog.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
             if (refreshRequested) continue;
             if (response == ContentDialogResult.Secondary) return true;
             if (response != ContentDialogResult.Primary)
@@ -102,7 +102,7 @@ public sealed partial class RuntimePage
                 PrimaryButtonText = "强制结束这些进程", CloseButtonText = "保留进程并返回",
                 DefaultButton = ContentDialogButton.Close,
             };
-            if (await force.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) continue;
+            if (await force.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary) continue;
             token.ThrowIfCancellationRequested();
             ViewModel.RepairStatusText = "正在结束本次确认的进程，并重新核对退出结果…";
             var forced = await ViewModel.CloseFileUseAsync(new()

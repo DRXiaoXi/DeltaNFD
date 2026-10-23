@@ -6,8 +6,21 @@ using System.Text.RegularExpressions;
 namespace DeltaNFD.Services;
 
 /// <summary>电源管理的真实实现（powercfg 命令行）。</summary>
-public sealed class PowerService : IPowerService
+public sealed partial class PowerService : IPowerService
 {
+    private readonly Func<string, TimeSpan, Task<(int Code, string StdOut, string StdErr)>> _runPowerCfg;
+    private readonly Func<bool> _isElevated;
+
+    public PowerService() : this(RunPowerCfgCoreAsync, () => ElevationHelper.IsElevated)
+    { _heteroNative = new HeteroPowerPolicy(new HeteroPowerPolicy.NativeApi()); }
+
+    internal PowerService(Func<string, TimeSpan, Task<(int Code, string StdOut, string StdErr)>> runPowerCfg,
+        Func<bool> isElevated)
+    {
+        _runPowerCfg = runPowerCfg;
+        _isElevated = isElevated;
+    }
+
     static PowerService()
     {
         // .NET Core 下 GBK 等非 UTF 编码需要注册 CodePagesEncodingProvider
@@ -345,55 +358,7 @@ public sealed class PowerService : IPowerService
     /// 三个异类调度策略设置（SUB_PROCESSOR 下）。定义见 <see cref="PowerSchemes.HeteroPolicySettings"/>。
     /// </summary>
 
-    private static async Task UnhideHeteroSettingsAsync()
-    {
-        foreach (var (guid, _) in PowerSchemes.HeteroPolicySettings)
-        {
-            await RunPowerCfgAsync(
-                $"/attributes SUB_PROCESSOR {guid} -ATTRIB_HIDE", TimeSpan.FromSeconds(20));
-        }
-
-        // 修复痕迹清理：alphaV0.5 早期版本曾错误地把下面两个无关设置取消隐藏
-        //（延迟敏感度提示处理器性能 / 核心放置过度利用阈值，默认就是隐藏的），恢复隐藏
-        await RunPowerCfgAsync("/attributes SUB_PROCESSOR 619b7505-003b-4e82-b7a6-4dd29c300971 +ATTRIB_HIDE", TimeSpan.FromSeconds(20));
-        await RunPowerCfgAsync("/attributes SUB_PROCESSOR 943c8cb6-6f93-4227-ad87-e9a3feec08d1 +ATTRIB_HIDE", TimeSpan.FromSeconds(20));
-    }
-
-    public async Task<List<HeteroPolicyInfo>> GetHeteroPoliciesAsync()
-    {
-        await UnhideHeteroSettingsAsync();
-
-        var result = new List<HeteroPolicyInfo>();
-        foreach (var (guid, title) in PowerSchemes.HeteroPolicySettings)
-        {
-            var (code, stdout, _) = await RunPowerCfgAsync(
-                $"/q SCHEME_CURRENT SUB_PROCESSOR {guid}", TimeSpan.FromSeconds(20));
-            if (code != 0 || string.IsNullOrWhiteSpace(stdout))
-            {
-                result.Add(new HeteroPolicyInfo { SettingGuid = guid, Title = title, Supported = false });
-                continue;
-            }
-
-            // 与 GetMaxFreqCapAsync 同构：最后两个 0x 值依次为 交流 / 直流 当前值
-            var hexMatches = HexValueRegex.Matches(stdout);
-            if (hexMatches.Count < 2)
-            {
-                result.Add(new HeteroPolicyInfo { SettingGuid = guid, Title = title, Supported = false });
-                continue;
-            }
-
-            result.Add(new HeteroPolicyInfo
-            {
-                SettingGuid = guid,
-                Title = title,
-                Supported = true,
-                AcValue = ParseHexToken(hexMatches[^2].Value),
-                DcValue = ParseHexToken(hexMatches[^1].Value),
-            });
-        }
-
-        return result;
-    }
+    public Task<List<HeteroPolicyInfo>> GetHeteroPoliciesAsync() => GetHeteroPoliciesReadOnlyAsync();
 
     public Task<OperationResult> SetHeteroPolicyAsync(string settingGuid, int value) =>
         SetHeteroPolicyValuesAsync(settingGuid, value, value);
@@ -401,7 +366,7 @@ public sealed class PowerService : IPowerService
     /// <summary>按交流/直流分别设置一个异类策略值（还原原值时两者可能不同）。</summary>
     public async Task<OperationResult> SetHeteroPolicyValuesAsync(string settingGuid, int acValue, int dcValue)
     {
-        if (!ElevationHelper.IsElevated)
+        if (!_isElevated())
         {
             return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
         }
@@ -411,9 +376,13 @@ public sealed class PowerService : IPowerService
         {
             return OperationResult.Fail("未知的异类调度策略设置。");
         }
+        var maximum = settingGuid.Equals(PowerSchemes.HeteroPolicySettings[0].Guid, StringComparison.OrdinalIgnoreCase) ? 4 : 5;
+        if (acValue < 0 || dcValue < 0 || acValue > maximum || dcValue > maximum)
+            return OperationResult.Fail("异类调度策略值超出可用范围。");
+        if (_heteroNative is not null) return _heteroNative.Set(Guid.Parse(settingGuid), acValue, dcValue);
 
-        await UnhideHeteroSettingsAsync();
-
+        // 属性显隐只影响电源选项界面；按 GUID 写入无需改变显隐。
+        // 退出恢复三项策略时，避免重复启动 15 次 /attributes 子进程。
         var (acCode, acOut, acErr) = await RunPowerCfgAsync(
             $"/setacvalueindex SCHEME_CURRENT SUB_PROCESSOR {settingGuid} {acValue}",
             TimeSpan.FromSeconds(20));
@@ -531,7 +500,10 @@ public sealed class PowerService : IPowerService
         return OperationResult.Ok(newGuid);
     }
 
-    private static async Task<(int Code, string StdOut, string StdErr)> RunPowerCfgAsync(
+    private Task<(int Code, string StdOut, string StdErr)> RunPowerCfgAsync(string arguments, TimeSpan timeout) =>
+        _runPowerCfg(arguments, timeout);
+
+    private static async Task<(int Code, string StdOut, string StdErr)> RunPowerCfgCoreAsync(
         string arguments, TimeSpan timeout)
     {
         var psi = new ProcessStartInfo

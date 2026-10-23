@@ -766,6 +766,13 @@ public sealed class CpuTopologyService : ICpuTopologyService
                 }
             }
 
+            if (backup.Count != GamingHeteroOverrides.Length)
+            {
+                Log.Warn("异类策略：原交流/电池值读取不完整，未执行覆写。");
+                return;
+            }
+            // Keep originals before the first write, including a partially failed application.
+            lock (HeteroOverrideLock) _heteroOverrideBackup = backup;
             foreach (var (guid, value) in GamingHeteroOverrides)
             {
                 var result = await power.SetHeteroPolicyAsync(guid, value);
@@ -776,7 +783,6 @@ public sealed class CpuTopologyService : ICpuTopologyService
                 }
             }
 
-            lock (HeteroOverrideLock) _heteroOverrideBackup = backup;
             Log.Info("异类策略：已强制覆写为调度配置（生效=4，线程/短线程调度=0），原值已备份");
         }
         catch (Exception ex)

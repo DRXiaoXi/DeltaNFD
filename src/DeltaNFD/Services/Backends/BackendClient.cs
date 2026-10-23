@@ -14,7 +14,7 @@ namespace DeltaNFD.Services.Backends;
 /// 在途请求，把 Status 分发给订阅者。这样后端可在空闲时持续推送状态快照，而不会与
 /// invoke 的结果帧竞争，也不会丢失任何 result。
 /// </summary>
-internal sealed class BackendClient : IAsyncDisposable
+internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
 {
     private readonly BackendModuleSpec _spec;
     private readonly Process _process;
@@ -131,8 +131,9 @@ internal sealed class BackendClient : IAsyncDisposable
     }
     public bool ExitConfirmed
     {
-        get { if (Volatile.Read(ref _disposed) != 0) return true; try { return _process.HasExited; } catch { return false; } }
+        get { if (_exitVerified) return true; try { if (_process.HasExited) { _exitVerified = true; return true; } } catch { } return false; }
     }
+    private volatile bool _exitVerified;
 
     [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GetNamedPipeClientProcessId(Microsoft.Win32.SafeHandles.SafePipeHandle pipe, out uint pid);
@@ -147,10 +148,31 @@ internal sealed class BackendClient : IAsyncDisposable
         }
     }
 
-    public static async Task<BackendClient> StartAsync(string moduleId, CancellationToken cancellationToken)
+    private PageBackendLease? _pageOwner;
+    private bool _systemMayNeedRestore;
+    async Task IPageBackendProcess.StopForPageAsync()
     {
+        try { await QuiesceAsync(BackendSessions.StopTimeoutFor(ModuleId)); }
+        catch
+        {
+            _unconfirmedOperation = true;
+            try
+            {
+                BackendUnconfirmedStore.SavePageStopFailure(ModuleId, _process.Id, _processStartTicks, _processImagePath, _sessionId);
+                BackendAttention.Report(ModuleId);
+            }
+            catch (Exception ex) { Log.Error("栏目退出记录保存失败，仍保留会话阻塞", ex); }
+            throw;
+        }
+    }
+
+    public static async Task<BackendClient> StartAsync(string moduleId, CancellationToken cancellationToken, PageBackendLease? pageOwner = null)
+    {
+        PageBackendSessions.RecheckPage(pageOwner);
+        using var pageStart = pageOwner is null ? null : await pageOwner.BeginStartAsync(cancellationToken);
         using var starting = BackendOperationGate.EnterStart();
         var spec = BackendModules.Require(moduleId);
+        PageBackendSessions.CheckBeforeStart(moduleId, pageOwner);
         BackendUnconfirmedStore.Check(moduleId);
         var executable = BackendPaths.Resolve(moduleId);
         var imageLock = new FileStream(executable, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -191,7 +213,9 @@ internal sealed class BackendClient : IAsyncDisposable
         var client = new BackendClient(spec, process, pipe, ReadStartTicks(process), executable)
         {
             _imageLock = imageLock,
+            _pageOwner = pageOwner,
         };
+        pageOwner?.Attach(client);
         try
         {
             using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -337,6 +361,7 @@ internal sealed class BackendClient : IAsyncDisposable
                     && snapshot.Module == BackendModules.CpuFrame && !snapshot.RecoveryScopes.Any(s => s.Available))
                 { _cpuRestoreConfirmed = true; _cpuMayNeedRestore = false; }
             }
+
             pending.Conclude(result);
         }
         await Task.CompletedTask;
@@ -423,6 +448,7 @@ internal sealed class BackendClient : IAsyncDisposable
             throw new BackendContractException("后端模块或实际映像路径与预期不符。");
         if (!string.Equals(ready.Nonce, nonce, StringComparison.Ordinal))
             throw new BackendContractException("官方后端未回显正确的 nonce。");
+
         EnsureCompatibleModuleVersion(ready.ModuleVersion);
         if (ready.ProtocolMinor > BackendProtocol.ProtocolMinor)
             throw new BackendContractException("官方后端协议次版本高于宿主，拒绝连接。");
@@ -482,6 +508,11 @@ internal sealed class BackendClient : IAsyncDisposable
         await _invokeGate.WaitAsync(cancellationToken);
         try
         {
+            PageBackendSessions.RecheckPage(_pageOwner);
+            using var pageCommand = _pageOwner?.BeginCommand(this);
+            if (ModuleId == BackendModules.System && command is BackendCommands.SystemDefenderPreflight
+                or BackendCommands.SystemDefenderExclusionsAdd or BackendCommands.SystemDefenderPostApply)
+                _systemMayNeedRestore = true;
             BackendOperationGate.Check();
             if (EmergencyPolicies.BlockReason(command) is { } emergencyReason)
                 return BackendResult.Failed("emergency-policy.blocked", emergencyReason);
@@ -581,8 +612,9 @@ internal sealed class BackendClient : IAsyncDisposable
             throw new BackendContractException("后端已请求停止，仍有待核对记录；未把退出当成恢复成功。");
     }
 
-    internal async Task QuiesceAsync(TimeSpan timeout)
+    internal async Task QuiesceCoreAsync(TimeSpan timeout)
     {
+
         if (ExitConfirmed)
         {
             if (_reader is not null) await _reader.WaitAsync(timeout);
@@ -625,11 +657,12 @@ internal sealed class BackendClient : IAsyncDisposable
             var exitTask = _process.WaitForExitAsync(wait.Token);
             await Task.WhenAny(stopAck.Task, exitTask).WaitAsync(wait.Token);
             await exitTask;
+            _exitVerified = true;
             if (_reader is not null) await _reader.WaitAsync(wait.Token);
             await FinalizeLateRestoresAsync(timeout, wait.Token);
             if (ModuleId == BackendModules.CpuFrame && _cpuMayNeedRestore && !_cpuRestoreConfirmed && !_unconfirmedOperation)
                 await PromoteUnknownAsync(Guid.NewGuid(), _lastCommand ?? BackendCommands.CpuFrameMonitorStart, "stop-restore-unconfirmed");
-            if (ModuleId == BackendModules.System && File.Exists(Path.Combine(AppDataPaths.Root, "defender-session.json")))
+            if (ModuleId == BackendModules.System && _systemMayNeedRestore && File.Exists(Path.Combine(AppDataPaths.Root, "defender-session.json")))
                 RetainRestoreFailure(BackendCommands.SystemDefenderPostApply);
             if (!_unconfirmedOperation) await DisposeAsync();
         }
@@ -649,6 +682,13 @@ internal sealed class BackendClient : IAsyncDisposable
         }
         finally { _stopAck = null; if (acquired) _invokeGate.Release(); }
     }
+    private readonly SemaphoreSlim _stopGate = new(1, 1);
+    internal async Task QuiesceAsync(TimeSpan timeout)
+    {
+        await _stopGate.WaitAsync();
+        try { await QuiesceCoreAsync(timeout); } finally { _stopGate.Release(); }
+    }
+
 
     private async Task FinalizeLateRestoresAsync(TimeSpan timeout, CancellationToken token = default)
     {
@@ -754,6 +794,8 @@ internal sealed class BackendClient : IAsyncDisposable
     private static bool ConfirmedRestore(BackendResult result) => result.Status == BackendResultStatuses.Ok && !result.PendingRestore
         && result.Data is { } data && BackendJson.Deserialize<OperationResult>(data).Success;
 
+
+
     private static string Digest(System.Text.Json.JsonElement args)
     {
         var bytes = System.Text.Encoding.UTF8.GetBytes(args.GetRawText());
@@ -812,6 +854,7 @@ internal sealed class BackendClient : IAsyncDisposable
         catch { /* 进程可能已退出 */ }
         finally
         {
+            try { _exitVerified |= _process.HasExited; } catch { }
             _process.Dispose();
             _imageLock?.Dispose();
         }

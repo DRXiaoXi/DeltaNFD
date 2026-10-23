@@ -73,6 +73,8 @@ public sealed class BackendHostOptions
 
     /// <summary>状态帧推送间隔（仅空闲时）。</summary>
     public TimeSpan StatusInterval { get; init; } = TimeSpan.FromSeconds(1);
+    /// <summary>CPU monitor snapshots may also be sent while a request is busy; the shared writer serializes complete frames.</summary>
+    public bool StatusWhileBusy { get; init; }
 
     /// <summary>进程内自检入口（供契约测试调用，不连接管道）。</summary>
     public Func<Task<int>>? SelfCheck { get; init; }
@@ -253,6 +255,7 @@ public static class BackendHost
         string inFlightCommand = "";
         var exitAfterCurrent = false;
         var stopRequested = false;
+        Task? busyPulse = null;
 
         // 在途请求完成即回写结果；返回 true 表示该命令属于「完成即退出」的按需任务。
         async Task<bool> TrySendCompletedInFlightAsync()
@@ -276,9 +279,24 @@ public static class BackendHost
 
             if (inFlight is not null)
             {
-                var winner = await Task.WhenAny(pendingRead, inFlight);
+                var pulse = options.StatusWhileBusy && options.StatusSource is not null
+                    ? busyPulse ??= Task.Delay(options.StatusInterval, sessionCts.Token) : null;
+                var winner = pulse is null ? await Task.WhenAny(pendingRead, inFlight) : await Task.WhenAny(pendingRead, inFlight, pulse);
+                if (winner == pulse && !sessionCts.IsCancellationRequested)
+                {
+                    busyPulse = null;
+                    try
+                    {
+                        if (options.StatusSource?.Invoke() is { } status)
+                            await writer.SafeWriteAsync(BackendMessages.EncodeStatus(options.Module.Id, sessionId, Guid.NewGuid(),
+                                new BackendStatus(BackendMessages.StateBusy, inFlightRequest, status.Data)));
+                    }
+                    catch (Exception ex) { Log.Warn("后端忙碌状态快照推送失败：" + ex.Message); }
+                    continue;
+                }
                 if (winner == inFlight)
                 {
+                    busyPulse = null;
                     if (await TrySendCompletedInFlightAsync())
                     {
                         Log.Info("官方后端：按需任务已完成，进程退出。");

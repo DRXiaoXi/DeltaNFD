@@ -25,17 +25,8 @@ public sealed partial class ProcessPage
         _backgroundConfigLoaded = true;
         foreach (var row in _rows) row.BackgroundExcluded = _backgroundExcludedPaths.Contains(row.ExecutablePath);
         UpdateSelectedExclusion();
-        var suppression = status.Config.Suppression;
-        SuppressionPolicyText.Text = $"高负载持续 {suppression.CpuBusySeconds} 秒触发，低负载持续 {suppression.CpuIdleSeconds} 秒恢复；"
-            + $"候选最低全机 CPU 占用 {status.EffectiveCandidateCpuFloorPercent}%"
-            + (suppression.CandidateCpuFloorPercent == 0 ? "（按逻辑 CPU 数自动调整）" : "（固定门槛）")
-            + $"。轮内间隔至少 {Math.Max(1, suppression.CooldownSeconds / 2)} 秒，恢复后冷却 {suppression.CooldownSeconds} 秒。";
         if (syncControls)
         {
-            BusyThresholdBox.Value = status.Config.Suppression.CpuBusyThreshold;
-            IdleThresholdBox.Value = status.Config.Suppression.CpuIdleThreshold;
-            MaxAdjustBox.Value = status.Config.Suppression.MaxAdjustPerRound;
-            CooldownBox.Value = status.Config.Suppression.CooldownSeconds;
             MemoryPressureBox.Value = status.Config.MemoryPressurePercent;
             MemoryBatchLimitBox.Value = status.Config.MemoryBatchLimit;
             MemoryCooldownBox.Value = status.Config.MemoryCooldownSeconds / 60d;
@@ -43,7 +34,7 @@ public sealed partial class ProcessPage
             { ProcmanMemoryModes.Aggressive => 1, ProcmanMemoryModes.DeltaStable => 2, _ => 0 };
         }
         UpdateMemoryModeDescription();
-        MemoryBatchPolicyText.Text = $"普通模式每次最多 {status.Config.MemoryBatchLimit} 个后台进程；激进模式直接全局回收，稳洲模式跳过系统、三角洲及有规则的进程，均不使用该数量上限。";
+        MemoryBatchPolicyText.Text = $"普通模式每次最多 {status.Config.MemoryBatchLimit} 个后台进程；激进模式直接全局回收，稳洲模式跳过系统、三角洲、ACE 保护及有规则的进程，均不使用该数量上限。";
         MemoryCooldownPolicyText.Text = $"已设最短间隔 {status.Config.MemoryCooldownSeconds / 60d:0.#} 分钟，可设为 1–1440 分钟；当前策略间隔 {status.EffectiveMemoryCooldownSeconds / 60d:0.#} 分钟。"
             + "自动批次和同一进程重复回收共用；全局模式也使用该间隔。持续高压检查仍需满足，不因回涨或无效回收追加退避。修改后点击保存生效。";
         AutomaticMemoryStatusText.Text = status.AutomaticMemoryActive ? $"自动回收已启用，模式：{(status.Config.MemoryMode switch { ProcmanMemoryModes.Aggressive => "激进回收", ProcmanMemoryModes.DeltaStable => "稳洲回收", _ => "普通回收" })}。" : status.Config.AutomaticMemoryEnabled
@@ -127,14 +118,9 @@ public sealed partial class ProcessPage
     {
         try
         {
-            var busy = BackgroundInteger(BusyThresholdBox, 10, 99, "触发 CPU%：");
-            var idle = BackgroundInteger(IdleThresholdBox, 5, 99, "恢复 CPU%：");
-            var limit = BackgroundInteger(MaxAdjustBox, 1, 4, "每轮上限：");
-            var cooldown = BackgroundInteger(CooldownBox, 0, 600, "冷却秒数：");
             var memory = BackgroundInteger(MemoryPressureBox, 30, 95, "内存回收阈值：");
             var memoryBatch = BackgroundInteger(MemoryBatchLimitBox, 1, 256, "单次内存回收进程数：");
             var memoryCooldown = BackgroundInteger(MemoryCooldownBox, 1, 1440, "内存回收间隔（分钟）：");
-            if (busy <= idle) throw new ArgumentException("触发阈值必须高于恢复阈值。");
             await SaveBackgroundAsync(c => c with
             {
                 MemoryPressurePercent = memory,
@@ -142,7 +128,6 @@ public sealed partial class ProcessPage
                 MemoryCooldownSeconds = memoryCooldown * 60,
                 MemoryMode = MemoryModeCombo.SelectedIndex switch
                 { 1 => ProcmanMemoryModes.Aggressive, 2 => ProcmanMemoryModes.DeltaStable, _ => ProcmanMemoryModes.Normal },
-                Suppression = c.Suppression with { CpuBusyThreshold = busy, CpuIdleThreshold = idle, MaxAdjustPerRound = limit, CooldownSeconds = cooldown },
             });
         }
         catch (Exception ex) { BackgroundConfigNoteText.Text = "参数未保存：" + ex.Message; }
@@ -154,23 +139,10 @@ public sealed partial class ProcessPage
         MemoryBatchLimitBox.IsEnabled = MemoryModeCombo.SelectedIndex == 0;
         MemoryModeDescriptionText.Text = MemoryModeCombo.SelectedIndex switch
         {
-            1 => "激进：不统计进程，回收全局工作集和低优先级待备缓存，保留其他待备缓存，不强制写回修改页列表。游戏、前台和系统仍可能受影响，需要管理员权限，仍可能出现换页或卡顿。",
-            2 => "稳洲：跳过三角洲主进程、系统进程和有规则的进程（含停用规则）；其余进程包含前台和工具自身，不使用普通排除名单或数量上限。不清空全局待备缓存、不强制写回修改页列表；不可访问或冷却中的目标跳过。",
+            1 => "激进：不统计进程，直接回收全局工作集和低优先级待备缓存，忽略逐进程保护和排除名单，可能影响 ACE、游戏、前台和系统。保留其他待备缓存，不强制写回修改页列表；需要管理员权限，仍可能出现换页或卡顿。",
+            2 => "稳洲：跳过三角洲主进程、系统进程、ACE 保护进程和有规则的进程（含停用规则）；其余进程包含前台和工具自身，不使用普通排除名单或数量上限。不清空全局待备缓存、不强制写回修改页列表；不可访问或冷却中的目标跳过。",
             _ => "普通：沿用后台进程保护和排除名单，不检测 CPU 占用，不设工作集大小门槛；按工作集排序，使用单次数量设置。",
         };
-    }
-
-    private async void LoadResponsivenessEvents_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var result = await BackendProcmanService.Instance.InvokeAsync(BackendCommands.ProcmanResponsivenessEvents, new { });
-            var events = BackendResults.RequireData<ProcmanResponsivenessEventResult>(result, "后台抑制事件");
-            ResponsivenessEventsText.Text = events.Events.Count == 0 ? "暂无调整事件（帧格未开启或尚未触发）。"
-                : string.Join("\n", events.Events.TakeLast(8).Select(ev =>
-                    $"{ev.TimeUtc.LocalDateTime:HH:mm:ss} {Path.GetFileName(ev.ExecutablePath)}（PID {ev.Pid}）：{(ev.Action == "demote" ? "临时降级" : "恢复")}——{ev.Reason}"));
-        }
-        catch (Exception ex) { ResponsivenessEventsText.Text = "事件读取未完成：" + ex.Message; }
     }
 
     public void ShowBackgroundSettings() => ProcessTabs.SelectedItem = BackgroundTab;
@@ -178,6 +150,7 @@ public sealed partial class ProcessPage
     private async void ExcludeSelected_Click(object sender, RoutedEventArgs e)
     {
         if (_selected is not { } row || string.IsNullOrWhiteSpace(row.ExecutablePath)) { ShowResult(false, "请先选择路径可确认的进程。"); return; }
+        if (ProcmanProcessProtection.IsAceProtected(row.ExecutablePath)) { ShowResult(false, ProcmanProcessProtection.AceReason); return; }
         var path = row.ExecutablePath;
         var saved = await SaveBackgroundAsync(c => c with { ExcludedExecutablePaths = c.ExcludedExecutablePaths.Contains(path, StringComparer.OrdinalIgnoreCase)
             ? c.ExcludedExecutablePaths.Where(p => !p.Equals(path, StringComparison.OrdinalIgnoreCase)).ToList()

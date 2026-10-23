@@ -33,57 +33,7 @@ public sealed class ShaderService : IShaderService
     /// <summary>临时通用判据：PSOCache 中 GameVer 目录达到此数量即判为残留异常，不依赖显卡厂商。</summary>
     private const int GameVerAbnormalThreshold = 2;
 
-    public Task<ShaderStatus> GetStatusAsync() => Task.Run(() =>
-    {
-        using var operation = _target.BeginOperation();
-        if (_target.IsCustom) return new ShaderStatus
-        {
-            IsNvidia = false, DriverState = ShaderDriverState.NotApplicable,
-            DriverAdvice = GameTargetService.DeltaOnlyMessage, IsGameRunning = false,
-        };
-        var reading = _driverReader();
-        var gpuState = reading.State;
-        var driverVersion = reading.Version;
-        var isNvidia = gpuState == ShaderGpuDetectionState.Nvidia;
-
-        double psoSizeMb = 0;
-        var psoPaths = DeltaForceLocator.FindPsoCachePaths();
-        var psoPath = psoPaths.FirstOrDefault() ?? "";
-        foreach (var path in psoPaths)
-        {
-            psoSizeMb += GetDirectorySizeMb(path);
-        }
-
-        var (state, advice) = BuildDriverAdvice(gpuState, driverVersion);
-        if (HasProblemDriverCacheSignature(gpuState, driverVersion, psoPath))
-        {
-            state = ShaderDriverState.ProblemSeries;
-            var versionNumber = ToVersionNumber(driverVersion);
-            var reason = versionNumber == Driver61714Version
-                ? "617.14 属于问题驱动"
-                : ProblemDriverMajors.Contains(versionNumber / 100 ?? 0)
-                    ? $"{versionNumber / 100} 系驱动存在着色器文件缺失问题"
-                    : "驱动高于 617.14，且单版本缓存中 ≥256MB NVPH 文件少于两个";
-            advice = $"⚠ 问题驱动（{driverVersion}）：{reason}。"
-                + "建议更换为其他版本驱动，并一键清除旧着色器文件后重新编译。";
-        }
-
-        return new ShaderStatus
-        {
-            IsNvidia = isNvidia,
-            GpuDetectionState = gpuState,
-            DriverVersion = driverVersion,
-            DriverVersionRaw = reading.Raw,
-            DriverVersionSource = reading.Source,
-            DriverAdapterName = reading.Adapter,
-            DriverState = state,
-            DriverAdvice = advice,
-            PsoCachePath = psoPath,
-            PsoCachePaths = psoPaths.ToList(),
-            PsoCacheSizeMb = Math.Round(psoSizeMb, 1),
-            IsGameRunning = DeltaForceLocator.IsGameRunning(),
-        };
-    });
+    public Task<ShaderStatus> GetStatusAsync() => new DeltaNFD.Inspection.ShaderInspection(_target, () => { var r = _driverReader(); return new(r.State,r.Version,r.Raw,r.Source,r.Adapter); }).GetStatusAsync();
 
     public Task<OperationResult> ClearPsoCacheAsync() => ClearPsoCacheAsync(CancellationToken.None);
 
@@ -327,13 +277,7 @@ public sealed class ShaderService : IShaderService
     /// <summary>正常状态下 ≥256MB 的 NVPH 文件至少应有的数量。</summary>
     private const int NvphMinLargeCount = 2;
 
-    public Task<ShaderDiagnosis> DiagnoseAsync() => Task.Run(() =>
-    {
-        using var operation = _target.BeginOperation();
-        return _target.IsCustom
-            ? new ShaderDiagnosis { Level = ShaderDiagLevel.NotApplicable, Summary = GameTargetService.DeltaOnlyMessage, Details = [], Advice = "" }
-            : DiagnoseAt(DeltaForceLocator.FindPsoCachePath());
-    });
+    public Task<ShaderDiagnosis> DiagnoseAsync() => new DeltaNFD.Inspection.ShaderInspection(_target).DiagnoseAsync();
 
     /// <summary>
     /// 对指定 PSOCache 目录做着色器健康诊断。

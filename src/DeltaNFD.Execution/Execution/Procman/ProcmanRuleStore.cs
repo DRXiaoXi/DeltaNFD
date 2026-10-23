@@ -56,6 +56,8 @@ public sealed class ProcmanRuleStore
         if (rule.ExecutablePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == false)
             throw new ArgumentException("规则目标必须是 EXE。");
         rule.ExecutablePath = Path.GetFullPath(rule.ExecutablePath);
+        if (ProcmanProcessProtection.IsAceProtected(rule.ExecutablePath))
+            throw new ArgumentException(ProcmanProcessProtection.AceReason);
         rule.UpdatedUtc = DateTimeOffset.UtcNow;
 
         using var lease = AcquireWriteLease();
@@ -86,7 +88,8 @@ public sealed class ProcmanRuleStore
     }
 
     /// <summary>启用规则时应用的候选能力集合（供引擎枚举目标进程后逐项应用）。</summary>
-    public List<ProcmanRuleEntry> EnabledRules() => Load().Where(r => r.Enabled).ToList();
+    public List<ProcmanRuleEntry> EnabledRules() => Load().Where(r => r.Enabled
+        && !ProcmanProcessProtection.IsAceProtected(r.ExecutablePath)).ToList();
 
     private RuleFile LoadStrict()
     {

@@ -31,11 +31,10 @@ internal static class ProcmanRepairChecks
         {
             ForegroundForTests = () => Environment.ProcessId,
             FrameModeActiveForTests = () => true,
-            FrameSuppressionSelectedForTests = () => true,
             FrameMemorySelectedForTests = () => true,
             // Hosted Windows CI runs in service session 0. Model only this unique fixture as a user app;
             // the native system classifier is verified separately below and never bypassed in production.
-            ResponsivenessExcludedForTests = candidate => candidate != identity,
+            BackgroundExcludedForTests = candidate => candidate != identity,
         };
         try
         {
@@ -61,7 +60,7 @@ internal static class ProcmanRepairChecks
             try { Project(new()); } catch (InvalidDataException) { emptyProjectionRejected = true; }
             Check(emptyProjectionRejected, "没有有效属性时不创建空总是规则");
             bool Excluded(string path = app, int session = 1, string sid = userSid, bool critical = false) =>
-                ProcmanResponsivenessFilter.ExcludedByIdentity(path, session, sid, critical, @"C:\Windows");
+                ProcmanBackgroundFilter.ExcludedByIdentity(path, session, sid, critical, @"C:\Windows");
             Check(!Excluded(), "普通用户应用参与响应性保护");
             Check(!Excluded(@"C:\Apps\AnotherGame.exe"), "其他游戏不按名称整体排除");
             Check(Excluded(@"C:\Apps\DeltaNFD-extra.exe"), "三角帧工具命名前缀统一排除");
@@ -81,9 +80,9 @@ internal static class ProcmanRepairChecks
             Check(Excluded(sid: "") && Excluded(path: "") && Excluded(session: -1), "身份不完整不能误当成普通应用");
             using (var owner = System.Security.Principal.WindowsIdentity.GetCurrent())
             {
-                var expectedExcluded = ProcmanResponsivenessFilter.ExcludedByIdentity(identity.ExecutablePath, child.SessionId,
+                var expectedExcluded = ProcmanBackgroundFilter.ExcludedByIdentity(identity.ExecutablePath, child.SessionId,
                     owner.User?.Value ?? "", false, Environment.GetFolderPath(Environment.SpecialFolder.Windows));
-                Check(ProcmanResponsivenessFilter.IsExcluded(identity) == expectedExcluded,
+                Check(ProcmanBackgroundFilter.IsExcluded(identity) == expectedExcluded,
                     "真实夹具账户与会话核对符合分类；CI 服务会话也保持排除");
             }
             // ---- CPU 集合组掩码不可用（Windows 10）：明确失败、不产生恢复义务、拒绝规则 ----
@@ -186,126 +185,33 @@ internal static class ProcmanRepairChecks
                 engine.Reset(new() { Identity = request });
                 using (var returned = ProcessPropertyGate.TryEnterGame(child.Id, "priority", true)) Check(returned is not null, "释放后交回游戏控制");
             }
-            using (var engine = Engine("resp"))
+            // Simulate a pre-upgrade suppression journal using only our dedicated child.
+            var legacyPath = Path.Combine(root, "legacy-suppression.json");
+            var legacyRecord = new ProcmanChangeLog.ChangeRecord(child.Id, identity.StartTimeUtcTicks, identity.ExecutablePath,
+                "priority", "Normal", "BelowNormal", ProcmanControlCoordinator.OwnerResponsiveness, DateTimeOffset.UtcNow);
+            new ProcmanChangeLog(legacyPath).Add(legacyRecord);
+            ProcmanCapabilities.SetPriority(child.Id, ProcessPriorityClass.BelowNormal);
+            using (var engine = new ProcmanEngine(legacyPath) { BackgroundLoopDisabledForTests = true })
             {
-                var now = DateTime.UtcNow;
-                engine.ClockForTests = () => now;
-                double total = 90;
-                engine.SampleForTests = () => new(total, [(identity, 20)]);
-                Check(engine.ConfigureResponsiveness(new() { Enabled = true, Exclusions = [identity.ExecutablePath] }).Success && engine.Snapshot().RulesEngineRunning, "单独开启保护即运行循环；旧额外排除列表不再生效");
-                await engine.ResponsivenessOnceForTests(); now = now.AddSeconds(7); await engine.ResponsivenessOnceForTests();
-                Check(Priority() == "BelowNormal", "持续高负载调整合适的后台应用，旧额外路径排除不生效");
-                total = 20; await engine.ResponsivenessOnceForTests(); now = now.AddSeconds(9); await engine.ResponsivenessOnceForTests();
-                Check(Priority() == "Normal", "持续低负载恢复");
-                Check(engine.ConfigureResponsiveness(new() { Enabled = false }).Success && !engine.ResponsivenessEnabled, "停用保护等待旧循环并恢复");
+                Check(engine.Snapshot().HeldChangeCount == 1 && !engine.Snapshot().ResponsivenessEnabled,
+                    "旧版抑制记录可见，但不会重新启用抑制");
+                Check(engine.Reconcile().Entries.Single().Status == "applied" && Priority() == "BelowNormal",
+                    "只读核对不擅自改变旧抑制记录");
+                Check(engine.SyncFrameBackground().Success && Priority() == "Normal" && engine.Snapshot().HeldChangeCount == 0,
+                    "帧格同步精确恢复旧抑制优先级并释放记录");
+                Check(engine.SyncFrameBackground().Success && Priority() == "Normal", "再次同步不重复创建抑制修改");
             }
-            using (var engine = Engine("resp-other-property"))
+            new ProcmanChangeLog(legacyPath).Add(legacyRecord);
+            ProcmanCapabilities.SetPriority(child.Id, ProcessPriorityClass.AboveNormal);
+            using (var engine = new ProcmanEngine(legacyPath) { BackgroundLoopDisabledForTests = true })
             {
-                var now = DateTime.UtcNow;
-                engine.ClockForTests = () => now;
-                engine.SampleForTests = () => new(90, [(identity, 20)]);
-                Check(engine.Set(new() { Identity = request, MemoryPriority = 2 }).Outcomes.Single().Status == "applied", "夹具设置其他属性用于检查整体排除");
-                engine.ConfigureResponsiveness(new() { Enabled = true });
-                await engine.ResponsivenessOnceForTests(); now = now.AddSeconds(7); await engine.ResponsivenessOnceForTests();
-                Check(Priority() == "Normal" && !engine.ResponsivenessEvents().Any(e => e.Action == "demote"), "已有内存手动设置时整进程排除");
-                engine.ConfigureResponsiveness(new() { Enabled = false });
-                Check(Priority() == "Normal" && ProcmanCapabilities.ReadMemoryPriority(child.Id).Value == "2", "关闭保护只恢复 CPU 调整，保留内存手动设置");
-                await engine.RestoreAllAsync();
-            }
-            using (var engine = Engine("resp-foreground"))
-            {
-                var now = DateTime.UtcNow;
-                engine.ClockForTests = () => now;
-                engine.ForegroundForTests = () => child.Id;
-                engine.SampleForTests = () => new(90, [(identity, 20)]);
-                engine.ConfigureResponsiveness(new() { Enabled = true });
-                await engine.ResponsivenessOnceForTests(); now = now.AddSeconds(7); await engine.ResponsivenessOnceForTests();
-                Check(Priority() == "Normal" && engine.ResponsivenessEvents().Count == 0, "前台应用持续高占用也不降级");
-                engine.ForegroundForTests = () => -1;
-                now = now.AddSeconds(7); await engine.ResponsivenessOnceForTests();
-                Check(Priority() == "Normal", "前台身份查询失败时不新增调整");
-                engine.ForegroundForTests = () => Environment.ProcessId;
-                now = now.AddSeconds(7); await engine.ResponsivenessOnceForTests();
-                Check(Priority() == "BelowNormal", "普通应用离开前台后才参与响应性调整");
-                engine.FrameModeActiveForTests = () => false;
-                await engine.ResponsivenessOnceForTests();
-                Check(Priority() == "Normal" && !engine.Snapshot().ResponsivenessEnabled,
-                    "帧格关闭即还原自身后台抑制，不等待新的独立开关操作");
-                await engine.RestoreAllAsync();
-            }
-            using (var engine = Engine("resp-tool-exclusion"))
-            {
-                var now = DateTime.UtcNow; var classified = 0;
-                engine.ClockForTests = () => now;
-                engine.ResponsivenessExcludedForTests = _ => { classified++; return false; };
-                engine.ConfigureResponsiveness(new() { Enabled = true });
-                foreach (var path in new[] { @"D:\Delta NFD\DeltaNFD.exe", @"D:\Delta NFD\Backends\DeltaNFD.Backend.Runtime.exe",
-                    @"D:\Delta NFD\Backends\DeltaNFD.OfflineHelper.exe", Path.Combine(BackendEnvironment.AppRoot, "plugins", "OtherName.exe") })
-                {
-                    engine.SampleForTests = () => new(90, [(identity with { ExecutablePath = path }, 20)]);
-                    await engine.ResponsivenessOnceForTests(); now = now.AddSeconds(7); await engine.ResponsivenessOnceForTests();
-                    Check(classified == 0 && engine.ResponsivenessEvents().Count == 0,
-                        "后台抑制在任何属性操作前明确保护工具进程：" + Path.GetFileName(path));
-                }
-                await engine.RestoreAllAsync();
-            }
-            using (var engine = Engine("resp-shared-exclusion-restore"))
-            {
-                engine.BackgroundLoopDisabledForTests = true;
-                var now = DateTime.UtcNow;
-                engine.ClockForTests = () => now;
-                engine.SampleForTests = () => new(95, [(identity, 90)]);
-                engine.ConfigureResponsiveness(new() { Enabled = true, CpuBusySeconds = 1 });
-                await engine.ResponsivenessOnceForTests(); now = now.AddSeconds(2); await engine.ResponsivenessOnceForTests();
-                Check(Priority() == "BelowNormal", "共用排除测试：专用夹具先受后台抑制");
-                engine.MemoryReadForTests = _ => 600L * 1024 * 1024;
-                engine.MemorySampleDelayForTests = TimeSpan.Zero;
-                var preview = await engine.PreviewMemoryAsync();
-                Check(preview.Candidates.Count == 1, "本工具临时后台抑制不冒充用户手动属性排除");
-                var trimmed = false;
-                engine.MemoryTrimForTests = (target, guard) =>
-                {
-                    trimmed = guard(); return new(target.Pid, "fixture", trimmed ? "completed" : "skipped", "simulated");
-                };
-                engine.TrimMemory(new() { PreviewId = preview.Id, Processes = preview.Candidates.Select(c => c.Identity).ToList() });
-                Check(trimmed && Priority() == "BelowNormal", "已有本工具抑制优先级时仍可回收，不改动优先级控制权");
-                Check(engine.SaveBackgroundConfig(new() { ExcludedExecutablePaths = [identity.ExecutablePath] }).Success
-                    && Priority() == "Normal" && engine.Detail(new() { Identity = request }).HeldChanges.Count == 0,
-                    "新增排除项立即恢复已抑制的专用夹具，记录及所有权正确释放");
-                now = now.AddSeconds(10); await engine.ResponsivenessOnceForTests();
-                Check(Priority() == "Normal", "加入共用名单后持续高 CPU 也不会重新抑制");
-                await engine.RestoreAllAsync();
-            }
-            using (var engine = Engine("resp-other-rule"))
-            {
-                var now = DateTime.UtcNow;
-                engine.ClockForTests = () => now;
-                engine.SampleForTests = () => new(90, [(identity, 20)]);
-                Check(engine.SaveRule(new() { ExecutablePath = identity.ExecutablePath, Capability = "memoryPriority", Value = "2" }).Success,
-                    "保存其他属性规则用于检查进程排除");
-                await engine.ApplyRulesOnceAsync();
-                engine.ConfigureResponsiveness(new() { Enabled = true });
-                await engine.ResponsivenessOnceForTests(); now = now.AddSeconds(7); await engine.ResponsivenessOnceForTests();
-                Check(Priority() == "Normal" && !engine.ResponsivenessEvents().Any(e => e.Action == "demote"), "其他属性持久规则同样排除整个进程");
-                await engine.RestoreAllAsync();
-            }
-            foreach (var ruleOwnsPriority in new[] { false, true })
-            using (var engine = Engine(ruleOwnsPriority ? "resp-priority-rule" : "resp-priority-manual"))
-            {
-                var now = DateTime.UtcNow;
-                engine.ClockForTests = () => now;
-                engine.SampleForTests = () => new(90, [(identity, 20)]);
-                if (ruleOwnsPriority)
-                {
-                    engine.SaveRule(new() { ExecutablePath = identity.ExecutablePath, Capability = "priority", Value = "Normal" });
-                    await engine.ApplyRulesOnceAsync();
-                }
-                else engine.Set(new() { Identity = request, CpuPriority = "Normal" });
-                engine.ConfigureResponsiveness(new() { Enabled = true });
-                await engine.ResponsivenessOnceForTests(); now = now.AddSeconds(7); await engine.ResponsivenessOnceForTests();
-                Check(Priority() == "Normal" && !engine.ResponsivenessEvents().Any(e => e.Action == "demote"),
-                    ruleOwnsPriority ? "同一 CPU 优先级的显式规则不被保护覆盖" : "同一 CPU 优先级的手动控制不被保护覆盖");
-                await engine.RestoreAllAsync();
+                Check(!engine.SyncFrameBackground().Success && Priority() == "AboveNormal" && engine.Snapshot().HeldChangeCount == 1,
+                    "旧记录与当前值冲突时保留证据，不覆盖外部修改");
+                Check(engine.BackgroundStatus().Note.Contains("旧版后台抑制") && !engine.BackgroundStatus().AutomaticMemoryActive,
+                    "旧抑制未恢复时自动回收暂停并明确说明");
+                ProcmanCapabilities.SetPriority(child.Id, ProcessPriorityClass.BelowNormal);
+                Check((await engine.RecoverAsync("all")).Success && Priority() == "Normal" && engine.Snapshot().HeldChangeCount == 0,
+                    "现有恢复入口继续处理旧版抑制记录");
             }
             var corrupt = Path.Combine(root, "corrupt.json"); File.WriteAllText(corrupt, "{bad");
             bool rejected = false; try { _ = new ProcmanChangeLog(corrupt); } catch (InvalidDataException) { rejected = true; }

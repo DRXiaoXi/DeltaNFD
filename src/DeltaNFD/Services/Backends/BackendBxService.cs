@@ -14,46 +14,18 @@ internal sealed class BackendBxService : IBxService
     private Task<BackendResult> Invoke(string command, object? args = null) =>
         _caller.InvokeAsync(command, args ?? new { }, null, CancellationToken.None);
 
-    public async Task<List<string>> ResolveServiceGroupAsync(BxServiceGroup group) =>
-        BackendResults.RequireData<List<string>>(
-            await Invoke(BackendCommands.SystemBxServiceGroupResolve, new BxServiceGroupArgs { GroupId = group.Id }), "服务组展开");
+    public Task<List<string>> ResolveServiceGroupAsync(BxServiceGroup group) => SystemInspectionCache.ResolvedServices(group);
 
     public async Task<BxState> GetItemStateAsync(BxItem item) =>
         (await GetItemStatesAsync([item]))[item];
 
-    public async Task<Dictionary<BxItem, BxState>> GetItemStatesAsync(IReadOnlyList<BxItem> items)
-    {
-        var refs = items.Select(i => new BxItemRef { SectionId = RequireSection(i), Name = i.Name }).ToList();
-        var states = BackendResults.RequireData<List<BxItemStateDto>>(
-            await Invoke(BackendCommands.SystemBxStatus, new BxStatusArgs { Items = refs }), "条目状态");
-        var map = new Dictionary<(string Section, string Name), BxState>();
-        foreach (var state in states)
-        {
-            map[(state.SectionId, state.Name)] = state.State;
-        }
+    public Task<Dictionary<BxItem,BxState>> GetItemStatesAsync(IReadOnlyList<BxItem> items) => OptimizationScan.ReadItemsAsync(items);
 
-        var result = new Dictionary<BxItem, BxState>();
-        foreach (var item in items)
-        {
-            result[item] = map.TryGetValue((RequireSection(item), item.Name), out var state) ? state : BxState.Unknown;
-        }
+    public Task<BxState> GetServiceGroupStateAsync(BxServiceGroup group) => OptimizationScan.ReadGroupAsync(group);
 
-        return result;
-    }
+    public Task InvalidateAppxCacheAsync() => new DeltaNFD.Inspection.BxInspection().InvalidateAppxCacheAsync();
 
-    public async Task<BxState> GetServiceGroupStateAsync(BxServiceGroup group) =>
-        BackendResults.RequireData<BxState>(
-            await Invoke(BackendCommands.SystemBxServiceGroupStatus, new BxServiceGroupArgs { GroupId = group.Id }), "服务组状态");
-
-    public async Task InvalidateAppxCacheAsync()
-    {
-        await Invoke(BackendCommands.SystemBxCacheInvalidate, new BxCacheInvalidateArgs { What = "appx" });
-    }
-
-    public async Task InvalidateTaskCacheAsync()
-    {
-        await Invoke(BackendCommands.SystemBxCacheInvalidate, new BxCacheInvalidateArgs { What = "task" });
-    }
+    public Task InvalidateTaskCacheAsync() => new DeltaNFD.Inspection.BxInspection().InvalidateTaskCacheAsync();
 
     public async Task<OperationResult> ApplyItemAsync(BxItem item, bool turnOn) =>
         BackendResults.Map(await Invoke(BackendCommands.SystemBxApply,
@@ -63,16 +35,7 @@ internal sealed class BackendBxService : IBxService
         BackendResults.Map(await Invoke(BackendCommands.SystemBxServiceGroupApply,
             new BxServiceGroupApplyArgs { GroupId = group.Id, TurnOn = turnOn }), "服务组应用");
 
-    public async Task<BxGearInfo?> GetGearInfoAsync(BxItem item)
-    {
-        var result = await Invoke(BackendCommands.SystemBxGearInfo, new BxItemArgs { SectionId = RequireSection(item), Name = item.Name });
-        if (result.Status != BackendResultStatuses.Ok || result.Data is null || result.Data.Value.ValueKind == System.Text.Json.JsonValueKind.Null)
-        {
-            return null;
-        }
-
-        return BackendJson.Deserialize<BxGearInfo>(result.Data.Value);
-    }
+    public Task<BxGearInfo?> GetGearInfoAsync(BxItem item) => SystemInspectionCache.Gear(item);
 
     public async Task<OperationResult> ApplyGearAsync(BxItem item, int gearIndex) =>
         BackendResults.Map(await Invoke(BackendCommands.SystemBxGearApply,
@@ -81,8 +44,7 @@ internal sealed class BackendBxService : IBxService
     public async Task<BxRestoreSummary> RestoreAllAsync() =>
         BackendResults.RequireData<BxRestoreSummary>(await Invoke(BackendCommands.SystemBxRestoreAll), "一键恢复");
 
-    public async Task<BxBackupStatus> GetBackupStatusAsync() =>
-        BackendResults.RequireData<BxBackupStatus>(await Invoke(BackendCommands.SystemBxBackups), "读取扩展库备份");
+    public Task<BxBackupStatus> GetBackupStatusAsync() => SystemInspectionCache.Backups();
 
     /// <summary>条目必须带栏目 Id 才能让后端按内置数据库解析；缺失即为内部错误（不回退为任意路径）。</summary>
     private static string RequireSection(BxItem item)

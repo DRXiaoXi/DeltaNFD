@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using DeltaNFD.Services;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
@@ -107,10 +108,11 @@ public static class ProcmanIdentity
             && string.Equals(current.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>受保护/关键进程判断：本工具自身、执行/恢复进程与系统关键进程不得由自动策略调整。</summary>
+    /// <summary>受保护进程不能新增主动修改或执行逐进程规则；历史记录恢复另按身份和原值校验。</summary>
     public static bool IsProtectedPath(string executablePath)
     {
         if (executablePath.Length == 0) return true;
+        if (ProcmanProcessProtection.IsAceProtected(executablePath)) return true;
         var name = Path.GetFileNameWithoutExtension(executablePath);
         if (name.StartsWith("DeltaNFD", StringComparison.OrdinalIgnoreCase)) return true;
         string[] critical = ["system", "lsass", "services", "winlogon", "smss", "csrss", "svchost", "dwm", "explorer", "wininit", "Memory Compression", "sguard64", "sguard32", "ACE-Service64", "ACE-Service32", "MsMpEng"];

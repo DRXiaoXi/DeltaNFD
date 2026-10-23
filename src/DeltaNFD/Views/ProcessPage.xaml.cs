@@ -52,6 +52,7 @@ public sealed partial class ProcessPage : Page
             var response = await BackendProcmanService.Instance.InvokeAsync(BackendCommands.ProcmanMemoryPreview, new { });
             var preview = BackendResults.RequireData<ProcmanMemoryPreview>(response, "后台内存预览");
             MemoryTrimStatusText.Text = preview.Message;
+            if (preview.Id.Length == 0) return;
             var global = preview.Mode == ProcmanMemoryModes.Aggressive;
             if (preview.Candidates.Count == 0 && !global) { MemoryTrimStatusText.Text += "\n当前没有符合条件的进程。"; return; }
             if (_detachedFromWindow || XamlRoot is null) return;
@@ -67,7 +68,7 @@ public sealed partial class ProcessPage : Page
             }
             var confirm = new ContentDialog
             {
-                XamlRoot = XamlRoot, Title = global ? "执行全局内存回收？" : preview.Mode == ProcmanMemoryModes.DeltaStable ? "回收全部非系统、非三角洲进程？" : "回收所选后台应用的工作集？",
+                XamlRoot = XamlRoot, Title = global ? "执行全局内存回收？" : preview.Mode == ProcmanMemoryModes.DeltaStable ? "回收稳洲模式的候选进程？" : "回收所选后台应用的工作集？",
                 Content = new ScrollViewer { Content = content, MaxHeight = 420 },
                 PrimaryButtonText = global ? "执行全局回收" : "回收已勾选进程", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
             };
@@ -273,6 +274,7 @@ public sealed partial class ProcessPage : Page
         try
         {
             if (path.Length == 0) return true;
+            if (ProcmanProcessProtection.IsAceProtected(path)) return true;
             var name = System.IO.Path.GetFileNameWithoutExtension(path);
             if (name.StartsWith("DeltaNFD", StringComparison.OrdinalIgnoreCase)) return true;
             string[] critical = ["system", "lsass", "services", "winlogon", "smss", "csrss", "svchost", "dwm", "explorer", "wininit", "Memory Compression"];
@@ -365,6 +367,12 @@ public sealed partial class ProcessPage : Page
         DetailEmptyPanel.Visibility = Visibility.Collapsed;
         DetailPanel.Visibility = Visibility.Visible;
         DetailIdentityWarning.IsOpen = false;
+        if (ProcmanProcessProtection.IsAceProtected(detail.Process.ExecutablePath))
+        {
+            DetailIdentityWarning.Severity = InfoBarSeverity.Informational;
+            DetailIdentityWarning.Message = ProcmanProcessProtection.AceReason;
+            DetailIdentityWarning.IsOpen = true;
+        }
 
         DetailNameText.Text = detail.Process.Name;
         DetailPathText.Text = detail.Process.ExecutablePath;
@@ -483,6 +491,7 @@ public sealed partial class ProcessPage : Page
     private void ShowIdentityWarning(string message)
     {
         ShowEmptyDetail();
+        DetailIdentityWarning.Severity = InfoBarSeverity.Warning;
         DetailIdentityWarning.Message = message;
         DetailIdentityWarning.IsOpen = true;
     }
@@ -497,6 +506,7 @@ public sealed partial class ProcessPage : Page
     private ProcessIdentityArgs? CurrentIdentity()
     {
         if (_selected is not { } row) { ShowResult(false, "请先选择进程。"); return null; }
+        if (ProcmanProcessProtection.IsAceProtected(row.ExecutablePath)) { ShowResult(false, ProcmanProcessProtection.AceReason); return null; }
         return new ProcessIdentityArgs { Pid = row.Pid, StartTimeUtcTicks = row.StartTimeUtcTicks, ExecutablePath = row.ExecutablePath };
     }
 
@@ -600,6 +610,7 @@ public sealed partial class ProcessPage : Page
 
     private async Task ApplySetAsync(ProcmanSetArgs args, string what)
     {
+        if (ProcmanProcessProtection.IsAceProtected(args.Identity.ExecutablePath)) { ShowResult(false, ProcmanProcessProtection.AceReason); return; }
         if (_propertyBusy) return;
         _propertyBusy = true;
         var always = IsAlways && args.GpuPreference is null;
@@ -856,7 +867,7 @@ public sealed partial class ProcessPage : Page
                 var text = new TextBlock
                 {
                     Text = $"{Path.GetFileName(rule.ExecutablePath)} · {CapabilityTitle(rule.Capability)} = {(rule.Capability == "memoryPriority" ? ProcessPriorityDisplay.Memory(rule.Value) : rule.Value)}" +
-                           (rule.Enabled ? "（总是）" : "（已停用）"),
+                           (ProcmanProcessProtection.IsAceProtected(rule.ExecutablePath) ? "（ACE 已保护，旧规则不执行）" : rule.Enabled ? "（总是）" : "（已停用）"),
                     FontSize = 12,
                     TextWrapping = TextWrapping.Wrap,
                     VerticalAlignment = VerticalAlignment.Center,
@@ -864,6 +875,8 @@ public sealed partial class ProcessPage : Page
                 ToolTipService.SetToolTip(text, rule.ExecutablePath);
                 var delete = new Button { Content = "删除", Tag = rule, MinWidth = 56 };
                 var edit = new Button { Content = "编辑", Tag = rule, MinWidth = 56 };
+                edit.IsEnabled = !ProcmanProcessProtection.IsAceProtected(rule.ExecutablePath);
+                if (!edit.IsEnabled) ToolTipService.SetToolTip(edit, ProcmanProcessProtection.AceReason);
                 edit.Click += (_, _) =>
                 {
                     ProcessTabs.SelectedItem = IsGameRulesTab ? GameTab : RulesTab;
@@ -904,6 +917,7 @@ public sealed partial class ProcessPage : Page
             RuleNoteText.Text = "请先选择应用或编辑已有总是规则。";
             return;
         }
+        if (ProcmanProcessProtection.IsAceProtected(_ruleTargetPath)) { RuleNoteText.Text = ProcmanProcessProtection.AceReason; return; }
         var capability = RuleCapabilityCombo.SelectedIndex switch
         {
             0 => "priority", 1 => "ecoQos", 2 => "priorityBoost", 3 => "affinity", 4 => "cpuSet", 5 => "ioPriority", 6 => "memoryPriority", 7 => "gpuPriority", _ => null,

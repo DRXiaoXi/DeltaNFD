@@ -16,7 +16,7 @@ public sealed partial class RuntimePage
             toggle.IsOn = ViewModel.RuntimeDetectionEnabled;
             Log.Error("运行库检测设置未保存", ex);
             await new ContentDialog { XamlRoot = XamlRoot, Title = "检测设置未保存", Content = ex.Message,
-                CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
+                CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
     }
 

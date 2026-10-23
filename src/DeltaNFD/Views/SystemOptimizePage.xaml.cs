@@ -9,12 +9,23 @@ namespace DeltaNFD.Views;
 
 public sealed partial class SystemOptimizePage : Page
 {
+    private readonly DeltaNFD.Services.Backends.PageBackendLease? _pageOwner = DeltaNFD.Services.Backends.PageBackendSessions.Manager.Current;
+    private readonly IDefenderGuardService _pageDefender = ServiceLocator.DefenderGuard;
+    public void RefreshGameReadOnlyState()
+    {
+        ViewModel.GameReadOnly = ViewModel.Bx.GameReadOnly = Services.Backends.PageBackendSessions.Manager.DeltaRunning != false;
+        SystemReadOnlyNotice.IsOpen = ViewModel.GameReadOnly;
+        SystemReadOnlyNotice.Message = Services.Backends.PageBackendSessions.SystemWriteBlocker ?? "";
+    }
     private bool _suppressBxToggle;
     public SystemOptimizeViewModel ViewModel { get; } = new();
 
     public SystemOptimizePage()
     {
         InitializeComponent();
+        RefreshGameReadOnlyState();
+        Loaded += (_, _) => ViewModel.Bx.AttachPreload();
+        Unloaded += (_, _) => ViewModel.Bx.DetachPreload();
 
         // 扩展优化库高危操作确认弹窗（ViewModel 不依赖 UI 类型，通过钩子注入）
         BxDbViewModel.ConfirmHook = async name =>
@@ -30,7 +41,7 @@ public sealed partial class SystemOptimizePage : Page
                 CloseButtonText = "取消",
                 DefaultButton = ContentDialogButton.Close,
             };
-            return await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
+            return await dialog.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) == ContentDialogResult.Primary;
         };
 
         // 服务禁用影响警告弹窗：逐组复选框（默认勾选=应用），取消勾选的组本次跳过（勾选意图保留）
@@ -83,7 +94,7 @@ public sealed partial class SystemOptimizePage : Page
                 CloseButtonText = "取消",
                 DefaultButton = ContentDialogButton.Close,
             };
-            var choice = await dialog.ShowWithBackendRecoveryAsync();
+            var choice = await dialog.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
             return choice == ContentDialogResult.Primary ? excluded : null;
         };
 
@@ -103,7 +114,7 @@ public sealed partial class SystemOptimizePage : Page
                 CloseButtonText = "返回更换盘符",
                 DefaultButton = ContentDialogButton.Close,
             };
-            return await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
+            return await dialog.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) == ContentDialogResult.Primary;
         };
 
         // 关闭 Hyper-V/VBS 前的 Windows Hello 操作引导（见 BxDbViewModel.WindowsHelloGuidanceHook 注释）
@@ -198,7 +209,7 @@ public sealed partial class SystemOptimizePage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
         };
-        return await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
+        return await dialog.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) == ContentDialogResult.Primary;
     }
 
     private async void ApplyPagefileButton_Click(object sender, RoutedEventArgs e)
@@ -235,7 +246,7 @@ public sealed partial class SystemOptimizePage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary)
         {
             return;
         }
@@ -250,7 +261,7 @@ public sealed partial class SystemOptimizePage : Page
                 Content = result.Message,
                 CloseButtonText = "知道了",
                 DefaultButton = ContentDialogButton.Close,
-            }.ShowWithBackendRecoveryAsync();
+            }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
     }
 
@@ -266,7 +277,7 @@ public sealed partial class SystemOptimizePage : Page
             DefaultButton = ContentDialogButton.Close,
         };
 
-        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary)
         {
             return;
         }
@@ -281,7 +292,7 @@ public sealed partial class SystemOptimizePage : Page
                 Content = result.Message,
                 CloseButtonText = "知道了",
                 DefaultButton = ContentDialogButton.Close,
-            }.ShowWithBackendRecoveryAsync();
+            }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
     }
 
@@ -296,7 +307,7 @@ public sealed partial class SystemOptimizePage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary)
         {
             return;
         }
@@ -310,7 +321,7 @@ public sealed partial class SystemOptimizePage : Page
                 Title = "恢复失败",
                 Content = result.Message,
                 CloseButtonText = "知道了",
-            }.ShowWithBackendRecoveryAsync();
+            }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
     }
 
@@ -360,14 +371,14 @@ public sealed partial class SystemOptimizePage : Page
                 CloseButtonText = "取消",
                 DefaultButton = ContentDialogButton.Close,
             };
-            var choice = await dialog.ShowWithBackendRecoveryAsync();
+            var choice = await dialog.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
 
             switch (choice)
             {
                 case ContentDialogResult.Primary:
                     if (addExclusion)
                     {
-                        await ServiceLocator.DefenderGuard.AddSessionExclusionsAsync();
+                        await _pageDefender.AddSessionExclusionsAsync();
                     }
 
                     if (!report.DefenderPresent)
@@ -376,7 +387,7 @@ public sealed partial class SystemOptimizePage : Page
                     }
 
                     // 重新检测：实时保护与篡改防护都关闭才算通过（篡改防护开着时照样拦截服务停止与策略写入）
-                    (rtpStillOn, tamperStillOn) = await ServiceLocator.DefenderGuard.RefreshProtectionStateAsync();
+                    (rtpStillOn, tamperStillOn) = await _pageDefender.RefreshProtectionStateAsync();
                     if (!rtpStillOn && !tamperStillOn)
                     {
                         Log.Info("DefenderGuard：重新检测通过（实时保护与篡改防护均已关闭），继续应用");
@@ -389,7 +400,7 @@ public sealed partial class SystemOptimizePage : Page
                 case ContentDialogResult.Secondary:
                     if (addExclusion)
                     {
-                        await ServiceLocator.DefenderGuard.AddSessionExclusionsAsync();
+                        await _pageDefender.AddSessionExclusionsAsync();
                     }
 
                     Log.Info("DefenderGuard：用户选择跳过引导继续应用");
@@ -465,7 +476,7 @@ public sealed partial class SystemOptimizePage : Page
             CloseButtonText = "知道了",
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary)
+        if (await dialog.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) == ContentDialogResult.Primary)
         {
             OpenWindowsSecurity();
         }

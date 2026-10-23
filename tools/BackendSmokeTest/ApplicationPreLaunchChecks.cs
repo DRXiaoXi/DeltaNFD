@@ -18,7 +18,8 @@ internal static class ApplicationPreLaunchChecks
             return (store, agent, new ApplicationPreLaunchControl(store, agent.Execute));
         }
         var on = New();
-        Check((await on.Control.DisableAsync()).Success && !on.Agent.Enabled, "实际 MMAgent 开关被定向关闭并复检");
+        var disable = await on.Control.DisableAsync();
+        Check(disable.Success && !on.Agent.Enabled, "模拟 MMAgent 开关被定向关闭并复检：" + disable.Message);
         Check(on.Store.GetStrict("State", "MMAgent", "ApplicationPreLaunch")?.Data == "1", "关闭前备份原始开启状态");
         Check((await on.Control.DisableAsync()).Success && on.Store.GetStrict("State", "MMAgent", "ApplicationPreLaunch")?.Data == "1", "重复关闭不覆盖最初备份");
         Check((await on.Control.RestoreAsync()).Success && on.Agent.Enabled, "按原值恢复开启且复检");
@@ -64,7 +65,10 @@ internal static class ApplicationPreLaunchChecks
         onlyState.Store.SaveStrict(new RegistryValueBackup { Hive="State",KeyPath="MMAgent",ValueName="ApplicationPreLaunch",Data="1" });
         Check(new SystemTweakService(onlyState.Store).GetBackedUpTweaks().Contains(SystemTweak.Prefetch), "一键恢复能发现仅 MMAgent 的新备份");
         Check(on.Agent.Commands.All(c => c == ApplicationPreLaunchControl.Query || c == ApplicationPreLaunchControl.Command(false) || c == ApplicationPreLaunchControl.Command(true)), "命令限于查询及单参数启停，不存在 SysMain 或其他 MMAgent 写入");
-        var source = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(),"src/DeltaNFD.Execution/Execution/SystemTweakService.cs"));
+        var repo = new DirectoryInfo(AppContext.BaseDirectory);
+        while (repo is not null && !File.Exists(Path.Combine(repo.FullName, "DeltaNFD.sln"))) repo = repo.Parent;
+        if (repo is null) throw new DirectoryNotFoundException("测试源码根目录不可用。");
+        var source = File.ReadAllText(Path.Combine(repo.FullName,"src/DeltaNFD.Execution/Execution/SystemTweakService.cs"));
         var apply = source[source.IndexOf("private async Task<OperationResult> ApplyPrefetchTrioOffAsync()", StringComparison.Ordinal)..source.IndexOf("private void BackupDword(", StringComparison.Ordinal)];
         Check(!apply.Contains("sc.exe") && !apply.Contains("Set-Service") && !apply.Contains("Stop-Service") && !apply.Contains("Disable-MMAgent -MemoryCompression"), "预读取入口没有关闭 SysMain/内存压缩的旁路");
         Console.WriteLine($"ApplicationPreLaunch 检查通过：{count} 项；所有写入为模拟，备份为临时 JSON，没有修改 SysMain 或 MMAgent。");

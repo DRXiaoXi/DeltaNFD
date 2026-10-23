@@ -13,6 +13,8 @@
             </StackPanel>
 
             <!-- 子栏目选择 + 全局备份 -->
+            <InfoBar x:Name="SystemReadOnlyNotice" IsOpen="True" IsClosable="False" Severity="Informational"
+                     Title="系统优化仅供查看" Message="正在确认三角洲运行状态。" />
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
                     <ItemsControl ItemsSource="{x:Bind ViewModel.Bx.Sections}">
@@ -55,6 +57,7 @@
                             <Button Content="刷新状态" Click="BxRefreshButton_Click" />
                             <Button Style="{StaticResource AccentButtonStyle}"
                                     Content="一键恢复"
+                                    IsEnabled="{x:Bind ViewModel.Bx.ExecutionEnabled, Mode=OneWay}"
                                     Command="{x:Bind ViewModel.Bx.RestoreAllCommand}" />
                         </StackPanel>
                     </Grid>

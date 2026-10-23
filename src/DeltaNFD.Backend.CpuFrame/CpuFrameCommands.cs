@@ -31,7 +31,9 @@ internal static class CpuFrameCommands
             {
                 // Recover rejects unknown scopes before touching the engine. Preserve that read-only rejection.
                 if (context.Command != BackendCommands.CpuFrameRecover) _sessionModified = true;
-                var result = await handler(context);
+                var stop = context.Command is BackendCommands.CpuFrameRestore or BackendCommands.CpuFrameMonitorStop
+                    || context.Command == BackendCommands.CpuFrameRecover && (context.ArgsAs<RecoverArgs>().Scope ?? "").Trim().Equals("all", StringComparison.OrdinalIgnoreCase);
+                var result = await Engine.SerializeAutomationAsync(() => handler(context), stop, context.CancellationToken);
                 if (context.Command == BackendCommands.CpuFrameRestore && result.Status == BackendResultStatuses.Ok
                     && !result.PendingRestore && result.Data is { } data && BackendJson.Deserialize<OperationResult>(data).Success)
                     _sessionModified = false;
@@ -43,8 +45,10 @@ internal static class CpuFrameCommands
     public static readonly BackendHostOptions Options = new()
     {
         Module = BackendModules.Require(BackendModules.CpuFrame),
-        OnStopping = () => _sessionModified ? Engine.RestoreAllAsync() : Task.FromResult(OperationResult.Ok("只读会话已停止。")),
+        OnStopping = () => _sessionModified ? Engine.SerializeAutomationAsync(() => Engine.RestoreAllAsync(), stopMonitor: true)
+            : Engine.StopMonitorAsync(),
         StatusSource = BuildStatus,
+        StatusWhileBusy = true,
         Handlers = new Dictionary<string, Func<BackendCommandContext, Task<BackendResult>>>(StringComparer.Ordinal)
         {
             [BackendCommands.CpuFrameStatus] = StatusAsync,
@@ -162,7 +166,7 @@ internal static class CpuFrameCommands
     private static async Task<BackendResult> RestoreAsync(BackendCommandContext context)
     {
         context.ReportProgress("正在还原帧格执行状态…", null, "restore");
-        var result = await Engine.RestoreAllAsync();
+        var result = await Engine.RestoreAllAsync(message => context.ReportProgress(message, null, "restore"));
         return Wrap(context.Command, result);
     }
 

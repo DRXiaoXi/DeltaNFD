@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Query-only code shared by startup inspection and backend rechecks. No repair/cleanup implementation. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework><Platforms>x64</Platforms><PlatformTarget>x64</PlatformTarget>
+    <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><LangVersion>latest</LangVersion>
+    <Version>0.9290</Version><InformationalVersion>Alpha0.929</InformationalVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../DeltaNFD.Contracts/DeltaNFD.Contracts.csproj" />
+    <ProjectReference Include="../DeltaNFD.Shared/DeltaNFD.Shared.csproj" />
+    <PackageReference Include="System.Management" Version="8.0.0" />
+    <InternalsVisibleTo Include="DeltaNFD.Execution" /><InternalsVisibleTo Include="DeltaNFD" /><InternalsVisibleTo Include="BackendSmokeTest" />
+  </ItemGroup>
+  <ItemGroup><Compile Remove="obj/**/*.cs" /></ItemGroup>
+</Project>

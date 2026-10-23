@@ -43,17 +43,8 @@ internal static class DeltaRulesOfflineChecks
         rules = engine.ListRules().Rules;
         Check(rules.Count == 8 && rules.Single(r => r.Capability == "priority") is { Value: "High", Enabled: false },
             "编辑替换单一属性，不追加重复项或改动其他属性");
-        Check(engine.Snapshot().ResponsivenessConfig is null, "未配置抑制时不会伪造已保存参数");
-        Check(engine.ConfigureResponsiveness(new()
-        {
-            Enabled = false, CpuBusyThreshold = 74, CpuIdleThreshold = 53, MaxAdjustPerRound = 3,
-            CooldownSeconds = 22, CpuBusySeconds = 7, CpuIdleSeconds = 11, CandidateCpuFloorPercent = 13,
-        }).Success, "设置帧格页需要回显的抑制参数");
-        var config = engine.Snapshot().ResponsivenessConfig;
-        Check(config is { Enabled: false, CpuBusyThreshold: 74, CpuIdleThreshold: 53, MaxAdjustPerRound: 3,
-            CooldownSeconds: 22, CpuBusySeconds: 7, CpuIdleSeconds: 11, CandidateCpuFloorPercent: 13 }, "快照完整回显可见和隐藏抑制参数");
-        config!.CpuBusyThreshold = 99;
-        Check(engine.Snapshot().ResponsivenessConfig!.CpuBusyThreshold == 74, "UI 修改快照不会直接改写后台执行配置");
+        Check(engine.Snapshot().ResponsivenessConfig is null && !engine.Snapshot().ResponsivenessEnabled,
+            "退休抑制的兼容状态始终为空且停用");
         var excluded = Path.Combine(root, "excluded.exe");
         Check(engine.SaveBackgroundConfig(new() { ExcludedExecutablePaths = [excluded], MemoryPressurePercent = 87 }).Success,
             "保存共用排除名单与内存阈值");
@@ -76,17 +67,19 @@ internal static class DeltaRulesOfflineChecks
             Check(!process.Descendants().Any(e => (string?)e.Attribute(x + "Name") == name), "进程管理移除自动开关/参数：" + name);
             Check(!frame.Descendants().Any(e => (string?)e.Attribute(x + "Name") == name), "帧格不保留旧的独立执行开关：" + name);
         }
-        foreach (var name in new[] { "FrameSuppressionToggle", "FrameAutomaticMemoryToggle" })
+        foreach (var name in new[] { "FrameAutomaticMemoryToggle" })
         {
             var option = Named(frame, name);
             Check(option.Name.LocalName == "ToggleSwitch" && (string?)option.Attribute("Toggled") == "FrameBackgroundChoice_Toggled", "帧格提供持久化功能选择开关：" + name);
             Check(((string?)option.Attribute("IsEnabled"))?.Contains("FrameSrv.FeaturesEditable") == true, "功能选项与其余帧格功能一致，先退出帧格再编辑");
         }
-        foreach (var name in new[] { "BusyThresholdBox", "IdleThresholdBox", "MaxAdjustBox", "CooldownBox", "MemoryPressureBox" })
+        foreach (var name in new[] { "MemoryPressureBox", "MemoryBatchLimitBox", "MemoryCooldownBox", "MemoryModeCombo" })
         {
             Check(Named(process, name) is not null, "具体后台参数保留在进程管理：" + name);
             Check(!frame.Descendants().Any(e => (string?)e.Attribute(x + "Name") == name), "帧格页不重复配置参数：" + name);
         }
+        foreach (var name in new[] { "FrameSuppressionToggle", "ResponsivenessNoteText", "BusyThresholdBox", "IdleThresholdBox", "MaxAdjustBox", "CooldownBox", "SuppressionPolicyText", "ResponsivenessEventsText" })
+            Check(!process.Descendants().Concat(frame.Descendants()).Any(e => (string?)e.Attribute(x + "Name") == name), "移除抑制开关、参数与事件：" + name);
         Check(process.Descendants().Any(e => (string?)e.Attribute("Click") == "OpenFrameBackground_Click"), "进程管理引导前往帧格");
         Check(Named(process, "MemoryPrelaunchPanel") is not null && Named(process, "MemoryPreviewButton") is not null,
             "保留预启动设置与手动内存回收");

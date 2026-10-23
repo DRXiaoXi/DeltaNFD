@@ -3,41 +3,35 @@ using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
 namespace DeltaNFD.Services;
-
 public partial class SystemTweakService
 {
     // SystemParametersInfo（鼠标加速立即生效）
     private const uint SpiSetMouse = 0x0004;
     private const uint SpifUpdateIniFile = 0x01;
     private const uint SpifSendChange = 0x02;
-
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, int[] pvParam, uint fWinIni);
 }
 
-/// <summary>
-/// 系统精简优化的真实实现：
-/// - Hyper-V / VBS → 等效 HyperV-off 类工具的完整流程：
-///   1) bcdedit 关闭 hypervisor 启动
-///   2) DISM 依次禁用 Hyper-V / 虚拟机平台相关功能（best-effort，不存在即跳过）
-///   3) HvHost / vmms 服务停止并改为手动启动
-///   4) DeviceGuard 注册表关闭 VBS / 内核隔离(HVCI) / Credential Guard
-/// - 内存压缩、分页合并 → Windows 官方 MMAgent 模块（powershell.exe 调 Disable/Enable-MMAgent）
-/// - 预读取 → 注册表兼容设置 + 定向 MMAgent ApplicationPreLaunch（保留 SysMain）
-/// 所有修改前都会把原始值写入 <see cref="TweakBackupStore"/>，可用 RestoreAsync 恢复。
-/// </summary>
-public sealed partial class SystemTweakService : ISystemTweakService
+/// <summary> 
+/// 系统精简优化的真实实现： 
+/// - Hyper-V / VBS → 等效 HyperV-off 类工具的完整流程： 
+///   1) bcdedit 关闭 hypervisor 启动 
+///   2) DISM 依次禁用 Hyper-V / 虚拟机平台相关功能（best-effort，不存在即跳过） 
+///   3) HvHost / vmms 服务停止并改为手动启动 
+///   4) DeviceGuard 注册表关闭 VBS / 内核隔离(HVCI) / Credential Guard 
+/// - 内存压缩、分页合并 → Windows 官方 MMAgent 模块（powershell.exe 调 Disable/Enable-MMAgent） 
+/// - 预读取 → 注册表兼容设置 + 定向 MMAgent ApplicationPreLaunch（保留 SysMain） 
+/// 所有修改前都会把原始值写入 <see cref = "TweakBackupStore"/>，可用 RestoreAsync 恢复。 
+/// </summary>public sealed partial class SystemTweakService : ISystemTweakService
 {
     private const string DeviceGuardPath = @"SYSTEM\CurrentControlSet\Control\DeviceGuard";
     private const string HvciPath = DeviceGuardPath + @"\Scenarios\HypervisorEnforcedCodeIntegrity";
     private const string CredentialGuardPath = DeviceGuardPath + @"\Scenarios\CredentialGuard";
     private const string PrefetchPath = @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters";
-
-    /// <summary>MMAgent 的注册表落点：Disable/Enable-MMAgent 写的是本键下的
-    /// EnableApplicationLaunchPrefetching / EnableOperationAPI（不是 PrefetchParameters\EnablePrefetcher）。</summary>
-    private const string MemoryManagementPath = @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management";
-
+    /// <summary>MMAgent 的注册表落点：Disable/Enable-MMAgent 写的是本键下的     
+    /// EnableApplicationLaunchPrefetching / EnableOperationAPI（不是 PrefetchParameters\EnablePrefetcher）。</summary>    private const string MemoryManagementPath = @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management";
     // ---- 游戏微调包键路径（社区同款） ----
     private const string MultimediaProfilePath = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile";
     private const string GameBarPolicyPath = @"SOFTWARE\Policies\Microsoft\GameBar";
@@ -48,7 +42,6 @@ public sealed partial class SystemTweakService : ISystemTweakService
     private const string PowerThrottlingPath = @"SYSTEM\CurrentControlSet\Control\Power\PowerThrottling";
     private const string WSearchServicePath = @"SYSTEM\CurrentControlSet\Services\WSearch";
     private const string ApplicationPreLaunchPath = @"Software\Microsoft\Windows\CurrentVersion\ApplicationPreLaunch";
-
     // ---- 系统底层调优套件键路径 ----
     private const string KernelSessionPath = @"SYSTEM\CurrentControlSet\Control\Session Manager\kernel";
     private const string PriorityControlPath = @"SYSTEM\CurrentControlSet\Control\PriorityControl";
@@ -59,30 +52,9 @@ public sealed partial class SystemTweakService : ISystemTweakService
     private const string LsaPath = @"SYSTEM\CurrentControlSet\Control\Lsa";
     private const string KernelShadowStacksPath = DeviceGuardPath + @"\Scenarios\KernelShadowStacks";
     private const string NetworkClassGuid = @"{4d36e972-e325-11ce-bfc1-08002be10318}";
-
-    /// <summary>DISM 禁用的功能清单（与 HyperV-off 等效脚本一致；不存在或已禁用时 best-effort 跳过）。</summary>
-    private static readonly string[] HyperVFeatures =
-    [
-        "Microsoft-Hyper-V-All",
-        "Microsoft-Hyper-V",
-        "Microsoft-Hyper-V-Hypervisor",
-        "Microsoft-Hyper-V-Services",
-        "Microsoft-Hyper-V-Tools-All",
-        "Microsoft-Hyper-V-Management-Clients",
-        "Microsoft-Hyper-V-Management-PowerShell",
-        "HypervisorPlatform",
-        "VirtualMachinePlatform",
-    ];
-
-    private static readonly (string KeyPath, string ValueName, string Label)[] DeviceGuardValues =
-    [
-        (DeviceGuardPath, "EnableVirtualizationBasedSecurity", "VBS（基于虚拟化的安全）"),
-        (HvciPath, "Enabled", "内核隔离（内存完整性 HVCI）"),
-        (CredentialGuardPath, "Enabled", "Credential Guard"),
-    ];
-
+    /// <summary>DISM 禁用的功能清单（与 HyperV-off 等效脚本一致；不存在或已禁用时 best-effort 跳过）。</summary>    private static readonly string[] HyperVFeatures = ["Microsoft-Hyper-V-All", "Microsoft-Hyper-V", "Microsoft-Hyper-V-Hypervisor", "Microsoft-Hyper-V-Services", "Microsoft-Hyper-V-Tools-All", "Microsoft-Hyper-V-Management-Clients", "Microsoft-Hyper-V-Management-PowerShell", "HypervisorPlatform", "VirtualMachinePlatform", ];
+    private static readonly (string KeyPath, string ValueName, string Label)[] DeviceGuardValues = [(DeviceGuardPath, "EnableVirtualizationBasedSecurity", "VBS（基于虚拟化的安全）"), (HvciPath, "Enabled", "内核隔离（内存完整性 HVCI）"), (CredentialGuardPath, "Enabled", "Credential Guard"), ];
     private readonly TweakBackupStore _backups;
-
     public SystemTweakService() : this(TweakBackupStore.Default)
     {
     }
@@ -97,95 +69,53 @@ public sealed partial class SystemTweakService : ISystemTweakService
         var entries = _backups.GetAllStrict();
         bool Has(string hive, string key, string value) => entries.Any(e => e.Id == TweakBackupStore.MakeId(hive, key, value));
         var result = new List<SystemTweak>();
-        if (Has("State", "HyperV", "LaunchType") || Has("State", "HyperV", "FeatureBackupProtocol") ||
-            HyperVFeatures.Any(f => Has("State", "HyperVFeatures", f)) ||
-            Has("HKLM", ServicesRoot + @"\HvHost", "Start") ||
-            Has("HKLM", ServicesRoot + @"\vmms", "Start") ||
-            DeviceGuardValues.Any(v => Has("HKLM", v.KeyPath, v.ValueName)))
+        if (Has("State", "HyperV", "LaunchType") || Has("State", "HyperV", "FeatureBackupProtocol") || HyperVFeatures.Any(f => Has("State", "HyperVFeatures", f)) || Has("HKLM", ServicesRoot + @"\HvHost", "Start") || Has("HKLM", ServicesRoot + @"\vmms", "Start") || DeviceGuardValues.Any(v => Has("HKLM", v.KeyPath, v.ValueName)))
             result.Add(SystemTweak.HyperVAndVbs);
-        if (Has("State", "MMAgent", "MemoryCompression")) result.Add(SystemTweak.MemoryCompression);
-        if (Has("State", "MMAgent", "PageCombining")) result.Add(SystemTweak.PageCombining);
-        if (Has("HKLM", MemoryManagementPath, "EnableApplicationLaunchPrefetching") ||
-            Has("HKLM", MemoryManagementPath, "EnableOperationAPI") ||
-            Has("HKLM", PrefetchPath, "EnablePrefetcher") || Has("HKCU", ApplicationPreLaunchPath, "Enabled") ||
-            Has("State", "MMAgent", "ApplicationPreLaunch"))
+        if (Has("State", "MMAgent", "MemoryCompression"))
+            result.Add(SystemTweak.MemoryCompression);
+        if (Has("State", "MMAgent", "PageCombining"))
+            result.Add(SystemTweak.PageCombining);
+        if (Has("HKLM", MemoryManagementPath, "EnableApplicationLaunchPrefetching") || Has("HKLM", MemoryManagementPath, "EnableOperationAPI") || Has("HKLM", PrefetchPath, "EnablePrefetcher") || Has("HKCU", ApplicationPreLaunchPath, "Enabled") || Has("State", "MMAgent", "ApplicationPreLaunch"))
             result.Add(SystemTweak.Prefetch);
-        if (Has("HKCU", MousePath, "MouseSpeed")) result.Add(SystemTweak.MouseAccelerationOff);
-        if (Has("HKLM", GraphicsDriversPath, "HwSchMode")) result.Add(SystemTweak.HardwareGpuScheduling);
-        if (Has("HKLM", WSearchServicePath, "Start")) result.Add(SystemTweak.WSearchOff);
+        if (Has("HKCU", MousePath, "MouseSpeed"))
+            result.Add(SystemTweak.MouseAccelerationOff);
+        if (Has("HKLM", GraphicsDriversPath, "HwSchMode"))
+            result.Add(SystemTweak.HardwareGpuScheduling);
+        if (Has("HKLM", WSearchServicePath, "Start"))
+            result.Add(SystemTweak.WSearchOff);
         return result;
     }
 
-    public async Task<bool?> IsHyperVFullyDisabledAsync()
-    {
-        var launchType = await QueryHypervisorLaunchTypeAsync();
-        if (launchType == "unknown") return null;
-        if (!HyperVToState(launchType, ReadDword(DeviceGuardPath, "EnableVirtualizationBasedSecurity"),
-            ReadDword(HvciPath, "Enabled"), ReadDword(CredentialGuardPath, "Enabled")).IsOptimized) return false;
-        var features = string.Join(",", HyperVFeatures.Select(f => "'" + f + "'"));
-        var script = "$items = @(Get-WindowsOptionalFeature -Online -ErrorAction Stop | Where-Object { $_.FeatureName -in @("
-            + features + ") } | Select-Object FeatureName,@{Name='State';Expression={$_.State.ToString()}}); ConvertTo-Json -InputObject $items -Compress";
-        var (code, output, _) = await RunPowerShellAsync(script, TimeSpan.FromSeconds(30));
-        return code == 0 ? AssessHyperVFeatureStates(output) : null;
-    }
-
+    public Task<bool?> IsHyperVFullyDisabledAsync() => new DeltaNFD.Inspection.SystemTweakInspection().IsHyperVFullyDisabledAsync();
     internal static bool? AssessHyperVFeatureStates(string? output)
     {
-        if (string.IsNullOrWhiteSpace(output)) return null;
+        if (string.IsNullOrWhiteSpace(output))
+            return null;
         try
         {
             using var doc = System.Text.Json.JsonDocument.Parse(output);
-            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array) return null;
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array)
+                return null;
             var hasEnabled = false;
             foreach (var row in doc.RootElement.EnumerateArray())
             {
                 var state = row.GetProperty("State").GetString();
-                if (state is "Enabled" or "EnablePending" or "DisablePending") hasEnabled = true;
-                else if (state is not ("Disabled" or "DisabledWithPayloadRemoved")) return null;
+                if (state is "Enabled" or "EnablePending" or "DisablePending")
+                    hasEnabled = true;
+                else if (state is not ("Disabled" or "DisabledWithPayloadRemoved"))
+                    return null;
             }
+
             return !hasEnabled;
         }
-        catch { return null; }
+        catch
+        {
+            return null;
+        }
     }
 
     // ---------------- 状态查询 ----------------
-
-    public async Task<List<TweakStatus>> GetStatusesAsync()
-    {
-        var vbs = ReadDword(DeviceGuardPath, "EnableVirtualizationBasedSecurity");
-        var hvci = ReadDword(HvciPath, "Enabled");
-        var credentialGuard = ReadDword(CredentialGuardPath, "Enabled");
-        // HKCU 兼容值不代表 MMAgent ApplicationPreLaunch；后者通过同一次 Get-MMAgent 查询取得。
-        var mmLaunch = ReadDword("HKLM", MemoryManagementPath, "EnableApplicationLaunchPrefetching");
-        var prelaunch = ReadDword("HKCU", ApplicationPreLaunchPath, "Enabled");
-        var operationApi = ReadDword("HKLM", MemoryManagementPath, "EnableOperationAPI");
-        var (compressionOn, pageCombiningOn, hypervisor, applicationPreLaunchOn) = await QueryMmAgentAndHypervisorAsync();
-
-        // 游戏微调包状态
-        var mouseSpeed = ReadString("HKCU", MousePath, "MouseSpeed");
-        var hags = ReadDword(GraphicsDriversPath, "HwSchMode");
-        var wSearch = ReadDword(WSearchServicePath, "Start");
-
-        return
-        [
-            MakeStatus(SystemTweak.HyperVAndVbs, HyperVToState(hypervisor, vbs, hvci, credentialGuard)),
-            MakeStatus(SystemTweak.MemoryCompression, compressionOn ? (false, "已开启") : (true, "已关闭")),
-            MakeStatus(SystemTweak.PageCombining, pageCombiningOn ? (false, "已开启") : (true, "已关闭")),
-            MakeStatus(SystemTweak.Prefetch, PrefetchTrioToState(mmLaunch, prelaunch, operationApi, applicationPreLaunchOn)),
-
-            // 游戏微调包
-            MakeStatus(SystemTweak.MouseAccelerationOff,
-                mouseSpeed == "0"
-                    ? (true, "已关闭鼠标加速")
-                    : (false, $"未优化（MouseSpeed={mouseSpeed ?? "默认"}）")),
-            MakeStatus(SystemTweak.HardwareGpuScheduling, ValueToState(hags, 2, "未启用（1/未配置）", "已开启（2，重启后生效）")),
-            MakeStatus(SystemTweak.WSearchOff,
-                wSearch == 4
-                    ? (true, "已禁用 Windows Search")
-                    : (false, $"未优化（WSearch={ServiceStartText(wSearch)}）")),
-        ];
-    }
-
+    public Task<List<TweakStatus>> GetStatusesAsync() => new DeltaNFD.Inspection.SystemTweakInspection().GetStatusesAsync();
     private static string ServiceStartText(int? start) => start switch
     {
         2 => "自动",
@@ -194,29 +124,29 @@ public sealed partial class SystemTweakService : ISystemTweakService
         null => "未配置",
         _ => start.ToString() ?? "",
     };
-
-    /// <summary>原注册表项与实际 MMAgent ApplicationPreLaunch 都关闭才算优化；读取未知不能视为关闭。</summary>
-    private static (bool IsOptimized, string Detail) PrefetchTrioToState(int? mmLaunch, int? prelaunch, int? operationApi, bool? applicationPreLaunchOn)
+    /// <summary>原注册表项与实际 MMAgent ApplicationPreLaunch 都关闭才算优化；读取未知不能视为关闭。</summary>    private static (bool IsOptimized, string Detail) PrefetchTrioToState(int? mmLaunch, int? prelaunch, int? operationApi, bool? applicationPreLaunchOn)
     {
-        bool launchOn = mmLaunch != 0;   // Memory Management\EnableApplicationLaunchPrefetching：未配置 = 默认开启
+        bool launchOn = mmLaunch != 0; // Memory Management\EnableApplicationLaunchPrefetching：未配置 = 默认开启
         bool prelaunchOn = prelaunch != 0; // 未配置 = 默认开启
         bool operationOn = operationApi != 0; // 未配置 = 默认开启
-
         if (!launchOn && !prelaunchOn && !operationOn && applicationPreLaunchOn == false)
         {
             return (true, "预读取关闭配置已设置，ApplicationPreLaunch 当前已关闭；SysMain 未被此项停止或禁用");
         }
 
         var parts = new List<string>();
-        if (applicationPreLaunchOn != false) parts.Add(applicationPreLaunchOn is null ? "ApplicationPreLaunch 状态无法确认" : "ApplicationPreLaunch 开启");
+        if (applicationPreLaunchOn != false)
+            parts.Add(applicationPreLaunchOn is null ? "ApplicationPreLaunch 状态无法确认" : "ApplicationPreLaunch 开启");
         if (launchOn)
         {
             parts.Add("应用启动预读取开启");
         }
+
         if (prelaunchOn)
         {
             parts.Add("UWP 预启动开启");
         }
+
         if (operationOn)
         {
             parts.Add("OperationAPI 开启");
@@ -225,48 +155,9 @@ public sealed partial class SystemTweakService : ISystemTweakService
         return (false, $"未优化（{string.Join("，", parts)}）");
     }
 
-    /// <summary>值型微调的状态：当前值 == 优化值 → 已优化。</summary>
-    private static (bool IsOptimized, string Detail) ValueToState(int? current, int optimized, string defaultText, string optimizedText)
-        => current == optimized ? (true, optimizedText) : (false, $"未优化（{defaultText}）");
-
-    public async Task<string> GetVbsRuntimeSummaryAsync()
-    {
-        // VirtualizationBasedSecurityStatus: 0=未启用 1=已启用未运行 2=已启用并运行
-        // SecurityServicesRunning 包含 2 表示 HVCI 正在运行
-        var command =
-            "$dg = Get-CimInstance -Namespace root\\Microsoft\\Windows\\DeviceGuard -ClassName Win32_DeviceGuard -ErrorAction SilentlyContinue; " +
-            "if ($dg) { [int]$dg.VirtualizationBasedSecurityStatus; @($dg.SecurityServicesRunning) -join ',' } else { 'ERR' }";
-        var (exitCode, stdout, _) = await RunPowerShellAsync(command, TimeSpan.FromSeconds(20));
-        if (exitCode != 0 || stdout is null)
-        {
-            return "运行时状态查询失败";
-        }
-
-        var lines = SplitLines(stdout);
-        if (lines.FirstOrDefault() == "ERR")
-        {
-            return "运行时状态查询失败（系统未提供 Win32_DeviceGuard）";
-        }
-
-        var vbsStatus = int.TryParse(lines.ElementAtOrDefault(0), out var status) ? status : -1;
-        var hvciRunning = (lines.ElementAtOrDefault(1) ?? "")
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Any(item => item == "2");
-
-        var vbsText = vbsStatus switch
-        {
-            2 => "已启用并运行",
-            1 => "已启用（未运行）",
-            0 => "未启用",
-            _ => "未知",
-        };
-
-        return $"VBS：{vbsText}；内核隔离（HVCI）：{(hvciRunning ? "运行中" : "未运行")}。" +
-               "（反映本次开机的实际状态，改注册表后需重启刷新）";
-    }
-
+    /// <summary>值型微调的状态：当前值 == 优化值 → 已优化。</summary>    private static (bool IsOptimized, string Detail) ValueToState(int? current, int optimized, string defaultText, string optimizedText) => current == optimized ? (true, optimizedText) : (false, $"未优化（{defaultText}）");
+    public Task<string> GetVbsRuntimeSummaryAsync() => new DeltaNFD.Inspection.SystemTweakInspection().GetVbsRuntimeSummaryAsync();
     // ---------------- 关闭 ----------------
-
     public async Task<OperationResult> DisableAsync(SystemTweak tweak)
     {
         if (!ElevationHelper.IsElevated)
@@ -283,17 +174,13 @@ public sealed partial class SystemTweakService : ISystemTweakService
                 SystemTweak.MemoryCompression => await DisableMmAgentWithBackupAsync("MemoryCompression", "-mc", "内存压缩"),
                 SystemTweak.PageCombining => await DisableMmAgentWithBackupAsync("PageCombining", "-pc", "分页合并"),
                 SystemTweak.Prefetch => await ApplyPrefetchTrioOffAsync(),
-
                 // ---- 游戏微调包 ----
                 SystemTweak.MouseAccelerationOff => ApplyMouseAccelerationOff(),
-                SystemTweak.HardwareGpuScheduling =>
-                    ApplyOptimizedDword(GraphicsDriversPath, "HwSchMode", 2, "HAGS 硬件加速 GPU 调度"),
+                SystemTweak.HardwareGpuScheduling => ApplyOptimizedDword(GraphicsDriversPath, "HwSchMode", 2, "HAGS 硬件加速 GPU 调度"),
                 SystemTweak.WSearchOff => ApplyWSearchDisabledAsync(),
                 _ => OperationResult.Fail("未知的优化项。"),
             };
-            Log.Info(result.Success
-                ? $"深度优化：应用 {tweak} 成功 —— {result.Message}"
-                : $"深度优化：应用 {tweak} 失败 —— {result.Message}");
+            Log.Info(result.Success ? $"深度优化：应用 {tweak} 成功 —— {result.Message}" : $"深度优化：应用 {tweak} 失败 —— {result.Message}");
             return result;
         }
         catch (Exception ex)
@@ -304,7 +191,6 @@ public sealed partial class SystemTweakService : ISystemTweakService
     }
 
     // ---------------- 恢复 ----------------
-
     public async Task<OperationResult> RestoreAsync(SystemTweak tweak)
     {
         if (!ElevationHelper.IsElevated)
@@ -321,17 +207,13 @@ public sealed partial class SystemTweakService : ISystemTweakService
                 SystemTweak.MemoryCompression => await RestoreMmAgentAsync("MemoryCompression", "-mc", "内存压缩"),
                 SystemTweak.PageCombining => await RestoreMmAgentAsync("PageCombining", "-pc", "分页合并"),
                 SystemTweak.Prefetch => await RestorePrefetchTrioAsync(),
-
                 // ---- 游戏微调包（还原 = 写回备份的原始值） ----
                 SystemTweak.MouseAccelerationOff => RestoreMouseAcceleration(),
-                SystemTweak.HardwareGpuScheduling =>
-                    RestoreValue("HKLM", GraphicsDriversPath, "HwSchMode", "HAGS 硬件加速 GPU 调度"),
+                SystemTweak.HardwareGpuScheduling => RestoreValue("HKLM", GraphicsDriversPath, "HwSchMode", "HAGS 硬件加速 GPU 调度"),
                 SystemTweak.WSearchOff => RestoreWSearchAsync(),
                 _ => OperationResult.Fail("未知的优化项。"),
             };
-            Log.Info(result.Success
-                ? $"深度优化：还原 {tweak} 成功 —— {result.Message}"
-                : $"深度优化：还原 {tweak} 失败 —— {result.Message}");
+            Log.Info(result.Success ? $"深度优化：还原 {tweak} 成功 —— {result.Message}" : $"深度优化：还原 {tweak} 失败 —— {result.Message}");
             return result;
         }
         catch (Exception ex)
@@ -342,33 +224,22 @@ public sealed partial class SystemTweakService : ISystemTweakService
     }
 
     // ---------------- Hyper-V / VBS（等效 HyperV-off 流程） ----------------
-
     private async Task<OperationResult> DisableHyperVAsync()
     {
         var done = new List<string>();
         var skipped = new List<string>();
-
         var launchType = await QueryHypervisorLaunchTypeAsync();
         if (launchType is not ("auto" or "off"))
             return OperationResult.Fail("无法读取 hypervisor 原启动状态，未开始修改。");
         if (launchType is "auto" or "off")
         {
-            _backups.SaveStrict(new RegistryValueBackup
-            {
-                Hive = "State", KeyPath = "HyperV", ValueName = "LaunchType",
-                ValueKind = RegistryValueKind.String, Data = launchType, CreatedAt = DateTimeOffset.Now,
-            });
+            _backups.SaveStrict(new RegistryValueBackup { Hive = "State", KeyPath = "HyperV", ValueName = "LaunchType", ValueKind = RegistryValueKind.String, Data = launchType, CreatedAt = DateTimeOffset.Now, });
         }
 
         // 1. 通知引导程序不要启动 hypervisor
         // 本协议保证未知功能不修改、有修改必有原状态备份，支持部分恢复后再次重试。
-        _backups.SaveStrict(new RegistryValueBackup
-        {
-            Hive = "State", KeyPath = "HyperV", ValueName = "FeatureBackupProtocol",
-            ValueKind = RegistryValueKind.String, Data = "1", CreatedAt = DateTimeOffset.Now,
-        });
-        var (bcdCode, bcdOut, bcdError) = await RunProcessCaptureAsync(
-            "bcdedit.exe", "/set hypervisorlaunchtype off", TimeSpan.FromSeconds(30));
+        _backups.SaveStrict(new RegistryValueBackup { Hive = "State", KeyPath = "HyperV", ValueName = "FeatureBackupProtocol", ValueKind = RegistryValueKind.String, Data = "1", CreatedAt = DateTimeOffset.Now, });
+        var(bcdCode, bcdOut, bcdError) = await RunProcessCaptureAsync("bcdedit.exe", "/set hypervisorlaunchtype off", TimeSpan.FromSeconds(30));
         if (bcdCode == 0)
         {
             done.Add("hypervisor 启动已关闭");
@@ -384,18 +255,11 @@ public sealed partial class SystemTweakService : ISystemTweakService
         // 2. DISM 禁用全部 Hyper-V / 虚拟机平台功能（不存在或已禁用的会报错，逐项跳过）
         foreach (var feature in HyperVFeatures)
         {
-            var (stateCode, stateText, stateErr) = await RunPowerShellAsync(
-                $"(Get-WindowsOptionalFeature -Online -FeatureName '{feature}' -ErrorAction Stop).State.ToString()",
-                TimeSpan.FromSeconds(45));
-            
+            var(stateCode, stateText, stateErr) = await RunPowerShellAsync($"(Get-WindowsOptionalFeature -Online -FeatureName '{feature}' -ErrorAction Stop).State.ToString()", TimeSpan.FromSeconds(45));
             var trimmedState = stateText?.Trim();
             if (stateCode == 0 && trimmedState is "Enabled" or "Disabled" or "EnablePending" or "DisablePending")
             {
-                _backups.SaveStrict(new RegistryValueBackup
-                {
-                    Hive = "State", KeyPath = "HyperVFeatures", ValueName = feature,
-                    ValueKind = RegistryValueKind.String, Data = trimmedState, CreatedAt = DateTimeOffset.Now,
-                });
+                _backups.SaveStrict(new RegistryValueBackup { Hive = "State", KeyPath = "HyperVFeatures", ValueName = feature, ValueKind = RegistryValueKind.String, Data = trimmedState, CreatedAt = DateTimeOffset.Now, });
                 Log.Info($"Hyper-V 关闭：功能 {feature} 当前状态为 {trimmedState}");
             }
             else
@@ -405,17 +269,16 @@ public sealed partial class SystemTweakService : ISystemTweakService
                 Log.Warn($"Hyper-V 关闭：功能 {feature} 状态查询失败，退出码 {stateCode}，错误：{errorDetail}");
                 continue;
             }
-            
+
             // 如果功能已经是禁用状态或等待禁用，跳过
             if (trimmedState is "Disabled" or "DisablePending")
             {
                 Log.Info($"Hyper-V 关闭：功能 {feature} 已处于禁用状态，跳过");
                 continue;
             }
-            
+
             // DISM 禁用功能，增加超时时间到 5 分钟
-            var (code, dismOut, dismErr) = await RunProcessCaptureAsync(
-                "dism.exe", $"/Online /NoRestart /Disable-Feature /FeatureName:{feature}", TimeSpan.FromMinutes(5));
+            var(code, dismOut, dismErr) = await RunProcessCaptureAsync("dism.exe", $"/Online /NoRestart /Disable-Feature /FeatureName:{feature}", TimeSpan.FromMinutes(5));
             if (code is 0 or 3010)
             {
                 done.Add($"已禁用功能 {feature}");
@@ -434,28 +297,17 @@ public sealed partial class SystemTweakService : ISystemTweakService
         {
             var serviceKeyPath = ServicesRoot + "\\" + service;
             var currentStart = ReadDword("HKLM", serviceKeyPath, "Start");
-            
             // 只处理实际存在的服务
             if (currentStart is null)
             {
                 Log.Info($"Hyper-V 关闭：服务 {service} 不存在，跳过");
                 continue;
             }
-            
+
             // 备份原始启动类型
-            _backups.Save(new RegistryValueBackup
-            {
-                Hive = "HKLM",
-                Id = TweakBackupStore.MakeId("HKLM", serviceKeyPath, "Start"),
-                KeyPath = serviceKeyPath,
-                ValueName = "Start",
-                ValueKind = Microsoft.Win32.RegistryValueKind.DWord,
-                Data = currentStart.Value.ToString(),
-                CreatedAt = DateTimeOffset.Now,
-            });
-            
+            _backups.Save(new RegistryValueBackup { Hive = "HKLM", Id = TweakBackupStore.MakeId("HKLM", serviceKeyPath, "Start"), KeyPath = serviceKeyPath, ValueName = "Start", ValueKind = Microsoft.Win32.RegistryValueKind.DWord, Data = currentStart.Value.ToString(), CreatedAt = DateTimeOffset.Now, });
             // 尝试停止服务（失败不阻塞，因为服务可能未运行）
-            var (stopCode, stopOut, stopErr) = await RunProcessCaptureAsync("sc.exe", $"stop {service}", TimeSpan.FromSeconds(20));
+            var(stopCode, stopOut, stopErr) = await RunProcessCaptureAsync("sc.exe", $"stop {service}", TimeSpan.FromSeconds(20));
             if (stopCode == 0)
             {
                 Log.Info($"Hyper-V 关闭：服务 {service} 已停止");
@@ -466,8 +318,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
             }
 
             // 改为手动启动
-            var (configCode, configOut, configErr) = await RunProcessCaptureAsync(
-                "sc.exe", $"config {service} start= demand", TimeSpan.FromSeconds(20));
+            var(configCode, configOut, configErr) = await RunProcessCaptureAsync("sc.exe", $"config {service} start= demand", TimeSpan.FromSeconds(20));
             if (configCode == 0)
             {
                 done.Add($"服务 {service} 已改为手动启动");
@@ -481,7 +332,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
         }
 
         // 4. 关闭内核隔离（HVCI）、VBS、Credential Guard
-        foreach (var (keyPath, valueName, label) in DeviceGuardValues)
+        foreach (var(keyPath, valueName, label)in DeviceGuardValues)
         {
             var result = DisableDwordValue(keyPath, valueName, label);
             if (result.Success)
@@ -499,21 +350,15 @@ public sealed partial class SystemTweakService : ISystemTweakService
             return OperationResult.Fail($"关闭 Hyper-V / VBS 失败，所有步骤均未成功：{string.Join("；", skipped)}");
         }
 
-        var skipNote = skipped.Count > 0
-            ? $"（跳过 {skipped.Count} 项：{string.Join("；", skipped.Take(2))}{(skipped.Count > 2 ? " 等" : "")}）"
-            : "";
-        return OperationResult.Ok(
-            $"已执行关闭 Hyper-V / VBS 共 {done.Count} 步操作{skipNote}。重启电脑后生效；" +
-            "重启后 WSL2、虚拟机、Windows 沙盒将不可用。",
-            requiresReboot: true);
+        var skipNote = skipped.Count > 0 ? $"（跳过 {skipped.Count} 项：{string.Join("；", skipped.Take(2))}{(skipped.Count > 2 ? " 等" : "")}）" : "";
+        return OperationResult.Ok($"已执行关闭 Hyper-V / VBS 共 {done.Count} 步操作{skipNote}。重启电脑后生效；" + "重启后 WSL2、虚拟机、Windows 沙盒将不可用。", requiresReboot: true);
     }
 
     internal static string BuildHyperVFeatureRestoreCommand(string feature, string originalState)
     {
         if (!HyperVFeatures.Contains(feature, StringComparer.Ordinal) || originalState is not ("Enabled" or "Disabled"))
             throw new ArgumentException("无效的 Hyper-V 恢复记录");
-        return originalState == "Enabled" ? $"/Online /NoRestart /Enable-Feature /FeatureName:{feature} /All"
-            : $"/Online /NoRestart /Disable-Feature /FeatureName:{feature}";
+        return originalState == "Enabled" ? $"/Online /NoRestart /Enable-Feature /FeatureName:{feature} /All" : $"/Online /NoRestart /Disable-Feature /FeatureName:{feature}";
     }
 
     private async Task<OperationResult> RestoreHyperVAsync()
@@ -521,19 +366,18 @@ public sealed partial class SystemTweakService : ISystemTweakService
         var done = new List<string>();
         var skipped = new List<string>();
         var managed = _backups.Get("State", "HyperV", "FeatureBackupProtocol")?.Data == "1";
-
         // 只恢复修改前确实启用的项目，避免把用户原本关闭的功能擅自打开。
         var launchBackup = _backups.Get("State", "HyperV", "LaunchType");
         if (launchBackup?.Data is "auto" or "off")
         {
-            var (code, _, error) = await RunProcessCaptureAsync(
-                "bcdedit.exe", $"/set hypervisorlaunchtype {launchBackup.Data}", TimeSpan.FromSeconds(30));
+            var(code, _, error) = await RunProcessCaptureAsync("bcdedit.exe", $"/set hypervisorlaunchtype {launchBackup.Data}", TimeSpan.FromSeconds(30));
             if (code == 0)
             {
                 done.Add("hypervisor 启动状态已还原");
                 _backups.Remove("State", "HyperV", "LaunchType");
             }
-            else skipped.Add($"bcdedit 失败（{FirstLine(error)}）");
+            else
+                skipped.Add($"bcdedit 失败（{FirstLine(error)}）");
         }
         else if (!managed)
         {
@@ -541,9 +385,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
         }
 
         var hasFeatureBackup = false;
-        var featureBackups = HyperVFeatures.Select(f => _backups.Get("State", "HyperVFeatures", f))
-            .Where(b => b is not null).Cast<RegistryValueBackup>()
-            .OrderBy(b => b.Data == "Enabled" ? 0 : 1).ToList();
+        var featureBackups = HyperVFeatures.Select(f => _backups.Get("State", "HyperVFeatures", f)).Where(b => b is not null).Cast<RegistryValueBackup>().OrderBy(b => b.Data == "Enabled" ? 0 : 1).ToList();
         foreach (var backup in featureBackups)
         {
             var feature = backup.ValueName;
@@ -553,16 +395,18 @@ public sealed partial class SystemTweakService : ISystemTweakService
                 skipped.Add($"功能 {feature} 原状态无效，保留备份且未修改");
                 continue;
             }
-            var (code, _, _) = await RunProcessCaptureAsync("dism.exe",
-                BuildHyperVFeatureRestoreCommand(feature, backup.Data), TimeSpan.FromMinutes(5));
+
+            var(code, _, _) = await RunProcessCaptureAsync("dism.exe", BuildHyperVFeatureRestoreCommand(feature, backup.Data), TimeSpan.FromMinutes(5));
             if (code is not (0 or 3010))
             {
                 skipped.Add($"功能 {feature} 恢复失败（退出码 {code}）");
                 continue;
             }
+
             done.Add($"功能 {feature} 已还原为 {backup.Data}");
             _backups.Remove("State", "HyperVFeatures", feature);
         }
+
         if (!hasFeatureBackup && !managed)
         {
             skipped.Add("缺少可选功能原状态备份，未擅自启用 Hyper-V 功能");
@@ -583,13 +427,15 @@ public sealed partial class SystemTweakService : ISystemTweakService
             {
                 done.Add($"服务 {service} 启动类型已还原为 {ServiceStartText(int.TryParse(backup.Data, out var s) ? s : null)}");
             }
-            else skipped.Add(result.Message);
+            else
+                skipped.Add(result.Message);
         }
 
         // 4. 按备份还原 DeviceGuard 各项（无备份的项跳过）
-        foreach (var (keyPath, valueName, label) in DeviceGuardValues)
+        foreach (var(keyPath, valueName, label)in DeviceGuardValues)
         {
-            if (managed && _backups.Get(keyPath, valueName) is null) continue;
+            if (managed && _backups.Get(keyPath, valueName)is null)
+                continue;
             var result = RestoreDwordValue(keyPath, valueName, label);
             if (result.Success)
             {
@@ -616,11 +462,9 @@ public sealed partial class SystemTweakService : ISystemTweakService
         return OperationResult.Ok($"已恢复 Hyper-V / VBS 共 {done.Count} 步，重启电脑后生效。", requiresReboot: true);
     }
 
-    /// <summary>查询 hypervisor 开机启动类型："off" / "auto" / "unknown"（bcdedit 不可用时）。</summary>
-    private static async Task<string> QueryHypervisorLaunchTypeAsync()
+    /// <summary>查询 hypervisor 开机启动类型："off" / "auto" / "unknown"（bcdedit 不可用时）。</summary>    private static async Task<string> QueryHypervisorLaunchTypeAsync()
     {
-        var (code, stdout, _) = await RunProcessCaptureAsync(
-            "bcdedit.exe", "/enum {current}", TimeSpan.FromSeconds(20));
+        var(code, stdout, _) = await RunProcessCaptureAsync("bcdedit.exe", "/enum {current}", TimeSpan.FromSeconds(20));
         if (code != 0 || stdout is null)
         {
             return "unknown";
@@ -640,13 +484,11 @@ public sealed partial class SystemTweakService : ISystemTweakService
         return "auto";
     }
 
-    private static (bool IsOptimized, string Detail) HyperVToState(
-        string hypervisor, int? vbs, int? hvci, int? credentialGuard)
+    private static (bool IsOptimized, string Detail) HyperVToState(string hypervisor, int? vbs, int? hvci, int? credentialGuard)
     {
         bool vbsOff = vbs == 0;
         bool hvciOff = hvci is null || hvci == 0;
         bool credentialOff = credentialGuard is null || credentialGuard == 0;
-
         if (hypervisor == "off" && vbsOff && hvciOff && credentialOff)
         {
             return (true, "已彻底关闭（hypervisor off；VBS / 内核隔离 / Credential Guard 均已关）");
@@ -676,6 +518,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
         {
             parts.Add("内核隔离开启");
         }
+
         if (!credentialOff)
         {
             parts.Add("Credential Guard 开启");
@@ -685,24 +528,13 @@ public sealed partial class SystemTweakService : ISystemTweakService
     }
 
     // ---------------- 注册表实现 ----------------
-
     private OperationResult DisableDwordValue(string keyPath, string valueName, string friendlyName)
     {
         try
         {
             using var key = OpenWritableOrCreate(keyPath);
-
             var current = key.GetValue(valueName);
-            _backups.Save(new RegistryValueBackup
-            {
-                Id = TweakBackupStore.MakeId(keyPath, valueName),
-                KeyPath = keyPath,
-                ValueName = valueName,
-                ValueKind = current is null ? RegistryValueKind.None : RegistryValueKind.DWord,
-                Data = current is int dword ? dword.ToString() : "",
-                CreatedAt = DateTimeOffset.Now,
-            });
-
+            _backups.Save(new RegistryValueBackup { Id = TweakBackupStore.MakeId(keyPath, valueName), KeyPath = keyPath, ValueName = valueName, ValueKind = current is null ? RegistryValueKind.None : RegistryValueKind.DWord, Data = current is int dword ? dword.ToString() : "", CreatedAt = DateTimeOffset.Now, });
             key.SetValue(valueName, 0, RegistryValueKind.DWord);
             return OperationResult.Ok($"已关闭{friendlyName}，重启后生效。", requiresReboot: true);
         }
@@ -755,9 +587,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
         }
     }
 
-    private static RegistryKey OpenWritableOrCreate(string keyPath)
-        => OpenWritableOrCreate("HKLM", keyPath);
-
+    private static RegistryKey OpenWritableOrCreate(string keyPath) => OpenWritableOrCreate("HKLM", keyPath);
     private static RegistryKey OpenWritableOrCreate(string hive, string keyPath)
     {
         if (hive == "HKCU")
@@ -778,13 +608,11 @@ public sealed partial class SystemTweakService : ISystemTweakService
         return Registry.LocalMachine.CreateSubKey(keyPath, writable: true);
     }
 
-    private static int? ReadDword(string keyPath, string valueName)
-        => ReadDword("HKLM", keyPath, valueName);
-
+    private static int? ReadDword(string keyPath, string valueName) => ReadDword("HKLM", keyPath, valueName);
     private static int? ReadDword(string hive, string keyPath, string valueName)
     {
         using var key = OpenRead(hive, keyPath);
-        return key?.GetValue(valueName) is int value ? value : null;
+        return key?.GetValue(valueName)is int value ? value : null;
     }
 
     private static string? ReadString(string hive, string keyPath, string valueName)
@@ -798,31 +626,15 @@ public sealed partial class SystemTweakService : ISystemTweakService
         "HKCU" => Registry.CurrentUser.OpenSubKey(keyPath),
         _ => Registry.LocalMachine.OpenSubKey(keyPath),
     };
-
     // ---------------- 游戏微调包实现 ----------------
-
-    /// <summary>应用值型微调：备份原值 → 写入优化值。</summary>
-    private OperationResult ApplyOptimizedDword(string keyPath, string valueName, int optimizedValue, string friendlyName)
-        => ApplyOptimizedDword("HKLM", keyPath, valueName, optimizedValue, friendlyName);
-
+    /// <summary>应用值型微调：备份原值 → 写入优化值。</summary>    private OperationResult ApplyOptimizedDword(string keyPath, string valueName, int optimizedValue, string friendlyName) => ApplyOptimizedDword("HKLM", keyPath, valueName, optimizedValue, friendlyName);
     private OperationResult ApplyOptimizedDword(string hive, string keyPath, string valueName, int optimizedValue, string friendlyName)
     {
         try
         {
             using var key = OpenWritableOrCreate(hive, keyPath);
-
             var current = key.GetValue(valueName);
-            _backups.Save(new RegistryValueBackup
-            {
-                Hive = hive,
-                Id = TweakBackupStore.MakeId(hive, keyPath, valueName),
-                KeyPath = keyPath,
-                ValueName = valueName,
-                ValueKind = current is null ? RegistryValueKind.None : RegistryValueKind.DWord,
-                Data = current is int dword ? dword.ToString() : "",
-                CreatedAt = DateTimeOffset.Now,
-            });
-
+            _backups.Save(new RegistryValueBackup { Hive = hive, Id = TweakBackupStore.MakeId(hive, keyPath, valueName), KeyPath = keyPath, ValueName = valueName, ValueKind = current is null ? RegistryValueKind.None : RegistryValueKind.DWord, Data = current is int dword ? dword.ToString() : "", CreatedAt = DateTimeOffset.Now, });
             key.SetValue(valueName, optimizedValue, RegistryValueKind.DWord);
             return OperationResult.Ok($"已应用{friendlyName}。", requiresReboot: true);
         }
@@ -836,8 +648,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
         }
     }
 
-    /// <summary>通用恢复：按备份写回原值（DWORD / String），原值不存在则删除该值。</summary>
-    private OperationResult RestoreValue(string hive, string keyPath, string valueName, string friendlyName)
+    /// <summary>通用恢复：按备份写回原值（DWORD / String），原值不存在则删除该值。</summary>    private OperationResult RestoreValue(string hive, string keyPath, string valueName, string friendlyName)
     {
         try
         {
@@ -880,7 +691,6 @@ public sealed partial class SystemTweakService : ISystemTweakService
     }
 
     // ---- 鼠标加速（SystemParametersInfo 立即生效 + HKCU 备份） ----
-
     private OperationResult ApplyMouseAccelerationOff()
     {
         try
@@ -889,20 +699,16 @@ public sealed partial class SystemTweakService : ISystemTweakService
             foreach (var valueName in (string[])["MouseSpeed", "MouseThreshold1", "MouseThreshold2"])
             {
                 var current = ReadString("HKCU", MousePath, valueName);
-                _backups.Save(new RegistryValueBackup
-                {
-                    Hive = "HKCU",
-                    Id = TweakBackupStore.MakeId("HKCU", MousePath, valueName),
-                    KeyPath = MousePath,
-                    ValueName = valueName,
-                    ValueKind = current is null ? RegistryValueKind.None : RegistryValueKind.String,
-                    Data = current ?? "",
-                    CreatedAt = DateTimeOffset.Now,
-                });
+                _backups.Save(new RegistryValueBackup { Hive = "HKCU", Id = TweakBackupStore.MakeId("HKCU", MousePath, valueName), KeyPath = MousePath, ValueName = valueName, ValueKind = current is null ? RegistryValueKind.None : RegistryValueKind.String, Data = current ?? "", CreatedAt = DateTimeOffset.Now, });
             }
 
             // SPI_SETMOUSE = 0x0004，参数 {Threshold1, Threshold2, Speed} = {0,0,0} 关闭加速并写回注册表
-            var mouseParams = new[] { 0, 0, 0 };
+            var mouseParams = new[]
+            {
+                0,
+                0,
+                0
+            };
             if (!SystemParametersInfo(SpiSetMouse, 0u, mouseParams, SpifUpdateIniFile | SpifSendChange))
             {
                 return OperationResult.Fail("设置鼠标参数失败（SystemParametersInfo 调用出错）。");
@@ -931,12 +737,14 @@ public sealed partial class SystemTweakService : ISystemTweakService
             // 检查备份记录是否完整且有效
             var hasInvalidBackup = false;
             var warnings = new List<string>();
-            
             int? ParseBackup(RegistryValueBackup? backup, string name)
             {
-                if (backup is null) return null;
-                if (backup.ValueKind == RegistryValueKind.None) return null;
-                if (int.TryParse(backup.Data, out var value)) return value;
+                if (backup is null)
+                    return null;
+                if (backup.ValueKind == RegistryValueKind.None)
+                    return null;
+                if (int.TryParse(backup.Data, out var value))
+                    return value;
                 hasInvalidBackup = true;
                 warnings.Add($"{name} 备份值无效");
                 return null;
@@ -945,7 +753,6 @@ public sealed partial class SystemTweakService : ISystemTweakService
             var speedValue = ParseBackup(speed, "MouseSpeed");
             var threshold1Value = ParseBackup(threshold1, "MouseThreshold1");
             var threshold2Value = ParseBackup(threshold2, "MouseThreshold2");
-
             // 如果有任何备份值无效，拒绝恢复而不是使用假定的默认值
             if (hasInvalidBackup)
             {
@@ -965,9 +772,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
                 threshold2Value ?? 10,
                 speedValue ?? 1,
             };
-            
             Log.Info($"鼠标加速恢复：Threshold1={mouseParams[0]}, Threshold2={mouseParams[1]}, Speed={mouseParams[2]}");
-
             if (!SystemParametersInfo(SpiSetMouse, 0u, mouseParams, SpifUpdateIniFile | SpifSendChange))
             {
                 return OperationResult.Fail("恢复鼠标参数失败（SystemParametersInfo 调用出错）。");
@@ -978,9 +783,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
                 _backups.Remove("HKCU", MousePath, valueName);
             }
 
-            var note = (speedValue is null || threshold1Value is null || threshold2Value is null)
-                ? "（部分参数使用 Windows 默认值）"
-                : "";
+            var note = (speedValue is null || threshold1Value is null || threshold2Value is null) ? "（部分参数使用 Windows 默认值）" : "";
             return OperationResult.Ok($"已恢复鼠标加速的原设置（立即生效）{note}。");
         }
         catch (Exception ex)
@@ -990,19 +793,17 @@ public sealed partial class SystemTweakService : ISystemTweakService
     }
 
     // ---- 预读取三件套（Prefetch / ApplicationPreLaunch / OperationAPI） ----
-
     private ApplicationPreLaunchControl PreLaunchControl() => new(_backups, async command =>
     {
         var result = await RunPowerShellAsync(command, TimeSpan.FromSeconds(30));
         return (result.ExitCode, result.StdOut, result.StdErr);
     });
-
     private async Task<OperationResult> ApplyPrefetchTrioOffAsync()
     {
         var prelaunch = await PreLaunchControl().DisableAsync();
-        if (!prelaunch.Success) return OperationResult.Fail("禁用预读取失败：" + prelaunch.Message);
+        if (!prelaunch.Success)
+            return OperationResult.Fail("禁用预读取失败：" + prelaunch.Message);
         var problems = new List<string>();
-
         // 保留旧版的持久化注册表配置；它们不能替代 ApplicationPreLaunch 的实际 MMAgent 查询。
         try
         {
@@ -1032,17 +833,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
         try
         {
             var current = ReadDword("HKCU", ApplicationPreLaunchPath, "Enabled");
-            _backups.Save(new RegistryValueBackup
-            {
-                Hive = "HKCU",
-                Id = TweakBackupStore.MakeId("HKCU", ApplicationPreLaunchPath, "Enabled"),
-                KeyPath = ApplicationPreLaunchPath,
-                ValueName = "Enabled",
-                ValueKind = current is null ? RegistryValueKind.None : RegistryValueKind.DWord,
-                Data = current?.ToString() ?? "",
-                CreatedAt = DateTimeOffset.Now,
-            });
-
+            _backups.Save(new RegistryValueBackup { Hive = "HKCU", Id = TweakBackupStore.MakeId("HKCU", ApplicationPreLaunchPath, "Enabled"), KeyPath = ApplicationPreLaunchPath, ValueName = "Enabled", ValueKind = current is null ? RegistryValueKind.None : RegistryValueKind.DWord, Data = current?.ToString() ?? "", CreatedAt = DateTimeOffset.Now, });
             using var key = OpenWritableOrCreate("HKCU", ApplicationPreLaunchPath);
             key.SetValue("Enabled", 0, RegistryValueKind.DWord);
         }
@@ -1056,29 +847,17 @@ public sealed partial class SystemTweakService : ISystemTweakService
             return OperationResult.Fail($"禁用预读取部分失败：{string.Join("；", problems)}");
         }
 
-        return OperationResult.Ok(
-            "ApplicationPreLaunch 已通过 MMAgent 定向关闭并复检；其余预读取注册表关闭值已写入，重启后重新检测。SysMain 未停止、未禁用，Windows Search 为独立开关。", requiresReboot: true);
+        return OperationResult.Ok("ApplicationPreLaunch 已通过 MMAgent 定向关闭并复检；其余预读取注册表关闭值已写入，重启后重新检测。SysMain 未停止、未禁用，Windows Search 为独立开关。", requiresReboot: true);
     }
 
-    /// <summary>备份某注册表键下的一个 DWORD 原值（不存在则记 None）。</summary>
-    private void BackupDword(string keyPath, string valueName)
+    /// <summary>备份某注册表键下的一个 DWORD 原值（不存在则记 None）。</summary>    private void BackupDword(string keyPath, string valueName)
     {
         var hive = keyPath.StartsWith("HKCU", StringComparison.OrdinalIgnoreCase) ? "HKCU" : "HKLM";
         var current = ReadDword(hive, keyPath, valueName);
-        _backups.Save(new RegistryValueBackup
-        {
-            Hive = hive,
-            Id = TweakBackupStore.MakeId(hive, keyPath, valueName),
-            KeyPath = keyPath,
-            ValueName = valueName,
-            ValueKind = current is null ? RegistryValueKind.None : RegistryValueKind.DWord,
-            Data = current?.ToString() ?? "",
-            CreatedAt = DateTimeOffset.Now,
-        });
+        _backups.Save(new RegistryValueBackup { Hive = hive, Id = TweakBackupStore.MakeId(hive, keyPath, valueName), KeyPath = keyPath, ValueName = valueName, ValueKind = current is null ? RegistryValueKind.None : RegistryValueKind.DWord, Data = current?.ToString() ?? "", CreatedAt = DateTimeOffset.Now, });
     }
 
-    /// <summary>写入某注册表键下的一个 DWORD。</summary>
-    private void WriteDword(string keyPath, string valueName, int value)
+    /// <summary>写入某注册表键下的一个 DWORD。</summary>    private void WriteDword(string keyPath, string valueName, int value)
     {
         using var key = OpenWritableOrCreate(keyPath);
         key.SetValue(valueName, value, RegistryValueKind.DWord);
@@ -1088,8 +867,8 @@ public sealed partial class SystemTweakService : ISystemTweakService
     {
         var problems = new List<string>();
         var prelaunch = await PreLaunchControl().RestoreAsync();
-        if (!prelaunch.Success) problems.Add(prelaunch.Message);
-
+        if (!prelaunch.Success)
+            problems.Add(prelaunch.Message);
         // 1. 应用启动预读取 + OperationAPI 按备份还原（无备份 = 默认开启，写 1；不依赖 MMAgent cmdlet）
         try
         {
@@ -1152,7 +931,8 @@ public sealed partial class SystemTweakService : ISystemTweakService
     {
         const string hive = "HKLM";
         var backup = _backups.Get(hive, keyPath, valueName);
-        if (backup is null) return;
+        if (backup is null)
+            return;
         using var key = OpenWritableOrCreate(keyPath);
         if (backup.ValueKind == RegistryValueKind.None)
         {
@@ -1169,7 +949,6 @@ public sealed partial class SystemTweakService : ISystemTweakService
     }
 
     // ---- Windows Search 服务禁用（不动 SysMain：禁用 SysMain 会连带关掉内存压缩） ----
-
     private OperationResult ApplyWSearchDisabledAsync()
     {
         var wSearch = ApplyOptimizedDword(WSearchServicePath, "Start", 4, "Windows Search 服务");
@@ -1180,26 +959,23 @@ public sealed partial class SystemTweakService : ISystemTweakService
 
         // 尽力停止运行中的服务（失败不阻塞：重启后即不再启动）
         _ = RunProcessCaptureAsync("sc.exe", "stop WSearch", TimeSpan.FromSeconds(15));
-
         return OperationResult.Ok("已禁用 Windows Search 服务，重启后生效。（SysMain 未动，内存压缩不受影响）", requiresReboot: true);
     }
 
     private OperationResult RestoreWSearchAsync()
     {
-        if (_backups.Get("HKLM", WSearchServicePath, "Start") is null)
+        if (_backups.Get("HKLM", WSearchServicePath, "Start")is null)
         {
             return OperationResult.Fail("Windows Search 没有本工具的备份记录。");
         }
 
         var result = RestoreValue("HKLM", WSearchServicePath, "Start", "Windows Search 服务");
-        return result.Success
-            ? OperationResult.Ok("已恢复 Windows Search 服务设置，重启后生效。", requiresReboot: true)
-            : result;
+        return result.Success ? OperationResult.Ok("已恢复 Windows Search 服务设置，重启后生效。", requiresReboot: true) : result;
     }
 
     private static TweakStatus MakeStatus(SystemTweak tweak, (bool IsOptimized, string Detail) state)
     {
-        var (displayName, description) = Describe(tweak);
+        var(displayName, description) = Describe(tweak);
         return new TweakStatus
         {
             Tweak = tweak,
@@ -1210,51 +986,32 @@ public sealed partial class SystemTweakService : ISystemTweakService
         };
     }
 
-    private static (bool IsOptimized, string Detail) DwordToState(int? value, string notConfiguredDetail)
-        => value switch
-        {
-            null => (false, notConfiguredDetail),
-            0 => (true, "已关闭"),
-            _ => (false, "已开启"),
-        };
-
+    private static (bool IsOptimized, string Detail) DwordToState(int? value, string notConfiguredDetail) => value switch
+    {
+        null => (false, notConfiguredDetail),
+        0 => (true, "已关闭"),
+        _ => (false, "已开启"),
+    };
     private static (string DisplayName, string Description) Describe(SystemTweak tweak) => tweak switch
     {
-        SystemTweak.HyperVAndVbs =>
-            ("关闭 Hyper-V / VBS（含内核隔离）",
-             "等效 HyperV-off：关闭 hypervisor 启动、禁用 Hyper-V 与虚拟机平台功能、关闭内核隔离与 Credential Guard。" +
-             "重启生效。注意：重启后 WSL2、虚拟机、Windows 沙盒将不可用，系统安全性降低"),
-        SystemTweak.MemoryCompression =>
-            ("关闭内存压缩", "关闭 MemCompression 进程，降低 CPU 占用；可用内存量会略微减少"),
-        SystemTweak.PageCombining =>
-            ("关闭分页合并", "关闭内存页合并，减少后台 CPU 活动"),
-        SystemTweak.Prefetch =>
-            ("禁用预读取（Prefetch / PreLaunch / OperationAPI）",
-             "关闭应用预读取、MMAgent ApplicationPreLaunch 与 OperationAPI，并保留用户级预启动兼容设置。" +
-             "不停止、不禁用 SysMain；Windows Search 为独立开关。需重启后重新检测"),
-
+        SystemTweak.HyperVAndVbs => ("关闭 Hyper-V / VBS（含内核隔离）", "等效 HyperV-off：关闭 hypervisor 启动、禁用 Hyper-V 与虚拟机平台功能、关闭内核隔离与 Credential Guard。" + "重启生效。注意：重启后 WSL2、虚拟机、Windows 沙盒将不可用，系统安全性降低"),
+        SystemTweak.MemoryCompression => ("关闭内存压缩", "关闭 MemCompression 进程，降低 CPU 占用；可用内存量会略微减少"),
+        SystemTweak.PageCombining => ("关闭分页合并", "关闭内存页合并，减少后台 CPU 活动"),
+        SystemTweak.Prefetch => ("禁用预读取（Prefetch / PreLaunch / OperationAPI）", "关闭应用预读取、MMAgent ApplicationPreLaunch 与 OperationAPI，并保留用户级预启动兼容设置。" + "不停止、不禁用 SysMain；Windows Search 为独立开关。需重启后重新检测"),
         // ---- 游戏微调包 ----
-        SystemTweak.MouseAccelerationOff =>
-            ("关闭鼠标加速", "关闭指针加速曲线（MouseSpeed/Threshold=0），瞄准移动 1:1 线性；FPS 玩家推荐，立即生效"),
-        SystemTweak.HardwareGpuScheduling =>
-            ("HAGS 硬件加速 GPU 调度", "开启 HwSchMode=2，由显卡直接管理显存调度，可小幅降低延迟；需 RTX/GTX16 系或较新显卡支持，重启生效"),
-        SystemTweak.WSearchOff =>
-            ("禁用 Windows Search 服务",
-             "关闭搜索索引，显著减少磁盘与 CPU 后台占用；开始菜单/文件搜索会变慢。" +
-             "注意：不动 SysMain——SysMain 承载内存压缩（MemCompression），禁用它会把内存压缩一起关掉"),
+        SystemTweak.MouseAccelerationOff => ("关闭鼠标加速", "关闭指针加速曲线（MouseSpeed/Threshold=0），瞄准移动 1:1 线性；FPS 玩家推荐，立即生效"),
+        SystemTweak.HardwareGpuScheduling => ("HAGS 硬件加速 GPU 调度", "开启 HwSchMode=2，由显卡直接管理显存调度，可小幅降低延迟；需 RTX/GTX16 系或较新显卡支持，重启生效"),
+        SystemTweak.WSearchOff => ("禁用 Windows Search 服务", "关闭搜索索引，显著减少磁盘与 CPU 后台占用；开始菜单/文件搜索会变慢。" + "注意：不动 SysMain——SysMain 承载内存压缩（MemCompression），禁用它会把内存压缩一起关掉"),
         _ => ("未知", ""),
     };
-
     // ---------------- MMAgent（内存压缩 / 分页合并） ----------------
-
     private static async Task<OperationResult> RunMmAgentAsync(string psCommand, string friendlyName, string doneText)
     {
-        var (exitCode, stdout, stderr) = await RunPowerShellAsync(psCommand, TimeSpan.FromSeconds(30));
+        var(exitCode, stdout, stderr) = await RunPowerShellAsync(psCommand, TimeSpan.FromSeconds(30));
         if (exitCode != 0)
         {
             var reason = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
-            return OperationResult.Fail(
-                $"操作{friendlyName}失败：{(string.IsNullOrWhiteSpace(reason) ? "PowerShell 执行出错" : reason.Trim())}");
+            return OperationResult.Fail($"操作{friendlyName}失败：{(string.IsNullOrWhiteSpace(reason) ? "PowerShell 执行出错" : reason.Trim())}");
         }
 
         return OperationResult.Ok(doneText, requiresReboot: true);
@@ -1262,17 +1019,13 @@ public sealed partial class SystemTweakService : ISystemTweakService
 
     private async Task<OperationResult> DisableMmAgentWithBackupAsync(string property, string argument, string label)
     {
-        var (code, stdout, error) = await RunPowerShellAsync($"[int](Get-MMAgent).{property}", TimeSpan.FromSeconds(20));
+        var(code, stdout, error) = await RunPowerShellAsync($"[int](Get-MMAgent).{property}", TimeSpan.FromSeconds(20));
         if (code != 0 || !int.TryParse(stdout?.Trim(), out var original))
         {
             return OperationResult.Fail($"无法读取{label}原状态：{error ?? stdout ?? "未知错误"}");
         }
 
-        _backups.Save(new RegistryValueBackup
-        {
-            Hive = "State", KeyPath = "MMAgent", ValueName = property,
-            ValueKind = RegistryValueKind.String, Data = original.ToString(), CreatedAt = DateTimeOffset.Now,
-        });
+        _backups.Save(new RegistryValueBackup { Hive = "State", KeyPath = "MMAgent", ValueName = property, ValueKind = RegistryValueKind.String, Data = original.ToString(), CreatedAt = DateTimeOffset.Now, });
         return await RunMmAgentAsync($"Disable-MMAgent {argument}", label, $"已关闭{label}，重启后生效。");
     }
 
@@ -1290,23 +1043,23 @@ public sealed partial class SystemTweakService : ISystemTweakService
         {
             _backups.Remove("State", "MMAgent", property);
         }
+
         return result;
     }
 
-    /// <summary>并行查询 MMAgent 和 hypervisor 状态（原来串行，现合并为一次并行调用减少等待）。</summary>
-    private static async Task<(bool CompressionOn, bool PageCombiningOn, string Hypervisor, bool? ApplicationPreLaunchOn)> QueryMmAgentAndHypervisorAsync()
+    /// <summary>并行查询 MMAgent 和 hypervisor 状态（原来串行，现合并为一次并行调用减少等待）。</summary>    private static async Task<(bool CompressionOn, bool PageCombiningOn, string Hypervisor, bool? ApplicationPreLaunchOn)> QueryMmAgentAndHypervisorAsync()
     {
         var mmTask = QueryMmAgentAsync();
         var hvTask = QueryHypervisorLaunchTypeAsync();
         await Task.WhenAll(mmTask, hvTask);
-        var (compressionOn, pageCombiningOn, applicationPreLaunchOn) = mmTask.Result;
+        var(compressionOn, pageCombiningOn, applicationPreLaunchOn) = mmTask.Result;
         return (compressionOn, pageCombiningOn, hvTask.Result, applicationPreLaunchOn);
     }
 
     private static async Task<(bool CompressionOn, bool PageCombiningOn, bool? ApplicationPreLaunchOn)> QueryMmAgentAsync()
     {
         var command = "$m = Get-MMAgent -ErrorAction Stop; [int]$m.MemoryCompression; [int]$m.PageCombining; if ($m.ApplicationPreLaunch -is [bool]) { [int]$m.ApplicationPreLaunch } else { 'UNKNOWN' }";
-        var (exitCode, stdout, _) = await RunPowerShellAsync(command, TimeSpan.FromSeconds(20));
+        var(exitCode, stdout, _) = await RunPowerShellAsync(command, TimeSpan.FromSeconds(20));
         if (exitCode != 0 || stdout is null)
         {
             // 查询失败时按「未优化」处理，避免误导用户
@@ -1315,15 +1068,11 @@ public sealed partial class SystemTweakService : ISystemTweakService
 
         var lines = SplitLines(stdout);
         return (LineOn(lines.ElementAtOrDefault(0)), LineOn(lines.ElementAtOrDefault(1)), ApplicationPreLaunchControl.Parse(0, lines.ElementAtOrDefault(2)));
-
         static bool LineOn(string? line) => line is not null && line.Trim() != "0";
     }
 
     // ---------------- 进程调用 ----------------
-
-    /// <summary>执行原生命令行工具（bcdedit / dism / sc），返回退出码与输出。</summary>
-    private static async Task<(int ExitCode, string StdOut, string StdErr)> RunProcessCaptureAsync(
-        string fileName, string arguments, TimeSpan timeout)
+    /// <summary>执行原生命令行工具（bcdedit / dism / sc），返回退出码与输出。</summary>    private static async Task<(int ExitCode, string StdOut, string StdErr)> RunProcessCaptureAsync(string fileName, string arguments, TimeSpan timeout)
     {
         var psi = new ProcessStartInfo
         {
@@ -1334,7 +1083,6 @@ public sealed partial class SystemTweakService : ISystemTweakService
             RedirectStandardError = true,
             CreateNoWindow = true,
         };
-
         using var process = Process.Start(psi);
         if (process is null)
         {
@@ -1343,7 +1091,6 @@ public sealed partial class SystemTweakService : ISystemTweakService
 
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
-
         try
         {
             await process.WaitForExitAsync().WaitAsync(timeout);
@@ -1356,7 +1103,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
             }
             catch
             {
-                // 进程可能已自行退出
+            // 进程可能已自行退出
             }
 
             return (-1, "", "执行超时");
@@ -1365,16 +1112,12 @@ public sealed partial class SystemTweakService : ISystemTweakService
         return (process.ExitCode, await stdoutTask, await stderrTask);
     }
 
-    private static async Task<(int ExitCode, string? StdOut, string? StdErr)> RunPowerShellAsync(
-        string command, TimeSpan timeout)
+    private static async Task<(int ExitCode, string? StdOut, string? StdErr)> RunPowerShellAsync(string command, TimeSpan timeout)
     {
         var psi = new ProcessStartInfo
         {
-            FileName = Path.Combine(
-                Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"),
-            Arguments =
-                "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command " +
-                $"\"[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; {command}\"",
+            FileName = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"),
+            Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command " + $"\"[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; {command}\"",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -1382,7 +1125,6 @@ public sealed partial class SystemTweakService : ISystemTweakService
             StandardOutputEncoding = System.Text.Encoding.UTF8,
             StandardErrorEncoding = System.Text.Encoding.UTF8,
         };
-
         using var process = Process.Start(psi);
         if (process is null)
         {
@@ -1391,7 +1133,6 @@ public sealed partial class SystemTweakService : ISystemTweakService
 
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
-
         try
         {
             await process.WaitForExitAsync().WaitAsync(timeout);
@@ -1404,7 +1145,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
             }
             catch
             {
-                // 进程可能已自行退出
+            // 进程可能已自行退出
             }
 
             return (-1, null, "PowerShell 执行超时");
@@ -1420,6 +1161,5 @@ public sealed partial class SystemTweakService : ISystemTweakService
         return lineBreak > 0 ? trimmed[..lineBreak] : trimmed;
     }
 
-    private static string[] SplitLines(string text)
-        => text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    private static string[] SplitLines(string text) => text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }

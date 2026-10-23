@@ -70,6 +70,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        InitializePageBackendNavigation();
         RuntimeNavigationItem.Visibility = ReleaseFeatures.RuntimeUiEnabled ? Visibility.Visible : Visibility.Collapsed;
         Services.Backends.BackendAttention.Changed += OnBackendAttention;
         Closed += (_, _) => Services.Backends.BackendAttention.Changed -= OnBackendAttention;
@@ -133,8 +134,7 @@ public sealed partial class MainWindow : Window
     private void OnGameTargetChanged(GameTarget target) => DispatcherQueue.TryEnqueue(UpdateGameTargetNavigation);
     private void UpdateGameTargetNavigation()
     {
-        foreach (var item in NavView.MenuItems.OfType<NavigationViewItem>())
-            if (item.Tag?.ToString() is "shader" or "ace") item.IsEnabled = !ServiceLocator.GameTarget.IsCustom;
+        UpdatePageAvailability();
     }
 
     // ---------------------------------------------------------------- 插件侧栏入口
@@ -438,13 +438,13 @@ public sealed partial class MainWindow : Window
 
     private async Task CheckGpuSpoofWatchAsync()
     {
-        if (_gpuWatchInFlight || !_gpuWatchReady) return;
+        if (_gpuWatchInFlight || !_gpuWatchReady || Services.Backends.PageBackendSessions.Manager.DeltaRunning != false) return;
         _gpuWatchInFlight = true;
         try
         {
             var scanned = await ServiceLocator.GpuSpoof.CheckInvalidationAsync();
             var items = scanned.Where(x => !_gpuWatchDismissed.Contains((x.Entry.RegistryPath, x.CurrentDriverStamp, x.Entry.ExpectedName))).ToList();
-            if (!_gpuWatchReady) return;
+            if (!_gpuWatchReady || Services.Backends.PageBackendSessions.Manager.DeltaRunning != false) return;
             _gpuWatchItems = items;
             GpuSpoofWarning.IsOpen = items.Count > 0;
             UpdateGpuWarningVisibility();
@@ -452,7 +452,7 @@ public sealed partial class MainWindow : Window
             {
                 GpuSpoofWarning.Message = string.Join("；", items.Select(x => "原伪装：" + x.Entry.ExpectedName)) +
                     "。建议重新应用伪装，再清理旧着色器缓存并让游戏重新生成；操作需手动确认。";
-                ShaderCacheButton.IsEnabled = !ServiceLocator.GameTarget.IsCustom;
+                ShaderCacheButton.IsEnabled = !ServiceLocator.GameTarget.IsCustom && CanEnterGamePage("shader");
             }
         }
         catch (Exception ex) { Log.Error("显卡伪装失效检查失败，未判断为正常", ex); }
@@ -839,6 +839,12 @@ public sealed partial class MainWindow : Window
         {
             return;
         }
+        if (_pluginExitInProgress || _deploymentInProgress)
+        {
+            args.Cancel = true;
+            if (_pluginExitInProgress) RestoreFromTray();
+            return;
+        }
         if (_factoryResetInProgress)
         {
             args.Cancel = true;
@@ -1040,7 +1046,7 @@ public sealed partial class MainWindow : Window
         if (Content is UIElement root) root.IsHitTestVisible = enabled;
     }
 
-    /// <summary>托盘菜单「退出」：先移除图标再退出应用（不留幽灵图标）。</summary>
+    /// <summary>托盘菜单「退出」：显示收尾进度，安全排空后退出并移除图标。</summary>
     private bool _pluginExitInProgress;
     private async void ExitApplication()
     {
@@ -1049,9 +1055,23 @@ public sealed partial class MainWindow : Window
 
         IDisposable? pluginBlock = null;
         IDisposable? backendBlock = null;
+        Microsoft.UI.Dispatching.DispatcherQueueTimer? exitTimer = null;
 
         try
         {
+            // 托盘退出也恢复可见窗口，避免长时间恢复设置时看起来只剩后台进程。
+            RestoreFromTray();
+            NavView.IsEnabled = false;
+            ExitOverlay.Visibility = Visibility.Visible;
+            ExitProgressRing.IsActive = true;
+            ExitStageText.Text = "正在停止插件…";
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            ExitElapsedText.Text = "已用时 0 秒";
+            exitTimer = DispatcherQueue.CreateTimer();
+            exitTimer.Interval = TimeSpan.FromSeconds(1);
+            exitTimer.Tick += (_, _) => ExitElapsedText.Text = $"已用时 {(int)elapsed.Elapsed.TotalSeconds} 秒";
+            exitTimer.Start();
+            Log.Info("用户请求退出：显示收尾进度。");
             pluginBlock = ServiceLocator.PluginRuntime.BlockNewOperations();
             backendBlock = Services.Backends.BackendOperationGate.BlockNewOperations();
 
@@ -1065,6 +1085,7 @@ public sealed partial class MainWindow : Window
                 pluginBlock = null;
                 backendBlock = null;
 
+                HideExitProgress();
                 RestoreFromTray();
                 await new ContentDialog { XamlRoot = ContentFrame.XamlRoot, Title = "插件尚未安全停止", Content = blocker,
                     CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
@@ -1072,7 +1093,11 @@ public sealed partial class MainWindow : Window
             }
             // 前后端分离 T5：退出前也必须排空官方后端；任一模块未确认退出（含在途/未知操作、
             // 未结束的子进程）就阻止退出，不能只按主进程 PID 判断。
-            var backendFailures = await Services.Backends.BackendLifecycle.PrepareHandoverAsync("退出");
+            var exitProgress = new Progress<string>(message =>
+            {
+                if (_pluginExitInProgress && !_exitRequested) ExitStageText.Text = message;
+            });
+            var backendFailures = await Services.Backends.BackendLifecycle.PrepareHandoverAsync("退出", progress: exitProgress);
             if (backendFailures.Count > 0)
             {
                 var backendBlocker = Services.Backends.BackendLifecycle.DescribeBlocker(backendFailures, "退出");
@@ -1084,12 +1109,15 @@ public sealed partial class MainWindow : Window
                 pluginBlock = null;
                 backendBlock = null;
 
+                HideExitProgress();
                 RestoreFromTray();
                 await new ContentDialog { XamlRoot = ContentFrame.XamlRoot, Title = "退出前需要核对官方后端",
                     Content = new TextBlock { Text = backendBlocker, TextWrapping = TextWrapping.Wrap },
                     CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
                 return;
             }
+            // 本次已完成可信排空，ProcessExit 兜底不应再次执行恢复流程。
+            App.ExitAlreadyPrepared = true;
             _exitRequested = true;
             EmergencyPolicyUpdateService.Stop();
             _trayIcon?.Dispose();
@@ -1098,20 +1126,40 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Log.Error("退出前插件处理失败，应用保持打开", ex);
+            Log.Error("退出收尾失败，应用保持打开", ex);
 
             // 优化：异常时确保释放阻止
             pluginBlock?.Dispose();
             backendBlock?.Dispose();
+            pluginBlock = null;
+            backendBlock = null;
+            HideExitProgress();
+            RestoreFromTray();
+            try
+            {
+                await new ContentDialog { XamlRoot = ContentFrame.XamlRoot, Title = "暂时无法安全退出",
+                    Content = new TextBlock { Text = "收尾发生错误，应用已恢复显示。请重试退出；若仍失败，请提供日志。\n" + ex.Message,
+                        TextWrapping = TextWrapping.Wrap }, CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
+            }
+            catch (Exception dialogError) { Log.Warn("无法显示退出失败说明：" + dialogError.Message); }
         }
         finally
         {
+            exitTimer?.Stop();
+            if (!_exitRequested) HideExitProgress();
             _pluginExitInProgress = false;
 
             // 优化：兜底释放阻止
             pluginBlock?.Dispose();
             backendBlock?.Dispose();
         }
+    }
+
+    private void HideExitProgress()
+    {
+        ExitProgressRing.IsActive = false;
+        ExitOverlay.Visibility = Visibility.Collapsed;
+        NavView.IsEnabled = true;
     }
 
     /// <summary>脱机助手已完成启动握手后，主界面直接退出，不进入托盘驻留。</summary>
@@ -1159,6 +1207,7 @@ public sealed partial class MainWindow : Window
     public void NavigateByTag(string tag)
     {
         if (tag == "runtime" && !ReleaseFeatures.RuntimeUiEnabled) tag = "settings";
+        if (!CanEnterGamePage(tag)) { UpdatePageAvailability(); return; }
         var target = EnumerateNavItems().FirstOrDefault(i => i.Tag?.ToString() == tag);
         if (target is not null)
         {
@@ -1180,6 +1229,11 @@ public sealed partial class MainWindow : Window
     {
         if (args.SelectedItem is not NavigationViewItem item)
         {
+            return;
+        }
+        if (!CanEnterGamePage(item.Tag?.ToString() ?? ""))
+        {
+            NavView.SelectedItem = NavView.MenuItems[0];
             return;
         }
         if (item.Tag?.ToString() == "runtime" && !ReleaseFeatures.RuntimeUiEnabled)

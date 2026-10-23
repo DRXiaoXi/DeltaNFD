@@ -43,6 +43,8 @@ internal static class BackendReviewFlow
                 var scopes = BackendRecovery.RecoveryChoices(review, snapshot);
                 var canKeep = BackendRecovery.CanKeepCurrentState(review, snapshot);
                 var installationReview = BackendRecovery.IsRuntimeInstallation(review);
+                if (BackendRecovery.IsRuntimeFileReplacement(review))
+                    snapshotNote += "\n\n这是系统 DLL 强制替换记录。上方防护状态不代表 DLL 已还原，不能使用防护恢复处理它。请按本次 Vc14ForceReplace 备份目录中的 README/restore.ps1 手动恢复、核对文件与重启排程，再决定是否保留当前状态；不会重新执行替换。";
                 if (installationReview)
                     snapshotNote += "\n\n安装/系统修复不能按防护备份回滚。请等待安装进程结束，再点击“核对结束并恢复可用”；会扫描当前组件并归档旧事务，不会重新执行修复。";
                 if (review.Module == DeltaNFD.Backends.BackendModules.Ace && !canKeep)

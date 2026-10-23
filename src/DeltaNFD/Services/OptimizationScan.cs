@@ -1,303 +1,175 @@
-using System.Diagnostics;
+using DeltaNFD.Inspection;
 using DeltaNFD.Services.TweakDb;
 
 namespace DeltaNFD.Services;
 
-/// <summary>
-/// 主页「优化检测」：一次性扫描系统优化的全部优化项目（扩展优化库全栏目 + 服务组 + 深度优化），
-/// 计算优化分数（已应用 / 总数 × 100）。扫描结果作为静态缓存顺延到系统优化页——
-/// 各栏目加载时优先读取缓存状态，缺失条目才单独查询，加速视觉加载（HANDOFF §25）。
-/// 应用更改 / 一键恢复后由 BxDbViewModel 回写 / 作废缓存，保证分数与真实状态一致。
-/// </summary>
+/// <summary>Startup read-only preload. States are cached individually; there is no optimization score.</summary>
 public static class OptimizationScan
 {
-    private static readonly object _gate = new();
-    private static readonly Dictionary<string, BxState> _itemStates = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<string, BxState> _groupStates = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<SystemTweak, bool> _tweakStates = new();
-
-    /// <summary>扫描进行中。</summary>
+    private static readonly object Gate = new();
+    private static readonly Dictionary<string, BxState> Items = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, BxState> Groups = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<SystemTweak, TweakStatus> Tweaks = [];
+    private static Task _scan = Task.CompletedTask;
+    private static TaskCompletionSource _deepReady = Ready();
+    private static TaskCompletionSource Ready() { var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); ready.SetResult(); return ready; }
+    private static bool _started;
+    private static int _generation;
+    private static int _itemsEpoch, _groupsEpoch, _tweaksEpoch;
     public static bool IsScanning { get; private set; }
-
-    /// <summary>扫描进度文本（"正在检测：安全性（2/10）…"）。</summary>
-    public static string ProgressText { get; private set; } = "";
-
-    /// <summary>优化分数（0-100；= 已应用项目 / 可统计项目）。</summary>
-    public static double Score { get; private set; }
-
-    /// <summary>已应用的项目数。</summary>
-    public static int Applied { get; private set; }
-
-    /// <summary>可统计的项目总数（状态未知 / 不支持的条目不计入）。</summary>
-    public static int Total { get; private set; }
-
-    /// <summary>本次扫描完成时间；null = 尚未完成过。</summary>
+    public static string ProgressText { get; private set; } = "等待预读优化项目";
     public static DateTime? CompletedTime { get; private set; }
-
-    /// <summary>是否存在可顺延的扫描缓存。</summary>
-    public static bool HasData => _itemStates.Count > 0 || _groupStates.Count > 0 || _tweakStates.Count > 0;
-
-    /// <summary>扫描进度 / 分数变化通知（主页卡订阅；页面退订防泄漏）。</summary>
+    public static string Error { get; private set; } = "";
+    public static bool HasData { get { lock (Gate) return Items.Count > 0 || Groups.Count > 0 || Tweaks.Count > 0; } }
     public static event Action? Changed;
-
-    /// <summary>本会话尚未扫描过时启动一次扫描（幂等）。</summary>
-    public static Task RunIfNotScannedAsync() => HasData || IsScanning ? Task.CompletedTask : RunAsync();
-
-    /// <summary>执行全量扫描（重入安全；进行中时调用直接返回）。</summary>
-    public static async Task RunAsync()
+    public static Task RunIfNotScannedAsync() { lock (Gate) return _started ? _scan : RunAsync(); }
+    public static Task RunAsync()
     {
-        lock (_gate)
+        lock (Gate)
         {
-            if (IsScanning)
-            {
-                return;
-            }
-
-            IsScanning = true;
+            if (IsScanning) return _scan;
+            _started = IsScanning = true; Error = "";
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _deepReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _scan = completion.Task;
+            _ = ReadAllAsync(_generation, completion);
+            return _scan;
         }
-
-        Log.Info($"优化检测：开始全量扫描（扩展优化库 + 服务组 + 深度优化）；WindowsBuild={Environment.OSVersion.Version.Build}");
-        var sw = Stopwatch.StartNew();
+    }
+    private static async Task ReadAllAsync(int generation, TaskCompletionSource completion)
+    {
+        var errors = new List<string>();
+        bool Current() { lock (Gate) return generation == _generation; }
         try
         {
-            lock (_gate)
+            ProgressText = "正在预读深度优化项目…"; FireChanged();
+            try
             {
-                _itemStates.Clear();
-                _groupStates.Clear();
-                _tweakStates.Clear();
-                CompletedTime = null;
+                int epoch; lock (Gate) epoch = _tweaksEpoch;
+                var states = await new SystemTweakInspection().GetStatusesAsync();
+                lock (Gate) if (generation == _generation && epoch == _tweaksEpoch) foreach (var state in states) Tweaks[state.Tweak] = state;
             }
-
-            // 深度优化 20 项（纯注册表读，成本极低）
-            var tweaks = await ServiceLocator.SystemTweaks.GetStatusesAsync();
-            lock (_gate)
+            catch (Exception ex) { errors.Add("深度优化：" + ex.Message); }
+            _deepReady.TrySetResult(); FireChanged();
+            var reader = new BxInspection();
+            foreach (var group in BxCatalog.ServiceGroups)
             {
-                foreach (var s in tweaks)
-                {
-                    _tweakStates[s.Tweak] = s.IsOptimized;
-                    Log.Info($"优化检测判定：深度优化/{s.Tweak} → {(s.IsOptimized ? "已优化" : "未优化")}");
-                }
-            }
-
-            ProgressText = "深度优化检测完成";
-            FireChanged();
-
-            // 服务组（逐组读服务注册表）
-            var bx = ServiceLocator.Bx;
-            var groups = BxCatalog.ServiceGroups;
-            for (var i = 0; i < groups.Length; i++)
-            {
-                ProgressText = $"正在检测服务组：{groups[i].Name}（{i + 1}/{groups.Length}）";
-                FireChanged();
-                var state = await bx.GetServiceGroupStateAsync(groups[i]);
-                Log.Info($"优化检测判定：服务组/{groups[i].Id} → {state}");
-                lock (_gate)
-                {
-                    _groupStates[groups[i].Id] = state;
-                }
-
+                if (!Current()) return;
+                ProgressText = "正在预读服务组：" + group.Name; FireChanged();
+                BxState state;
+                int epoch; lock (Gate) epoch = _groupsEpoch;
+                try { state = await reader.GetServiceGroupStateAsync(group); }
+                catch (Exception ex) { state = BxState.Unknown; errors.Add(group.Name + "：" + ex.Message); }
+                lock (Gate) if (generation == _generation && epoch == _groupsEpoch) Groups[group.Id] = state;
+                try { await SystemInspectionCache.ResolvedServices(group); } catch (Exception ex) { errors.Add(group.Name + "服务明细：" + ex.Message); }
                 FireChanged();
             }
-
-            // 扩展优化库全栏目（批量：任务状态一次拉取；wevtutil / 注册表逐条）
-            var sections = BxCatalog.Sections.Where(s => s.JsonFile is not null).ToList();
-            var systemDrive = DriveInspector.GetFixedDriveReports().FirstOrDefault(d => d.IsSystemDrive);
-            bool? systemDriveIsHdd = systemDrive is null || (!systemDrive.IsMechanical && !systemDrive.IsSolidState)
-                ? null : systemDrive.IsMechanical;
-            Log.Info($"优化检测环境：系统盘={(systemDrive is null ? "未识别" : systemDrive.Letter + ":")}；IsHdd={systemDriveIsHdd?.ToString() ?? "未知"}");
-            for (var i = 0; i < sections.Count; i++)
+            bool? hdd = null;
+            try { var drive = (await SystemInspectionCache.Drives()).FirstOrDefault(d => d.IsSystemDrive); hdd = drive is null || !drive.IsMechanical && !drive.IsSolidState ? null : drive.IsMechanical; }
+            catch (Exception ex) { errors.Add("系统盘信息：" + ex.Message); }
+            foreach (var section in BxCatalog.Sections.Where(s => s.JsonFile is not null))
             {
-                var section = sections[i];
-                ProgressText = $"正在检测：{section.Title}（{i + 1}/{sections.Count}）";
+                if (!Current()) return;
+                ProgressText = "正在预读优化项目：" + section.Title; FireChanged();
+                if (!BxCatalog.Database.TryGetValue(section.Id, out var entries)) { errors.Add(section.Title + "：优化数据库未读取，待核对"); continue; }
+                Dictionary<BxItem, BxState> states;
+                int epoch; lock (Gate) epoch = _itemsEpoch;
+                try { states = await reader.GetItemStatesAsync(entries); }
+                catch (Exception ex) { states = entries.ToDictionary(item => item, _ => BxState.Unknown); errors.Add(section.Title + "：" + ex.Message); }
+                lock (Gate)
+                    if (generation == _generation && epoch == _itemsEpoch)
+                        foreach (var item in entries)
+                            Items[Key(section.Id, item.Name)] = BxCatalog.GetUnavailableReason(item, Environment.OSVersion.Version.Build, hdd) is not null
+                                ? BxState.NotApplicable : states.GetValueOrDefault(item, BxState.Unknown);
                 FireChanged();
-
-                if (!BxCatalog.Database.TryGetValue(section.Id, out var items) || items.Count == 0)
-                {
-                    Log.Warn($"优化检测跳过栏目：{section.Id}/{section.Title}；原因=数据库条目缺失或为空");
-                    continue;
-                }
-
-                var states = await bx.GetItemStatesAsync(items);
-                lock (_gate)
-                {
-                    foreach (var (item, state) in states)
-                    {
-                        var unavailable = BxCatalog.GetUnavailableReason(item, Environment.OSVersion.Version.Build, systemDriveIsHdd);
-                        var finalState = unavailable is null ? state : BxState.NotApplicable;
-                        _itemStates[section.Id + "|" + item.Name] = finalState;
-                        if (unavailable is not null)
-                        {
-                            Log.Info($"优化检测适用性判定：{section.Id}/{item.Name} → 不适用；WindowsBuild={Environment.OSVersion.Version.Build}；原因={unavailable}；NoSupport=[{string.Join(",", item.NoSupport)}]");
-                        }
-                        else if (state is BxState.Mixed or BxState.Unknown or BxState.NotApplicable)
-                        {
-                            Log.Info($"优化检测状态判定：{section.Id}/{item.Name} → {state}；依据见扩展库状态诊断");
-                        }
-                    }
-                }
-
-                FireChanged();
+                foreach (var item in entries)
+                    try { await SystemInspectionCache.Gear(item); } catch (Exception ex) { errors.Add(item.Name + "档位：" + ex.Message); }
             }
-
-            CompletedTime = DateTime.Now;
-            ProgressText = "检测完成";
-            string stateSummary;
-            lock (_gate)
-            {
-                var itemsSummary = string.Join("，", Enum.GetValues<BxState>().Select(state => $"{state}={_itemStates.Values.Count(value => value == state)}"));
-                var groupsSummary = string.Join("，", Enum.GetValues<BxState>().Select(state => $"{state}={_groupStates.Values.Count(value => value == state)}"));
-                var tweaksSummary = $"已优化={_tweakStates.Values.Count(value => value)}，未优化={_tweakStates.Values.Count(value => !value)}";
-                stateSummary = $"条目[{itemsSummary}]；服务组[{groupsSummary}]；深度优化[{tweaksSummary}]";
-            }
-            Log.Info($"优化检测：完成（{sw.ElapsedMilliseconds} ms）；条目状态：{stateSummary}");
+            try { await SystemInspectionCache.PreloadAsync(); } catch (Exception ex) { errors.Add("辅助状态：" + ex.Message); }
+            lock (Gate) if (generation == _generation) CompletedTime = DateTime.Now;
         }
-        catch (Exception ex)
-        {
-            ProgressText = "检测失败：" + ex.Message;
-            Log.Error("优化检测：全量扫描失败", ex);
-        }
+        catch (Exception ex) { errors.Add(ex.Message); }
         finally
         {
-            lock (_gate)
+            lock (Gate)
             {
                 IsScanning = false;
-                RecalculateLocked();
+                if (generation == _generation)
+                {
+                    Error = string.Join("；", errors);
+                    var unknown = Items.Values.Count(s => s == BxState.Unknown) + Groups.Values.Count(s => s == BxState.Unknown) + Tweaks.Values.Count(s => !s.StateKnown);
+                    ProgressText = errors.Count == 0 ? unknown == 0 ? "优化项目预读完成" : $"优化项目预读完成，{unknown} 项状态待核对" : "预读部分完成，读取失败的项目需核对";
+                }
             }
-
-            FireChanged();
+            _deepReady.TrySetResult(); completion.TrySetResult(); FireChanged();
         }
     }
-
-    /// <summary>作废全部扫描缓存（「刷新状态」/ 一键恢复后调用）。</summary>
+    public static async Task<Dictionary<BxItem, BxState>> ReadItemsAsync(IReadOnlyList<BxItem> items)
+    {
+        Task scan; lock (Gate) scan = _scan;
+        if (!scan.IsCompleted) await scan;
+        var result = new Dictionary<BxItem, BxState>(); var missing = new List<BxItem>();
+        lock (Gate) foreach (var item in items)
+            if (Items.TryGetValue(Key(item.SectionId, item.Name), out var state)) result[item] = state; else missing.Add(item);
+        if (missing.Count > 0)
+        {
+            var fresh = await new BxInspection().GetItemStatesAsync(missing);
+            foreach (var item in missing) { result[item] = fresh.GetValueOrDefault(item, BxState.Unknown); SetItemState(item.SectionId, item.Name, result[item]); }
+        }
+        return result;
+    }
+    public static async Task<BxState> ReadGroupAsync(BxServiceGroup group)
+    {
+        Task scan; lock (Gate) scan = _scan;
+        if (!scan.IsCompleted) await scan;
+        if (TryGetGroupState(group.Id, out var state)) return state;
+        state = await new BxInspection().GetServiceGroupStateAsync(group); SetGroupState(group.Id, state); return state;
+    }
     public static void Invalidate()
     {
-        lock (_gate)
+        lock (Gate) { _generation++; _started = false; Items.Clear(); Groups.Clear(); Tweaks.Clear(); CompletedTime = null; }
+        SystemInspectionCache.Invalidate(); FireChanged();
+    }
+    internal static async Task<List<TweakStatus>> ReadTweaksAsync()
+    {
+        Task scan; lock (Gate) scan = _deepReady.Task;
+        if (!scan.IsCompleted) await scan;
+        lock (Gate) if (Tweaks.Count == Enum.GetValues<SystemTweak>().Length) return Tweaks.Values.ToList();
+        var states = await new SystemTweakInspection().GetStatusesAsync();
+        lock (Gate) foreach (var state in states) Tweaks[state.Tweak] = state;
+        return states;
+    }
+    internal static void ForgetItem(string section, string name)
+    {
+        lock (Gate) { _itemsEpoch++; Items.Remove(Key(section, name)); }
+        SystemInspectionCache.ForgetGear(section, name);
+        var changed = BxCatalog.Database.GetValueOrDefault(section)?.FirstOrDefault(i => i.Name == name);
+        if (changed is not null)
         {
-            _itemStates.Clear();
-            _groupStates.Clear();
-            _tweakStates.Clear();
-            CompletedTime = null;
-            Score = 0;
-            Applied = 0;
-            Total = 0;
+            var paths = changed.Tweaks.Select(t => t.Path + "|" + t.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            lock (Gate)
+                foreach (var pair in BxCatalog.Database)
+                    foreach (var item in pair.Value.Where(i => i.Tweaks.Any(t => paths.Contains(t.Path + "|" + t.Key)))) Items.Remove(Key(pair.Key, item.Name));
         }
-
+        lock (Gate) { _tweaksEpoch++; Tweaks.Clear(); } // Seven deep checks share one native read; aliases must be rechecked together.
         FireChanged();
     }
-
-    public static bool TryGetItemState(string sectionId, string itemName, out BxState state)
+    internal static void ForgetGroups() { lock (Gate) { _groupsEpoch++; Groups.Clear(); } FireChanged(); }
+    internal static void ForgetTweaks() { lock (Gate) { _tweaksEpoch++; Tweaks.Clear(); } FireChanged(); }
+    private static string Key(string section, string name) => section + "|" + name;
+    public static bool TryGetItemState(string section, string name, out BxState state) { lock (Gate) return Items.TryGetValue(Key(section, name), out state); }
+    public static bool TryGetGroupState(string id, out BxState state) { lock (Gate) return Groups.TryGetValue(id, out state); }
+    internal static bool TryGetTweakStatus(SystemTweak tweak, out TweakStatus? state) { lock (Gate) return Tweaks.TryGetValue(tweak, out state); }
+    public static bool TryGetTweakState(SystemTweak tweak, out bool enabled)
     {
-        lock (_gate)
-        {
-            return _itemStates.TryGetValue(sectionId + "|" + itemName, out state);
-        }
+        lock (Gate) { enabled = Tweaks.TryGetValue(tweak, out var state) && state.IsOptimized; return state is not null && !Uncertain(state); }
     }
-
-    public static void SetItemState(string sectionId, string itemName, BxState state)
-    {
-        lock (_gate)
-        {
-            _itemStates[sectionId + "|" + itemName] = state;
-            RecalculateLocked();
-        }
-
-        FireChanged();
-    }
-
-    public static bool TryGetGroupState(string groupId, out BxState state)
-    {
-        lock (_gate)
-        {
-            return _groupStates.TryGetValue(groupId, out state);
-        }
-    }
-
-    public static void SetGroupState(string groupId, BxState state)
-    {
-        lock (_gate)
-        {
-            _groupStates[groupId] = state;
-            RecalculateLocked();
-        }
-
-        FireChanged();
-    }
-
-    public static bool TryGetTweakState(SystemTweak tweak, out bool optimized)
-    {
-        lock (_gate)
-        {
-            return _tweakStates.TryGetValue(tweak, out optimized);
-        }
-    }
-
-    public static void SetTweakState(SystemTweak tweak, bool optimized)
-    {
-        lock (_gate)
-        {
-            _tweakStates[tweak] = optimized;
-            RecalculateLocked();
-        }
-
-        FireChanged();
-    }
-
-    /// <summary>重算分数（调用方须持有 _gate 锁）。</summary>
-    private static void RecalculateLocked()
-    {
-        var applied = 0;
-        var total = 0;
-        foreach (var state in _itemStates.Values)
-        {
-            if (state is BxState.Unknown or BxState.NotApplicable)
-            {
-                continue; // 不支持 / 无操作的条目不参与统计
-            }
-
-            total++;
-            if (state == BxState.On)
-            {
-                applied++;
-            }
-        }
-
-        foreach (var state in _groupStates.Values)
-        {
-            if (state is BxState.Unknown or BxState.NotApplicable)
-            {
-                continue;
-            }
-
-            total++;
-            if (state == BxState.On)
-            {
-                applied++;
-            }
-        }
-
-        foreach (var optimized in _tweakStates.Values)
-        {
-            total++;
-            if (optimized)
-            {
-                applied++;
-            }
-        }
-
-        Applied = applied;
-        Total = total;
-        Score = total > 0 ? Math.Round(applied * 100.0 / total) : 0;
-    }
-
+    internal static bool Uncertain(TweakStatus state) => !state.StateKnown;
+    public static void SetItemState(string section, string name, BxState state) { lock (Gate) { _itemsEpoch++; Items[Key(section, name)] = state; } FireChanged(); }
+    public static void SetGroupState(string id, BxState state) { lock (Gate) { _groupsEpoch++; Groups[id] = state; } FireChanged(); }
+    public static void SetTweakState(SystemTweak tweak, bool enabled) { lock (Gate) if (!Tweaks.TryGetValue(tweak, out var state) || state.IsOptimized != enabled) { _tweaksEpoch++; Tweaks.Remove(tweak); } FireChanged(); }
     private static void FireChanged()
     {
-        try
-        {
-            Changed?.Invoke();
-        }
-        catch
-        {
-            // 订阅方异常不影响扫描
-        }
+        foreach (Action handler in Changed?.GetInvocationList() ?? []) try { handler(); } catch (Exception ex) { Log.Error("优化预读状态订阅失败", ex); }
     }
 }

@@ -60,7 +60,7 @@ internal static class BackendUnconfirmedStore
     /// <summary>测试用：暴露记录路径，便于构造「路径被目录占用」等写入失败场景。</summary>
     internal static string RecordPathForTests(string module) => RecordPath(module);
 
-    public static IReadOnlyList<string> PendingModules() => BackendModules.All.Keys
+    public static IReadOnlyList<string> PendingModules() => BackendModules.All.Keys.Concat(BackendModules.Retired.Keys)
         .Where(m => File.Exists(RecordPath(m)) || Directory.Exists(RecordPath(m))).ToArray();
 
     /// <summary>仅异常/遗留证据用于主动提示；不把正常在途 intent 或成功临时备份当成报错。</summary>
@@ -181,7 +181,7 @@ internal static class BackendUnconfirmedStore
                 || !Guid.TryParse(evidence.RequestId, out var request) || request == Guid.Empty
                 || !Guid.TryParse(evidence.SessionId, out var session) || session == Guid.Empty
                 || evidence.Pid <= 0 || evidence.StartTicks <= 0 || !Path.IsPathFullyQualified(evidence.Path)
-                || !Path.GetFileName(evidence.Path).Equals(BackendModules.Require(module).ExecutableName, StringComparison.OrdinalIgnoreCase)
+                || !Path.GetFileName(evidence.Path).Equals(BackendModules.RequireForReview(module).ExecutableName, StringComparison.OrdinalIgnoreCase)
                 || evidence.ChildrenUnknown || evidence.Children?.Count > 0
                 || evidence.CompletedItems?.Any(i => !i.EndsWith(":ok", StringComparison.Ordinal)
                     && !i.EndsWith(":skipped", StringComparison.Ordinal)) == true)
@@ -329,6 +329,14 @@ internal static class BackendUnconfirmedStore
             "unknown"));
     }
 
+    internal static void SavePageStopFailure(string module, int pid, long ticks, string image, Guid session)
+    {
+        var path = RecordPath(module);
+        if (File.Exists(path)) return; // A failed stop must never overwrite an existing mutation or recovery obligation.
+        WriteNew(path, new Evidence(module, PhaseUnconfirmed, "page.session.stop", null, session.ToString("D"),
+            pid, ticks, image, DateTimeOffset.UtcNow, "page-stop-unconfirmed"));
+    }
+
     private static void WriteNew(string path, Evidence evidence)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -439,7 +447,8 @@ internal static class BackendUnconfirmedStore
                     ChildrenAlive = childrenAlive,
                     ChildrenUnknown = e.ChildrenUnknown,
                     // 可按可信备份恢复：仅当原后端与子进程均已退出、记录未被判定为损坏时提供（ACE 等无可信备份的模块由后端返回不可用）。
-                    CanRestore = exited && !e.ChildrenUnknown && !childrenAlive,
+                    CanRestore = exited && !e.ChildrenUnknown && !childrenAlive && !BackendModules.Retired.ContainsKey(module)
+                        && e.Command != "page.session.stop",
                     ChildNames = childNames,
                 });
             }
@@ -456,13 +465,14 @@ internal static class BackendUnconfirmedStore
         "partial" => "部分完成",
         "failed" => "执行失败",
         "unknown" => "上次未记录结果",
+        "page-stop-unconfirmed" => "栏目后端退出未确认；此记录本身不表示系统被修改，确认进程退出后可核对归档",
         _ => reason,
     };
 
     /// <summary>玩家确认「保留当前状态」：逐字归档并返回归档路径。不还原系统、不重放请求、不删除原值备份。</summary>
     public static string AcknowledgeCurrentState(Review confirmed)
     {
-        _ = BackendModules.Require(confirmed.Module);
+        _ = BackendModules.RequireForReview(confirmed.Module);
         var source = RecordPath(confirmed.Module);
         var bytes = ReadEvidence(source);
         if (Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)) != confirmed.Fingerprint)
@@ -476,7 +486,7 @@ internal static class BackendUnconfirmedStore
     /// <summary>恢复成功后归档原始记录，并写入复核证据（恢复动作、复核快照、结果）。</summary>
     public static string ArchiveAfterRecovery(Review confirmed, string scope, bool verified, string message, ReconcileSnapshot? snapshot)
     {
-        _ = BackendModules.Require(confirmed.Module);
+        _ = BackendModules.RequireForReview(confirmed.Module);
         var source = RecordPath(confirmed.Module);
         var bytes = ReadEvidence(source);
         if (Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)) != confirmed.Fingerprint)

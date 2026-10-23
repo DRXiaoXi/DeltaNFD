@@ -10,6 +10,8 @@ namespace DeltaNFD.Services.Backends;
 /// </summary>
 internal static class BackendRecovery
 {
+    internal static bool IsRuntimeFileReplacement(BackendUnconfirmedStore.Review review) =>
+        review.Module == BackendModules.Runtime && review.Command == BackendCommands.Vc14ForceReplace;
     internal static bool CanKeepCurrentState(BackendUnconfirmedStore.Review review, ReconcileSnapshot? snapshot) =>
         review.CanAcknowledge && !IsRuntimeInstallation(review) && (review.Module != BackendModules.Ace
             || snapshot is { Complete: true } && snapshot.Module == BackendModules.Ace);
@@ -30,6 +32,7 @@ internal static class BackendRecovery
     internal static IReadOnlyList<RecoveryScope> RecoveryChoices(BackendUnconfirmedStore.Review review, ReconcileSnapshot? snapshot)
     {
         var module = review.Module;
+        if (IsRuntimeFileReplacement(review)) return []; // Manual DLL restoration is not IFEO/UE4 guard recovery.
         if (module == BackendModules.Runtime && review.Command == BackendCommands.RuntimeFileUseClose) return [];
         if (module == BackendModules.Procman && review.Command == BackendCommands.ProcmanMemoryTrim) return [];
         if (snapshot is null || !snapshot.Complete || snapshot.Module != module) return [];
@@ -64,6 +67,8 @@ internal static class BackendRecovery
     public static async Task<RecoverOutcome> RestoreAsync(BackendUnconfirmedStore.Review review, string scope,
         CancellationToken cancellationToken = default)
     {
+        if (IsRuntimeFileReplacement(review))
+            throw new InvalidOperationException("系统 DLL 替换不能使用运行库防护恢复。请按强制替换备份目录中的 restore.ps1/README 手动恢复并核对文件，再确认保留当前状态；旧记录保留。");
         var current = BackendUnconfirmedStore.ReviewAll().SingleOrDefault(r => r.Module == review.Module);
         if (current is null || current.Fingerprint != review.Fingerprint || !current.CanRestore)
             throw new InvalidOperationException("记录已变化或原后端、子进程尚未确认退出，请重新核对。");

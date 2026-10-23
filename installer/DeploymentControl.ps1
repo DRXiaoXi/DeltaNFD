@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string]$InstallRoot,
     [ValidateSet('install', 'uninstall')][string]$Mode = 'install',
     [string]$ReportPath,
@@ -44,7 +44,8 @@ function Test-UnderRoot([string]$ImagePath, [string]$Root) {
 
 function Get-ProductProcesses([string]$Root) {
     $names = @('DeltaNFD', 'DeltaOptimizer', 'DeltaNFD.Backend.Ace', 'DeltaNFD.Backend.Runtime',
-        'DeltaNFD.Backend.Gpu', 'DeltaNFD.Backend.CpuFrame', 'DeltaNFD.Backend.SystemMaintenance', 'DeltaNFD.Backend.Procman', 'DeltaNFD.OfflineHelper')
+        'DeltaNFD.Backend.Gpu', 'DeltaNFD.Backend.CpuFrame', 'DeltaNFD.Backend.SystemMaintenance', 'DeltaNFD.Backend.Procman',
+        'DeltaNFD.OfflineHelper')
     foreach ($name in $names) {
         foreach ($process in [Diagnostics.Process]::GetProcessesByName($name)) {
             try {

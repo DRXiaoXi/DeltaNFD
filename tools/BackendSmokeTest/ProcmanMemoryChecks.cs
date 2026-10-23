@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using DeltaNFD.Backends;
 using DeltaNFD.Execution.Procman;
 using DeltaNFD.Services;
@@ -30,10 +30,9 @@ internal static class ProcmanMemoryChecks
                 ClockForTests = () => now, SampleForTests = () => sample, ForegroundForTests = () => foreground,
                 BackgroundLoopDisabledForTests = true,
                 FrameModeActiveForTests = () => true,
-                FrameSuppressionSelectedForTests = () => true,
                 FrameMemorySelectedForTests = () => true,
                 MemoryPressureWindowForTests = TimeSpan.Zero,
-                ResponsivenessExcludedForTests = _ => blocked,
+                BackgroundExcludedForTests = _ => blocked,
                 MemoryReadForTests = _ => size, MemorySampleDelayForTests = TimeSpan.Zero,
                 MemoryTrimForTests = (identity, guard) =>
                 {
@@ -238,9 +237,6 @@ internal static class ProcmanMemoryChecks
                 Check((await engine.PreviewMemoryAsync()).Candidates.Count == 0, "共用排除项从手动预览移除");
                 engine.AutomaticMemoryOnceForTests();
                 Check(writes.Count == before, "共用排除项阻止自动回收");
-                engine.ConfigureResponsiveness(new() { Enabled = true, CpuBusySeconds = 1 });
-                await engine.ResponsivenessOnceForTests(); now = now.AddSeconds(2); await engine.ResponsivenessOnceForTests();
-                Check(engine.ResponsivenessEvents().Count == 0 && engine.Snapshot().LastError == "", "共用排除项阻止后台抑制，写入前即跳过");
                 engine.SaveBackgroundConfig(new() { ExcludedExecutablePaths = [] });
                 Check((await engine.PreviewMemoryAsync()).Candidates.Count == 1, "移除排除项后再次符合候选条件");
             }

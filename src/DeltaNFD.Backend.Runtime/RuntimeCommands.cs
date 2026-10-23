@@ -25,6 +25,8 @@ internal static class RuntimeCommands
             [BackendCommands.Vc14Scan] = VcScanAsync,
             [BackendCommands.Vc14Preview] = VcPreviewAsync,
             [BackendCommands.Vc14Repair] = VcRepairAsync,
+            [BackendCommands.Vc14ForceReplacePreview] = VcForceReplacePreviewAsync,
+            [BackendCommands.Vc14ForceReplace] = VcForceReplaceAsync,
             [BackendCommands.Vc14LegacyClean] = VcLegacyCleanAsync,
             [BackendCommands.RuntimeGuardEnable] = GuardEnableAsync,
             [BackendCommands.RuntimeGuardDisable] = GuardDisableAsync,
@@ -165,6 +167,18 @@ internal static class RuntimeCommands
     private static async Task<BackendResult> SafeUninstallPreviewAsync(BackendCommandContext context) =>
         BackendResult.Ok(BackendCommands.RuntimeSafeUninstallPreview, "安全模式 C++ 全量卸载预览",
             await RuntimeSafeUninstall.PreviewAsync(context.CancellationToken));
+
+    private static Task<BackendResult> VcForceReplacePreviewAsync(BackendCommandContext context) =>
+        Task.FromResult(BackendResult.Ok(BackendCommands.Vc14ForceReplacePreview, "强制替换 14.x 预览",
+            Vc14ForceReplace.Preview(context.CancellationToken)));
+
+    private static async Task<BackendResult> VcForceReplaceAsync(BackendCommandContext context)
+    {
+        var args = context.ArgsAs<Vc14ForceReplaceArgs>();
+        var progress = new Progress<string>(s => context.ReportProgress(s, null, "vc14-force-replace"));
+        return Wrap(BackendCommands.Vc14ForceReplace, await Vc14ForceReplace.RunAsync(
+            args.Fingerprint, progress, context.CancellationToken));
+    }
 
     private static async Task<BackendResult> SafeUninstallAsync(BackendCommandContext context)
     {

@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace DeltaNFD.Execution.Procman;
 
-/// <summary>前台窗口进程查询（后台抑制排除前台应用用）。失败返回 -1，绝不抛出。</summary>
+/// <summary>前台窗口进程查询（普通内存回收排除前台应用用）。失败返回 -1，绝不抛出。</summary>
 internal static class NativeProcman
 {
     [DllImport("user32.dll")]

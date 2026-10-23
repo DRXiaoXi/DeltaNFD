@@ -61,6 +61,8 @@ public interface IRuntimeGuardService
     Task<Vc14Scan> Scan14Async() => throw new NotSupportedException();
     Task<Vc14ReinstallPreview> Preview14RepairAsync(Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false) => throw new NotSupportedException();
     Task<OperationResult> Repair14Async(string fingerprint, IProgress<string>? progress, CancellationToken token, Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false) => throw new NotSupportedException();
+    Task<Vc14ForceReplacePreview> PreviewForceReplace14Async(CancellationToken token) => throw new NotSupportedException();
+    Task<OperationResult> ForceReplace14Async(string fingerprint, IProgress<string>? progress, CancellationToken token) => throw new NotSupportedException();
     Task<OperationResult> RestoreTemporaryInstallerAsync() => throw new NotSupportedException();
     Task<RuntimeGuardStatus> GetStatusAsync();
     Task<OperationResult> EnableAsync();

@@ -17,7 +17,7 @@ internal static class FactoryResetChecks
             {
                 FrameModeActive = true, GamePriorityEnabled = true, GameAffinityRuleEnabled = true,
                 SingleCcdExcludeCpu0Enabled = true, DualCcdImmediateEnabled = true, DwmRestartOnGameStart = true,
-                CloseToTrayEnabled = true, FrameBackgroundSuppressionEnabled = true, FrameAutomaticMemoryEnabled = true,
+                CloseToTrayEnabled = true, FrameAutomaticMemoryEnabled = true,
                 BackgroundPath = @"D:\custom-background.png", GameRootOverride = @"D:\game", AccentColor = "#123456",
                 TempSpoofRestorePending = true, TempSpoofRestorePath = "original-gpu-path", GameAffinityRuleMask = ulong.MaxValue,
             }));
@@ -43,13 +43,13 @@ internal static class FactoryResetChecks
         var paused = Settings(normalRoot);
         Check(!paused.FrameModeActive && !paused.GamePriorityEnabled && !paused.GameAffinityRuleEnabled && !paused.SingleCcdExcludeCpu0Enabled
             && !paused.DualCcdImmediateEnabled && !paused.DwmRestartOnGameStart && !paused.CloseToTrayEnabled
-            && !paused.FrameBackgroundSuppressionEnabled && !paused.FrameAutomaticMemoryEnabled, "恢复前停用所有 CPU/帧格自动启动标记");
+            && !paused.FrameAutomaticMemoryEnabled, "恢复前停用所有 CPU/帧格自动启动标记");
         Check(paused.GameAffinityRuleMask == ulong.MaxValue && paused.TempSpoofRestorePending && paused.TempSpoofRestorePath == "original-gpu-path",
             "暂停不丢 CPU 掩码、待恢复显卡状态和路径");
         Check(paused.BackgroundPath == @"D:\custom-background.png" && paused.AccentColor == "#123456", "恢复执行前不清空其他偏好");
         normal.CommitDefaults();
         var defaults = Settings(normalRoot);
-        Check(!defaults.FrameModeActive && !defaults.GamePriorityEnabled && !defaults.FrameBackgroundSuppressionEnabled && !defaults.FrameAutomaticMemoryEnabled,
+        Check(!defaults.FrameModeActive && !defaults.GamePriorityEnabled && !defaults.FrameAutomaticMemoryEnabled,
             "默认配置没有启用任何自动功能");
         Check(defaults.BackgroundPath == "" && defaults.GameRootOverride == "" && defaults.AccentColor == new AppSettings().AccentColor,
             "外观与目录偏好恢复产品默认值");
@@ -57,7 +57,7 @@ internal static class FactoryResetChecks
             Check(rules.RootElement.GetProperty("Rules").GetArrayLength() == 0 && rules.RootElement.GetProperty("SchemaVersion").GetInt32() == 1,
                 "规则清空为有效文件，不删除文件让旧版迁移重新导入");
         var background = JsonSerializer.Deserialize<ProcmanBackgroundConfig>(Read(normalRoot, "procman-background.json"))!;
-        Check(background.MemoryPressurePercent == 85 && background.ExcludedExecutablePaths.Count == 0 && background.Suppression.CpuBusyThreshold == 65
+        Check(background.MemoryPressurePercent == 85 && background.ExcludedExecutablePaths.Count == 0
             && background.MemoryMode == ProcmanMemoryModes.Normal && background.MemoryBatchLimit == 5 && background.MemoryCooldownSeconds == 600,
             "后台详细参数与排除名单恢复默认值");
         foreach (var name in new[] { "offline-mode.json", "procman-changes.json", "backups.json", "optimize_backup.json", "unknown-future-state.json" })

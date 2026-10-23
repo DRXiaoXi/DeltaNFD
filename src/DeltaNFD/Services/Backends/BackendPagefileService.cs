@@ -2,7 +2,7 @@ using DeltaNFD.Backends;
 
 namespace DeltaNFD.Services.Backends;
 
-/// <summary>前端侧虚拟内存（页面文件）服务：读取、设置与恢复全部经系统维护后端 EXE 完成。</summary>
+/// <summary>页面文件查询使用前端只读缓存；设置与恢复经所属栏目的系统维护后端完成。</summary>
 internal sealed class BackendPagefileService : IPagefileService
 {
     private readonly BackendCaller _caller = new(BackendModules.System);
@@ -10,13 +10,7 @@ internal sealed class BackendPagefileService : IPagefileService
 
     public bool HasOriginalBackup => _hasOriginalBackup ?? false;
 
-    public async Task<PagefileInfo> GetInfoAsync()
-    {
-        var result = await _caller.InvokeAsync(BackendCommands.SystemPagefileStatus, new { }, null, CancellationToken.None);
-        var dto = BackendResults.RequireData<PagefileStatusDto>(result, "读取虚拟内存状态");
-        _hasOriginalBackup = dto.HasOriginalBackup;
-        return dto.Info;
-    }
+    public async Task<PagefileInfo> GetInfoAsync() { var info = await SystemInspectionCache.Pagefile(); _hasOriginalBackup = new DeltaNFD.Inspection.PagefileInspection().HasOriginalBackup; return info; }
 
     public async Task<OperationResult> SetCustomAsync(int minMb, int maxMb, char driveLetter)
     {

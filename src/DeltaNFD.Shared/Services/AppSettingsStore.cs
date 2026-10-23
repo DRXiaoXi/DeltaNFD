@@ -21,7 +21,6 @@ public sealed class AppSettings
     public string GpuSpoofFakeName { get; set; } = "";
     public bool FrameModeActive { get; set; }
     /// <summary>帧格功能选项；只有此开关和 FrameModeActive 同时开启才执行。</summary>
-    public bool FrameBackgroundSuppressionEnabled { get; set; }
     public bool FrameAutomaticMemoryEnabled { get; set; }
 
     // ---- 显卡伪装：临时重启生效的登录还原登记 ----

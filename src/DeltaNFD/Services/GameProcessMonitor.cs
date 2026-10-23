@@ -4,7 +4,7 @@ namespace DeltaNFD.Services;
 
 /// <summary>
 /// 共享的三角洲进程状态订阅：唯一权威是 CPU/帧格后端的两秒监控。
-/// 前端不再自行枚举目标进程，而是订阅后端状态快照并把「游戏是否运行 / PID」派发回 UI 线程。
+/// 订阅所选目标及独立三角洲状态快照，派发回 UI；栏目执行前另作即时复核，前端不新增轮询循环。
 /// 后端缺失或脱机时不启动后端（保持零进程默认模式）。
 /// </summary>
 internal sealed class GameProcessMonitor : IDisposable
@@ -13,6 +13,8 @@ internal sealed class GameProcessMonitor : IDisposable
     private readonly CancellationTokenSource _cts = new();
 
     internal event Action<bool, int?>? Tick;
+    internal event Action<bool?>? DeltaStateChanged;
+    internal bool? DeltaRunning { get; private set; }
     internal bool IsRunning { get; private set; }
     internal int? ProcessId { get; private set; }
 
@@ -31,6 +33,7 @@ internal sealed class GameProcessMonitor : IDisposable
 
         var service = Backends.BackendCpuFrameService.Instance;
         service.StatusUpdated += OnStatusUpdated;
+        service.ConnectionEnded += OnConnectionEnded;
         try
         {
             await service.EnsureMonitorAsync(_cts.Token);
@@ -44,10 +47,29 @@ internal sealed class GameProcessMonitor : IDisposable
         finally
         {
             service.StatusUpdated -= OnStatusUpdated;
+            service.ConnectionEnded -= OnConnectionEnded;
+            DeliverDelta(null);
         }
     }
 
-    private void OnStatusUpdated(CpuFrameStatusSnapshot snapshot) => Deliver(snapshot.GameRunning, snapshot.GamePid);
+    private void OnStatusUpdated(CpuFrameStatusSnapshot snapshot)
+    {
+        Deliver(snapshot.GameRunning, snapshot.GamePid);
+        DeliverDelta(Backends.PageBackendSessions.ReadDeltaObservation(snapshot, DateTimeOffset.UtcNow));
+    }
+    private void OnConnectionEnded() => DeliverDelta(null);
+    private void DeliverDelta(bool? running)
+    {
+        void Apply()
+        {
+            Backends.PageBackendSessions.Manager.ObserveDelta(running);
+            if (DeltaRunning == running) return;
+            DeltaRunning = running;
+            foreach (Action<bool?> handler in DeltaStateChanged?.GetInvocationList() ?? [])
+                try { handler(running); } catch (Exception ex) { Log.Error("栏目游戏状态订阅失败", ex); }
+        }
+        if (_dispatcher is null || _dispatcher.HasThreadAccess) Apply(); else _dispatcher.TryEnqueue(Apply);
+    }
 
     private void Deliver(bool running, int? pid)
     {

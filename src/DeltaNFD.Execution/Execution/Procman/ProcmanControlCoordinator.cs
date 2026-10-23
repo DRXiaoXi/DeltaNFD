@@ -2,7 +2,7 @@ namespace DeltaNFD.Execution.Procman;
 
 /// <summary>
 /// 按「进程身份 + 属性」划分的控制权协调器：同一进程的同一属性同一时刻只能有一个控制方。
-/// 控制方：manual（用户手动）/ rule:名称（持久规则）/ responsiveness（后台抑制）。
+/// 控制方：manual（用户手动）/ rule:名称（持久规则）/ responsiveness（仅保留旧版后台抑制的恢复身份）。
 /// 游戏模式（CPU/帧格引擎、脱机助手）属于跨进程的控制方，通过 <see cref="DeclareExternalOwner"/>
 /// 登记——它们不运行在本进程内，但属性所有权照样必须协调。
 ///

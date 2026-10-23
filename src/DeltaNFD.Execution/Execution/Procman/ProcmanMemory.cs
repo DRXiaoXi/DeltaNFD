@@ -46,22 +46,23 @@ public sealed partial class ProcmanEngine
     private bool MemoryEligible(ProcmanProcessIdentity identity, IReadOnlyList<ProcmanProcessIdentity> sample)
     {
         if (_frozen || _backgroundLoadError.Length > 0 || _backgroundConfig.MemoryMode == ProcmanMemoryModes.Aggressive) return false;
+        if (ProcmanProcessProtection.IsAceProtected(identity.ExecutablePath)) return false;
         if (Path.GetFileNameWithoutExtension(identity.ExecutablePath).Equals(DeltaForceLocator.GameProcessName, StringComparison.OrdinalIgnoreCase)) return false;
         if (_backgroundConfig.MemoryMode == ProcmanMemoryModes.DeltaStable)
         {
-            if (MemorySystemProcessForTests?.Invoke(identity) ?? ProcmanResponsivenessFilter.IsSystemProcess(identity)) return false;
+            if (MemorySystemProcessForTests?.Invoke(identity) ?? ProcmanBackgroundFilter.IsSystemProcess(identity)) return false;
             // A saved rule protects the executable even when disabled; recheck before each native trim.
             if (_rules.Load().Any(r => r.ExecutablePath.Equals(identity.ExecutablePath, StringComparison.OrdinalIgnoreCase))) return false;
         }
         else
         {
-            if (IsBackgroundExcluded(identity.ExecutablePath) || ProcmanResponsivenessFilter.IsToolProcess(identity.ExecutablePath)) return false;
+            if (IsBackgroundExcluded(identity.ExecutablePath) || ProcmanBackgroundFilter.IsToolProcess(identity.ExecutablePath)) return false;
             var foreground = ForegroundForTests?.Invoke() ?? NativeProcman.ForegroundPid();
             if (foreground <= 0 || identity.Pid == foreground || identity.Pid == Environment.ProcessId) return false;
-            if (ResponsivenessExcludedForTests?.Invoke(identity) ?? ProcmanResponsivenessFilter.IsExcluded(identity)) return false;
+            if (BackgroundExcludedForTests?.Invoke(identity) ?? ProcmanBackgroundFilter.IsExcluded(identity)) return false;
             if (_rules.EnabledRules().Any(r => r.ExecutablePath.Equals(identity.ExecutablePath, StringComparison.OrdinalIgnoreCase))
                 || _changeLog.ForProcess(identity.Pid, identity.StartTimeUtcTicks, identity.ExecutablePath)
-                    .Any(r => r.Owner != ProcmanControlCoordinator.OwnerResponsiveness || r.Parent is not null)) return false;
+                    .Any()) return false;
         }
         if (_lastMemoryTrim.TryGetValue(MemoryKey(identity), out var time)
             && (ClockForTests?.Invoke() ?? DateTime.UtcNow) - time < TimeSpan.FromSeconds(MemoryPolicy().MemoryCooldown(_backgroundConfig.MemoryCooldownSeconds))) return false;
@@ -87,8 +88,8 @@ public sealed partial class ProcmanEngine
             var candidates = mode == ProcmanMemoryModes.Aggressive ? [] : MemoryCandidates(ReadMemorySample());
             var note = mode switch
             {
-                ProcmanMemoryModes.Aggressive => "激进回收：不枚举进程，请求全局工作集及低优先级待备列表回收，保留其他待备缓存，不强制写回修改页列表。范围包括游戏和系统，需要管理员权限，仍可能造成换页或卡顿。",
-                ProcmanMemoryModes.DeltaStable => "稳洲回收：跳过三角洲主进程、系统进程和有规则的进程（含停用规则）；其余进程包括前台和工具。不受普通模式数量或排除名单限制，不清空全局待备缓存、不强制写回修改页列表。权限不足、身份不明、冷却中的进程跳过。",
+                ProcmanMemoryModes.Aggressive => "激进回收：不统计进程，请求全局工作集及低优先级待备列表回收，忽略逐进程保护与排除名单，可能影响 ACE、游戏和系统。保留其他待备缓存，不强制写回修改页列表；需要管理员权限，仍可能造成换页或卡顿。",
+                ProcmanMemoryModes.DeltaStable => "稳洲回收：跳过三角洲主进程、系统进程、ACE 保护进程和有规则的进程（含停用规则）；其余进程包括前台和工具。不受普通模式数量或排除名单限制，不清空全局待备缓存、不强制写回修改页列表。权限不足、身份不明、冷却中的进程跳过。",
                 _ => $"普通回收：不设内存大小门槛、不检测 CPU 占用，每次最多 {MemoryBatchLimit} 个后台应用。保护游戏、工具、系统、前台、排除名单及已有设置/规则的进程。",
             };
             var now = ClockForTests?.Invoke() ?? DateTime.UtcNow;
@@ -153,8 +154,7 @@ public sealed partial class ProcmanEngine
                 try
                 {
                     if (!stable) foreach (var capability in KnownCapabilities) leases.Add((capability, _properties.Enter(identity, capability)));
-                    bool Owned() => stable || leases.All(l => l.Lease.Owner == "system"
-                        || (l.Capability == CapabilityPriority && l.Lease.Owner == ProcmanControlCoordinator.OwnerResponsiveness));
+                    bool Owned() => stable || leases.All(l => l.Lease.Owner == "system");
                     if (!Owned()) { items.Add(new(identity.Pid, Path.GetFileName(identity.ExecutablePath), "skipped", "已有其他控制方，未操作。")); continue; }
                     bool Guard() => MemoryOperationAllowed(token, automatic) && _backgroundConfig.MemoryMode == mode && Owned() && MemoryEligible(identity, sample);
                     var result = (MemoryTrimForTests ?? ProcmanMemoryTrimmer.Trim)(identity, Guard);

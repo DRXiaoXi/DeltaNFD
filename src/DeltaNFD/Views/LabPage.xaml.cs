@@ -23,6 +23,9 @@ public sealed partial class LabPage : Page
         await ViewModel.LoadAsync();
     }
 
+    private async void PreferIntelPcores_Click(object sender, RoutedEventArgs e) => await ViewModel.SetIntelPcorePreferenceAsync();
+    private async void RestoreIntelPcores_Click(object sender, RoutedEventArgs e) => await ViewModel.SetIntelPcorePreferenceAsync(restore: true);
+
     private void ScenarioChip_Click(object sender, RoutedEventArgs e)
     {
         if (sender is ToggleButton toggle && toggle.DataContext is LabScenarioVm chip)

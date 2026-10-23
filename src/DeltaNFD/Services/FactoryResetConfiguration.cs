@@ -41,7 +41,7 @@ internal sealed class FactoryResetConfiguration(string root)
             ?? throw new InvalidDataException("设置文件为空，未猜测恢复配置。");
         settings.FrameModeActive = settings.DwmRestartOnGameStart = settings.GamePriorityEnabled = settings.GameAffinityRuleEnabled = false;
         settings.SingleCcdExcludeCpu0Enabled = settings.DualCcdImmediateEnabled = false;
-        settings.FrameBackgroundSuppressionEnabled = settings.FrameAutomaticMemoryEnabled = false;
+        settings.FrameAutomaticMemoryEnabled = false;
         settings.CloseToTrayEnabled = false;
         WriteAtomic("settings.json", JsonSerializer.SerializeToUtf8Bytes(settings));
     }

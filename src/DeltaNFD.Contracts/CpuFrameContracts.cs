@@ -34,6 +34,10 @@ public sealed class CpuFrameStatusSnapshot
     /// <summary>目标游戏当前是否在运行。</summary>
     public bool GameRunning { get; init; }
 
+    /// <summary>Independent Delta Force presence; null means no trustworthy observation, irrespective of selected target.</summary>
+    public bool? DeltaForceRunning { get; init; }
+    public DateTimeOffset? DeltaForceObservedUtc { get; init; }
+
     /// <summary>当前游戏进程 PID（未运行时为 null）。</summary>
     public int? GamePid { get; init; }
 

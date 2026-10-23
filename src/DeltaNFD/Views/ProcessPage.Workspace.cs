@@ -56,12 +56,19 @@ public sealed partial class ProcessPage
         if (_selected is not { } row) { ExcludeSelectedButton.IsEnabled = false; SelectedExclusionStatusText.Text = "请选择应用。"; return; }
         if (!_backgroundConfigLoaded) { ExcludeSelectedButton.IsEnabled = false; SelectedExclusionStatusText.Text = "正在读取排除状态…"; return; }
         var excluded = _backgroundExcludedPaths.Contains(row.ExecutablePath);
+        if (ProcmanProcessProtection.IsAceProtected(row.ExecutablePath))
+        {
+            SelectedExclusionStatusText.Text = ProcmanProcessProtection.AceReason;
+            ExcludeSelectedButton.Content = "ACE 进程已保护";
+            ExcludeSelectedButton.IsEnabled = false;
+            return;
+        }
         var fixedProtection = IsFixedBackgroundProtection(row.ExecutablePath);
         SelectedExclusionStatusText.Text = fixedProtection
-            ? "此应用固定受保护，不参与后台抑制和内存回收。" + (excluded ? "另有自定义排除项，可移除；固定保护仍会保留。" : "")
-            : excluded ? "已排除：此应用不参与后台抑制和内存回收，重启后保留。"
+            ? "此应用固定受保护，不参与普通模式的内存回收。" + (excluded ? "另有自定义排除项，可移除；固定保护仍会保留。" : "")
+            : excluded ? "已排除：此应用不参与普通模式的内存回收，重启后保留。"
             : "未加入自定义排除名单。前台、系统及已有属性设置或规则的自动保护仍然生效。";
-        ExcludeSelectedButton.Content = excluded ? "取消此应用的排除" : fixedProtection ? "此应用固定受保护" : "排除后台抑制与内存回收";
+        ExcludeSelectedButton.Content = excluded ? "取消此应用的排除" : fixedProtection ? "此应用固定受保护" : "排除内存回收";
         ExcludeSelectedButton.IsEnabled = !_backgroundBusy && (excluded || !fixedProtection) && !string.IsNullOrWhiteSpace(row.ExecutablePath);
     }
 

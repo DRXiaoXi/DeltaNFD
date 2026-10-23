@@ -19,8 +19,17 @@ internal static class BackendLifecycle
         return archive;
     }
     /// <summary>排空全部后端并返回未确认退出者（空 = 全部排空）。异步版本供 UI 调用。</summary>
-    public static async Task<IReadOnlyList<string>> PrepareHandoverAsync(string reason, TimeSpan? perBackendTimeout = null)
+    public static async Task<IReadOnlyList<string>> PrepareHandoverAsync(string reason, TimeSpan? perBackendTimeout = null,
+        IProgress<string>? progress = null)
     {
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        void Report(string message)
+        {
+            Log.Info($"后端交接：{message}；累计 {elapsed.Elapsed.TotalSeconds:F1} 秒");
+            try { progress?.Report(message); }
+            catch (Exception ex) { Log.Warn("后端交接进度显示失败：" + ex.Message); }
+        }
+        Report("正在等待已开始的操作收尾…");
         using var blocked = BackendOperationGate.BlockNewOperations();
         using var control = BackendOperationGate.AllowControlOperations();
         
@@ -64,6 +73,7 @@ internal static class BackendLifecycle
         {
             try
             {
+                Report("正在还原进程管理设置…");
                 var result = await client.InvokeAsync(BackendCommands.ProcmanRestoreAll, new { }, null, CancellationToken.None);
                 if (result.Status != BackendResultStatuses.Ok) Log.Warn("进程管理还原未完成，后续停止保留证据：" + result.Message);
             }
@@ -73,8 +83,9 @@ internal static class BackendLifecycle
         {
             try
             {
+                Report("正在还原 CPU / 帧格设置…");
                 using var restoreTimeout = new CancellationTokenSource(perBackendTimeout ?? BackendModules.TimeoutFor(BackendModules.CpuFrame, BackendCommands.CpuFrameRestore));
-                var restored = await client.InvokeAsync(BackendCommands.CpuFrameRestore, new { }, null, restoreTimeout.Token);
+                var restored = await client.InvokeAsync(BackendCommands.CpuFrameRestore, new { }, progress, restoreTimeout.Token);
                 if (restored.Status != BackendResultStatuses.Ok || restored.PendingRestore || !client.CpuRestoreConfirmed)
                 {
                     Log.Warn("CPU/帧格还原未确认，阻止交接：" + restored.Message);
@@ -88,6 +99,7 @@ internal static class BackendLifecycle
             }
         }
         // Evidence blocks handing off, not sending stop. Stop active workers first so review can proceed.
+        Report("正在停止后台组件并确认退出…");
         var failed = (await BackendSessions.DrainAllAsync(perBackendTimeout))
             .Concat(BackendUnconfirmedStore.PendingModules()).Distinct().ToArray();
         if (failed.Length > 0)
@@ -98,7 +110,7 @@ internal static class BackendLifecycle
         {
             Log.Info($"前后端分离：{reason}前排空完成。");
         }
-
+        Report(failed.Length == 0 ? "后台组件已安全退出。" : "收尾尚未确认，需要核对操作记录。");
         return failed;
         }
         finally { BackendOperationGate.Handover.Release(); }
@@ -168,5 +180,5 @@ internal static class BackendLifecycle
     }
 
     public static string ModuleDisplayName(string moduleId) =>
-        BackendModules.All.TryGetValue(moduleId, out var spec) ? spec.DisplayName : moduleId;
+        BackendModules.All.TryGetValue(moduleId, out var spec) ? spec.DisplayName : BackendModules.Retired.TryGetValue(moduleId, out var old) ? old.DisplayName : moduleId;
 }

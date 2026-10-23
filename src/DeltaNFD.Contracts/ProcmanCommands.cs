@@ -23,7 +23,7 @@ public static class ProcmanCommands
     public const string ProcmanRulesSave = "procman.rules.save";
     public const string ProcmanRulesDelete = "procman.rules.delete";
 
-    // 后台抑制（P4）
+    // 已退休的后台抑制命令标识；仅供旧协议识别，不再准入或执行。
     public const string ProcmanResponsivenessConfig = "procman.responsiveness.config";
     public const string ProcmanResponsivenessEvents = "procman.responsiveness.events";
 

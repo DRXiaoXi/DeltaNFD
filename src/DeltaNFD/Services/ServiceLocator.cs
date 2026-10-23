@@ -74,10 +74,14 @@ public static class ServiceLocator
     public static IGpuOptimizer GpuOptimizer => GpuOptimizerLazy.Value;
 
     /// <summary>显卡型号伪装（真实后端，写注册表 DeviceDesc，需管理员）。</summary>
-    public static IGpuSpoofService GpuSpoof => GpuSpoofLazy.Value;
+    public static IGpuSpoofService GpuSpoof => Backends.PageBackendSessions.Service(GpuSpoofLazy, () => new Backends.BackendGpuSpoofService(), "spoof");
+    internal static IGpuSpoofService FrameGpuSpoof
+    {
+        get { using var unowned = Backends.PageBackendSessions.ConstructFor(null); return GpuSpoofLazy.Value; }
+    }
 
     /// <summary>系统精简优化：Hyper-V/VBS / 内存压缩 / 分页合并 / 预读取 / 游戏微调（真实后端，需管理员）。</summary>
-    public static ISystemTweakService SystemTweaks => SystemTweaksLazy.Value;
+    public static ISystemTweakService SystemTweaks => Backends.PageBackendSessions.Service(SystemTweaksLazy, () => new Backends.BackendSystemTweakService(), "system", "ace");
 
     /// <summary>帧格：游戏运行期间的自动化帧数保障（一键帧格模式 / 三角洲启动时重启 DWM）。</summary>
     public static IFrameService Frame => FrameLazy.Value;
@@ -86,22 +90,22 @@ public static class ServiceLocator
     public static IGameProcessService GameProcess => GameProcessLazy.Value;
 
     /// <summary>电源管理：电源计划切换 / 休眠开关。</summary>
-    public static IPowerService Power => PowerLazy.Value;
+    public static IPowerService Power => Backends.PageBackendSessions.Service(PowerLazy, () => new Backends.BackendPowerService(), "system");
 
     /// <summary>系统垃圾清理。</summary>
-    public static ICleanupService Cleanup => CleanupLazy.Value;
+    public static ICleanupService Cleanup => Backends.PageBackendSessions.Service(CleanupLazy, () => new Backends.BackendCleanupService(), "system", "shader");
 
     /// <summary>高级（高危）优化：遥测 / 安全 / 更新 分组开关。</summary>
-    public static IAdvancedTweakService AdvancedTweaks => AdvancedTweaksLazy.Value;
+    public static IAdvancedTweakService AdvancedTweaks => Backends.PageBackendSessions.Service(AdvancedTweaksLazy, () => new Backends.BackendAdvancedTweakService(), "system");
 
     /// <summary>运行库保护：阻止三角洲静默安装 VC++ 14.x 运行库。</summary>
-    public static IRuntimeGuardService Guard => GuardLazy.Value;
+    public static IRuntimeGuardService Guard => Backends.PageBackendSessions.Service(GuardLazy, () => new Backends.BackendRuntimeGuardService(), "runtime");
 
     /// <summary>ACE 相关：反作弊组件清理。</summary>
-    public static IAceService Ace => AceLazy.Value;
+    public static IAceService Ace => Backends.PageBackendSessions.Service(AceLazy, () => new Backends.BackendAceService(), "ace");
 
     /// <summary>着色器维护：N 卡驱动体检 + PSOCache 旧着色器清理。</summary>
-    public static IShaderService Shader => ShaderLazy.Value;
+    public static IShaderService Shader => Backends.PageBackendSessions.Service(ShaderLazy, () => new Backends.BackendShaderService(), "shader");
 
     /// <summary>应用级控制：开机自启、关闭到托盘。</summary>
     public static IAppControlService AppControl => AppControlLazy.Value;
@@ -110,16 +114,16 @@ public static class ServiceLocator
     public static ICpuTopologyService Cpu => CpuLazy.Value;
 
     /// <summary>扩展优化库引擎（系统优化子栏目：注册表/服务/任务 + 全局备份恢复）。</summary>
-    public static TweakDb.IBxService Bx => BxLazy.Value;
+    public static TweakDb.IBxService Bx => Backends.PageBackendSessions.Service(BxLazy, () => new Backends.BackendBxService(), "system");
 
     /// <summary>Defender 预检/收尾（只读状态查询与恢复方向执行由系统维护后端完成）。</summary>
-    public static IDefenderGuardService DefenderGuard => DefenderGuardLazy.Value;
+    public static IDefenderGuardService DefenderGuard => Backends.PageBackendSessions.Service(DefenderGuardLazy, () => new Backends.BackendDefenderGuardService(), "system");
 
     /// <summary>NVIDIA 显卡设置（NVAPI DRS 针对三角洲的驱动级设置 + nvdrsdb 只读锁定）。</summary>
-    public static INvProfileService NvProfile => NvProfileLazy.Value;
+    public static INvProfileService NvProfile => Backends.PageBackendSessions.Service(NvProfileLazy, () => new Backends.BackendNvProfileService(), "nvsettings", "shader");
 
     /// <summary>虚拟内存（页面文件）设置：状态读取 / 固定大小设置 / 恢复系统托管。</summary>
-    public static IPagefileService Pagefile => PagefileLazy.Value;
+    public static IPagefileService Pagefile => Backends.PageBackendSessions.Service(PagefileLazy, () => new Backends.BackendPagefileService(), "system");
 
     /// <summary>自动更新：检查 update.json / 下载并校验安装包 / 交给 Inno Setup 静默安装。</summary>
     public static IUpdateService Update => UpdateLazy.Value;

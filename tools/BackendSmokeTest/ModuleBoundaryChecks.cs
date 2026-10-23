@@ -55,11 +55,14 @@ internal static class ModuleBoundaryChecks
     {
         var backends = Directory.GetDirectories(Path.Combine(repo, "src"), "DeltaNFD.Backend.*");
         // 项目目录数量应与 BackendModules.All 的实际注册数保持一致。
-        var expected = DeltaNFD.Backends.BackendModules.All.Count;
+        var inRepo = DeltaNFD.Backends.BackendModules.All.Values.Where(s => s.Id != DeltaNFD.Backends.BackendModules.ShaderKiller).ToArray();
+        var expected = inRepo.Length;
         Check(backends.Length == expected,
             $"后端项目数与注册模块数一致（找到 {backends.Length} 个，注册 {expected} 个）");
         // 每个注册模块都必须有对应的 EXE 项目，避免只加注册不加工程或反之。
-        foreach (var spec in DeltaNFD.Backends.BackendModules.All.Values)
+        Check(!backends.Any(d => Path.GetFileName(d) == "DeltaNFD.Backend.ShaderKiller"),
+            "私有着色卡顿杀手后端不进入公开 src");
+        foreach (var spec in inRepo)
         {
             Check(backends.Any(d => string.Equals(Path.GetFileName(d), spec.ExecutableName.Replace(".exe", ""),
                     StringComparison.OrdinalIgnoreCase)),
@@ -200,6 +203,8 @@ internal static class ModuleBoundaryChecks
     /// </summary>
     private static void CheckMissingBackendFailsClearly()
     {
+        if (!string.Equals(Path.GetFileName(Environment.ProcessPath), "BackendSmokeTest.exe", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("自复制边界夹具必须通过 BackendSmokeTest.exe 启动，禁止复制 dotnet 运行时目录。");
         var source = Path.GetDirectoryName(Environment.ProcessPath)
                      ?? throw new Exception("无法确定测试程序目录。");
         var tempRoot = Path.Combine(Path.GetTempPath(), "DeltaNFD-module-boundary", Guid.NewGuid().ToString("N"));

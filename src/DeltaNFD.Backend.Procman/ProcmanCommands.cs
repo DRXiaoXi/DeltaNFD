@@ -41,7 +41,7 @@ internal static class ProcmanCommands
     {
         Module = BackendModules.Require(BackendModules.Procman),
         InitialPriorityClass = System.Diagnostics.ProcessPriorityClass.BelowNormal,
-        OnStopping = () => EngineLazy.IsValueCreated && (_sessionModified || Engine.Snapshot().RulesEngineRunning || Engine.ResponsivenessEnabled)
+        OnStopping = () => EngineLazy.IsValueCreated && (_sessionModified || Engine.Snapshot().RulesEngineRunning)
             ? Engine.RestoreAllAsync() : Task.FromResult(OperationResult.Ok("只读会话已停止；遗留日志保持不变。")),
         StatusSource = BuildStatus,
         Handlers = new Dictionary<string, Func<BackendCommandContext, Task<BackendResult>>>(StringComparer.Ordinal)
@@ -61,8 +61,6 @@ internal static class ProcmanCommands
             [BackendCommands.ProcmanRulesList] = RulesListAsync,
             [BackendCommands.ProcmanRulesSave] = RulesSaveAsync,
             [BackendCommands.ProcmanRulesDelete] = RulesDeleteAsync,
-            [BackendCommands.ProcmanResponsivenessConfig] = ResponsivenessConfigAsync,
-            [BackendCommands.ProcmanResponsivenessEvents] = ResponsivenessEventsAsync,
             [BackendCommands.ProcmanMemoryPreview] = MemoryPreviewAsync,
             [BackendCommands.ProcmanMemoryTrim] = MemoryTrimAsync,
             [BackendCommands.ProcmanBackgroundGet] = context => Task.FromResult(BackendResult.Ok(context.Command, "后台管理设置。", Engine.BackgroundStatus())),
@@ -261,24 +259,6 @@ internal static class ProcmanCommands
             ? BackendResult.Ok(context.Command, result.Message, result)
             : BackendResult.Failed(context.Command, result.Message);
     }
-
-    // ---------------- P4：后台抑制（原创策略，默认关闭；实现见引擎） ----------------
-
-    private static Task<BackendResult> ResponsivenessConfigAsync(BackendCommandContext context)
-    {
-        var args = context.ArgsAs<ProcmanResponsivenessConfigArgs>();
-        var result = Engine.ConfigureResponsiveness(args);
-        return Task.FromResult(result.Success
-            ? BackendResult.Ok(context.Command, result.Message, result)
-            : BackendResult.Failed(context.Command, result.Message));
-    }
-
-    private static Task<BackendResult> ResponsivenessEventsAsync(BackendCommandContext context)
-        => Task.FromResult(BackendResult.Ok(context.Command,
-            Engine.ResponsivenessEnabled
-                ? "后台抑制运行中。"
-                : "后台抑制未启用（默认关闭，可在下方事件中查看历史）。",
-            new ProcmanResponsivenessEventResult { Events = Engine.ResponsivenessEvents().ToList() }));
 
     private static Task<BackendResult> NativeProbeAsync(BackendCommandContext context)
     {

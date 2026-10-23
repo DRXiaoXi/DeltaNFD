@@ -33,20 +33,8 @@ public sealed record ProcmanBackgroundConfig
     public int MemoryCooldownSeconds { get; init; } = 600;
     public string MemoryMode { get; init; } = ProcmanMemoryModes.Normal;
     public List<string> ExcludedExecutablePaths { get; init; } = [];
-    public ProcmanSuppressionOptions Suppression { get; init; } = new();
 }
 
-public sealed record ProcmanSuppressionOptions
-{
-    public int DefaultsVersion { get; init; } = 2;
-    public int CpuBusyThreshold { get; init; } = 65;
-    public int CpuBusySeconds { get; init; } = 3;
-    public int CpuIdleThreshold { get; init; } = 50;
-    public int CpuIdleSeconds { get; init; } = 6;
-    public int CooldownSeconds { get; init; } = 15;
-    public int CandidateCpuFloorPercent { get; init; } = 0;
-    public int MaxAdjustPerRound { get; init; } = 1;
-}
 public sealed record ProcmanBackgroundStatus(ProcmanBackgroundConfig Config, bool AutomaticMemoryActive,
     DateTimeOffset? LastCheckUtc, ProcmanMemoryTrimReport? LastReport, string Note = "", string Feedback = "", int EffectiveCandidateCpuFloorPercent = 0,
     int EffectiveMemoryCooldownSeconds = 600);
@@ -266,10 +254,10 @@ public sealed class ProcmanStatusSnapshot
     /// <summary>规则引擎是否在运行。</summary>
     public bool RulesEngineRunning { get; init; }
 
-    /// <summary>后台抑制是否启用（默认关闭）。协议字段名称保留兼容。</summary>
+    /// <summary>旧协议兼容字段：后台抑制已移除，始终为 false。</summary>
     public bool ResponsivenessEnabled { get; init; }
 
-    /// <summary>当前后台抑制参数，供帧格页重新打开时准确回显；null 表示尚未配置。</summary>
+    /// <summary>旧协议兼容字段：后台抑制已移除，始终为 null。</summary>
     public ProcmanResponsivenessConfigArgs? ResponsivenessConfig { get; init; }
 
     /// <summary>当前持有的修改记录总数。</summary>
@@ -388,13 +376,14 @@ public sealed class ProcmanRulesDeleteArgs
     public string Capability { get; set; } = "";
 }
 
-// ---------------- P4：后台抑制 ----------------
+// Retired wire DTOs: no command handler or engine enables suppression.
+// ResponsivenessConfig remains null in current status responses; these types are not executable settings.
 
 public sealed class ProcmanResponsivenessConfigArgs
 {
     public bool Enabled { get; set; }
 
-    /// <summary>系统 CPU 使用率阈值（%，默认 35；本项目自行制定的保守值）。</summary>
+    /// <summary>退休协议字段，当前版本不使用。</summary>
     public int CpuBusyThreshold { get; set; } = 65;
 
     /// <summary>持续时长秒（默认 3）。</summary>

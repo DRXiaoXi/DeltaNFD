@@ -55,7 +55,9 @@ public partial class BxItemVm : ObservableObject
 
     public string? UnavailableReason { get; init; }
     public BxState ActualState { get; private set; } = BxState.Unknown;
-    public bool CanEdit => !Unsupported &&
+    [ObservableProperty] private bool gameReadOnly = true;
+    partial void OnGameReadOnlyChanged(bool value) { OnPropertyChanged(nameof(CanEdit)); OnPropertyChanged(nameof(PendingChange)); }
+    public bool CanEdit => !GameReadOnly && !Unsupported &&
         (ActualState is BxState.On or BxState.Off or BxState.Mixed) &&
         !(Id == "debloat/OneDrive" && ActualState == BxState.On);
 
@@ -183,7 +185,7 @@ public partial class BxItemVm : ObservableObject
             BxState.Off => subject is null ? off : $"{subject}：{off}",
             BxState.Mixed => subject is null ? mixed : $"{subject}：{mixed}",
             BxState.NotApplicable => "不适用",
-            _ => "状态未知",
+            _ => "待核对（未能读取完整状态）",
         };
     }
 }
@@ -256,14 +258,16 @@ public partial class BxDbViewModel : ObservableObject
         SelectedSection = Sections[0];
     }
 
-    /// <summary>异步读取备份仓库状态（来源：系统维护后端）；读取失败按「未知」如实显示，不冒充零。</summary>
+    /// <summary>异步读取备份仓库只读缓存；读取失败按「待核对」显示，不冒充零。</summary>
     public async Task UpdateBackupSummaryAsync()
     {
         var bxStatus = await _bx.GetBackupStatusAsync();
-        var otherCount = TweakBackupStore.Default.GetAll().Count;
+        int otherCount;
+        try { otherCount = TweakBackupStore.Default.GetAllStrict().Count; }
+        catch (Exception ex) { BackupSummary = "深度优化/虚拟内存备份待核对：" + ex.Message; return; }
         if (!bxStatus.Readable)
         {
-            BackupSummary = "扩展库备份读取失败（来源：系统维护后端）：" + bxStatus.Error;
+            BackupSummary = "扩展库备份待核对：" + bxStatus.Error;
             return;
         }
 
@@ -275,6 +279,27 @@ public partial class BxDbViewModel : ObservableObject
 
     /// <summary>加载序号：切换子栏目时自增，旧一轮加载的结果直接丢弃（修复加载中被切走后新栏目不加载的问题）。</summary>
     private int _loadGeneration;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueue? _readDispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+    private bool _listeningForPreload;
+    public void AttachPreload()
+    {
+        _listeningForPreload = true;
+        OptimizationScan.Changed -= OnPreloadChanged; OptimizationScan.Changed += OnPreloadChanged;
+        OnPreloadChanged();
+    }
+    public void DetachPreload() { _listeningForPreload = false; OptimizationScan.Changed -= OnPreloadChanged; }
+    private void OnPreloadChanged()
+    {
+        if (_readDispatcher is not null && !_readDispatcher.HasThreadAccess) { _readDispatcher.TryEnqueue(OnPreloadChanged); return; }
+        if (!_listeningForPreload || IsApplyingBatch) return;
+        foreach (var row in Items)
+        {
+            if (row.Item is { } item && OptimizationScan.TryGetItemState(item.SectionId, item.Name, out var state)) Fill(row, state);
+            else if (row.Group is { } group && OptimizationScan.TryGetGroupState(group.Id, out var groupState)) Fill(row, groupState);
+            else if (row.DeepTweak is { } tweak && OptimizationScan.TryGetTweakStatus(tweak, out var deep) && deep is not null)
+                Fill(row, deep.StateKnown ? deep.IsOptimized ? BxState.On : BxState.Off : BxState.Unknown);
+        }
+    }
 
     /// <summary>加载当前子栏目的全部条目与状态（主页扫描有缓存时直接顺延，避免重复查询）。</summary>
     public async Task LoadItemsAsync()
@@ -291,12 +316,6 @@ public partial class BxDbViewModel : ObservableObject
         StatusText = "正在读取状态…";
         try
         {
-            // 精简栏目：先作废 APPX 缓存，保证每次进页都按系统当前安装状态显示
-            if (section.Id == "debloat")
-            {
-                await _bx.InvalidateAppxCacheAsync();
-            }
-
             // 服务组栏目
             if (section.JsonFile is null)
             {
@@ -359,7 +378,7 @@ public partial class BxDbViewModel : ObservableObject
                 return;
             }
 
-            var systemDrive = DriveInspector.GetFixedDriveReports().FirstOrDefault(d => d.IsSystemDrive);
+            var systemDrive = (await SystemInspectionCache.Drives()).FirstOrDefault(d => d.IsSystemDrive);
             bool? systemDriveIsHdd = systemDrive is null || (!systemDrive.IsMechanical && !systemDrive.IsSolidState)
                 ? null : systemDrive.IsMechanical;
             var itemRows = items.Select(i =>
@@ -498,14 +517,14 @@ public partial class BxDbViewModel : ObservableObject
             foreach (var row in itemRows.Where(r => r.DeepTweak is not null))
             {
                 var status = deepStatuses!.First(s => s.Tweak == row.DeepTweak);
-                Fill(row, status.IsOptimized ? BxState.On : BxState.Off);
+                Fill(row, OptimizationScan.Uncertain(status) ? BxState.Unknown : status.IsOptimized ? BxState.On : BxState.Off);
             }
 
             // Bx 条目：主页扫描有缓存时顺延（跳过批量查询），缺失的条目单独查询并回填缓存
             var bxRows = itemRows.Where(r => r.DeepTweak is null).ToList();
             var cachedRows = new List<BxItemVm>();
             var queryItems = new List<BxItem>();
-            if (OptimizationScan.HasData && !OptimizationScan.IsScanning)
+            if (OptimizationScan.HasData)
             {
                 foreach (var row in bxRows)
                 {
@@ -602,6 +621,7 @@ public partial class BxDbViewModel : ObservableObject
     /// <summary>构建条目行时统一挂接开关事件（每次加载都新建行对象，不会重复订阅）。</summary>
     private BxItemVm NewRow(BxItemVm row)
     {
+        row.GameReadOnly = GameReadOnly;
         row.ToggleRequested += async (_, on) => await ToggleAsync(row, on);
         return row;
     }
@@ -683,7 +703,14 @@ public partial class BxDbViewModel : ObservableObject
 
     public int PendingCount => AllRows.Count(i => i.PendingChange);
 
-    public bool ApplyChangesEnabled => HasPendingChanges && !IsBusy && !IsApplyingBatch;
+    public bool ExecutionEnabled => !GameReadOnly;
+    [ObservableProperty] private bool gameReadOnly = true;
+    partial void OnGameReadOnlyChanged(bool value)
+    {
+        foreach (var row in _sectionRows.Values.SelectMany(rows => rows).Concat(Items).Distinct()) row.GameReadOnly = value;
+        OnPropertyChanged(nameof(ExecutionEnabled)); RefreshPendingFlags();
+    }
+    public bool ApplyChangesEnabled => !GameReadOnly && HasPendingChanges && !IsBusy && !IsApplyingBatch;
 
     public string ApplyChangesButtonText => HasPendingChanges ? $"应用更改（{PendingCount}）" : "应用更改";
 
@@ -768,6 +795,7 @@ public partial class BxDbViewModel : ObservableObject
     [RelayCommand]
     public async Task ApplyChangesAsync()
     {
+        if (Services.Backends.PageBackendSessions.SystemWriteBlocker is { } blocked) { StatusText = blocked; return; }
         if (IsBusy || IsApplyingBatch)
         {
             return;
@@ -1017,7 +1045,7 @@ public partial class BxDbViewModel : ObservableObject
             foreach (var row in toRefresh.Where(r => r.DeepTweak is not null))
             {
                 var status = freshDeep!.First(s => s.Tweak == row.DeepTweak);
-                Fill(row, status.IsOptimized ? BxState.On : BxState.Off);
+                Fill(row, OptimizationScan.Uncertain(status) ? BxState.Unknown : status.IsOptimized ? BxState.On : BxState.Off);
                 OptimizationScan.SetTweakState(status.Tweak, status.IsOptimized);
             }
 
@@ -1048,6 +1076,7 @@ public partial class BxDbViewModel : ObservableObject
     [RelayCommand]
     public async Task RestoreAllAsync()
     {
+        if (Services.Backends.PageBackendSessions.SystemWriteBlocker is { } blocked) { StatusText = blocked; return; }
         if (IsBusy || IsApplyingBatch)
         {
             return;

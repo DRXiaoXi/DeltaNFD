@@ -70,6 +70,22 @@
                 </StackPanel>
             </Border>
 
+            <Border Style="{StaticResource CardBorderStyle}" Visibility="{x:Bind ViewModel.ShowIntelPcores, Mode=OneWay}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Intel · 优先 P 核负载" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="一键将当前电源计划的「生效的异类策略」设为 0，「异类线程调度策略」和「异类短线程调度策略」设为首选性能处理器（2）。交流和电池同时生效。这是调度偏好，不会禁用 E 核或锁定进程亲和性。"
+                               Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="一键优先 P 核负载" Style="{StaticResource AccentButtonStyle}"
+                                IsEnabled="{x:Bind ViewModel.CanPreferIntelPcores, Mode=OneWay}" Click="PreferIntelPcores_Click" />
+                        <Button Content="还原已备份策略" IsEnabled="{x:Bind ViewModel.IntelPcoreControlsEnabled, Mode=OneWay}" Click="RestoreIntelPcores_Click" />
+                        <ProgressRing Width="20" Height="20" IsActive="{x:Bind ViewModel.IntelPcoresBusy, Mode=OneWay}" />
+                    </StackPanel>
+                    <TextBlock Text="{x:Bind ViewModel.IntelPcoresStatusText, Mode=OneWay}" Style="{StaticResource CardDescStyle}"
+                               TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                </StackPanel>
+            </Border>
+
             <!-- AMD CCD 判定 -->
             <Border Style="{StaticResource CardBorderStyle}"
                     Visibility="{x:Bind ViewModel.ShowCcdJudge, Mode=OneWay}">
@@ -216,7 +232,7 @@
                              Message="{x:Bind ViewModel.PowerLockNoticeText, Mode=OneWay}"
                              IsClosable="False" />
 
-                    <ItemsControl ItemsSource="{x:Bind ViewModel.HeteroItems}">
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.HeteroItems}" IsEnabled="{x:Bind ViewModel.IntelPcoreControlsEnabled, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:HeteroPolicyVm">
                                 <Grid ColumnSpacing="16" Padding="0,6">

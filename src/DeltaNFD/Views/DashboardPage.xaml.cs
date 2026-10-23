@@ -28,6 +28,7 @@ public sealed partial class DashboardPage : Page
         ServiceLocator.GameTarget.Changed += OnTargetChanged;
         ViewModel.RefreshTargetDisplay();
         ViewModel.RefreshRuntimeDetectionPreference();
+        ViewModel.AttachHealth();
         ViewModel.StartOptimizationScan();
     }
 
@@ -36,6 +37,7 @@ public sealed partial class DashboardPage : Page
         _attached = false;
         ServiceLocator.GameTarget.Changed -= OnTargetChanged;
         ViewModel.DetachScanListener();
+        ViewModel.DetachHealth();
     }
 
     private void OnTargetChanged(GameTarget target) => DispatcherQueue.TryEnqueue(() =>
@@ -56,13 +58,6 @@ public sealed partial class DashboardPage : Page
     {
         await ViewModel.RefreshHealthAsync();
     }
-
-    /// <summary>优化分数颜色语义：≥80 绿色 / ≥50 黄色 / 低于 50 红色（供 x:Bind 函数绑定）。</summary>
-    public Brush ScoreBrush(bool good, bool warn) => good
-        ? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 34, 197, 94))
-        : warn
-            ? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 250, 204, 21))
-            : new SolidColorBrush(Windows.UI.Color.FromArgb(255, 248, 113, 113));
 
     /// <summary>主页状态颜色：检查中/不适用为灰色，信息为蓝色，提醒为黄色，异常/失败为红色。</summary>
     public Brush StatusBrush(DashboardHealthState state)

@@ -6,6 +6,9 @@ internal static class FrameFeatureChecks
 {
     internal static void Run()
     {
+        var repo = new DirectoryInfo(AppContext.BaseDirectory);
+        while (repo is not null && !File.Exists(Path.Combine(repo.FullName, "DeltaNFD.sln"))) repo = repo.Parent;
+        if (repo is null) throw new DirectoryNotFoundException("测试源码根目录不可用。");
         for (var mask = 0; mask < 8; mask++)
         {
             var response = (mask & 1) != 0;
@@ -24,8 +27,11 @@ internal static class FrameFeatureChecks
         Assert(FrameFeatureState.Describe(true, true, true) == "已选择 · 帧格已激活", "配置状态不得冒充执行成功");
         Assert(FrameFeatureState.Describe(true, false, true) == "未选择子功能 · 不会执行", "空子项不得显示启用");
 
-        var dir = Path.Combine(Path.GetTempPath(), "DeltaNFD_FrameFeatures_" + Guid.NewGuid().ToString("N"));
+        var testId = Guid.NewGuid();
+        var dir = Path.Combine(repo.FullName, "_buildcheck", "page-lifecycle-20261022", "frame-features-" + testId.ToString("N"));
         Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "isolated-test.marker"), testId.ToString("D"));
+        AppDataPaths.ConfigureIsolatedDataRoot(dir, testId);
         var path = Path.Combine(dir, "settings.json");
         try
         {
@@ -73,7 +79,7 @@ internal static class FrameFeatureChecks
         }
 
         // 静态绑定回归，不启动会执行优化的 GUI。
-        var source = Path.Combine(Directory.GetCurrentDirectory(), "src", "DeltaNFD", "Views", "FramePage.xaml");
+        var source = Path.Combine(repo.FullName, "src", "DeltaNFD", "Views", "FramePage.xaml");
         var doc = XDocument.Load(source);
         var texts = doc.Descendants().Where(e => e.Name.LocalName == "TextBlock")
             .Select(e => (string?)e.Attribute("Text")).ToArray();

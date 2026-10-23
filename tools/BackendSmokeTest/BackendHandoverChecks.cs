@@ -119,15 +119,23 @@ internal static class BackendHandoverChecks
         Check(quick.Status == BackendResultStatuses.Ok, "临时测试后端可完成只读命令");
         Check(BackendSessions.Snapshot().Any(c => ReferenceEquals(c, client)), "活动会话已登记");
 
-        var failed = await BackendLifecycle.PrepareHandoverAsync("正向对照", TimeSpan.FromSeconds(10));
+        var progress = new List<string>();
+        var failed = await BackendLifecycle.PrepareHandoverAsync("正向对照", TimeSpan.FromSeconds(10), new InlineProgress(progress.Add));
         Check(failed.Count == 0, "空闲活动后端可正常排空，交接放行");
         Check(client.ExitConfirmed, "排空后测试后端进程已退出");
         Check(BackendUnconfirmedStore.PendingModules().Count == 0, "正常排空不留下未知证据");
+        Check(progress.Any(p => p.Contains("停止后台组件")) && progress[^1] == "后台组件已安全退出。",
+            "退出显示收尾阶段，并且实际排空完成后才显示安全退出");
 
         var idle = await BackendClient.StartAsync(BackendModules.Gpu, CancellationToken.None);
         var second = await BackendLifecycle.PrepareHandoverAsync("正向对照二", TimeSpan.FromSeconds(10));
         Check(second.Count == 0, "第二次空闲活动后端同样可排空");
         Check(idle.ExitConfirmed, "第二次排空后进程退出");
+    }
+
+    private sealed class InlineProgress(Action<string> report) : IProgress<string>
+    {
+        public void Report(string message) => report(message);
     }
 
     private static async Task CpuRestoreFailureBlocksAsync()
@@ -136,8 +144,11 @@ internal static class BackendHandoverChecks
         BackendClient client;
         try { client = await BackendClient.StartAsync(BackendModules.CpuFrame, default); }
         finally { Environment.SetEnvironmentVariable("DELTANFD_TEST_RESTORE_FAIL_ONCE", null); }
-        var failed = await BackendLifecycle.PrepareHandoverAsync("模拟还原失败", TimeSpan.FromSeconds(5));
+        var progress = new List<string>();
+        var failed = await BackendLifecycle.PrepareHandoverAsync("模拟还原失败", TimeSpan.FromSeconds(5), new InlineProgress(progress.Add));
         Check(failed.Contains(BackendModules.CpuFrame) && client.ExitConfirmed, "还原失败保留证据，同时允许后端停止供恢复核对");
+        Check(progress.Any(p => p.Contains("还原 CPU")) && progress[^1].Contains("需要核对"),
+            "还原失败的退出进度如实要求核对，不显示安全退出");
         await AcknowledgeAsync(BackendModules.CpuFrame);
         client = await BackendClient.StartAsync(BackendModules.CpuFrame, default);
         var retried = await BackendLifecycle.PrepareHandoverAsync("重试还原", TimeSpan.FromSeconds(5));
@@ -521,6 +532,8 @@ internal static class BackendHandoverChecks
     {
         public void Install(string moduleId)
         {
+            if (!string.Equals(Path.GetFileName(Environment.ProcessPath), "BackendSmokeTest.exe", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("自复制交接夹具必须通过 BackendSmokeTest.exe 启动；不允许回退到真实后端。");
             var spec = BackendModules.Require(moduleId);
             var directory = Path.Combine(backendsRoot, moduleId);
             Directory.CreateDirectory(directory);

@@ -37,7 +37,7 @@ public sealed class FrameService : IFrameService
     private const string LegacyAutostartTaskName = "DeltaOptimizer_FrameMode";
 
     private readonly object _gate = new();
-    private readonly IGpuSpoofService _spoof = ServiceLocator.GpuSpoof;
+    private readonly IGpuSpoofService _spoof = ServiceLocator.FrameGpuSpoof;
     private readonly SemaphoreSlim _modeTransition = new(1, 1);
 
     /// <summary>构造时若在 UI 线程（ServiceLocator 首次访问发生在页面构造）则捕获派发器，
@@ -796,7 +796,15 @@ public sealed class FrameService : IFrameService
         finally { _modeTransition.Release(); }
     }
 
+    private readonly SemaphoreSlim _executionSync = new(1, 1);
     private async Task<OperationResult> DeactivateFrameModeCoreAsync()
+    {
+        await _executionSync.WaitAsync();
+        try { return await DeactivateFrameModeExecutionAsync(); }
+        finally { _executionSync.Release(); }
+    }
+
+    private async Task<OperationResult> DeactivateFrameModeExecutionAsync()
     {
         using var targetOperation = GameTargetService.Default.BeginOperation();
         if (!ElevationHelper.IsElevated)
@@ -904,6 +912,18 @@ public sealed class FrameService : IFrameService
     /// 返回可拼接的状态说明。
     /// </summary>
     private async Task<OperationResult> SyncBackendExecutionAsync()
+    {
+        await _executionSync.WaitAsync();
+        try
+        {
+            Backends.BackendOperationGate.Check();
+            return await SyncBackendExecutionCoreAsync();
+        }
+        catch (Exception ex) { return OperationResult.Fail("帧格同步已停止：" + ex.Message); }
+        finally { _executionSync.Release(); }
+    }
+
+    private async Task<OperationResult> SyncBackendExecutionCoreAsync()
     {
         try
         {

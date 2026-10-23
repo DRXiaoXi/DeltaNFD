@@ -23,12 +23,12 @@ internal static class ProcmanMemoryModeChecks
         using var engine = new ProcmanEngine(Path.Combine(root, "changes.json"))
         {
             BackgroundLoopDisabledForTests = true, FrameModeActiveForTests = () => true,
-            FrameMemorySelectedForTests = () => true, FrameSuppressionSelectedForTests = () => false,
+            FrameMemorySelectedForTests = () => true,
             ForegroundForTests = () => foreground.Pid, ClockForTests = () => now,
             MemoryIdentitiesForTests = () => identities,
             SampleForTests = () => throw new Exception("CPU sampler must never be called by memory modes"),
             MemoryReadForTests = _ => 1024,
-            ResponsivenessExcludedForTests = i => i == system,
+            BackgroundExcludedForTests = i => i == system,
             MemorySystemProcessForTests = i => i == system,
             MemoryPolicyForTests = () => new([]),
             MemoryTrimForTests = (i, guard) =>

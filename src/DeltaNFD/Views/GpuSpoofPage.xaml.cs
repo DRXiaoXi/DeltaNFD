@@ -7,6 +7,7 @@ namespace DeltaNFD.Views;
 
 public sealed partial class GpuSpoofPage : Page
 {
+    private readonly DeltaNFD.Services.Backends.PageBackendLease? _pageOwner = DeltaNFD.Services.Backends.PageBackendSessions.Manager.Current;
     public GpuSpoofViewModel ViewModel { get; } = new();
 
     public GpuSpoofPage()
@@ -65,7 +66,7 @@ public sealed partial class GpuSpoofPage : Page
                     DefaultButton = ContentDialogButton.Primary,
                 };
 
-                if (await restartConfirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
+                if (await restartConfirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary)
                 {
                     return;
                 }
@@ -132,7 +133,7 @@ public sealed partial class GpuSpoofPage : Page
                 DefaultButton = ContentDialogButton.Primary,
             };
 
-            if (await directConfirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
+            if (await directConfirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary)
             {
                 return;
             }
@@ -167,7 +168,7 @@ public sealed partial class GpuSpoofPage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary)
         {
             return;
         }
@@ -208,7 +209,7 @@ public sealed partial class GpuSpoofPage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary)
         {
             return;
         }

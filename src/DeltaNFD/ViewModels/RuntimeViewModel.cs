@@ -73,6 +73,9 @@ public partial class RuntimeViewModel : ObservableObject
         => _guard.SafeUninstallAllCppAsync(fingerprint, allowTemporaryInstaller, new Progress<string>(s => RepairStatusText = s), token);
     public Task<OperationResult> RepairAsync(string fingerprint, CancellationToken token, Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false)
         => _guard.Repair14Async(fingerprint, new Progress<string>(s => RepairStatusText = s), token, mode, allowTemporaryInstaller);
+    public Task<Vc14ForceReplacePreview> PreviewForceReplaceAsync(CancellationToken token) => _guard.PreviewForceReplace14Async(token);
+    public Task<OperationResult> ForceReplaceAsync(string fingerprint, CancellationToken token)
+        => _guard.ForceReplace14Async(fingerprint, new Progress<string>(s => RepairStatusText = s), token);
     public Task<OperationResult> RestoreTemporaryInstallerAsync() => _guard.RestoreTemporaryInstallerAsync();
     [ObservableProperty] private string installedText = "尚未读取安装登记。";
     [ObservableProperty] private bool guardIsEnabled;

@@ -7,7 +7,9 @@ namespace DeltaNFD.Views;
 
 public sealed partial class ShaderPage : Page
 {
+    private readonly DeltaNFD.Services.Backends.PageBackendLease? _pageOwner = DeltaNFD.Services.Backends.PageBackendSessions.Manager.Current;
     public ShaderViewModel ViewModel { get; } = new();
+
 
     public ShaderPage()
     {
@@ -39,7 +41,7 @@ public sealed partial class ShaderPage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary)
         {
             return;
         }
@@ -54,7 +56,7 @@ public sealed partial class ShaderPage : Page
                 Content = result.Message,
                 CloseButtonText = "知道了",
                 DefaultButton = ContentDialogButton.Close,
-            }.ShowWithBackendRecoveryAsync();
+            }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
         else if (result is { Success: true })
         {
@@ -68,7 +70,7 @@ public sealed partial class ShaderPage : Page
                           + "首次进图会重新编译着色器，出现卡顿 / 掉帧属正常现象，多跑两图即恢复。",
                 CloseButtonText = "知道了",
                 DefaultButton = ContentDialogButton.Primary,
-            }.ShowWithBackendRecoveryAsync();
+            }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
     }
 
@@ -95,7 +97,7 @@ public sealed partial class ShaderPage : Page
             DefaultButton = ContentDialogButton.Primary,
         };
 
-        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary)
         {
             return;
         }
@@ -113,6 +115,6 @@ public sealed partial class ShaderPage : Page
             Content = result.Message,
             CloseButtonText = "知道了",
             DefaultButton = ContentDialogButton.Close,
-        }.ShowWithBackendRecoveryAsync();
+        }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
     }
 }

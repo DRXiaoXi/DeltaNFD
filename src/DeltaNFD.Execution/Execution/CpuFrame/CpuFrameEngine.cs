@@ -21,6 +21,11 @@ public sealed class CpuFrameEngine : IDisposable
     private static readonly TimeSpan PowerGuardInterval = TimeSpan.FromSeconds(30);
 
     private readonly object _gate = new();
+    private readonly SemaphoreSlim _automationGate = new(1, 1);
+    private readonly object _observationGate = new();
+    internal Func<bool?>? DeltaReaderForTests { get; set; }
+    internal Func<DateTimeOffset>? ClockForTests { get; set; }
+    internal Func<CancellationToken, Task>? TickForTests { get; set; }
     private readonly SemaphoreSlim _powerGate = new(1, 1);
     private readonly CpuTopologyService _cpu;
     private readonly FrameTweaksService _tweaks;
@@ -37,6 +42,8 @@ public sealed class CpuFrameEngine : IDisposable
     private bool _targetCustom;
     private string _targetExe = "";
     private bool _gameRunning;
+    private sealed record DeltaObservation(bool? Running, DateTimeOffset ObservedUtc);
+    private DeltaObservation? _deltaObservation;
     private int? _gamePid;
     private long _gameStartTicks;
     private string _gameExe = "";
@@ -81,7 +88,8 @@ public sealed class CpuFrameEngine : IDisposable
             _cts = new CancellationTokenSource();
             _monitorRunning = true;
             _dwmHandledForSession = false;
-            _loop = Task.Run(() => RunLoopAsync(_cts.Token));
+            var token = _cts.Token;
+            _loop = Task.Run(() => RunLoopAsync(token));
         }
         SetAction("游戏监控已启动。");
         await Task.CompletedTask;
@@ -116,7 +124,13 @@ public sealed class CpuFrameEngine : IDisposable
     {
         while (!token.IsCancellationRequested)
         {
-            try { await TickAsync(token).ConfigureAwait(false); }
+            try { await SerializeAutomationAsync(async () =>
+            {
+                token.ThrowIfCancellationRequested();
+                if (TickForTests is { } tick) await tick(token).ConfigureAwait(false);
+                else await TickAsync(token).ConfigureAwait(false);
+                return true;
+            }, cancellationToken: token).ConfigureAwait(false); }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
             {
@@ -126,6 +140,17 @@ public sealed class CpuFrameEngine : IDisposable
             try { await Task.Delay(TickInterval, token).ConfigureAwait(false); }
             catch (OperationCanceledException) { break; }
         }
+    }
+
+    // Commands and the maintenance tick must never apply/revert the same policy concurrently.
+    // Stop cancels queued ticks before waiting for the current mutation to finish.
+    public async Task<T> SerializeAutomationAsync<T>(Func<Task<T>> operation, bool stopMonitor = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (stopMonitor) await StopMonitorAsync().ConfigureAwait(false);
+        await _automationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try { return await operation().ConfigureAwait(false); }
+        finally { _automationGate.Release(); }
     }
 
     private async Task TickAsync(CancellationToken token)
@@ -803,11 +828,20 @@ public sealed class CpuFrameEngine : IDisposable
 
     // ---------------- 全量还原（供退出/恢复） ----------------
 
-    public async Task<OperationResult> RestoreAllAsync()
+    public async Task<OperationResult> RestoreAllAsync(Action<string>? progress = null)
     {
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        void Report(string message)
+        {
+            Log.Info($"帧格退出还原：{message}；累计 {elapsed.Elapsed.TotalSeconds:F1} 秒");
+            try { progress?.Invoke(message); }
+            catch (Exception ex) { Log.Warn("帧格还原进度显示失败：" + ex.Message); }
+        }
+        Report("正在停止帧格监控…");
         await StopMonitorAsync().ConfigureAwait(false);
         var messages = new List<string>();
         var failures = new List<string>();
+        Report("正在还原进程优先级与亲和性…");
         RestorePriorities();
         if (_priorityOriginals.Count != 0) failures.Add("自动优先级仍有待还原实例");
         else messages.Add("自动优先级已还原");
@@ -817,28 +851,34 @@ public sealed class CpuFrameEngine : IDisposable
         else messages.Add("CPU 亲和性规则已还原");
         if (CpuTopologyService.DualCcdSchedulingActive)
         {
+            Report("正在还原双 CCD 调度及电源策略，可能需要一些时间…");
             var dual = await _cpu.RevertDualCcdSchedulingAsync().ConfigureAwait(false);
             messages.Add("双CCD：" + dual.Message);
             if (!dual.Success || CpuTopologyService.DualCcdSchedulingActive) failures.Add("双 CCD 还原未完成");
         }
         if (CpuTopologyService.SingleCcdExcludeActive)
         {
+            Report("正在还原单 CCD 调度及电源策略…");
             var single = await _cpu.RestoreGameFullCoresAsync().ConfigureAwait(false);
             messages.Add("单CCD：" + single.Message);
             if (!single.Success || CpuTopologyService.SingleCcdExcludeActive) failures.Add("单 CCD 还原未完成");
         }
+        Report("正在释放计时器并还原游戏节能状态…");
         _boostTimer = false;
         _boostGamePower = false;
         if (!_gamePower.Sync([])) failures.Add(_gamePower.Status);
         UpdateTimer(false);
         messages.Add("高分辨率计时器请求已释放");
         _tweaksDesired = false;
+        Report("正在还原帧格临时优化…");
         var tweaks = await RevertTweaksCoreAsync().ConfigureAwait(false);
         messages.Add("临时优化：" + tweaks.Message);
         if (!tweaks.Success) failures.Add("临时优化：" + tweaks.Message);
+        Report("正在还原电源计划…");
         var power = await SetPowerLockAsync(false, "").ConfigureAwait(false);
         messages.Add("电源锁定：" + power.Message);
         if (!power.Success) failures.Add("电源锁定：" + power.Message);
+        Report(failures.Count > 0 ? "帧格还原未完成，保留恢复记录。" : "帧格执行状态已还原。");
         if (failures.Count > 0) return OperationResult.Fail("帧格还原未完成：" + string.Join("；", failures));
         return OperationResult.Ok("帧格执行状态已还原：" + string.Join("；", messages));
     }
@@ -961,7 +1001,22 @@ public sealed class CpuFrameEngine : IDisposable
 
     public CpuFrameStatusSnapshot Snapshot()
     {
+        // The existing status heartbeat runs while a long command/tick is busy. Query here so a
+        // power-policy operation cannot stale the independent Delta observation for minutes.
+        if (_monitorRunning) lock (_observationGate)
+        {
+            var now = ClockForTests?.Invoke() ?? DateTimeOffset.UtcNow;
+            var previous = Volatile.Read(ref _deltaObservation);
+            if (previous is null || now - previous.ObservedUtc >= TickInterval || previous.ObservedUtc > now)
+            {
+                bool? running;
+                try { running = DeltaReaderForTests is { } read ? read() : DeltaForceLocator.IsGameRunning(); }
+                catch { running = null; }
+                Volatile.Write(ref _deltaObservation, new(running, now));
+            }
+        }
         var version = typeof(CpuFrameEngine).Assembly.GetName().Version ?? new Version(0, 0, 0);
+        var delta = Volatile.Read(ref _deltaObservation);
         return new CpuFrameStatusSnapshot
         {
             ModuleVersion = $"{version.Major}.{version.Minor}.{Math.Max(version.Build, 0)}",
@@ -971,6 +1026,8 @@ public sealed class CpuFrameEngine : IDisposable
             IsCustomTarget = _targetCustom,
             TargetExecutablePath = _targetExe,
             GameRunning = _gameRunning,
+            DeltaForceRunning = _monitorRunning ? delta?.Running : null,
+            DeltaForceObservedUtc = _monitorRunning ? delta?.ObservedUtc : null,
             GamePid = _gamePid,
             GameStartTimeUtcTicks = _gameStartTicks,
             GameExecutablePath = _gameExe,

@@ -299,59 +299,7 @@ public static class NvApiDrs
 
     // NVIDIA NvApiDriverSettings.h: PS_SHADERDISKCACHE_MAX_SIZE_ID. Never create/save/rename profiles here.
     internal const uint ShaderDiskCacheSizeId = 0x00AC8497;
-    public static DeltaNFD.Services.NvShaderCacheReport ReadShaderCacheSizes()
-    {
-        var scopes = new List<DeltaNFD.Services.NvShaderCacheScope>();
-        lock (Gate)
-        {
-            if (!EnsureSession(out var session, out var error))
-                return new() { Scopes = [new("全局与三角洲", "unknown", null, error)] };
-            try
-            {
-                IntPtr ReadGlobal(GetGlobalProfileFn? reader, string scope)
-                {
-                    var handle = IntPtr.Zero;
-                    int status;
-                    try { status = reader is null ? StatusError : reader(session, ref handle); }
-                    catch (Exception ex) { scopes.Add(new(scope, "unknown", null, ex.Message)); return IntPtr.Zero; }
-                    if (status != StatusOk || handle == IntPtr.Zero)
-                        scopes.Add(new(scope, "unknown", null, "读取配置失败：" + DescribeStatus(status)));
-                    return status == StatusOk ? handle : IntPtr.Zero;
-                }
-                void ReadScope(IntPtr profile, string scope)
-                {
-                    if (profile == IntPtr.Zero) return;
-                    try
-                    {
-                        var setting = NewSetting(ShaderDiskCacheSizeId); var reserved = 0u;
-                        var status = _getSetting!(session, profile, ShaderDiskCacheSizeId, ref setting, ref reserved);
-                        scopes.Add(ClassifyShaderCache(scope, status, setting));
-                    }
-                    catch (Exception ex) { scopes.Add(new(scope, "unknown", null, ex.Message)); }
-                }
-                var global = ReadGlobal(_getCurrentGlobalProfile, "全局设置");
-                ReadScope(global, "全局设置");
-                var baseline = ReadGlobal(_getBaseProfile, "全局基础设置");
-                if (baseline != global) ReadScope(baseline, "全局基础设置");
-                var app = NewApplication(DeltaNFD.Services.DeltaForceLocator.GameProcessName + ".exe");
-                var game = IntPtr.Zero;
-                int found;
-                try { found = _findApp!(session, app.appName, ref game, ref app); }
-                catch (Exception ex)
-                {
-                    scopes.Add(new("三角洲程序设置", "unknown", null, ex.Message));
-                    return new() { Scopes = scopes };
-                }
-                if (found is StatusExecutableNotFound or StatusProfileNotFound)
-                    scopes.Add(new("三角洲程序设置", "inherited", null, "没有专用配置，沿用全局设置。"));
-                else if (found != StatusOk || game == IntPtr.Zero)
-                    scopes.Add(new("三角洲程序设置", "unknown", null, "读取配置失败：" + DescribeStatus(found)));
-                else ReadScope(game, "三角洲程序设置");
-            }
-            finally { _destroySession!(session); }
-        }
-        return new() { Scopes = scopes };
-    }
+    public static DeltaNFD.Services.NvShaderCacheReport ReadShaderCacheSizes() => DeltaNFD.Inspection.NvShaderInspection.ReadShaderCacheSizes();
 
     internal static DeltaNFD.Services.NvShaderCacheScope ClassifyShaderCache(string scope, int status, NvDrsSetting setting)
     {

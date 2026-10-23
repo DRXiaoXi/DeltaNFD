@@ -26,13 +26,13 @@ public sealed partial class RuntimePage
                 DefaultButton = ContentDialogButton.Close,
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } },
             };
-            if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary || cancellation.IsCancellationRequested)
+            if (await dialog.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary || cancellation.IsCancellationRequested)
             { ViewModel.RepairStatusText = "已取消登记清理。"; return; }
             var result = await ViewModel.RepairAsync(preview.Fingerprint, cancellation.Token, Vc14RepairMode.RegistrationCleanup);
             ViewModel.RepairStatusText = result.Message;
             await new ContentDialog { XamlRoot = XamlRoot, Title = result.Success ? "显示登记清理完成" : "显示登记清理未完成",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = result.Message, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } },
-                CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
+                CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
         catch (Exception ex) { ViewModel.RepairStatusText = "登记清理未完成：" + ex.Message; await ShowRuntimeExceptionAsync(ex); }
         finally { _repairCancellation = null; ViewModel.RepairIsBusy = false; if (!_startupExitPending) await ViewModel.LoadGuardAsync(); }

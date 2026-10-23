@@ -9,6 +9,7 @@ namespace DeltaNFD.Views;
 
 public sealed partial class AcePage : Page
 {
+    private readonly DeltaNFD.Services.Backends.PageBackendLease? _pageOwner = DeltaNFD.Services.Backends.PageBackendSessions.Manager.Current;
     private bool _cleanupFlowBusy;
     public AceViewModel ViewModel { get; } = new();
 
@@ -87,7 +88,7 @@ public sealed partial class AcePage : Page
             DefaultButton = coreOnly ? ContentDialogButton.Close : ContentDialogButton.Primary,
         };
 
-        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary)
         {
             return;
         }
@@ -103,7 +104,7 @@ public sealed partial class AcePage : Page
                 PrimaryButtonText = AceCleanupReadiness.RequiresReview ? "核对当前状态" : "",
                 CloseButtonText = "知道了",
                 DefaultButton = ContentDialogButton.Close,
-            }.ShowWithBackendRecoveryAsync(hasReviewAction: AceCleanupReadiness.RequiresReview);
+            }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner, hasReviewAction: AceCleanupReadiness.RequiresReview);
             if (choice == ContentDialogResult.Primary) await ReviewCleanupAsync();
         }
         else if (result is { Success: true })
@@ -120,7 +121,7 @@ public sealed partial class AcePage : Page
                           + "③ 修复会重新安装干净的 ACE 组件，之后正常启动游戏即可。"),
                 CloseButtonText = "知道了",
                 DefaultButton = ContentDialogButton.Primary,
-            }.ShowWithBackendRecoveryAsync();
+            }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
     }
 
@@ -130,7 +131,7 @@ public sealed partial class AcePage : Page
         try
         {
             await new ContentDialog { XamlRoot = XamlRoot, Title = "ACE 操作未完成",
-                Content = ex.Message + "\n若有上次清理记录，请点击「核对上次清理」。", CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
+                Content = ex.Message + "\n若有上次清理记录，请点击「核对上次清理」。", CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
         }
         catch (Exception dialogError) { Log.Error("ACE 失败提示无法显示", dialogError); }
     }
@@ -163,7 +164,7 @@ public sealed partial class AcePage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
         };
-        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
+        if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary)
         {
             return;
         }
@@ -174,16 +175,7 @@ public sealed partial class AcePage : Page
     private void OnPageLoaded(object sender, RoutedEventArgs e) => ViewModel.AttachGameState();
 
     /// <summary>
-    /// 离开页面：摘订阅，并尝试关闭 ACE 后端进程（空闲才关；
-    /// 清理进行中或结果未知时由 <see cref="BackendAceService.StopBackendIfIdleAsync"/> 自行拒绝）。
-    /// 下次进页由 LoadAsync 按需重新拉起。
+    /// 页面只摘除订阅，统一栏目会话管理器等待当前请求结束后关闭本页后端。
     /// </summary>
-    private void OnPageUnloaded(object sender, RoutedEventArgs e)
-    {
-        ViewModel.DetachGameState();
-        if (ServiceLocator.Ace is BackendAceService ace)
-        {
-            _ = ace.StopBackendIfIdleAsync();
-        }
-    }
+    private void OnPageUnloaded(object sender, RoutedEventArgs e) => ViewModel.DetachGameState();
 }

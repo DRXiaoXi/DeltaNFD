@@ -48,6 +48,7 @@ internal static class BackendStartupChecks
                     BackendModules.CpuFrame => [BackendCommands.CpuFrameStatus, BackendCommands.CpuFrameTopology],
                     BackendModules.Procman => [BackendCommands.ProcmanStatus],
                     BackendModules.System => [BackendCommands.SystemShaderStatus, BackendCommands.SystemShaderDiagnose],
+                    BackendModules.ShaderKiller => [BackendCommands.ShaderKillerCapabilities],
                     _ => throw new InvalidOperationException("No read-only startup check for " + spec.Id),
                 };
                 foreach (var command in commands)

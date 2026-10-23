@@ -80,7 +80,7 @@ public partial class SystemOptimizeViewModel : ObservableObject
     {
         try
         {
-            var reports = await Task.Run(DriveInspector.GetFixedDriveReports);
+            var reports = await SystemInspectionCache.Drives();
             var choices = reports.Select(r =>
             {
                 var tags = new List<string>();
@@ -121,7 +121,9 @@ public partial class SystemOptimizeViewModel : ObservableObject
     }
 
     /// <summary>虚拟内存设置是否可操作。</summary>
-    public bool PagefileApplyEnabled => !PagefileBusy;
+    [ObservableProperty] private bool gameReadOnly = true;
+    partial void OnGameReadOnlyChanged(bool value) => OnPropertyChanged(nameof(PagefileApplyEnabled));
+    public bool PagefileApplyEnabled => !GameReadOnly && !PagefileBusy;
 
     partial void OnPagefileBusyChanged(bool value) => OnPropertyChanged(nameof(PagefileApplyEnabled));
 
@@ -151,6 +153,7 @@ public partial class SystemOptimizeViewModel : ObservableObject
     /// </summary>
     public async Task<OperationResult?> ApplyPagefileAsync()
     {
+        if (Services.Backends.PageBackendSessions.SystemWriteBlocker is { } blocked) { PagefileStatusText = blocked; return OperationResult.Fail(blocked); }
         if (PagefileBusy)
         {
             return null;
@@ -221,6 +224,7 @@ public partial class SystemOptimizeViewModel : ObservableObject
     /// <summary>恢复为系统托管（自动管理页面文件大小）。</summary>
     public async Task<OperationResult?> RestorePagefileAutomaticAsync()
     {
+        if (Services.Backends.PageBackendSessions.SystemWriteBlocker is { } blocked) { PagefileStatusText = blocked; return OperationResult.Fail(blocked); }
         if (PagefileBusy)
         {
             return null;
@@ -243,6 +247,7 @@ public partial class SystemOptimizeViewModel : ObservableObject
 
     public async Task<OperationResult?> RestorePagefileOriginalAsync()
     {
+        if (Services.Backends.PageBackendSessions.SystemWriteBlocker is { } blocked) { PagefileStatusText = blocked; return OperationResult.Fail(blocked); }
         if (PagefileBusy)
         {
             return null;
@@ -299,6 +304,7 @@ public partial class SystemOptimizeViewModel : ObservableObject
 
     public async Task<OperationResult?> ApplyGroupAsync(AdvancedTweakGroupVm item)
     {
+        if (Services.Backends.PageBackendSessions.SystemWriteBlocker is { } blocked) { GroupsStatusText = blocked; return OperationResult.Fail(blocked); }
         if (item.IsBusy)
         {
             return null;

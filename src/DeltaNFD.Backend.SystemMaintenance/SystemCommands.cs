@@ -13,6 +13,8 @@ namespace DeltaNFD.Backend.SystemMaintenance;
 /// </summary>
 internal static class SystemCommands
 {
+    // A read-only/other-owner worker must not restore another page's Defender journal on exit.
+    private static bool _ownsDefenderCleanup;
     /// <summary>一次批量状态读取的条目上限，防止超大请求耗尽内存。</summary>
     private const int MaxBxBatch = 2000;
 
@@ -25,7 +27,7 @@ internal static class SystemCommands
     public static readonly BackendHostOptions Options = new()
     {
         Module = BackendModules.Require(BackendModules.System),
-        OnStopping = DefenderGuard.RestoreSessionAsync,
+        OnStopping = () => _ownsDefenderCleanup ? DefenderGuard.RestoreSessionAsync() : Task.FromResult(OperationResult.Ok("本会话无 Defender 恢复责任。")),
         Handlers = new Dictionary<string, Func<BackendCommandContext, Task<BackendResult>>>(StringComparer.Ordinal)
         {
             [BackendCommands.SystemCleanupScan] = CleanupScanAsync,
@@ -49,6 +51,12 @@ internal static class SystemCommands
             [BackendCommands.SystemPowerHibernateSet] = PowerHibernateSetAsync,
             [BackendCommands.SystemPowerHeteroList] = PowerHeteroListAsync,
             [BackendCommands.SystemPowerHeteroSet] = PowerHeteroSetAsync,
+            [BackendCommands.SystemPowerIntelPcores] = async c =>
+            {
+                var result = await new PowerService().PreferIntelPcoresAsync();
+                return result.OutcomeUnknown ? BackendResult.PartialResult(c.Command, result.Message, [], result)
+                    : Wrap(c.Command, result);
+            },
 
             [BackendCommands.SystemShaderStatus] = ShaderStatusAsync,
             [BackendCommands.SystemShaderDiagnose] = ShaderDiagnoseAsync,
@@ -107,7 +115,7 @@ internal static class SystemCommands
     {
         var args = context.ArgsAs<RecoverArgs>();
         var scope = (args.Scope ?? "").Trim().ToLowerInvariant();
-        if (scope is not ("tweaks" or "advanced" or "pagefile" or "defender"))
+        if (scope is not ("tweaks" or "advanced" or "pagefile" or "defender" or "intel-pcore"))
             return BackendResult.Failed("system.recover", $"未知恢复范围“{args.Scope}”，已拒绝执行。");
 
         context.ReportProgress("正在按可信备份恢复…", null, "recover");
@@ -115,6 +123,11 @@ internal static class SystemCommands
         var ok = true;
         switch (scope)
         {
+            case "intel-pcore":
+            {
+                var result = await new PowerService().RestoreIntelPcoresAsync();
+                messages.Add(result.Message); ok = result.Success; break;
+            }
             case "defender":
             {
                 var result = await DefenderGuard.RestoreSessionAsync();
@@ -212,6 +225,14 @@ internal static class SystemCommands
                 Id = "pagefile", Kind = "pagefile", State = pagefile.Summary, HasBackup = hasPagefileBackup,
             });
 
+        IReadOnlyList<ReconcileItem> pcoreItems = [];
+        try
+        {
+            pcoreItems = new PowerService().GetIntelPcoreRecoveryItems();
+            items.AddRange(pcoreItems);
+            if (pcoreItems.Any(i => i.State == "待核对")) { complete = false; notes.Add("P 核策略存在待核对记录。"); }
+        }
+        catch (Exception ex) { complete = false; notes.Add("P 核策略备份无法读取：" + ex.Message); }
         var prefix = notes.Count > 0 ? string.Join("；", notes) + "；" : "";
         return new ReconcileSnapshot
         {
@@ -221,6 +242,11 @@ internal static class SystemCommands
             Items = items,
             RecoveryScopes =
             [
+                new RecoveryScope
+                {
+                    Id = "intel-pcore", Description = "按备份还原 P 核优先前的三项策略（保留交流/电池差异）",
+                    Available = pcoreItems.Count > 0, AffectedCount = pcoreItems.Count,
+                },
                 new RecoveryScope
                 {
                     Id = "defender", Description = "清理本程序的 Defender 临时排除项并恢复会话防护",
@@ -335,7 +361,7 @@ internal static class SystemCommands
 
     private static async Task<BackendResult> PowerHeteroListAsync(BackendCommandContext context)
     {
-        var policies = await new PowerService().GetHeteroPoliciesAsync();
+        var policies = await new PowerService().GetHeteroPoliciesReadOnlyAsync();
         return BackendResult.Ok("system.power.hetero.list", $"读取到 {policies.Count} 项异构策略。", policies);
     }
 
@@ -604,6 +630,7 @@ internal static class SystemCommands
             return BackendResult.Failed(context.Command, $"批次条目过多（>{MaxBxBatch}）。");
 
         var report = await DefenderGuard.PreflightAsync(args.Items);
+        _ownsDefenderCleanup |= report is not null;
         return BackendResult.Ok(context.Command, report is null ? "批次不含安全类条目，无需引导。" : "已生成 Defender 预检报告。", report);
     }
 
@@ -615,6 +642,7 @@ internal static class SystemCommands
 
     private static async Task<BackendResult> DefenderExclusionsAddAsync(BackendCommandContext context)
     {
+        _ownsDefenderCleanup = true;
         try
         {
             await DefenderGuard.AddSessionExclusionsAsync();
@@ -629,6 +657,7 @@ internal static class SystemCommands
 
     private static async Task<BackendResult> DefenderPostApplyAsync(BackendCommandContext context)
     {
+        _ownsDefenderCleanup = true;
         var result = await DefenderGuard.PostApplyAsync();
         return result.CleanupSucceeded
             ? BackendResult.Ok(context.Command, result.Remind ? "请重新开启安全防护。" : "安全防护无需恢复提醒。", result)

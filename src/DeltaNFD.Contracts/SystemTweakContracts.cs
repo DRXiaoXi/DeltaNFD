@@ -46,6 +46,7 @@ public sealed class TweakStatus
 
     /// <summary>true = 已处于优化状态（该功能已被关闭）。</summary>
     public required bool IsOptimized { get; init; }
+    public bool StateKnown { get; init; } = true;
 
     /// <summary>状态文字说明（如「已开启」「已关闭」「未配置」）。</summary>
     public required string Detail { get; init; }

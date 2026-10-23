@@ -6,19 +6,30 @@ namespace DeltaNFD.Services.Backends;
 /// 前端调用某个官方后端模块的通用封装：按需启动、串行调用、自动重启已退出的后端。
 /// 各模块的前端服务组合本类实现具体合同接口。
 /// </summary>
-internal sealed class BackendCaller(string moduleId) : IAsyncDisposable
+internal sealed class BackendCaller(string moduleId, PageBackendLease? pageOwner = null) : IAsyncDisposable
 {
     private sealed class ModuleSession
     {
-        public readonly SemaphoreSlim Gate = new(1, 1);
         public BackendClient? Client;
     }
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, ModuleSession> Sessions = new(StringComparer.Ordinal);
-    private readonly ModuleSession _session = Sessions.GetOrAdd(moduleId, _ => new ModuleSession());
-    private SemaphoreSlim _gate => _session.Gate;
+    private readonly PageBackendLease? _owner = pageOwner ?? PageBackendSessions.ConstructionOwner;
+    private readonly ModuleSession _session = Sessions.GetOrAdd(moduleId + ":" + ((pageOwner ?? PageBackendSessions.ConstructionOwner)?.Id.ToString() ?? "shared"), _ => new ModuleSession());
+    private SemaphoreSlim _gate => PageBackendSessions.ModuleGate(ModuleId);
     private BackendClient? _client { get => _session.Client; set => _session.Client = value; }
+    internal BackendClient? SharedClient { get => _client; set => _client = value; }
+    internal static void ReleasePage(Guid page)
+    {
+        foreach (var key in Sessions.Keys.Where(k => k.EndsWith(":" + page))) Sessions.TryRemove(key, out _);
+    }
 
     public string ModuleId { get; } = moduleId;
+
+    internal async Task WarmAsync(CancellationToken token = default)
+    {
+        await PageBackendSessions.WaitGateAsync(_gate, _owner, token, ModuleId);
+        try { _ = await EnsureClientAsync(token); } finally { _gate.Release(); }
+    }
 
     private async Task<BackendClient> EnsureClientAsync(CancellationToken cancellationToken)
     {
@@ -31,27 +42,29 @@ internal sealed class BackendCaller(string moduleId) : IAsyncDisposable
             if (_client.RequiresAttention) throw new BackendContractException("后端收尾仍有恢复义务，请核对操作记录。");
             _client = null;
         }
-        _client = await BackendClient.StartAsync(ModuleId, cancellationToken);
+        _client = await BackendClient.StartAsync(ModuleId, cancellationToken, _owner);
         return _client;
     }
 
     public async Task<BackendResult> InvokeAsync(string command, object args, IProgress<string>? progress, CancellationToken cancellationToken)
     {
         BackendOperationGate.Check();
-        await _gate.WaitAsync(cancellationToken);
+        await PageBackendSessions.WaitGateAsync(_gate, _owner, cancellationToken, ModuleId);
         try
         {
             var client = await EnsureClientAsync(cancellationToken);
-            return await client.InvokeAsync(command, args, progress, cancellationToken);
+            var result = await client.InvokeAsync(command, args, progress, cancellationToken);
+            InspectionInvalidation.AfterCommand(command, args);
+            return result;
         }
-        catch
+        catch (Exception ex) when (ex is not PageBackendUnavailableException)
         {
             BackendAttention.Report(ModuleId);
             throw;
         }
         finally
         {
-            _gate.Release();
+            try { await PageBackendSessions.FinishUnownedAsync(_client, _owner); } finally { _gate.Release(); }
         }
     }
 
@@ -64,7 +77,7 @@ internal sealed class BackendCaller(string moduleId) : IAsyncDisposable
         BackendOperationGate.Check();
         if (command != BackendModules.ReconcileCommand(ModuleId) && command != BackendModules.RecoverCommand(ModuleId))
             throw new BackendContractException("仅允许核对或恢复命令。");
-        await _gate.WaitAsync(cancellationToken);
+        await PageBackendSessions.WaitGateAsync(_gate, _owner, cancellationToken, ModuleId);
         try
         {
             if (_client is { RequiresAttention: true })
@@ -78,7 +91,7 @@ internal sealed class BackendCaller(string moduleId) : IAsyncDisposable
         }
         finally
         {
-            _gate.Release();
+            try { await PageBackendSessions.FinishUnownedAsync(_client, _owner); } finally { _gate.Release(); }
         }
     }
 

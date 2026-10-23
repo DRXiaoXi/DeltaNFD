@@ -47,6 +47,8 @@
                         <Button Content="恢复临时 Installer 设置" Click="RestoreInstaller_Click" />
                         <TextBlock Text="分阶段操作：卸载后回正常模式手动安装。安全模式下可在确认窗口勾选临时启用 Windows Installer；执行后恢复原值，中断时可手动核对恢复。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                     </StackPanel>
+                    <Button Content="强制替换 14.x DLL（高风险）" Click="ForceReplace14_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" HorizontalAlignment="Left" />
+                    <TextBlock Text="绕过 Windows Installer 的较新文件保护，直接用内置官方 14.42.34433 覆盖 System32/SysWOW64 的 51 个 14.x DLL（x64 26、x86 25），包括把本机较新的 34438 等版本降级。执行前自动备份并生成 restore.ps1；被占用文件会安排到下次启动替换，可能需要重启。不修改 MSI/ARP 安装登记。仅在关闭游戏、其他应用和运行库防护后使用。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                     <TextBlock Text="卸载前可选择安全模式引导，确认后重启至 Windows 高级启动，再按引导进入安全模式；也可在当前环境继续。重启后不会自动执行修复。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                     <TextBlock Text="{x:Bind ViewModel.RepairStatusText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                 </StackPanel>
