@@ -24,6 +24,8 @@ param(
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 $frontendProject = Join-Path $repo "src/DeltaNFD/DeltaNFD.csproj"
+& (Join-Path $repo 'tools/Check-DeploymentScript.ps1') -ScriptPath (Join-Path $PSScriptRoot 'DeploymentControl.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Installer deployment script validation failed before build.' }
 $out = [IO.Path]::GetFullPath($(if ([IO.Path]::IsPathRooted($OutDir)) { $OutDir } else { Join-Path $repo $OutDir }))
 if (Test-Path -LiteralPath $out) { throw "Output must be a new directory: $out" }
 $componentLayout = $out + '.components-' + [Guid]::NewGuid().ToString('N')
@@ -66,6 +68,7 @@ $required = @(
     "Backends/DeltaNFD.Backend.SystemMaintenance.exe",
     "Backends/DeltaNFD.Backend.CpuFrame.exe",
     "Backends/DeltaNFD.Backend.Procman.exe",
+    
     "Backends/DeltaNFD.FileUpdater.exe",
     "Backends/DeltaNFD.UpdateCore.dll",
     "Tools/DeploymentControl.ps1",
@@ -136,4 +139,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Build-only runtime layout checker failed to bu
 & (Join-Path $artifacts 'layout-check/bin/DotNetLayoutCheck/release/DotNetLayoutCheck.exe') $out
 if ($LASTEXITCODE -ne 0) { throw "Published .NET dependency check failed; installer generation is blocked." }
 
+& (Join-Path $repo 'tools/Check-DeploymentScript.ps1') -ScriptPath (Join-Path $out 'Tools/DeploymentControl.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Published deployment script is not compatible with Windows PowerShell 5.1.' }
+if ((Get-FileHash -LiteralPath (Join-Path $out 'Tools/DeploymentControl.ps1')).Hash -ne (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'DeploymentControl.ps1')).Hash) { throw 'Published and installer-embedded deployment scripts differ.' }
 Write-Host "Publish layout complete: $out"

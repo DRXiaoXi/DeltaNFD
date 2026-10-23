@@ -22,3 +22,7 @@ insert_final_newline = unset
 # The recovery script is also launched by Windows PowerShell 5.1.
 [tools/Repair-GpuSpoofPending.ps1]
 charset = utf-8-bom
+
+# Embedded by Inno Setup and invoked through Windows PowerShell 5.1 -File.
+[installer/DeploymentControl.ps1]
+charset = utf-8-bom

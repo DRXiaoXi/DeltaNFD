@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$InstallRoot,
     [ValidateSet('install', 'uninstall')][string]$Mode = 'install',
     [string]$ReportPath,

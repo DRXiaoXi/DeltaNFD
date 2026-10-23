@@ -32,6 +32,15 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Installer Windows PowerShell 5.1 script checks
+        run: |
+          & tools/Check-DeploymentScript.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Deployment script host/encoding regression" }
+          & tools/InstallerDeploymentEncodingChecks.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Deployment encoding negative-case regression" }
+          & tools/InstallerNoLaunchChecks.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Actual setup preflight regression" }
+
       - name: Check source repository boundaries
         run: |
           python tools/check_repository.py

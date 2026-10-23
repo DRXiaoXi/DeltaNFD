@@ -1,7 +1,9 @@
 # Real preflight + owned fake app; never run setup or terminate an application.
+param([string]$SmokeDirectory)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $bin = Join-Path $PSScriptRoot 'BackendSmokeTest/bin/Release/net8.0-windows'
+if ($SmokeDirectory) { $bin = [IO.Path]::GetFullPath($SmokeDirectory) }
 $control = Join-Path $repo 'installer/DeploymentControl.ps1'
 $fixture = Join-Path $repo ('artifacts/运行中安装 回归测试-' + [Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($fixture)

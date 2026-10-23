@@ -1,28 +1,28 @@
 {
   "schemaVersion": 1,
-  "version": "0.9290",
-  "displayVersion": "Alpha0.929",
+  "version": "0.9291",
+  "displayVersion": "Alpha0.929-RC1",
   "channel": "alpha",
   "mandatory": false,
   "minimumSupportedVersion": "",
-  "publishedAtUtc": "2026-10-23T12:34:59Z",
-  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9290",
-  "notes": "Alpha0.929 为内测预发布，内部版本 0.9290。公测通道继续使用 Beta0.922-RC3。\n\n**下载安装：** [DeltaNFD_Setup_0.9290_x64.exe](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9290/DeltaNFD_Setup_0.9290_x64.exe)\n\n- 修复帧格关闭与后台策略执行之间的竞态，改善退出恢复耗时和三角洲运行状态更新。\n- 五个维护栏目后端按需运行；启动预读优化状态，取消评分。三角洲运行时系统优化可查看，其余受限栏目暂停。\n- 移除帧格和进程管理的后台抑制，保留内存回收、三角洲规则与前台加速。\n- 增加 ACE 进程操作保护和 Intel 首选 P 核负载入口。\n- 包含运行库与缓存维护的最新修复；补上运行库文件替换失败后的回滚核验，避免混用运行库防护恢复与 DLL 恢复入口。\n- 默认自建更新服务器、仅替换变更文件；保留更新来源和全量安装选择。\n\n本次**不包含卡顿检测、着色器研究或独立预热客户端**。设置、日志与恢复记录保留；不确定的恢复结果仍需用户核对。\n\n安装包自带 .NET 8 与所需后端。无需下载下面的更新清单或分块；`DeltaNFD_Source_0.9290.zip` 为与安装包对应的精确公开源码。",
+  "publishedAtUtc": "2026-10-23T14:53:53Z",
+  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9291",
+  "notes": "Alpha0.929-RC1 为内测修正版，内部版本 0.9291。公测版本保持 Beta0.922-RC3。\n\n**下载安装包：** [DeltaNFD_Setup_0.9291_x64.exe](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9291/DeltaNFD_Setup_0.9291_x64.exe)\n\n- 修复 Alpha0.929 安装时“安装前安全交接未完成、未能获得本次安全交接报告、退出码=1”的问题：交接脚本采用 UTF-8 BOM，兼容 Windows PowerShell 5.1。\n- 增加真实 PowerShell 5.1 编码、解析和加载检查；构建后核对嵌入脚本与安装目录脚本字节一致，并覆盖首次安装、覆盖安装及运行中程序交接场景。\n- 保留现有安全交接和恢复证据门禁；不跳过待恢复事务、不强杀进程。\n- 保留 Alpha0.929 其余功能，继续排除卡顿检测和着色器研究。\n\n默认自建服务器、替换变更文件，保留手选更新方式。安装包自带 .NET 8；无需下载其他清单或分块。完整安装界面仍需玩家测试，自动验证使用隔离目录与自有假应用。",
   "installers": [
     {
-      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9290/DeltaNFD_Setup_0.9290_x64.exe",
-      "sizeBytes": 250437322,
-      "sha256": "5375dc4f2965b2dbbae10377e92fae6338442affb0b545caf74abc84ded9670c"
+      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9291/DeltaNFD_Setup_0.9291_x64.exe",
+      "sizeBytes": 250429012,
+      "sha256": "b022a9bd23e7157217556cf2134122ccd8ae18128ad5b61db7733bff56492547"
     },
     {
-      "url": "https://deltaxiaoxi.xin/updates/packages/0.9290/DeltaNFD_Setup_0.9290_x64.exe",
-      "sizeBytes": 250437322,
-      "sha256": "5375dc4f2965b2dbbae10377e92fae6338442affb0b545caf74abc84ded9670c"
+      "url": "https://deltaxiaoxi.xin/updates/packages/0.9291/DeltaNFD_Setup_0.9291_x64.exe",
+      "sizeBytes": 250429012,
+      "sha256": "b022a9bd23e7157217556cf2134122ccd8ae18128ad5b61db7733bff56492547"
     }
   ],
   "fileUpdate": {
-    "url": "https://deltaxiaoxi.xin/updates/packages/0.9290/files.json",
-    "sizeBytes": 841581,
-    "sha256": "9272a096fb2796a0455a9c8bdfa4e985d8c03bbe298f5399e8cb666024251e50"
+    "url": "https://deltaxiaoxi.xin/updates/packages/0.9291/files.json",
+    "sizeBytes": 841949,
+    "sha256": "a30180dab50991175f1d37f804bab5f2c06b70137b9a247d3b1403fd0ae22506"
   }
 }

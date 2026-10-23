@@ -43,6 +43,8 @@ if not exist "%ISCC%" (
 )
 
 echo [2/2] Compile installer ...
+powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%CD%\tools\Check-DeploymentScript.ps1" -ScriptPath "%CD%\installer\DeploymentControl.ps1"
+if errorlevel 1 goto :fail
 pushd installer
 "%ISCC%" "/O%PKG%" "/DPublishDir=%PUB%" DeltaNFD.iss
 if errorlevel 1 ( popd & goto :fail )
