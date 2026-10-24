@@ -3,35 +3,38 @@ using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
 namespace DeltaNFD.Services;
-public partial class SystemTweakService
-{
-    // SystemParametersInfo（鼠标加速立即生效）
-    private const uint SpiSetMouse = 0x0004;
-    private const uint SpifUpdateIniFile = 0x01;
-    private const uint SpifSendChange = 0x02;
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, int[] pvParam, uint fWinIni);
-}
 
-/// <summary> 
-/// 系统精简优化的真实实现： 
-/// - Hyper-V / VBS → 等效 HyperV-off 类工具的完整流程： 
-///   1) bcdedit 关闭 hypervisor 启动 
-///   2) DISM 依次禁用 Hyper-V / 虚拟机平台相关功能（best-effort，不存在即跳过） 
-///   3) HvHost / vmms 服务停止并改为手动启动 
-///   4) DeviceGuard 注册表关闭 VBS / 内核隔离(HVCI) / Credential Guard 
-/// - 内存压缩、分页合并 → Windows 官方 MMAgent 模块（powershell.exe 调 Disable/Enable-MMAgent） 
-/// - 预读取 → 注册表兼容设置 + 定向 MMAgent ApplicationPreLaunch（保留 SysMain） 
-/// 所有修改前都会把原始值写入 <see cref = "TweakBackupStore"/>，可用 RestoreAsync 恢复。 
-/// </summary>public sealed partial class SystemTweakService : ISystemTweakService
+/// <summary>
+ 
+/// 系统精简优化的真实实现：
+ 
+/// - Hyper-V / VBS → 等效 HyperV-off 类工具的完整流程：
+ 
+///   1) bcdedit 关闭 hypervisor 启动
+ 
+///   2) DISM 依次禁用 Hyper-V / 虚拟机平台相关功能（best-effort，不存在即跳过）
+ 
+///   3) HvHost / vmms 服务停止并改为手动启动
+ 
+///   4) DeviceGuard 注册表关闭 VBS / 内核隔离(HVCI) / Credential Guard
+ 
+/// - 内存压缩、分页合并 → Windows 官方 MMAgent 模块（powershell.exe 调 Disable/Enable-MMAgent）
+ 
+/// - 预读取 → 注册表兼容设置 + 定向 MMAgent ApplicationPreLaunch（保留 SysMain）
+ 
+/// 所有修改前都会把原始值写入 <see cref = "TweakBackupStore"/>，可用 RestoreAsync 恢复。
+ 
+/// </summary>
+public sealed partial class SystemTweakService : ISystemTweakService
 {
     private const string DeviceGuardPath = @"SYSTEM\CurrentControlSet\Control\DeviceGuard";
     private const string HvciPath = DeviceGuardPath + @"\Scenarios\HypervisorEnforcedCodeIntegrity";
     private const string CredentialGuardPath = DeviceGuardPath + @"\Scenarios\CredentialGuard";
     private const string PrefetchPath = @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters";
-    /// <summary>MMAgent 的注册表落点：Disable/Enable-MMAgent 写的是本键下的     
-    /// EnableApplicationLaunchPrefetching / EnableOperationAPI（不是 PrefetchParameters\EnablePrefetcher）。</summary>    private const string MemoryManagementPath = @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management";
+    /// <summary>MMAgent 的注册表落点：Disable/Enable-MMAgent 写的是本键下的
+     
+    /// EnableApplicationLaunchPrefetching / EnableOperationAPI（不是 PrefetchParameters\EnablePrefetcher）。</summary>
+    private const string MemoryManagementPath = @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management";
     // ---- 游戏微调包键路径（社区同款） ----
     private const string MultimediaProfilePath = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile";
     private const string GameBarPolicyPath = @"SOFTWARE\Policies\Microsoft\GameBar";
@@ -52,7 +55,8 @@ public partial class SystemTweakService
     private const string LsaPath = @"SYSTEM\CurrentControlSet\Control\Lsa";
     private const string KernelShadowStacksPath = DeviceGuardPath + @"\Scenarios\KernelShadowStacks";
     private const string NetworkClassGuid = @"{4d36e972-e325-11ce-bfc1-08002be10318}";
-    /// <summary>DISM 禁用的功能清单（与 HyperV-off 等效脚本一致；不存在或已禁用时 best-effort 跳过）。</summary>    private static readonly string[] HyperVFeatures = ["Microsoft-Hyper-V-All", "Microsoft-Hyper-V", "Microsoft-Hyper-V-Hypervisor", "Microsoft-Hyper-V-Services", "Microsoft-Hyper-V-Tools-All", "Microsoft-Hyper-V-Management-Clients", "Microsoft-Hyper-V-Management-PowerShell", "HypervisorPlatform", "VirtualMachinePlatform", ];
+    /// <summary>DISM 禁用的功能清单（与 HyperV-off 等效脚本一致；不存在或已禁用时 best-effort 跳过）。</summary>
+    private static readonly string[] HyperVFeatures = ["Microsoft-Hyper-V-All", "Microsoft-Hyper-V", "Microsoft-Hyper-V-Hypervisor", "Microsoft-Hyper-V-Services", "Microsoft-Hyper-V-Tools-All", "Microsoft-Hyper-V-Management-Clients", "Microsoft-Hyper-V-Management-PowerShell", "HypervisorPlatform", "VirtualMachinePlatform", ];
     private static readonly (string KeyPath, string ValueName, string Label)[] DeviceGuardValues = [(DeviceGuardPath, "EnableVirtualizationBasedSecurity", "VBS（基于虚拟化的安全）"), (HvciPath, "Enabled", "内核隔离（内存完整性 HVCI）"), (CredentialGuardPath, "Enabled", "Credential Guard"), ];
     private readonly TweakBackupStore _backups;
     public SystemTweakService() : this(TweakBackupStore.Default)
@@ -77,7 +81,7 @@ public partial class SystemTweakService
             result.Add(SystemTweak.PageCombining);
         if (Has("HKLM", MemoryManagementPath, "EnableApplicationLaunchPrefetching") || Has("HKLM", MemoryManagementPath, "EnableOperationAPI") || Has("HKLM", PrefetchPath, "EnablePrefetcher") || Has("HKCU", ApplicationPreLaunchPath, "Enabled") || Has("State", "MMAgent", "ApplicationPreLaunch"))
             result.Add(SystemTweak.Prefetch);
-        if (Has("HKCU", MousePath, "MouseSpeed"))
+        if (Has("HKCU", MousePath, "MouseSpeed") || Has("State", "MouseAcceleration", "Runtime"))
             result.Add(SystemTweak.MouseAccelerationOff);
         if (Has("HKLM", GraphicsDriversPath, "HwSchMode"))
             result.Add(SystemTweak.HardwareGpuScheduling);
@@ -124,7 +128,8 @@ public partial class SystemTweakService
         null => "未配置",
         _ => start.ToString() ?? "",
     };
-    /// <summary>原注册表项与实际 MMAgent ApplicationPreLaunch 都关闭才算优化；读取未知不能视为关闭。</summary>    private static (bool IsOptimized, string Detail) PrefetchTrioToState(int? mmLaunch, int? prelaunch, int? operationApi, bool? applicationPreLaunchOn)
+    /// <summary>原注册表项与实际 MMAgent ApplicationPreLaunch 都关闭才算优化；读取未知不能视为关闭。</summary>
+    private static (bool IsOptimized, string Detail) PrefetchTrioToState(int? mmLaunch, int? prelaunch, int? operationApi, bool? applicationPreLaunchOn)
     {
         bool launchOn = mmLaunch != 0; // Memory Management\EnableApplicationLaunchPrefetching：未配置 = 默认开启
         bool prelaunchOn = prelaunch != 0; // 未配置 = 默认开启
@@ -155,7 +160,8 @@ public partial class SystemTweakService
         return (false, $"未优化（{string.Join("，", parts)}）");
     }
 
-    /// <summary>值型微调的状态：当前值 == 优化值 → 已优化。</summary>    private static (bool IsOptimized, string Detail) ValueToState(int? current, int optimized, string defaultText, string optimizedText) => current == optimized ? (true, optimizedText) : (false, $"未优化（{defaultText}）");
+    /// <summary>值型微调的状态：当前值 == 优化值 → 已优化。</summary>
+    private static (bool IsOptimized, string Detail) ValueToState(int? current, int optimized, string defaultText, string optimizedText) => current == optimized ? (true, optimizedText) : (false, $"未优化（{defaultText}）");
     public Task<string> GetVbsRuntimeSummaryAsync() => new DeltaNFD.Inspection.SystemTweakInspection().GetVbsRuntimeSummaryAsync();
     // ---------------- 关闭 ----------------
     public async Task<OperationResult> DisableAsync(SystemTweak tweak)
@@ -176,7 +182,7 @@ public partial class SystemTweakService
                 SystemTweak.Prefetch => await ApplyPrefetchTrioOffAsync(),
                 // ---- 游戏微调包 ----
                 SystemTweak.MouseAccelerationOff => ApplyMouseAccelerationOff(),
-                SystemTweak.HardwareGpuScheduling => ApplyOptimizedDword(GraphicsDriversPath, "HwSchMode", 2, "HAGS 硬件加速 GPU 调度"),
+                SystemTweak.HardwareGpuScheduling => ApplyHags(),
                 SystemTweak.WSearchOff => ApplyWSearchDisabledAsync(),
                 _ => OperationResult.Fail("未知的优化项。"),
             };
@@ -462,7 +468,8 @@ public partial class SystemTweakService
         return OperationResult.Ok($"已恢复 Hyper-V / VBS 共 {done.Count} 步，重启电脑后生效。", requiresReboot: true);
     }
 
-    /// <summary>查询 hypervisor 开机启动类型："off" / "auto" / "unknown"（bcdedit 不可用时）。</summary>    private static async Task<string> QueryHypervisorLaunchTypeAsync()
+    /// <summary>查询 hypervisor 开机启动类型："off" / "auto" / "unknown"（bcdedit 不可用时）。</summary>
+    private static async Task<string> QueryHypervisorLaunchTypeAsync()
     {
         var(code, stdout, _) = await RunProcessCaptureAsync("bcdedit.exe", "/enum {current}", TimeSpan.FromSeconds(20));
         if (code != 0 || stdout is null)
@@ -627,7 +634,8 @@ public partial class SystemTweakService
         _ => Registry.LocalMachine.OpenSubKey(keyPath),
     };
     // ---------------- 游戏微调包实现 ----------------
-    /// <summary>应用值型微调：备份原值 → 写入优化值。</summary>    private OperationResult ApplyOptimizedDword(string keyPath, string valueName, int optimizedValue, string friendlyName) => ApplyOptimizedDword("HKLM", keyPath, valueName, optimizedValue, friendlyName);
+    /// <summary>应用值型微调：备份原值 → 写入优化值。</summary>
+    private OperationResult ApplyOptimizedDword(string keyPath, string valueName, int optimizedValue, string friendlyName) => ApplyOptimizedDword("HKLM", keyPath, valueName, optimizedValue, friendlyName);
     private OperationResult ApplyOptimizedDword(string hive, string keyPath, string valueName, int optimizedValue, string friendlyName)
     {
         try
@@ -648,7 +656,8 @@ public partial class SystemTweakService
         }
     }
 
-    /// <summary>通用恢复：按备份写回原值（DWORD / String），原值不存在则删除该值。</summary>    private OperationResult RestoreValue(string hive, string keyPath, string valueName, string friendlyName)
+    /// <summary>通用恢复：按备份写回原值（DWORD / String），原值不存在则删除该值。</summary>
+    private OperationResult RestoreValue(string hive, string keyPath, string valueName, string friendlyName)
     {
         try
         {
@@ -690,106 +699,15 @@ public partial class SystemTweakService
         }
     }
 
-    // ---- 鼠标加速（SystemParametersInfo 立即生效 + HKCU 备份） ----
-    private OperationResult ApplyMouseAccelerationOff()
+    // Basic and deep entries share verified runtime apply/restore.
+    private OperationResult ApplyMouseAccelerationOff() => MouseSettingsMaintenance.ApplyDeep(_backups);
+    private OperationResult RestoreMouseAcceleration() => MouseSettingsMaintenance.RestoreDeep(_backups);
+
+    private OperationResult ApplyHags()
     {
-        try
-        {
-            // 备份 3 个 HKCU 原始字符串值
-            foreach (var valueName in (string[])["MouseSpeed", "MouseThreshold1", "MouseThreshold2"])
-            {
-                var current = ReadString("HKCU", MousePath, valueName);
-                _backups.Save(new RegistryValueBackup { Hive = "HKCU", Id = TweakBackupStore.MakeId("HKCU", MousePath, valueName), KeyPath = MousePath, ValueName = valueName, ValueKind = current is null ? RegistryValueKind.None : RegistryValueKind.String, Data = current ?? "", CreatedAt = DateTimeOffset.Now, });
-            }
-
-            // SPI_SETMOUSE = 0x0004，参数 {Threshold1, Threshold2, Speed} = {0,0,0} 关闭加速并写回注册表
-            var mouseParams = new[]
-            {
-                0,
-                0,
-                0
-            };
-            if (!SystemParametersInfo(SpiSetMouse, 0u, mouseParams, SpifUpdateIniFile | SpifSendChange))
-            {
-                return OperationResult.Fail("设置鼠标参数失败（SystemParametersInfo 调用出错）。");
-            }
-
-            return OperationResult.Ok("已关闭鼠标加速（立即生效）。");
-        }
-        catch (Exception ex)
-        {
-            return OperationResult.Fail($"关闭鼠标加速失败：{ex.Message}");
-        }
-    }
-
-    private OperationResult RestoreMouseAcceleration()
-    {
-        try
-        {
-            var speed = _backups.Get("HKCU", MousePath, "MouseSpeed");
-            var threshold1 = _backups.Get("HKCU", MousePath, "MouseThreshold1");
-            var threshold2 = _backups.Get("HKCU", MousePath, "MouseThreshold2");
-            if (speed is null && threshold1 is null && threshold2 is null)
-            {
-                return OperationResult.Fail("鼠标加速没有本工具的备份记录（可能未用本工具修改过）。");
-            }
-
-            // 检查备份记录是否完整且有效
-            var hasInvalidBackup = false;
-            var warnings = new List<string>();
-            int? ParseBackup(RegistryValueBackup? backup, string name)
-            {
-                if (backup is null)
-                    return null;
-                if (backup.ValueKind == RegistryValueKind.None)
-                    return null;
-                if (int.TryParse(backup.Data, out var value))
-                    return value;
-                hasInvalidBackup = true;
-                warnings.Add($"{name} 备份值无效");
-                return null;
-            }
-
-            var speedValue = ParseBackup(speed, "MouseSpeed");
-            var threshold1Value = ParseBackup(threshold1, "MouseThreshold1");
-            var threshold2Value = ParseBackup(threshold2, "MouseThreshold2");
-            // 如果有任何备份值无效，拒绝恢复而不是使用假定的默认值
-            if (hasInvalidBackup)
-            {
-                return OperationResult.Fail($"鼠标加速备份记录损坏（{string.Join("，", warnings)}），无法安全恢复。请手动在 Windows 设置中调整鼠标选项。");
-            }
-
-            // 至少需要有一个有效的原始值才能恢复
-            if (speedValue is null && threshold1Value is null && threshold2Value is null)
-            {
-                return OperationResult.Fail("鼠标加速没有有效的原始值备份，无法恢复。");
-            }
-
-            // 使用 Windows 常见默认值作为缺失值的兜底（仅在部分有备份时）
-            var mouseParams = new[]
-            {
-                threshold1Value ?? 6,
-                threshold2Value ?? 10,
-                speedValue ?? 1,
-            };
-            Log.Info($"鼠标加速恢复：Threshold1={mouseParams[0]}, Threshold2={mouseParams[1]}, Speed={mouseParams[2]}");
-            if (!SystemParametersInfo(SpiSetMouse, 0u, mouseParams, SpifUpdateIniFile | SpifSendChange))
-            {
-                return OperationResult.Fail("恢复鼠标参数失败（SystemParametersInfo 调用出错）。");
-            }
-
-            foreach (var valueName in (string[])["MouseSpeed", "MouseThreshold1", "MouseThreshold2"])
-            {
-                _backups.Remove("HKCU", MousePath, valueName);
-            }
-
-            var note = (speedValue is null || threshold1Value is null || threshold2Value is null) ? "（部分参数使用 Windows 默认值）" : "";
-            return OperationResult.Ok($"已恢复鼠标加速的原设置（立即生效）{note}。");
-        }
-        catch (Exception ex)
-        {
-            return OperationResult.Fail($"恢复鼠标加速失败：{ex.Message}");
-        }
+        if (!DeltaNFD.Inspection.SystemSwitchInspection.ReadHags().CanEnable)
+            return OperationResult.Fail("当前无法确认显卡/驱动支持 HAGS，未修改。");
+        return ApplyOptimizedDword(GraphicsDriversPath, "HwSchMode", 2, "HAGS 配置（需重启后核实实际状态）");
     }
 
     // ---- 预读取三件套（Prefetch / ApplicationPreLaunch / OperationAPI） ----
@@ -850,14 +768,16 @@ public partial class SystemTweakService
         return OperationResult.Ok("ApplicationPreLaunch 已通过 MMAgent 定向关闭并复检；其余预读取注册表关闭值已写入，重启后重新检测。SysMain 未停止、未禁用，Windows Search 为独立开关。", requiresReboot: true);
     }
 
-    /// <summary>备份某注册表键下的一个 DWORD 原值（不存在则记 None）。</summary>    private void BackupDword(string keyPath, string valueName)
+    /// <summary>备份某注册表键下的一个 DWORD 原值（不存在则记 None）。</summary>
+    private void BackupDword(string keyPath, string valueName)
     {
         var hive = keyPath.StartsWith("HKCU", StringComparison.OrdinalIgnoreCase) ? "HKCU" : "HKLM";
         var current = ReadDword(hive, keyPath, valueName);
         _backups.Save(new RegistryValueBackup { Hive = hive, Id = TweakBackupStore.MakeId(hive, keyPath, valueName), KeyPath = keyPath, ValueName = valueName, ValueKind = current is null ? RegistryValueKind.None : RegistryValueKind.DWord, Data = current?.ToString() ?? "", CreatedAt = DateTimeOffset.Now, });
     }
 
-    /// <summary>写入某注册表键下的一个 DWORD。</summary>    private void WriteDword(string keyPath, string valueName, int value)
+    /// <summary>写入某注册表键下的一个 DWORD。</summary>
+    private void WriteDword(string keyPath, string valueName, int value)
     {
         using var key = OpenWritableOrCreate(keyPath);
         key.SetValue(valueName, value, RegistryValueKind.DWord);
@@ -999,8 +919,8 @@ public partial class SystemTweakService
         SystemTweak.PageCombining => ("关闭分页合并", "关闭内存页合并，减少后台 CPU 活动"),
         SystemTweak.Prefetch => ("禁用预读取（Prefetch / PreLaunch / OperationAPI）", "关闭应用预读取、MMAgent ApplicationPreLaunch 与 OperationAPI，并保留用户级预启动兼容设置。" + "不停止、不禁用 SysMain；Windows Search 为独立开关。需重启后重新检测"),
         // ---- 游戏微调包 ----
-        SystemTweak.MouseAccelerationOff => ("关闭鼠标加速", "关闭指针加速曲线（MouseSpeed/Threshold=0），瞄准移动 1:1 线性；FPS 玩家推荐，立即生效"),
-        SystemTweak.HardwareGpuScheduling => ("HAGS 硬件加速 GPU 调度", "开启 HwSchMode=2，由显卡直接管理显存调度，可小幅降低延迟；需 RTX/GTX16 系或较新显卡支持，重启生效"),
+        SystemTweak.MouseAccelerationOff => ("关闭鼠标加速", "关闭 Windows 提高指针精确度，立即生效；不改变 DPI 或指针速度，Raw Input 游戏通常不受此设置影响"),
+        SystemTweak.HardwareGpuScheduling => ("HAGS 硬件加速 GPU 调度", "请求开启 HAGS；需要显卡与驱动支持，修改后重启核实。显示实际运行状态，不保证帧率或延迟收益"),
         SystemTweak.WSearchOff => ("禁用 Windows Search 服务", "关闭搜索索引，显著减少磁盘与 CPU 后台占用；开始菜单/文件搜索会变慢。" + "注意：不动 SysMain——SysMain 承载内存压缩（MemCompression），禁用它会把内存压缩一起关掉"),
         _ => ("未知", ""),
     };
@@ -1047,7 +967,8 @@ public partial class SystemTweakService
         return result;
     }
 
-    /// <summary>并行查询 MMAgent 和 hypervisor 状态（原来串行，现合并为一次并行调用减少等待）。</summary>    private static async Task<(bool CompressionOn, bool PageCombiningOn, string Hypervisor, bool? ApplicationPreLaunchOn)> QueryMmAgentAndHypervisorAsync()
+    /// <summary>并行查询 MMAgent 和 hypervisor 状态（原来串行，现合并为一次并行调用减少等待）。</summary>
+    private static async Task<(bool CompressionOn, bool PageCombiningOn, string Hypervisor, bool? ApplicationPreLaunchOn)> QueryMmAgentAndHypervisorAsync()
     {
         var mmTask = QueryMmAgentAsync();
         var hvTask = QueryHypervisorLaunchTypeAsync();
@@ -1072,7 +993,8 @@ public partial class SystemTweakService
     }
 
     // ---------------- 进程调用 ----------------
-    /// <summary>执行原生命令行工具（bcdedit / dism / sc），返回退出码与输出。</summary>    private static async Task<(int ExitCode, string StdOut, string StdErr)> RunProcessCaptureAsync(string fileName, string arguments, TimeSpan timeout)
+    /// <summary>执行原生命令行工具（bcdedit / dism / sc），返回退出码与输出。</summary>
+    private static async Task<(int ExitCode, string StdOut, string StdErr)> RunProcessCaptureAsync(string fileName, string arguments, TimeSpan timeout)
     {
         var psi = new ProcessStartInfo
         {

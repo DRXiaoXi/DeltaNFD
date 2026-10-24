@@ -420,7 +420,9 @@ internal static class SystemCommands
         Wrap("system.pagefile.restore-original", await new PagefileService().RestoreOriginalAsync());
 
     private static BackendResult Wrap(string code, OperationResult result) =>
-        result.Success
+        result.OutcomeUnknown
+            ? BackendResult.PartialResult(code, result.Message, [], result, pendingRestore: true, requiresReview: true)
+            : result.Success
             ? BackendResult.Ok(code, result.Message, result)
             : BackendResult.Failed(code, result.Message);
 
@@ -614,10 +616,7 @@ internal static class SystemCommands
         return group;
     }
 
-    private static BackendResult MapBxResult(string code, OperationResult result) =>
-        result.Success
-            ? BackendResult.Ok(code, result.Message, result)
-            : BackendResult.Failed(code, result.Message);
+    private static BackendResult MapBxResult(string code, OperationResult result) => Wrap(code, result);
 
     // ---------------- Defender（system.defender.*） ----------------
 

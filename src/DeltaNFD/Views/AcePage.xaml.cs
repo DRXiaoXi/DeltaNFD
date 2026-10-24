@@ -77,9 +77,11 @@ public sealed partial class AcePage : Page
             Content = coreOnly
                 ? "仅删除 C:\\Program Files\\AntiCheatExpert 及其子目录中，文件名以 ACE-CORE 开头的 .sys 文件。\n\n"
                     + "保留 ACE 服务、注册表、其他文件及游戏目录；不会结束进程或安排重启删除。\n"
-                    + "请先完全退出游戏和反作弊守卫。删除不可撤销，完成后请用启动器执行普通修复，再启动游戏。"
+                    + "多款 ACE 游戏可正常共存，文件数量多不是清理依据。此操作可能影响所有使用共享组件的 ACE 游戏。\n"
+                    + "请先完全退出游戏和反作弊守卫。删除不可撤销，完成后请用各受影响游戏的启动器执行普通修复，再启动游戏。"
                 : "将结束 ACE 进程、接管并删除全部 ACE 服务（含自保护驱动）、清理注册表残留、"
                       + "删除安装目录与游戏目录内的 AntiCheatExpert 文件夹。\n\n"
+                      + "· 多款 ACE 游戏可正常共存，此操作会影响共享组件，不应因文件数量多而清理\n"
                       + "· 请确认已完全退出游戏（含 sguard64 后台进程）\n"
                       + "· 被占用的文件会在重启电脑后自动删除\n"
                       + "· 下次启动游戏时 ACE 会自动重新安装",
@@ -117,7 +119,7 @@ public sealed partial class AcePage : Page
                 Content = result.Message + (coreOnly && result.IsSkipped ? "" : "\n\n"
                           + "下一步（重要）：\n"
                           + "① 打开 WeGame / 游戏启动器\n"
-                          + "② 对三角洲行动执行「修复」——普通修复即可，不要使用深度修复\n"
+                          + "② 对受影响的 ACE 游戏分别执行「修复」——普通修复即可，不要使用深度修复\n"
                           + "③ 修复会重新安装干净的 ACE 组件，之后正常启动游戏即可。"),
                 CloseButtonText = "知道了",
                 DefaultButton = ContentDialogButton.Primary,

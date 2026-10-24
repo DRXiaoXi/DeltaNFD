@@ -736,6 +736,14 @@ public sealed class BxService : IBxService
         Log.Info($"扩展库应用开始：{item.Name}；目标={(turnOn ? "优化" : "还原")}");
         // 仅通过带原状态备份的深度后端执行，JSON 的固定 OFF 命令不得用于还原。
         if (item.Name == FullHyperVItemName) return await ApplyFullHyperVAsync(turnOn);
+        if (item.Name == "setsaccel") return MouseSettingsMaintenance.ApplyBx(turnOn);
+        if (BxCatalog.IsHagsItem(item))
+        {
+            var op = item.Tweaks.Single(t => t.Key?.Equals("HwSchMode", StringComparison.OrdinalIgnoreCase) == true);
+            var target = turnOn ? PickAppliedEntry(op) : PickDefaultEntry(op);
+            if (target?.Value == "2" && !DeltaNFD.Inspection.SystemSwitchInspection.ReadHags().CanEnable)
+                return OperationResult.Fail("当前无法确认显卡/驱动支持 HAGS，未修改。请核对 Windows 图形设置。");
+        }
 
         var regOps = item.Tweaks.Where(t => IsRegType(t.TweakType)).ToList();
         var taskOps = item.Tweaks.Where(t => t.TweakType == "TASK").ToList();
@@ -953,7 +961,9 @@ public sealed class BxService : IBxService
         var result = failed > 0
             ? OperationResult.Fail($"完成 {done} 项，失败 {failed} 项。" +
                                    (failureDetails.Count > 0 ? " " + string.Join("；", failureDetails) : " 部分键可能需要更高权限。"))
-            : OperationResult.Ok(turnOn ? "已应用。" : "已还原默认。");
+            : BxCatalog.IsHagsItem(item)
+                ? OperationResult.Ok("HAGS 配置已保存，需重启后核实实际生效状态。", requiresReboot: true)
+                : OperationResult.Ok(turnOn ? "已应用。" : "已还原默认。");
         Log.Info($"扩展库应用完成：{item.Name}；目标={(turnOn ? "优化" : "还原")}；成功={done}；失败={failed}；结果={result.Message}");
         return result;
     });
@@ -2130,7 +2140,18 @@ public sealed class BxService : IBxService
             if (power.Success) restored++;
             else errors.Add(power.Message);
         }
-        foreach (var e in entries)
+        var mouseEntries = entries.Where(MouseSettingsMaintenance.IsMouseBackup).ToList();
+        if (mouseEntries.Count > 0)
+        {
+            try
+            {
+                var mouse = MouseSettingsMaintenance.RestoreBx(mouseEntries);
+                if (mouse.Success) { restored += mouseEntries.Count; restoredIds.AddRange(mouseEntries.Select(e => e.Id)); }
+                else errors.Add(mouse.Message);
+            }
+            catch (Exception ex) { errors.Add("鼠标恢复未完成，备份保留：" + ex.Message); }
+        }
+        foreach (var e in entries.Where(e => !MouseSettingsMaintenance.IsMouseBackup(e)))
         {
             try
             {

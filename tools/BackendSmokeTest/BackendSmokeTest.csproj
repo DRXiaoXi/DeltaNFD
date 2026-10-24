@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>BackendSmokeTest</RootNamespace>
     <!-- 与产品同版本：官方后端客户端（已链接进本测试）按 AppVersion 校验后端版本。 -->
-    <Version>0.9291</Version>
-    <InformationalVersion>Alpha0.929-RC1</InformationalVersion>
+    <Version>0.9292</Version>
+    <InformationalVersion>Alpha0.929-RC2</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -144,6 +144,7 @@
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RuntimeGuardBackends.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\ShaderService.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\SystemTweakService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\MouseSettingsMaintenance.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\ApplicationPreLaunchControl.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\PagefileService.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\ProcessMaintenanceService.cs" />

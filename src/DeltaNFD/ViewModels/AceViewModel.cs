@@ -19,7 +19,7 @@ public partial class AceViewModel : ObservableObject
     [ObservableProperty] private string pathsText = "";
     [ObservableProperty] private string registryText = "";
     [ObservableProperty] private bool canClean;
-    [ObservableProperty] private string coreCheckText = "正在检测 ACE-CORE 冗余文件…";
+    [ObservableProperty] private string coreCheckText = "正在检测 ACE 游戏与 ACE-CORE 组件归属…";
     [ObservableProperty] private bool coreCheckBusy;
     [ObservableProperty] private string coreCleanupResultText = "";
     [ObservableProperty] private bool hasBlockers;
@@ -216,17 +216,17 @@ public partial class AceViewModel : ObservableObject
                     paths.Select(p => $"{p.Name} {p.SizeMb:0.0} MB"));
 
             RegistryText = scan.RegistryKeys.Count == 0
-                ? "ACE 注册表项：无残留"
-                : "注册表残留：" + string.Join("；", scan.RegistryKeys);
+                ? "ACE 注册表项：未找到"
+                : "ACE 注册表登记：" + string.Join("；", scan.RegistryKeys);
 
             ScanSummary = scan.CanClean
                 ? (scan.AnythingFound
-                    ? $"扫描完成：发现 {scan.Services.Count(s => s.Exists)} 个服务、{paths.Count} 个目录、{scan.RegistryKeys.Count} 个注册表残留，可清理。"
-                    : "未发现 ACE 组件（本机很干净）。")
+                    ? $"扫描完成：发现 {scan.Services.Count(s => s.Exists)} 个服务、{paths.Count} 个目录、{scan.RegistryKeys.Count} 个注册表登记。组件存在不代表异常。"
+                    : "未发现共享 ACE 组件或三角洲目录中的 ACE 组件。")
                 : "存在阻止进程，无法清理。";
             CanClean = scan.CanClean && scan.AnythingFound;
 
-            // 进页自动做一次 ACE-CORE 冗余检测
+            // 进页读取 ACE 游戏安装位置与驱动归属，不按文件数量判断异常。
             await CheckCoreFilesAsync();
         }
         catch (Exception ex)
@@ -279,7 +279,7 @@ public partial class AceViewModel : ObservableObject
         return result;
     }
 
-    /// <summary>ACE-CORE 冗余文件检测（清除 ACE 后会重装，此检测帮助发现多版本残留）。</summary>
+    /// <summary>ACE 游戏及驱动归属检测；多款游戏正常共存不构成清理依据。</summary>
     public async Task CheckCoreFilesAsync()
     {
         if (CoreCheckBusy)
@@ -308,6 +308,19 @@ public partial class AceViewModel : ObservableObject
                 text.AppendLine(line);
             }
 
+            text.AppendLine("\n检测到的 ACE 游戏：");
+            if (result.Games.Count == 0) text.AppendLine("未确认游戏安装位置；不代表这些驱动是残留。");
+            foreach (var game in result.Games)
+            {
+                text.AppendLine($"· {game.Name}（{game.Source}）");
+                text.AppendLine($"  安装目录：{game.InstallDirectory}");
+                foreach (var directory in game.AceDirectories) text.AppendLine($"  ACE 目录：{directory}");
+            }
+            if (result.Associations.Count > 0) text.AppendLine("\n驱动匹配：");
+            foreach (var association in result.Associations)
+                text.AppendLine($"· {association.Path}\n  {(association.Games.Count > 0 ? string.Join("；", association.Games) : "归属待核对")}\n  {association.Evidence}");
+            foreach (var note in result.Notes) text.AppendLine("· " + note);
+
             text.Append("👉 " + result.Advice);
             CoreCheckText = text.ToString();
         }
@@ -328,6 +341,7 @@ public partial class AceViewModel : ObservableObject
         AceCoreCheckLevel.Abnormal => "⚠ ",
         AceCoreCheckLevel.Failed => "⛔ ",
         AceCoreCheckLevel.Blocked => "⏸ ",
+        AceCoreCheckLevel.NeedsReview => "ℹ ",
         _ => "ℹ ",
     };
 

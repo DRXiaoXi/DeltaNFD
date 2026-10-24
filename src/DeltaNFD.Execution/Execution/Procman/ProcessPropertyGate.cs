@@ -23,19 +23,30 @@ public sealed class ProcessPropertyGate
         _mutexName = @"Global\DeltaNFD.ProcessProperties." + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(path).ToUpperInvariant())));
     }
     internal static ProcessPropertyGate Default => new(Path.Combine(AppDataPaths.Root, "procman-owners.json"));
+    internal static Action? SnapshotReadForTests;
     public sealed class Lease : IDisposable
     {
         private readonly Mutex _mutex;
         private readonly ProcessPropertyGate _store;
         private readonly Dictionary<string, Claim> _claims;
         private readonly string _key;
+        private readonly int _threadId = Environment.CurrentManagedThreadId;
+        private bool _gameWriteAuthorized;
         private bool _disposed;
-        internal Lease(Mutex mutex, ProcessPropertyGate store, Dictionary<string, Claim> claims, string key)
-        { _mutex = mutex; _store = store; _claims = claims; _key = key; }
+        internal ProcmanProcessIdentity Identity { get; }
+        internal string Property { get; }
+        internal Lease(Mutex mutex, ProcessPropertyGate store, Dictionary<string, Claim> claims, string key,
+            ProcmanProcessIdentity identity, string property)
+        { _mutex = mutex; _store = store; _claims = claims; _key = key; Identity = identity; Property = property; }
+        // A batch may reuse this decision only while this exact identity/property mutex remains held.
+        // No cached ownership survives disposal or crosses threads (Windows mutexes are thread-affine).
+        internal bool AuthorizesGameWrite(int pid, string property) => !_disposed && _gameWriteAuthorized
+            && _threadId == Environment.CurrentManagedThreadId && Identity.Pid == pid && Property == property;
         public string Owner => _claims.TryGetValue(_key, out var claim)
             ? claim.Override ?? (GameAlive(claim) ? "game" : "system") : "system";
         public void SetOwner(string? owner)
         {
+            _gameWriteAuthorized = false;
             if (!_claims.TryGetValue(_key, out var claim)) _claims[_key] = claim = new();
             claim.Override = owner;
             if (owner is null && !GameAlive(claim)) _claims.Remove(_key);
@@ -43,6 +54,7 @@ public sealed class ProcessPropertyGate
         }
         internal void Game(bool restore)
         {
+            _gameWriteAuthorized = false;
             if (!_claims.TryGetValue(_key, out var claim)) _claims[_key] = claim = new();
             if (restore)
             {
@@ -52,10 +64,12 @@ public sealed class ProcessPropertyGate
             else
             {
                 using var process = System.Diagnostics.Process.GetCurrentProcess();
-                if (claim.GamePid == process.Id && claim.GameStart == process.StartTime.ToUniversalTime().Ticks) return;
+                if (claim.GamePid == process.Id && claim.GameStart == process.StartTime.ToUniversalTime().Ticks)
+                { _gameWriteAuthorized = true; return; }
                 claim.GamePid = process.Id; claim.GameStart = process.StartTime.ToUniversalTime().Ticks;
             }
             _store.Save(_claims);
+            _gameWriteAuthorized = !restore;
         }
         public void Dispose()
         {
@@ -78,9 +92,10 @@ public sealed class ProcessPropertyGate
         if (!entered) { mutex.Dispose(); throw new IOException("进程属性交接锁超时。"); }
         try
         {
+            SnapshotReadForTests?.Invoke();
             var claims = File.Exists(_path) ? JsonSerializer.Deserialize<Dictionary<string, Claim>>(File.ReadAllText(_path))
                 ?? throw new InvalidDataException("所有权文件为空。") : new();
-            return new Lease(mutex, this, claims, ProcmanChangeLog.ChangeKey(identity.Pid, identity.StartTimeUtcTicks, identity.ExecutablePath, property));
+            return new Lease(mutex, this, claims, ProcmanChangeLog.ChangeKey(identity.Pid, identity.StartTimeUtcTicks, identity.ExecutablePath, property), identity, property);
         }
         catch { mutex.ReleaseMutex(); mutex.Dispose(); throw; }
     }
@@ -94,6 +109,9 @@ public sealed class ProcessPropertyGate
     }
     /// <summary>Game/CPU/offline writers must acquire this before reading backups or writing. A manual override pauses this property only.</summary>
     public static IDisposable? TryEnterGame(int pid, string property, bool restoring = false)
+        => TryEnterGameLease(pid, property, restoring);
+
+    internal static Lease? TryEnterGameLease(int pid, string property, bool restoring = false)
     {
         var identity = ProcmanIdentity.TryIdentify(pid);
         if (identity is null) return null;

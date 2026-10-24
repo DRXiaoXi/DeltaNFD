@@ -11,7 +11,7 @@
                 <TextBlock Text="AntiCheatExpert 反作弊组件管理，等效官方卸载程序" Style="{StaticResource PageSubtitleStyle}" />
             </StackPanel>
 
-            <!-- ACE-CORE 冗余检测 -->
+            <!-- ACE 游戏与组件归属检测 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
                     <Grid ColumnSpacing="16">
@@ -21,9 +21,9 @@
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Spacing="4">
-                            <TextBlock Text="ACE-CORE 冗余检测" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="ACE 游戏与 ACE-CORE 检测" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                                       Text="检测 C:\Program Files\AntiCheatExpert 下的 ACE-CORE 系列 .sys 驱动文件：只有 1 个为正常，出现 2 个及以上即为多版本冗余残留，会导致反作弊异常。" />
+                                       Text="读取 WeGame、Steam、Epic 与系统安装记录，识别包含 ACE 组件的游戏目录并核对驱动副本。多款 ACE 游戏可正常共存，不因 ACE-CORE 文件数量多而判定异常；无法确认归属时仅标为待核对。" />
                         </StackPanel>
 
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
@@ -39,7 +39,7 @@
                     <TextBlock Text="{x:Bind ViewModel.CoreCheckText, Mode=OneWay}"
                                Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                FontFamily="Consolas" />
-                    <TextBlock Text="仅清理 C:\Program Files\AntiCheatExpert 及其子目录内的 ACE-CORE*.sys 文件，保留 ACE 服务、注册表、其他文件和游戏目录。适合先尝试清理驱动残留。"
+                    <TextBlock Text="手动清理会删除共享目录内全部 ACE-CORE*.sys，可能影响多款 ACE 游戏。仅在有实际故障时使用，不应因文件数量多而清理；检测新增的其他游戏目录不会加入清理范围。"
                                Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" />
                     <Button Content="{x:Bind ViewModel.CoreCleanButtonText, Mode=OneWay}"
                             IsEnabled="{x:Bind ViewModel.CoreCleanEnabled, Mode=OneWay}"
@@ -190,7 +190,7 @@
             <Border Style="{StaticResource CardBorderStyle}" Padding="20,14">
                 <StackPanel Spacing="6">
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
-                               Text="· 三角洲进程运行时，本页的组件扫描与 ACE-CORE 冗余检测会整体暂停：完全不读取 ACE 服务、目录与注册表项，避免在反作弊运行期间触碰其组件。游戏退出后自动恢复，也可手动点「重新扫描」。" />
+                               Text="· 三角洲进程运行时，本页的组件扫描与 ACE-CORE 游戏归属检测会整体暂停：完全不读取 ACE 服务、目录与注册表项，避免在反作弊运行期间触碰其组件。游戏退出后自动恢复，也可手动点「重新扫描」。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"
                                Text="· sguard64.exe（反作弊守卫）或游戏本体运行时，本功能会拒绝执行——请先完全退出游戏（含后台 sguard64 进程）。" />
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"

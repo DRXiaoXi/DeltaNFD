@@ -146,15 +146,21 @@ public static class OptimizationScan
         var changed = BxCatalog.Database.GetValueOrDefault(section)?.FirstOrDefault(i => i.Name == name);
         if (changed is not null)
         {
-            var paths = changed.Tweaks.Select(t => t.Path + "|" + t.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var paths = changed.Tweaks.Select(TweakAddress).ToHashSet(StringComparer.OrdinalIgnoreCase);
             lock (Gate)
                 foreach (var pair in BxCatalog.Database)
-                    foreach (var item in pair.Value.Where(i => i.Tweaks.Any(t => paths.Contains(t.Path + "|" + t.Key)))) Items.Remove(Key(pair.Key, item.Name));
+                    foreach (var item in pair.Value.Where(i => i.Tweaks.Any(t => paths.Contains(TweakAddress(t))))) Items.Remove(Key(pair.Key, item.Name));
         }
         lock (Gate) { _tweaksEpoch++; Tweaks.Clear(); } // Seven deep checks share one native read; aliases must be rechecked together.
         FireChanged();
     }
     internal static void ForgetGroups() { lock (Gate) { _groupsEpoch++; Groups.Clear(); } FireChanged(); }
+    private static string TweakAddress(BxTweak tweak)
+    {
+        var parts = tweak.Path.Split('\\', 2);
+        var hive = parts[0].ToUpperInvariant() switch { "HKEY_LOCAL_MACHINE" => "HKLM", "HKEY_CURRENT_USER" => "HKCU", _ => parts[0] };
+        return hive + (parts.Length > 1 ? "\\" + parts[1] : "") + "|" + tweak.Key;
+    }
     internal static void ForgetTweaks() { lock (Gate) { _tweaksEpoch++; Tweaks.Clear(); } FireChanged(); }
     private static string Key(string section, string name) => section + "|" + name;
     public static bool TryGetItemState(string section, string name, out BxState state) { lock (Gate) return Items.TryGetValue(Key(section, name), out state); }

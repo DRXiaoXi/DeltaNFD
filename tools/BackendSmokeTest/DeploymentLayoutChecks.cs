@@ -101,6 +101,8 @@ internal static class DeploymentLayoutChecks
         var layoutAssets = Path.Combine(layout, "Assets");
         Check(Directory.Exists(layoutAssets), "Assets 目录已复制");
 
+        CheckVc14Media(layoutAssets);
+
         var sourceTweakDb = Path.Combine(sourceAssets, "TweakDb");
         var layoutTweakDb = Path.Combine(layoutAssets, "TweakDb");
         var sourceJson = Directory.GetFiles(sourceTweakDb, "*.json").OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToArray();
@@ -197,6 +199,15 @@ internal static class DeploymentLayoutChecks
             Check(process.ExitCode == 0 && stdout.Contains("commands=", StringComparison.Ordinal),
                 $"模块 {module} 在清空全局 .NET 线索后可独立运行（exit={process.ExitCode}，{stderr.Trim()}）");
         }
+    }
+
+    internal static void CheckVc14Media(string layoutAssets)
+    {
+        // Validate the same nested root used by the production runtime repair entry points.
+        var vc14Media = Path.Combine(layoutAssets, DeltaNFD.Services.Vc14FileRepairSource.DirectoryName);
+        foreach (var arch in new[] { "x64", "x86" })
+            Check(DeltaNFD.Services.Vc14FileRepairSource.Verify(vc14Media, arch).Count == 2,
+                $"{arch} 14.42 原始 MSI/CAB 位于正式子目录并通过哈希/身份核验");
     }
 
     private static bool SameHash(string left, string right) =>

@@ -131,10 +131,10 @@ public enum AceCoreCheckLevel
     /// <summary>未安装 / 未找到 ACE-CORE 文件（无需处理）。</summary>
     None,
 
-    /// <summary>正常（只有 1 个 ACE-CORE 系列 sys 文件）。</summary>
+    /// <summary>已匹配游戏的 ACE-CORE 文件；多款游戏可以正常共存。</summary>
     Normal,
 
-    /// <summary>冗余异常（2 个及以上）：建议一键清除 ACE 后用启动器/WeGame 修复游戏。</summary>
+    /// <summary>保留兼容旧结果；不得仅凭文件数量判定异常。</summary>
     Abnormal,
 
     /// <summary>扫描目录失败，不能据此判定 ACE 状态。</summary>
@@ -142,9 +142,27 @@ public enum AceCoreCheckLevel
 
     /// <summary>三角洲进程运行中，已跳过检测（未读取 ACE 目录），不能据此判定 ACE 状态。</summary>
     Blocked,
+
+    /// <summary>归属/扫描信息待核对，不代表文件冗余或游戏异常。</summary>
+    NeedsReview,
 }
 
-/// <summary>ACE-CORE 冗余检测结果（纯只读）。</summary>
+public sealed class AceGameInstallation
+{
+    public string Name { get; init; } = "";
+    public string InstallDirectory { get; init; } = "";
+    public string Source { get; init; } = "";
+    public List<string> AceDirectories { get; init; } = [];
+}
+
+public sealed class AceCoreAssociation
+{
+    public string Path { get; init; } = "";
+    public List<string> Games { get; init; } = [];
+    public string Evidence { get; init; } = "";
+}
+
+/// <summary>ACE 游戏与 ACE-CORE 文件归属检测结果（纯只读）。</summary>
 public sealed class AceCoreCheckResult
 {
     public required AceCoreCheckLevel Level { get; init; }
@@ -158,6 +176,9 @@ public sealed class AceCoreCheckResult
     public required string Summary { get; init; }
 
     public required string Advice { get; init; }
+    public List<AceGameInstallation> Games { get; init; } = [];
+    public List<AceCoreAssociation> Associations { get; init; } = [];
+    public List<string> Notes { get; init; } = [];
 }
 
 /// <summary>
@@ -182,8 +203,8 @@ public interface IAceService
     Task<OperationResult> CleanCoreFilesAsync(IProgress<string>? progress = null);
 
     /// <summary>
-    /// ACE-CORE 冗余文件检测（纯只读）：统计 %ProgramFiles%\AntiCheatExpert 下
-    /// 文件名含 ACE-CORE 的 .sys 文件——只有 1 个为正常，2 个及以上为冗余异常。
+    /// ACE 游戏与驱动归属检测（纯只读）：统计 %ProgramFiles%\AntiCheatExpert 下
+    /// 文件名含 ACE-CORE 的 .sys 文件，并核对已安装游戏的组件归属；不能仅凭数量判异常。
     /// </summary>
     Task<AceCoreCheckResult> CheckCoreFilesAsync();
 

@@ -85,11 +85,15 @@ public sealed class SystemTweakInspection
         var operationApi = ReadDword("HKLM", MemoryManagementPath, "EnableOperationAPI");
         var(compressionOn, pageCombiningOn, hypervisor, applicationPreLaunchOn) = await QueryMmAgentAndHypervisorAsync();
         // 游戏微调包状态
-        var mouseSpeed = ReadString("HKCU", MousePath, "MouseSpeed");
-        var hags = ReadDword(GraphicsDriversPath, "HwSchMode");
+        TweakStatus mouse;
+        try { mouse = MakeStatus(SystemTweak.MouseAccelerationOff, SystemSwitchInspection.ReadMouse().Acceleration == 0
+            ? (true, "Windows 当前已关闭鼠标加速") : (false, "Windows 当前启用鼠标加速")); }
+        catch (Exception ex) { mouse = MakeStatus(SystemTweak.MouseAccelerationOff, (false, "鼠标运行状态待核对：" + ex.Message), known: false); }
+        var hags = SystemSwitchInspection.ReadHags();
         var wSearch = ReadDword(WSearchServicePath, "Start");
         return[MakeStatus(SystemTweak.HyperVAndVbs, HyperVToState(hypervisor, vbs, hvci, credentialGuard), known: hypervisor != "unknown"), MakeStatus(SystemTweak.MemoryCompression, compressionOn is null ? (false, "状态无法确认") : compressionOn.Value ? (false, "已开启") : (true, "已关闭"), known: compressionOn.HasValue), MakeStatus(SystemTweak.PageCombining, pageCombiningOn is null ? (false, "状态无法确认") : pageCombiningOn.Value ? (false, "已开启") : (true, "已关闭"), known: pageCombiningOn.HasValue), MakeStatus(SystemTweak.Prefetch, PrefetchTrioToState(mmLaunch, prelaunch, operationApi, applicationPreLaunchOn), known: applicationPreLaunchOn.HasValue), // 游戏微调包
-        MakeStatus(SystemTweak.MouseAccelerationOff, mouseSpeed == "0" ? (true, "已关闭鼠标加速") : (false, $"未优化（MouseSpeed={mouseSpeed ?? "默认"}）")), MakeStatus(SystemTweak.HardwareGpuScheduling, ValueToState(hags, 2, "未启用（1/未配置）", "已开启（2，重启后生效）")), MakeStatus(SystemTweak.WSearchOff, wSearch == 4 ? (true, "已禁用 Windows Search") : (false, $"未优化（WSearch={ServiceStartText(wSearch)}）")), ];
+        mouse, MakeStatus(SystemTweak.HardwareGpuScheduling, (hags.State == BxState.On, hags.Detail),
+            known: hags.State is BxState.On or BxState.Off), MakeStatus(SystemTweak.WSearchOff, wSearch == 4 ? (true, "已禁用 Windows Search") : (false, $"未优化（WSearch={ServiceStartText(wSearch)}）")), ];
     }
 
     private static string ServiceStartText(int? start) => start switch
@@ -265,8 +269,8 @@ public sealed class SystemTweakInspection
         SystemTweak.PageCombining => ("关闭分页合并", "关闭内存页合并，减少后台 CPU 活动"),
         SystemTweak.Prefetch => ("禁用预读取（Prefetch / PreLaunch / OperationAPI）", "关闭应用预读取、MMAgent ApplicationPreLaunch 与 OperationAPI，并保留用户级预启动兼容设置。" + "不停止、不禁用 SysMain；Windows Search 为独立开关。需重启后重新检测"),
         // ---- 游戏微调包 ----
-        SystemTweak.MouseAccelerationOff => ("关闭鼠标加速", "关闭指针加速曲线（MouseSpeed/Threshold=0），瞄准移动 1:1 线性；FPS 玩家推荐，立即生效"),
-        SystemTweak.HardwareGpuScheduling => ("HAGS 硬件加速 GPU 调度", "开启 HwSchMode=2，由显卡直接管理显存调度，可小幅降低延迟；需 RTX/GTX16 系或较新显卡支持，重启生效"),
+        SystemTweak.MouseAccelerationOff => ("关闭鼠标加速", "关闭 Windows 提高指针精确度，立即生效；不改变 DPI 或指针速度，Raw Input 游戏通常不受此设置影响"),
+        SystemTweak.HardwareGpuScheduling => ("HAGS 硬件加速 GPU 调度", "请求开启 HAGS；需要显卡与驱动支持，修改后重启核实。显示实际运行状态，不保证帧率或延迟收益"),
         SystemTweak.WSearchOff => ("禁用 Windows Search 服务", "关闭搜索索引，显著减少磁盘与 CPU 后台占用；开始菜单/文件搜索会变慢。" + "注意：不动 SysMain——SysMain 承载内存压缩（MemCompression），禁用它会把内存压缩一起关掉"),
         _ => ("未知", ""),
     };
@@ -399,7 +403,7 @@ public sealed class SystemTweakInspection
             result.Add(SystemTweak.PageCombining);
         if (Has("HKLM", MemoryManagementPath, "EnableApplicationLaunchPrefetching") || Has("HKLM", MemoryManagementPath, "EnableOperationAPI") || Has("HKLM", PrefetchPath, "EnablePrefetcher") || Has("HKCU", ApplicationPreLaunchPath, "Enabled") || Has("State", "MMAgent", "ApplicationPreLaunch"))
             result.Add(SystemTweak.Prefetch);
-        if (Has("HKCU", MousePath, "MouseSpeed"))
+        if (Has("HKCU", MousePath, "MouseSpeed") || Has("State", "MouseAcceleration", "Runtime"))
             result.Add(SystemTweak.MouseAccelerationOff);
         if (Has("HKLM", GraphicsDriversPath, "HwSchMode"))
             result.Add(SystemTweak.HardwareGpuScheduling);

@@ -77,6 +77,15 @@ jobs:
       - name: Build smoke test
         run: dotnet build tools/BackendSmokeTest/BackendSmokeTest.csproj -c Release
 
+      - name: RC2 regression checks (isolated fixtures, no host modifications)
+        run: |
+          foreach ($check in @('ccd-latency-checks','system-switch-checks','ace-ownership-checks')) {
+            dotnet run --project tools/BackendSmokeTest -c Release --no-build -- ("--" + $check)
+            if ($LASTEXITCODE -ne 0) { throw ("RC2 regression: " + $check) }
+          }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --vc14-installed-media-checks src/DeltaNFD/Assets/Vc14FileRepair14.42
+          if ($LASTEXITCODE -ne 0) { throw "Installed-media layout regression" }
+
       - name: Signed emergency policy checks (isolated, offline)
         run: dotnet run --project tools/EmergencyPolicyChecks -c Release -p:Platform=x64 --
 

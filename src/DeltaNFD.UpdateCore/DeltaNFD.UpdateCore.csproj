@@ -3,7 +3,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.9291</Version>
-    <InformationalVersion>Alpha0.929-RC1</InformationalVersion>
+    <Version>0.9292</Version>
+    <InformationalVersion>Alpha0.929-RC2</InformationalVersion>
   </PropertyGroup>
 </Project>

@@ -39,7 +39,7 @@ public static class Vc14ForceReplace
 
     /// <summary>只读预览：核对内置载荷、当前 51 个 DLL 版本与占用情况，生成执行指纹。</summary>
     public static Vc14ForceReplacePreview Preview(CancellationToken token = default) =>
-        PreviewCore(BackendEnvironment.AssetsRoot, WindowsRoot, enforceHostChecks: true, versionReader: null, token);
+        PreviewCore(Vc14FileRepairSource.InstalledRoot, WindowsRoot, enforceHostChecks: true, versionReader: null, token);
 
     /// <summary>执行强制替换；fingerprint 必须来自本次预览。</summary>
     public static Task<OperationResult> RunAsync(string fingerprint, IProgress<string>? progress, CancellationToken token) =>
@@ -47,13 +47,13 @@ public static class Vc14ForceReplace
         {
             using var budget = CancellationTokenSource.CreateLinkedTokenSource(token);
             budget.CancelAfter(OperationBudget);
-            return RunCoreAsync(fingerprint, progress, budget.Token, BackendEnvironment.AssetsRoot, WindowsRoot,
+            return RunCoreAsync(fingerprint, progress, budget.Token, Vc14FileRepairSource.InstalledRoot, WindowsRoot,
                 enforceHostChecks: true, versionReader: null).GetAwaiter().GetResult();
         }), token);
 
     // ---- 预览 -----------------------------------------------------------------
 
-    internal static Vc14ForceReplacePreview PreviewCore(string assetsRoot, string windowsRoot, bool enforceHostChecks,
+    internal static Vc14ForceReplacePreview PreviewCore(string sourceRoot, string windowsRoot, bool enforceHostChecks,
         Func<string, string?>? versionReader, CancellationToken token)
     {
         versionReader ??= ReadVersion;
@@ -75,7 +75,7 @@ public static class Vc14ForceReplace
             }
         }
 
-        try { VerifyMedia(assetsRoot); }
+        try { VerifyMedia(sourceRoot); }
         catch (Exception ex) { if (blocker.Length == 0) blocker = "内置官方 14.42 载荷无法核验：" + ex.Message; }
 
         var items = new List<Vc14ForceReplaceItem>(Payload.Count);
@@ -152,10 +152,10 @@ public static class Vc14ForceReplace
     // ---- 执行 -----------------------------------------------------------------
 
     internal static async Task<OperationResult> RunCoreAsync(string fingerprint, IProgress<string>? progress, CancellationToken token,
-        string assetsRoot, string windowsRoot, bool enforceHostChecks, Func<string, string?>? versionReader,
+        string sourceRoot, string windowsRoot, bool enforceHostChecks, Func<string, string?>? versionReader,
         Action<string>? afterReplacementForTests = null)
     {
-        var preview = PreviewCore(assetsRoot, windowsRoot, enforceHostChecks, versionReader, token);
+        var preview = PreviewCore(sourceRoot, windowsRoot, enforceHostChecks, versionReader, token);
         if (!preview.CanRun) return OperationResult.Fail(preview.Blocker);
         if (!string.Equals(preview.Fingerprint, fingerprint, StringComparison.OrdinalIgnoreCase))
             return OperationResult.Fail("14.x DLL 清单已变化，请重新预览确认；本次未修改任何文件。");
@@ -200,7 +200,7 @@ public static class Vc14ForceReplace
         try
         {
             progress?.Report("正在核验并解包内置官方 14.42.34433 载荷…");
-            var payload = ExtractPayload(assetsRoot, payloadRoot, token);
+            var payload = ExtractPayload(sourceRoot, payloadRoot, token);
             token.ThrowIfCancellationRequested();
             var stagingRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Temp",
                 "DeltaNFD", "Vc14ForceReplace", stamp + "-" + Guid.NewGuid().ToString("N")[..8]);
@@ -375,16 +375,16 @@ public static class Vc14ForceReplace
             .ThenBy(p => p.File, StringComparer.OrdinalIgnoreCase)
             .Select(p => $"{p.Architecture}|{p.File}|{p.Bytes}|{p.Sha256}")))));
 
-    private static void VerifyMedia(string assetsRoot)
+    private static void VerifyMedia(string sourceRoot)
     {
-        Vc14FileRepairSource.Verify(assetsRoot, "x64");
-        Vc14FileRepairSource.Verify(assetsRoot, "x86");
+        Vc14FileRepairSource.Verify(sourceRoot, "x64");
+        Vc14FileRepairSource.Verify(sourceRoot, "x86");
     }
 
     /// <summary>从四个官方 CAB 解包并用固定清单逐项校验；返回 arch|file → 解包文件路径。</summary>
-    internal static IReadOnlyDictionary<string, string> ExtractPayload(string assetsRoot, string destination, CancellationToken token)
+    internal static IReadOnlyDictionary<string, string> ExtractPayload(string sourceRoot, string destination, CancellationToken token)
     {
-        VerifyMedia(assetsRoot);
+        VerifyMedia(sourceRoot);
         var expected = Payload.ToDictionary(p => Key(p.Architecture, p.File), StringComparer.OrdinalIgnoreCase);
         var extracted = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var architecture in new[] { "x64", "x86" })
@@ -393,7 +393,7 @@ public static class Vc14ForceReplace
             {
                 token.ThrowIfCancellationRequested();
                 var media = package.Files.Single(f => f.Path.EndsWith(".cab", StringComparison.OrdinalIgnoreCase));
-                var cab = OfficialCppCatalog.Resolve(assetsRoot, media.Path);
+                var cab = OfficialCppCatalog.Resolve(sourceRoot, media.Path);
                 var directory = Path.Combine(destination, architecture, package.Role);
                 Directory.CreateDirectory(directory);
                 RunExpand(cab, directory);

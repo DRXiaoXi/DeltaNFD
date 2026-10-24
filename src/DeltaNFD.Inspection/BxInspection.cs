@@ -18,9 +18,14 @@ public sealed class BxInspection
 {
     internal const string FullHyperVItemName = BxCatalog.FullHyperVItemName;
     private readonly Func<Task<bool?>> _hypervisorQuery;
-    public BxInspection(Func<Task<bool?>>? hypervisorQuery = null)
+    private readonly Func<HagsSnapshot> _hagsQuery;
+    private readonly Func<MouseParameters> _mouseQuery;
+    public BxInspection(Func<Task<bool?>>? hypervisorQuery = null, Func<HagsSnapshot>? hagsQuery = null,
+        Func<MouseParameters>? mouseQuery = null)
     {
         _hypervisorQuery = hypervisorQuery ?? (() => new SystemTweakInspection().IsHyperVFullyDisabledAsync());
+        _hagsQuery = hagsQuery ?? SystemSwitchInspection.ReadHags;
+        _mouseQuery = mouseQuery ?? SystemSwitchInspection.ReadMouse;
     }
 
     private sealed record PnpDeviceState(string InstanceId, bool? Enabled);
@@ -90,8 +95,21 @@ public sealed class BxInspection
             }
         }
 
+        HagsSnapshot? hags = null;
         foreach (var item in items)
         {
+            if (item.Name == "setsaccel")
+            {
+                try { var native = _mouseQuery(); result[item] = !native.Valid ? BxState.Unknown : native.Acceleration == 0 ? BxState.On : BxState.Off; }
+                catch { result[item] = BxState.Unknown; }
+                continue;
+            }
+            if (BxCatalog.IsHagsItem(item))
+            {
+                try { result[item] = SystemSwitchInspection.HagsItemState(hags ??= _hagsQuery(), item); }
+                catch { result[item] = BxState.Unknown; }
+                continue;
+            }
             if (item.Name == FullHyperVItemName)
             {
                 result[item] = fullHyperVStatus is null ? BxState.Unknown : fullHyperVStatus.Value ? BxState.On : BxState.Off;

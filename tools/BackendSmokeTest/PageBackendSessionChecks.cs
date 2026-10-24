@@ -208,6 +208,8 @@ internal static class PageBackendSessionChecks
             await new BackendShaderService().GetStatusAsync();
             await new BackendNvProfileService().GetEnvironmentAsync();
             await new BackendAceService().ScanAsync();
+            var core = await new BackendAceService().CheckCoreFilesAsync();
+            Check(core.Level != AceCoreCheckLevel.Abnormal, "ACE 游戏归属检测不因多个驱动文件报异常");
             await new BackendRuntimeGuardService().GetStatusAsync();
             await new BackendRuntimeGuardService().Scan14Async();
         }

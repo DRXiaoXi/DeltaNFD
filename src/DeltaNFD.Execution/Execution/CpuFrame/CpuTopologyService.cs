@@ -380,55 +380,25 @@ public sealed class CpuTopologyService : ICpuTopologyService
     /// （SetProcessDefaultCpuSets 不影响既有线程，必须逐线程补齐）。
     /// 进程句柄打不开（拒绝访问 / 受保护进程）返回 false，调用方按用户要求跳过该进程。
     /// </summary>
-    private static bool TryApplyCcdSoft(Process process, ulong mask)
+    internal static bool TryApplyCcdSoft(Process process, ulong mask)
     {
-        using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(process.Id, "cpuSet");
-        if (ownership is null) return false;
-        var handle = Native.CpuSets.OpenProcessForCpuSets(process.Id);
-        if (handle == nint.Zero)
-        {
-            return false;
-        }
+        using var writer = Native.CpuSets.WriteSession.TryOpen(process.Id);
+        if (writer is null || !writer.SetDefault(mask)) return false;
 
         try
         {
-            if (!Native.CpuSets.SetDefaultByMask(handle, mask))
+            foreach (ProcessThread thread in process.Threads)
             {
-                return false;
+                using (thread) writer.SetThread(thread.Id, mask);
             }
-
-            try
-            {
-                foreach (ProcessThread thread in process.Threads)
-                {
-                    var threadHandle = Native.CpuSets.OpenThreadForCpuSets(thread.Id);
-                    if (threadHandle == nint.Zero)
-                    {
-                        continue; // 被拒线程跳过
-                    }
-
-                    try
-                    {
-                        Native.CpuSets.SetThreadSelectedByMask(threadHandle, mask);
-                    }
-                    finally
-                    {
-                        Native.CpuSets.CloseHandleSafe(threadHandle);
-                    }
-                }
-            }
-            catch
-            {
-                // 线程快照枚举中途失效（进程退出竞态）：默认集已设置成功，
-                // 既有线程锁核部分跳过——之后新建的线程仍会继承默认集
-            }
-
-            return true;
         }
-        finally
+        catch
         {
-            Native.CpuSets.CloseHandleSafe(handle);
+            // 线程快照枚举中途失效（进程退出竞态）：默认集已设置成功，
+            // 既有线程锁核部分跳过——之后新建的线程仍会继承默认集
         }
+
+        return true;
     }
 
     public Task<OperationResult> ApplyDualCcdSchedulingAsync(int gameCcdIndex) => Task.Run(async () =>
@@ -437,7 +407,9 @@ public sealed class CpuTopologyService : ICpuTopologyService
             return OperationResult.Fail("脱机模式或恢复流程中，普通双 CCD 调度已暂停。");
         using var targetOperation = GameTargetService.Default.BeginOperation();
         Log.Info($"双CCD调度：应用（游戏→CCD{gameCcdIndex}）");
+        var elapsed = Stopwatch.StartNew();
         var topology = await GetTopologyAsync();
+        var topologyMs = elapsed.Elapsed.TotalMilliseconds;
         if (!topology.IsAmdMultiCcd || topology.Ccds.Count != 2 ||
             topology.GroupCount != 1 || topology.Ccds.Any(c => c.Group != 0) ||
             gameCcdIndex is < 0 or > 1)
@@ -476,6 +448,7 @@ public sealed class CpuTopologyService : ICpuTopologyService
             }
         }
 
+        var gameMs = elapsed.Elapsed.TotalMilliseconds - topologyMs;
         // 其余全部进程软锁核到非游戏 CCD（豁免名单见 DualCcdExemptNames）；
         // 打开被拒绝访问的进程直接跳过
         var locked = 0;
@@ -508,12 +481,16 @@ public sealed class CpuTopologyService : ICpuTopologyService
             }
         }
 
+        var backgroundMs = elapsed.Elapsed.TotalMilliseconds - topologyMs - gameMs;
         // 双CCD调度优先于单CCD排除 CPU0；撤销双CCD时由上层恢复保存的单CCD规则。
         SingleCcdExcludeActive = false;
         DualCcdSchedulingActive = true;
 
         // 强制覆写异类策略（生效=4，线程/短线程=0）；失败只记日志不影响调度
         await ForceGamingHeteroPolicyAsync();
+        Log.Info($"双CCD调度耗时：拓扑 {topologyMs:F1} ms，游戏 {gameMs:F1} ms，后台 {backgroundMs:F1} ms，"
+            + $"异类策略 {elapsed.Elapsed.TotalMilliseconds - topologyMs - gameMs - backgroundMs:F1} ms，"
+            + $"合计 {elapsed.Elapsed.TotalMilliseconds:F1} ms；后台成功 {locked}，跳过 {denied}。");
 
         var gameNote = gameApplied > 0 ? "" : "（目标游戏当前未运行，启动后将由持续覆盖自动补锁）";
         return OperationResult.Ok(

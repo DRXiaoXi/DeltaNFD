@@ -77,7 +77,8 @@ public partial class BxItemVm : ObservableObject
     /// <summary>开关拨动后尚未应用到系统。</summary>
     public bool PendingChange => CanEdit && (HasGears
         ? SelectedGearIndex != ActualGearIndex
-        : IsOn != ActualOn);
+        : IsOn != ActualOn || HasUserIntent && ActualState == BxState.Mixed &&
+            (DeepTweak == SystemTweak.HardwareGpuScheduling || Item is not null && BxCatalog.IsHagsItem(Item)));
 
     /// <summary>用户拨动过开关 / 换过档位但尚未应用——切换子栏目时携带保留，不随状态刷新被重置。</summary>
     public bool HasUserIntent { get; set; }
@@ -152,7 +153,10 @@ public partial class BxItemVm : ObservableObject
             return;
         }
 
-        StateText = UnavailableReason is not null ? "不适用" : DescribeState(ActualState, Mode, DisplayName);
+        StateText = UnavailableReason is not null ? "不适用"
+            : (DeepTweak == SystemTweak.HardwareGpuScheduling || Item is not null && BxCatalog.IsHagsItem(Item))
+                && DeltaNFD.Inspection.SystemSwitchInspection.LastHags is { } hags ? hags.Detail
+                : DescribeState(ActualState, Mode, DisplayName);
     }
 
     /// <summary>
@@ -731,10 +735,13 @@ public partial class BxDbViewModel : ObservableObject
         row.DeepTweak == SystemTweak.HardwareGpuScheduling ||
         row.Item is not null && BxCatalog.IsHagsItem(row.Item);
 
+    private static bool IsMouseRow(BxItemVm row) => row.DeepTweak == SystemTweak.MouseAccelerationOff || row.Item?.Name == "setsaccel";
+
     private void ClearOtherHagsIntents(BxItemVm selected)
     {
-        if (!IsHagsRow(selected) || !selected.PendingChange) return;
-        foreach (var other in AllRows.Where(r => !ReferenceEquals(r, selected) && IsHagsRow(r)))
+        if ((!IsHagsRow(selected) && !IsMouseRow(selected)) || !selected.PendingChange) return;
+        foreach (var other in AllRows.Where(r => !ReferenceEquals(r, selected) &&
+            (IsHagsRow(selected) ? IsHagsRow(r) : IsMouseRow(r))))
         {
             other.HasUserIntent = false;
             other.IsOn = other.ActualOn;
@@ -810,6 +817,11 @@ public partial class BxDbViewModel : ObservableObject
         if (pending.Count(IsHagsRow) > 1)
         {
             StatusText = "HAGS 多个入口存在冲突，请只保留一个待应用操作。";
+            return;
+        }
+        if (pending.Count(IsMouseRow) > 1)
+        {
+            StatusText = "鼠标设置多个入口存在冲突，请只保留一个待应用操作。";
             return;
         }
 
@@ -916,6 +928,7 @@ public partial class BxDbViewModel : ObservableObject
         var appliedOk = 0;
         var appliedFail = 0;
         var appliedSkipped = 0;
+        var rebootNeeded = new List<string>();
         Log.Info($"扩展库：应用 {pending.Count} 项（{string.Join("、", pending.Select(p => p.DisplayName))}）");
         try
         {
@@ -958,6 +971,7 @@ public partial class BxDbViewModel : ObservableObject
                     else if (result.Success)
                     {
                         appliedOk++;
+                        if (result.RequiresReboot) rebootNeeded.Add(row.DisplayName);
                     }
                     else
                     {
@@ -984,6 +998,7 @@ public partial class BxDbViewModel : ObservableObject
 
             Log.Info($"扩展库：应用完成，成功 {appliedOk} 项，安全跳过 {appliedSkipped} 项，失败 {appliedFail} 项");
             StatusText = $"已应用 {appliedOk} 项，安全跳过 {appliedSkipped} 项" + (appliedFail > 0 ? $"，失败 {appliedFail} 项（详情见上）。" : "。");
+            if (rebootNeeded.Count > 0) StatusText += " 以下配置已保存，需重启后核实生效：" + string.Join("、", rebootNeeded.Distinct()) + "。";
             await UpdateBackupSummaryAsync();
 
             // 优化后收尾：移除会话排除项 + 需要时恢复实时保护（结果在状态刷新后提醒）
@@ -999,7 +1014,7 @@ public partial class BxDbViewModel : ObservableObject
 
             // 统一重读状态（真实状态回填 ActualOn，待应用标记自动消失；结果回写主页扫描缓存）：
             // 本轮应用的行（含其他子栏目）+ 当前栏目全部行；其他栏目未改动的行在下次进入时刷新
-            var toRefresh = pending.Concat(Items).Concat(AllRows.Where(IsHagsRow)).Distinct().ToList();
+            var toRefresh = pending.Concat(Items).Concat(AllRows.Where(r => IsHagsRow(r) || IsMouseRow(r))).Distinct().ToList();
 
             // 深度行：重读真实状态并回写扫描缓存
             List<TweakStatus>? freshDeep = null;

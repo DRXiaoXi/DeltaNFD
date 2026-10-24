@@ -20,6 +20,9 @@ internal sealed record Vc14FileRepairPackage(string Architecture, string Role, s
 
 internal static class Vc14FileRepairSource
 {
+    // Both MSI file repair and DLL replacement use this one deployed media directory.
+    internal const string DirectoryName = "Vc14FileRepair14.42";
+    internal static string InstalledRoot => Path.Combine(BackendEnvironment.AssetsRoot, DirectoryName);
     internal static readonly IReadOnlyList<Vc14FileRepairPackage> Packages = Load();
     private static Vc14FileRepairPackage[] Load()
     {

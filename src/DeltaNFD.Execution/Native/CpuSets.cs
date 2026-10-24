@@ -1,4 +1,6 @@
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+using DeltaNFD.Execution.Procman;
 
 namespace DeltaNFD.Native;
 
@@ -13,6 +15,75 @@ namespace DeltaNFD.Native;
 /// <summary>进程默认 CPU 集读写（按 GROUP_AFFINITY 掩码形式，单组系统直接用组 0）。</summary>
 public static class CpuSets
 {
+    /// <summary>
+    /// One synchronous process CPU-set operation: keep the property mutex through the default-set
+    /// and existing-thread writes. Re-entering it per thread would deserialize the same ownership
+    /// file thousands of times during a CCD sweep. The lease is never reused after this process.
+    /// </summary>
+    internal sealed class WriteSession : IDisposable
+    {
+        private readonly ProcessPropertyGate.Lease _lease;
+        private readonly SafeProcessHandle _process;
+        private bool _disposed;
+        private WriteSession(ProcessPropertyGate.Lease lease, SafeProcessHandle process)
+        { _lease = lease; _process = process; }
+
+        internal static WriteSession? TryOpen(int pid)
+        {
+            var lease = ProcessPropertyGate.TryEnterGameLease(pid, "cpuSet");
+            if (lease is null) return null;
+            SafeProcessHandle? process = null;
+            try
+            {
+                process = new SafeProcessHandle(OpenProcessForCpuSets(pid), ownsHandle: true);
+                if (process.IsInvalid || !ProcmanIdentity.Matches(process, lease.Identity))
+                { process.Dispose(); lease.Dispose(); return null; }
+                return new WriteSession(lease, process);
+            }
+            catch { process?.Dispose(); lease.Dispose(); return null; }
+        }
+
+        private bool CanWrite() => !_disposed && !_process.IsClosed && !_process.IsInvalid
+            && _lease.AuthorizesGameWrite(_lease.Identity.Pid, "cpuSet")
+            && ProcmanIdentity.Matches(_process, _lease.Identity);
+
+        internal bool SetDefault(ulong mask)
+        {
+            try
+            {
+                if (mask == 0 || !CanWrite()) return false;
+                return SetProcessDefaultCpuSetMasks(_process.DangerousGetHandle(),
+                    [new GROUP_AFFINITY { Mask = (nuint)mask, Group = 0 }], 1);
+            }
+            catch { return false; }
+        }
+
+        internal bool SetThread(int threadId, ulong mask)
+        {
+            try { if (mask == 0 || !_lease.AuthorizesGameWrite(_lease.Identity.Pid, "cpuSet")) return false; }
+            catch { return false; }
+            var thread = OpenThreadForCpuSets(threadId);
+            if (thread == IntPtr.Zero) return false;
+            try
+            {
+                // A recycled TID belonging to another process must never inherit this lease.
+                return GetProcessIdOfThread(thread) == (uint)_lease.Identity.Pid
+                    && CanWrite()
+                    && SetThreadSelectedCpuSetMasks(thread,
+                        [new GROUP_AFFINITY { Mask = (nuint)mask, Group = 0 }], 1);
+            }
+            catch { return false; }
+            finally { CloseHandleSafe(thread); }
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            try { _process.Dispose(); } finally { _lease.Dispose(); }
+        }
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct GROUP_AFFINITY
     {

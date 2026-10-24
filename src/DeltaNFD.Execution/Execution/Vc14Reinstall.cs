@@ -569,7 +569,7 @@ internal sealed class Vc14ReinstallEnvironment(bool allowTemporaryInstaller = fa
         VerifyBaselines();
         if (!Vc14PackageTrust.Verify(Baseline(arch), Vc14Reinstall.BaselineVersion, arch))
             throw new IOException("14.42微软原包签名未通过核验。");
-        var sourceRoot = Path.Combine(BackendEnvironment.AssetsRoot, "Vc14FileRepair14.42");
+        var sourceRoot = Vc14FileRepairSource.InstalledRoot;
         var sources = Vc14FileRepairSource.Verify(sourceRoot, arch);
         foreach (var source in sources.OrderBy(p => p.Role == "Minimum" ? 0 : 1))
         {

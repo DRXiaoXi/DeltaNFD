@@ -247,7 +247,7 @@ public partial class DashboardViewModel : ObservableObject
             return;
         }
 
-        // 与 ACE 页一致执行完整的组件/服务/目录/注册表扫描，并补充 ACE-CORE 冗余检查。
+        // 与 ACE 页共用只读组件/游戏归属检查，不按驱动文件数量判异常。
         var scan = await ServiceLocator.Ace.ScanAsync();
         if (!CanApplyHealth(generation))
             return;
@@ -277,9 +277,16 @@ public partial class DashboardViewModel : ObservableObject
             return;
         }
 
+        if (core.Level == AceCoreCheckLevel.NeedsReview)
+        {
+            AceHealthState = DashboardHealthState.Information;
+            AceStatusText = core.Summary;
+            return;
+        }
+
         AceHealthState = DashboardHealthState.Normal;
         var runningAceProcesses = scan.RunningProcesses.Except(scan.BlockingProcesses, StringComparer.OrdinalIgnoreCase).ToList();
-        if (!scan.AnythingFound && runningAceProcesses.Count == 0)
+        if (!scan.AnythingFound && runningAceProcesses.Count == 0 && core.Games.Count == 0 && core.SysCount == 0)
         {
             AceStatusText = scan.BlockingProcesses.Count > 0 ? "未检测到 ACE 残留组件（游戏/守卫进程正在运行）" : "未检测到 ACE 组件";
             return;
@@ -287,7 +294,7 @@ public partial class DashboardViewModel : ObservableObject
 
         var serviceCount = scan.Services.Count(item => item.Exists);
         var pathCount = scan.Paths.Count(item => item.Exists);
-        AceStatusText = $"检测到 {serviceCount} 个 ACE 服务、{pathCount} 个文件目录、{scan.RegistryKeys.Count} 个注册表项" + (runningAceProcesses.Count > 0 ? $"、{runningAceProcesses.Count} 个 ACE 进程运行中" : "") + (core.Level == AceCoreCheckLevel.Normal ? "；ACE-CORE 驱动正常" : "；未发现 ACE-CORE 驱动文件");
+        AceStatusText = $"检测到 {serviceCount} 个 ACE 服务、{pathCount} 个文件目录、{scan.RegistryKeys.Count} 个注册表项" + (runningAceProcesses.Count > 0 ? $"、{runningAceProcesses.Count} 个 ACE 进程运行中" : "") + "；" + core.Summary;
     }
 
     private async Task LoadRuntimeHealthAsync(int generation)

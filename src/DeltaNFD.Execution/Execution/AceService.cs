@@ -491,7 +491,7 @@ private Task<AceScanResult> ScanAsyncFixtureAsync() => Task.Run(() =>
             : BackendResult.PartialResult("ace.blocked", message, done);
     }
 
-    // ---------------- ACE-CORE 冗余检测 ----------------
+    // ---------------- ACE-CORE 游戏归属检测 ----------------
 
     public Task<AceCoreCheckResult> CheckCoreFilesAsync() => _environment is RealAceCleanupEnvironment ? new DeltaNFD.Inspection.AceInspection(_target, _deltaRunning).CheckCoreFilesAsync() : CheckCoreFilesAsyncFixtureAsync();
 private Task<AceCoreCheckResult> CheckCoreFilesAsyncFixtureAsync() => Task.Run(() =>
@@ -506,83 +506,13 @@ private Task<AceCoreCheckResult> CheckCoreFilesAsyncFixtureAsync() => Task.Run((
         // C:\Program Files\AntiCheatExpert 下全部 *.sys，是纯粹"碰"ACE 的操作，必须先拦。
         if (_deltaRunning())
         {
-            Log.Info("ACE 检测：跳过 ACE-CORE 冗余检测（三角洲进程运行中）");
+            Log.Info("ACE 检测：跳过 ACE-CORE 游戏归属检测（三角洲进程运行中）");
             return BlockedCore();
         }
 
-        var root = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "AntiCheatExpert");
-        if (!Directory.Exists(root))
-        {
-            return new AceCoreCheckResult
-            {
-                Level = AceCoreCheckLevel.None,
-                SysCount = 0,
-                Files = new List<string>(),
-                Summary = "未安装 ACE（未找到 C:\\Program Files\\AntiCheatExpert），无需检测。",
-                Advice = "无需处理。",
-            };
-        }
-
-        List<(string RelPath, long Size)> sysFiles;
-        try
-        {
-            sysFiles = new DirectoryInfo(root)
-                .EnumerateFiles("*.sys", SearchOption.AllDirectories)
-                .Where(f => f.Name.Contains("ACE-CORE", StringComparison.OrdinalIgnoreCase))
-                .Select(f => { try { return (RelPath: f.FullName[(root.Length + 1)..], Size: f.Length); } catch { return (RelPath: f.Name, Size: -1L); } })
-                .OrderBy(f => f.RelPath, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-        catch (Exception ex)
-        {
-            return new AceCoreCheckResult
-            {
-                Level = AceCoreCheckLevel.Failed,
-                SysCount = 0,
-                Files = new List<string> { $"扫描失败：{ex.Message}" },
-                Summary = "ACE-CORE 文件扫描失败。",
-                Advice = "可重试检测，或手动检查 C:\\Program Files\\AntiCheatExpert 目录。",
-            };
-        }
-
-        var details = sysFiles
-            .Select(f => "· " + f.RelPath + "（" + (f.Size < 0 ? "未知大小" : $"{f.Size / 1024.0 / 1024.0:0.0} MB") + "）")
-            .ToList();
-
-        if (sysFiles.Count == 0)
-        {
-            return new AceCoreCheckResult
-            {
-                Level = AceCoreCheckLevel.None,
-                SysCount = 0,
-                Files = details,
-                Summary = "未找到 ACE-CORE 系列 sys 文件（ACE 未安装或已被一键清除）。",
-                Advice = "无需处理——下次启动游戏时 ACE 会自动重新安装。",
-            };
-        }
-
-        if (sysFiles.Count == 1)
-        {
-            return new AceCoreCheckResult
-            {
-                Level = AceCoreCheckLevel.Normal,
-                SysCount = 1,
-                Files = details,
-                Summary = "ACE-CORE 驱动文件正常（只有 1 个）。",
-                Advice = "无需处理。",
-            };
-        }
-
-        return new AceCoreCheckResult
-        {
-            Level = AceCoreCheckLevel.Abnormal,
-            SysCount = sysFiles.Count,
-            Files = details,
-            Summary = $"检测到 {sysFiles.Count} 个 ACE-CORE 系列 sys 文件（冗余）——多版本残留会导致反作弊异常。",
-            Advice = "建议：使用上方「一键清除 ACE」，然后用 WeGame / 游戏启动器对三角洲执行一次「修复」"
-                     + "（普通修复即可，不要使用深度修复），修复会重新安装干净的 ACE 组件。",
-        };
+        // Test environments must stay within their injected component root and never query real game installations.
+        return DeltaNFD.Inspection.AceCoreOwnershipInspection.Read(_environment.AceInstallDirectory,
+            _deltaRunning, static (_, _) => []);
     });
 
     // ---------------- ACE 虚拟化环境检测 ----------------

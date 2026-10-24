@@ -1,5 +1,65 @@
 using DeltaNFD.Services;
 
+if (args is ["--vc14-installed-media-child", var mediaApp, var mediaWindows, var mediaScenario])
+{
+    try { await Vc14InstalledMediaChecks.ChildAsync(mediaApp, mediaWindows, mediaScenario); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+if (args is ["--vc14-installed-media-checks", var installedMediaSource])
+{
+    try { await Vc14InstalledMediaChecks.RunAsync(installedMediaSource); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--ace-ownership-checks"])
+{
+    try { AceOwnershipChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--ace-ownership-native-readonly"])
+{
+    try
+    {
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        var result = await new DeltaNFD.Inspection.AceInspection().CheckCoreFilesAsync();
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { elapsedMs = timer.Elapsed.TotalMilliseconds, result }));
+    }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--system-switch-backend-mapping", var systemSwitchBackend])
+{
+    try { SystemSwitchChecks.CheckBackendMapping(systemSwitchBackend); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--system-switch-checks"])
+{
+    try { await SystemSwitchChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+if (args is ["--system-switch-native-readonly"])
+{
+    try { SystemSwitchChecks.ReadNative(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--ccd-latency-child"]) { CcdLatencyChecks.Child(); return; }
+if (args is ["--ccd-latency-checks"])
+{
+    try { CcdLatencyChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args is ["--frame-close-checks"])
 {
     try { await FrameCloseChecks.RunAsync(); }

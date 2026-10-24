@@ -1,28 +1,28 @@
 {
   "schemaVersion": 1,
-  "version": "0.9291",
-  "displayVersion": "Alpha0.929-RC1",
+  "version": "0.9292",
+  "displayVersion": "Alpha0.929-RC2",
   "channel": "alpha",
   "mandatory": false,
   "minimumSupportedVersion": "",
-  "publishedAtUtc": "2026-10-23T14:53:53Z",
-  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9291",
-  "notes": "Alpha0.929-RC1 为内测修正版，内部版本 0.9291。公测版本保持 Beta0.922-RC3。\n\n**下载安装包：** [DeltaNFD_Setup_0.9291_x64.exe](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9291/DeltaNFD_Setup_0.9291_x64.exe)\n\n- 修复 Alpha0.929 安装时“安装前安全交接未完成、未能获得本次安全交接报告、退出码=1”的问题：交接脚本采用 UTF-8 BOM，兼容 Windows PowerShell 5.1。\n- 增加真实 PowerShell 5.1 编码、解析和加载检查；构建后核对嵌入脚本与安装目录脚本字节一致，并覆盖首次安装、覆盖安装及运行中程序交接场景。\n- 保留现有安全交接和恢复证据门禁；不跳过待恢复事务、不强杀进程。\n- 保留 Alpha0.929 其余功能，继续排除卡顿检测和着色器研究。\n\n默认自建服务器、替换变更文件，保留手选更新方式。安装包自带 .NET 8；无需下载其他清单或分块。完整安装界面仍需玩家测试，自动验证使用隔离目录与自有假应用。",
+  "publishedAtUtc": "2026-10-24T11:50:38Z",
+  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9292",
+  "notes": "## 下载安装\n\n**[下载 Alpha0.929-RC2 Windows x64 安装包](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9292/DeltaNFD_Setup_0.9292_x64.exe)**\n\n内测通道版本，内部数值版本为 **0.9292**。已安装用户可在工具中选择“内测通道”检查更新，支持默认的替换文件更新及全量安装包更新；公测通道保持原版本。\n\n## 本次修复\n\n- 降低双 CCD 调度中重复读取进程所有权记录造成的延迟，保留身份校验、写前记录与恢复责任。\n- 修复鼠标加速开关即时应用与回读，统一基本/深度优化和还原入口；HAGS 区分实际运行状态、待重启、不支持与待核对。\n- ACE 检测支持更多已安装游戏，多款 ACE 游戏及多个 ACE-CORE 可正常共存；不再仅凭数量判异常或建议清理，归属未确认仅作信息提示。\n- 修复“强制替换 14.x DLL”遗漏载荷目录层级、误查 `Assets\\x64` 的问题，预览和执行共用正式媒体位置；补充冷进程安装布局及缺失/篡改拒绝验证。\n- 保留 RC1 的 Windows PowerShell 5.1 安装交接编码修复。\n\n仍为 .NET 8、自包含部署，只有六个维护后端；**不含卡顿检测、着色器研究、独立预热客户端或私有资源**。系统缓存维护保留。\n\n安装包与更新文件均提供 SHA256 核验。其余分块由自动更新使用，手动下载安装只需上方 EXE。源码 ZIP 和校验表位于附件中。",
   "installers": [
     {
-      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9291/DeltaNFD_Setup_0.9291_x64.exe",
-      "sizeBytes": 250429012,
-      "sha256": "b022a9bd23e7157217556cf2134122ccd8ae18128ad5b61db7733bff56492547"
+      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9292/DeltaNFD_Setup_0.9292_x64.exe",
+      "sizeBytes": 250474902,
+      "sha256": "4aa46e4f46a63f687addcfcb1f0a5c8e4b84a075a52ebd4005babb3385f45085"
     },
     {
-      "url": "https://deltaxiaoxi.xin/updates/packages/0.9291/DeltaNFD_Setup_0.9291_x64.exe",
-      "sizeBytes": 250429012,
-      "sha256": "b022a9bd23e7157217556cf2134122ccd8ae18128ad5b61db7733bff56492547"
+      "url": "https://deltaxiaoxi.xin/updates/packages/0.9292/DeltaNFD_Setup_0.9292_x64.exe",
+      "sizeBytes": 250474902,
+      "sha256": "4aa46e4f46a63f687addcfcb1f0a5c8e4b84a075a52ebd4005babb3385f45085"
     }
   ],
   "fileUpdate": {
-    "url": "https://deltaxiaoxi.xin/updates/packages/0.9291/files.json",
-    "sizeBytes": 841949,
-    "sha256": "a30180dab50991175f1d37f804bab5f2c06b70137b9a247d3b1403fd0ae22506"
+    "url": "https://deltaxiaoxi.xin/updates/packages/0.9292/files.json",
+    "sizeBytes": 841960,
+    "sha256": "3d6e500b094f566f2c159eca12fa7e7624ca37c99f5f96af6a5dc684a663ea28"
   }
 }
