@@ -26,8 +26,14 @@ internal static class DashboardDesignChecks
         var text = File.ReadAllText(view);
         Require(!text.Contains("HeroGradientBrush") && !text.Contains("一键完成进程") && !text.Contains("给三角洲"), "marketing graphics removed");
         Require(!xml.Descendants().Any(e => e.Name.LocalName == "Expander") && !text.Contains("HomeBandBrush"), "vertical list restored without large dark cards");
-        Require(text.IndexOf("BrandPanel", StringComparison.Ordinal) < text.IndexOf("FramePanel", StringComparison.Ordinal) &&
-            text.IndexOf("FramePanel", StringComparison.Ordinal) < text.IndexOf("ComponentPanel", StringComparison.Ordinal), "old homepage order restored");
+        var nameAttribute = XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml");
+        var tileGrid = xml.Descendants().Single(e => (string?)e.Attribute(nameAttribute) == "DashboardTileGrid");
+        var tiles = tileGrid.Elements().Where(e => e.Name.LocalName == "Border")
+            .Select(e => (string?)e.Attribute(nameAttribute)).ToArray();
+        Require(tiles.SequenceEqual(new[] { "BrandPanel", "FramePanel", "HealthTile", "ComponentPanel" }),
+            "current homepage keeps target, frame, health and optimization-preload tiles");
+        Require(xml.Descendants().Any(e => (string?)e.Attribute(nameAttribute) == "Compact")
+            && xml.Descendants().Any(e => (string?)e.Attribute(nameAttribute) == "Wide"), "wide and compact adaptive layout retained");
         foreach (var name in new[] { "ShaderStatusText", "AceStatusText", "RuntimeStatusText" })
             Require(text.Contains(name), "complete diagnostics retained");
         Require(text.Contains("MinHeight=\"220\"") && text.Contains("TargetName") && text.Contains("TargetPathText") && text.Contains("FontSize=\"28\""), "brand and target panel sizing");
@@ -41,7 +47,7 @@ internal static class DashboardDesignChecks
         Require(!text.Contains("x:Key=\"HomeBrandBrush\"") && app.Contains("x:Key=\"HomeBrandBrush\""), "brand brush follows shared theme resources");
         Require(appCode.Contains("dict[\"HomeBrandBrush\"]") && appCode.Contains("brand.Color =") && appCode.Contains("(byte)0xC8 : (byte)0xC0"),
             "theme accent updates live brand brushes and preserves alpha");
-        Console.WriteLine("Dashboard checks passed: 343 state combinations, restored vertical layout, brand target panel and lifecycle wiring. Not a GUI or screen-scale validation.");
+        Console.WriteLine($"Dashboard checks passed: {states.Length * states.Length * states.Length} state combinations, current adaptive tiles, complete diagnostics and lifecycle wiring. Not a GUI or screen-scale validation.");
     }
     private static void Require(bool condition, string message)
     { if (!condition) throw new Exception(message); }
