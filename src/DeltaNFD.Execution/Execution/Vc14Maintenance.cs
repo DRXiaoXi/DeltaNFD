@@ -10,16 +10,21 @@ public static class Vc14Maintenance
         return scan;
     });
 
-    public static Task<Vc14ReinstallPreview> PreviewAsync(Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false) =>
-        Task.Run(() => Vc14Reinstall.Preview(new Vc14ReinstallEnvironment(allowTemporaryInstaller), mode));
+    public static Task<Vc14ReinstallPreview> PreviewAsync(Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false,
+        Vc14Baseline baseline = Vc14Baseline.V142) =>
+        !baseline.IsSupported()
+            ? Task.FromResult(new Vc14ReinstallPreview(new Vc14Scan([], [], ["未知的 14.x 安装基线。"]), [], "", false, "未知的 14.x 安装基线。") { Baseline = baseline })
+            : Task.Run(() => Vc14Reinstall.Preview(new Vc14ReinstallEnvironment(allowTemporaryInstaller, baseline), mode));
 
     public static Task<OperationResult> RepairAsync(string fingerprint, IProgress<string>? progress, CancellationToken token, Vc14RepairMode mode = Vc14RepairMode.Full,
-        bool allowTemporaryInstaller = false)
-        => Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
+        bool allowTemporaryInstaller = false, Vc14Baseline baseline = Vc14Baseline.V142)
+        => !baseline.IsSupported()
+            ? Task.FromResult(OperationResult.Fail("未知的 14.x 安装基线，未执行修复。"))
+            : Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
         {
             using var budget = CancellationTokenSource.CreateLinkedTokenSource(token);
             budget.CancelAfter(TimeSpan.FromMinutes(40));
-            return Vc14Reinstall.RunAsync(new Vc14ReinstallEnvironment(allowTemporaryInstaller), fingerprint, progress, budget.Token, mode).GetAwaiter().GetResult();
+            return Vc14Reinstall.RunAsync(new Vc14ReinstallEnvironment(allowTemporaryInstaller, baseline), fingerprint, progress, budget.Token, mode).GetAwaiter().GetResult();
         }), token);
 
     public static Task<OperationResult> RestoreTemporaryInstallerAsync() => Task.Run(() => RuntimeGuardProtection.Exclusive(() =>

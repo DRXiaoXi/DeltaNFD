@@ -17,6 +17,16 @@ internal static class GpuCommands
             [BackendCommands.GpuSpoofStatus] = SpoofStatusAsync,
             [BackendCommands.GpuSpoofApply] = SpoofApplyAsync,
             [BackendCommands.GpuSpoofRestore] = SpoofRestoreAsync,
+            [BackendCommands.GpuDriverNamePreview] = async c => BackendResult.Ok(c.Command, "已核验当前驱动型号。",
+                await new GpuSpoofService().PreviewDriverNameAsync(c.ArgsAs<GpuSpoofPathArgs>().RegistryPath)),
+            [BackendCommands.GpuDriverNameRestore] = async c =>
+            {
+                var args = c.ArgsAs<GpuDriverNameRestoreArgs>();
+                var result = await new GpuSpoofService().RestoreDriverNameAsync(args.RegistryPath, args.Fingerprint);
+                return new BackendResult(result.Success ? BackendResultStatuses.Ok : BackendResultStatuses.Failed,
+                    c.Command, result.Message, [], result.OutcomeUnknown,
+                    System.Text.Json.JsonSerializer.SerializeToElement(result, BackendJson.SerializerOptions));
+            },
             [BackendCommands.GpuSpoofReload] = SpoofReloadAsync,
             [BackendCommands.GpuWatchEvaluate] = WatchEvaluateAsync,
             [BackendCommands.GpuDriverStatus] = DriverStatusAsync,

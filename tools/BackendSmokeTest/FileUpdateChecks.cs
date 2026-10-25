@@ -115,9 +115,9 @@ internal static class FileUpdateChecks
 
         foreach (var path in new[] { "../escape", "C:/a.dll", "/a.dll", "Assets//x", "Assets/./x", "Assets/../x", "Assets/a:stream",
             "Assets/CON.dll", "Assets/LPT1", "Assets/x.", "Assets/x ", "settings.json", "update-source.json", "unins000.exe", "Plugins/a.dll",
-            "Assets/logs/a.txt", "backups/x", "bad-directory/a.dll", "Assets\\x" })
+            "Assets/logs/a.txt", "backups/x", "bad-directory/a.dll", "Assets\\x", "Controls/a.exe", "Themes/a.dll", "Controls/nested/a.xbf", "Themes/settings.json", "Controls/a.xbf.exe" })
             Reject(() => FileUpdateRules.Relative(path), "protected path " + path);
-        foreach (var path in new[] { "DeltaNFD.dll", "Assets/RuntimeHighFps/vstor/Common Files/test.dll", "zh-CN/module.dll", "Microsoft.UI.Xaml/test.xbf" })
+        foreach (var path in new[] { "DeltaNFD.dll", "Assets/RuntimeHighFps/vstor/Common Files/test.dll", "zh-CN/module.dll", "Microsoft.UI.Xaml/test.xbf", "Controls/PageHeader.xbf", "Themes/AppStyles.xbf", "Themes/TileStyles.xbf", "themes/SectionStyles.XBF" })
             Check(FileUpdateRules.Relative(path) == path, "允许正式组件和本地化资源路径");
         var duplicate = Simple(); duplicate.Files.Add(Entry("A.DLL", newBytes));
         Reject(() => FileUpdateRules.Validate(duplicate, false), "case-insensitive collision");

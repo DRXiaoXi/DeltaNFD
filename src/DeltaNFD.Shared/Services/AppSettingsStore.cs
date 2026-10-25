@@ -119,6 +119,8 @@ public sealed class AppSettings
 
     // ---- 常规设置 ----
     public bool CloseToTrayEnabled { get; set; }
+    /// <summary>仅登录自启动时隐藏主窗口并显示托盘图标；默认关闭，手动打开不受影响。</summary>
+    public bool SilentStartupEnabled { get; set; }
 
     /// <summary>用户选择“下次不再询问”后，关闭窗口时不再提示开启后台驻留。</summary>
     public bool SuppressBackgroundRunPrompt { get; set; }
@@ -146,6 +148,9 @@ public sealed class AppSettings
 
     /// <summary>用户登记的三角洲安装根目录列表（可包含多份安装），与 GameRootOverride 并存并合并去重。</summary>
     public List<string> GameInstallRoots { get; set; } = new();
+
+    /// <summary>玩家手动登记的 ACE 游戏检索目录，仅供只读检测，不加入三角洲定位或清理范围。</summary>
+    public List<string> AceGameSearchRoots { get; set; } = new();
 
     // ---- 运行库保护 ----
     public bool RuntimeGuardEnabled { get; set; }

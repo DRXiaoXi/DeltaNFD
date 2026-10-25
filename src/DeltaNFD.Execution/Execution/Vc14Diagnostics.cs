@@ -15,7 +15,7 @@ internal static class Vc14Diagnostics
                 .Select(Vc14DependencyPolicy.ReadInstallerLog);
             return ExplainDllMismatch(evidence, mismatch);
         }
-        catch { return "MSI 登记已是 14.42，但系统 DLL 实际版本仍未对齐，原包修复后仍不能确认成功。\n" + mismatch; }
+        catch { return "MSI 登记已是目标基线，但系统 DLL 实际版本仍未对齐，原包修复后仍不能确认成功。\n" + mismatch; }
     }
 
     internal static string ExplainDllMismatch(IEnumerable<string> installerLogs, string mismatch)
@@ -24,9 +24,9 @@ internal static class Vc14Diagnostics
             log.Contains("APPCOMPAT: (GetFileInstallState) Altered install mode for shared redist file", StringComparison.Ordinal)
             && log.Contains("since the same component with higher versioned keyfile exists", StringComparison.Ordinal));
         return compatibilityBlock
-            ? "MSI 登记已是 14.42，但 Windows Installer 的共享运行库兼容规则阻止了较高版本 DLL 被覆盖（APPCOMPAT）。"
+            ? "MSI 登记已是目标基线，但 Windows Installer 的共享运行库兼容规则阻止了目标版本 DLL 被覆盖（APPCOMPAT）。"
                 + "原包修复返回成功仍可能保留较新文件，本次不能报告修复成功。重复普通修复或仅进入安全模式不能保证解决；需另行核验系统版本规则及文件归属，不能直接删除系统 DLL。\n" + mismatch
-            : "MSI 登记已是 14.42，但系统 DLL 实际版本仍未对齐（更高版本文件可能被其他产品持有）。原包修复后仍未恢复，不能报告修复成功。\n" + mismatch;
+            : "MSI 登记已是目标基线，但系统 DLL 实际版本仍未对齐（更高版本文件可能被其他产品持有）。原包修复后仍未恢复，不能报告修复成功。\n" + mismatch;
     }
 
     internal static bool Relevant(string name, string version) => Vc14BetaUninstall.RelevantForResidue(name, version);

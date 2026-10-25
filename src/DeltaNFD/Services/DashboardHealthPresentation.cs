@@ -7,6 +7,14 @@ public enum DashboardHealthState
 
 public static class DashboardHealthPresentation
 {
+    public static DashboardHealthState AceCore(DeltaNFD.Services.AceCoreCheckLevel level, bool hasExcessCoreFiles = false) => level switch
+    {
+        DeltaNFD.Services.AceCoreCheckLevel.Abnormal => DashboardHealthState.Abnormal,
+        DeltaNFD.Services.AceCoreCheckLevel.NeedsReview => hasExcessCoreFiles ? DashboardHealthState.Warning : DashboardHealthState.Information,
+        DeltaNFD.Services.AceCoreCheckLevel.Failed => DashboardHealthState.Failed,
+        DeltaNFD.Services.AceCoreCheckLevel.Blocked => DashboardHealthState.NotApplicable,
+        _ => DashboardHealthState.Normal,
+    };
     public static string Label(DashboardHealthState state) => state switch
     {
         DashboardHealthState.Checking => "检测中",

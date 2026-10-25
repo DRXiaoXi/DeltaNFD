@@ -53,7 +53,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: _buildcheck/source-assets-cache
-          key: source-assets-v1-e4d70645be7e0e67
+          key: source-assets-v2-e4d70645be7e0e67-144-c90973ae81b0
 
       - name: Prepare fixed published build inputs (never execute installers)
         run: python tools/prepare-source-assets.py
@@ -63,7 +63,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: _buildcheck/source-assets-cache
-          key: source-assets-v1-e4d70645be7e0e67
+          key: source-assets-v2-e4d70645be7e0e67-144-c90973ae81b0
 
       - name: Bounded update HTTP response checks
         run: dotnet run --project tools/BackendSmokeTest -c Release -- --update-response-checks
@@ -85,6 +85,15 @@ jobs:
           }
           dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --vc14-installed-media-checks src/DeltaNFD/Assets/Vc14FileRepair14.42
           if ($LASTEXITCODE -ne 0) { throw "Installed-media layout regression" }
+
+      - name: Alpha0.93 local-fix regression checks (isolated)
+        run: |
+          foreach ($check in @('dashboard-navigation-health-checks','dashboard-memory-health-checks','ace-core-count-checks','ace-manual-game-checks','silent-startup-checks','gpu-driver-name-checks')) {
+            dotnet run --project tools/BackendSmokeTest -c Release --no-build -- ("--" + $check)
+            if ($LASTEXITCODE -ne 0) { throw ("Alpha0.93 regression: " + $check) }
+          }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --vc14-baseline-checks src/DeltaNFD/Assets
+          if ($LASTEXITCODE -ne 0) { throw "14.42/14.44 baseline regression" }
 
       - name: Signed emergency policy checks (isolated, offline)
         run: dotnet run --project tools/EmergencyPolicyChecks -c Release -p:Platform=x64 --

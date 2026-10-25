@@ -15,6 +15,19 @@ public sealed partial class MainWindow : Window
 
     /// <summary>托盘图标（开启「关闭时最小化到托盘」后使用）。</summary>
     private TrayIconWindow? _trayIcon;
+    private readonly StartupPresentation _startupPresentation = new();
+
+    internal void PresentOnStartup(bool silent)
+    {
+        _startupPresentation.Present(silent, () => GetOrCreateTrayIcon()?.Show() == true,
+            () =>
+            {
+                // Initialize XAML without taking foreground focus; hide before yielding the UI turn.
+                if (_startupPresentation.IsHidden) AppWindow.Show(activateWindow: false);
+                else Activate();
+            }, () => AppWindow.Hide());
+        Log.Info(_startupPresentation.IsHidden ? "静默启动：已驻留托盘，点击托盘或手动打开可显示窗口。" : "启动：显示主窗口。");
+    }
 
     private bool _closePromptInProgress;
     private bool _exitRequested;
@@ -254,6 +267,7 @@ public sealed partial class MainWindow : Window
         var retiredRecovery = await OfflineModeRetirement.RecoverAsync();
         if (!retiredRecovery.Success)
         {
+            RestoreFromTray();
             NavigateByTag("settings");
             Log.Warn("旧版恢复待处理：" + retiredRecovery.Message);
         }
@@ -324,6 +338,7 @@ public sealed partial class MainWindow : Window
                 CloseButtonText = "开始使用",
                 DefaultButton = ContentDialogButton.Close,
             };
+            await _startupPresentation.WaitForVisibleAsync();
             await dialog.ShowWithBackendRecoveryAsync();
 
             // 展示成功后才记录：展示失败（如异常）时下次启动重试
@@ -356,6 +371,7 @@ public sealed partial class MainWindow : Window
         {
             var (detected, removedMb, _) = await ServiceLocator.Cpu.DetectMemoryLimitAsync();
             if (!detected) return;
+            await _startupPresentation.WaitForVisibleAsync();
 
             var warning = new ContentDialog
             {
@@ -509,6 +525,7 @@ public sealed partial class MainWindow : Window
 
         try
         {
+            await _startupPresentation.WaitForVisibleAsync();
             await dialog.ShowWithBackendRecoveryAsync();
         }
         catch (Exception ex)
@@ -567,6 +584,7 @@ public sealed partial class MainWindow : Window
             DefaultButton = ContentDialogButton.Primary,
         };
 
+        await _startupPresentation.WaitForVisibleAsync();
         var choice = await dialog.ShowWithBackendRecoveryAsync();
         if (choice == ContentDialogResult.Primary)
         {
@@ -603,6 +621,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        await _startupPresentation.WaitForVisibleAsync();
         var prompt = new ContentDialog
         {
             XamlRoot = ContentFrame.XamlRoot,
@@ -993,6 +1012,7 @@ public sealed partial class MainWindow : Window
         _trayIcon?.Hide();
         AppWindow.Show();
         Activate();
+        _startupPresentation.Reveal();
     }
 
     /// <summary>快捷方式再次启动时，恢复托盘中的主窗口并将其激活。</summary>
@@ -1219,6 +1239,12 @@ public sealed partial class MainWindow : Window
     {
         NavigateByTag("process");
         if (ContentFrame.Content is ProcessPage page) page.ShowBackgroundSettings();
+    }
+
+    public void NavigateToFrameMemory()
+    {
+        NavigateByTag("frame");
+        if (ContentFrame.Content is FramePage page) page.ShowAutomaticMemorySettings();
     }
 
     private IEnumerable<NavigationViewItem> EnumerateNavItems() =>

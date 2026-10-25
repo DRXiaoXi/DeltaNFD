@@ -24,6 +24,10 @@ public sealed record GpuSpoofWatchEntry(string RegistryPath, string ExpectedName
 
 public sealed record GpuSpoofInvalidation(GpuSpoofWatchEntry Entry, string CurrentDriverStamp, string CurrentName);
 
+/// <summary>Reconstruction from the installed driver, not a recovered historical backup.</summary>
+public sealed record GpuDriverNamePreview(string RegistryPath, string CurrentDescription, string DriverName,
+    string InfName, string HardwareId, string Fingerprint);
+
 /// <summary>显卡伪装预置型号（静态展示数据，前端与后端共用，不含执行）。</summary>
 public static class GpuSpoofPresets
 {
@@ -64,6 +68,11 @@ public interface IGpuSpoofService
 
     /// <summary>按注册表路径恢复原始型号（供帧格流程调用）。重启电脑后生效。</summary>
     Task<OperationResult> RestoreByPathAsync(string registryPath);
+
+    Task<GpuDriverNamePreview> PreviewDriverNameAsync(string registryPath) =>
+        Task.FromException<GpuDriverNamePreview>(new NotSupportedException("当前后端不支持按驱动重建型号。"));
+    Task<OperationResult> RestoreDriverNameAsync(string registryPath, string fingerprint) =>
+        Task.FromResult(OperationResult.Fail("当前后端不支持按驱动重建型号。"));
 
     /// <summary>检测已登记伪装是否因驱动更新而失效（纯只读）。</summary>
     Task<IReadOnlyList<GpuSpoofInvalidation>> CheckInvalidationAsync();

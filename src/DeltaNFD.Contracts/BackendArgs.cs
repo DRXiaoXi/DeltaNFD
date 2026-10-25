@@ -15,6 +15,12 @@ public sealed class GpuSpoofPathArgs
     public string RegistryPath { get; set; } = "";
 }
 
+public sealed class GpuDriverNameRestoreArgs
+{
+    public string RegistryPath { get; set; } = "";
+    public string Fingerprint { get; set; } = "";
+}
+
 /// <summary>显卡设备重载参数：PnP 设备实例 ID（由注册表路径解析后传入，执行在显卡后端）。</summary>
 public sealed class GpuSpoofReloadArgs
 {

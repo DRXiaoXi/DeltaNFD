@@ -93,7 +93,9 @@ internal static class FrameCloseChecks
             await stop.WaitAsync(TimeSpan.FromSeconds(5));
             Check(restored && tickCount == 1 && !engine.Snapshot().MonitorRunning,
                 "stop cancels future ticks and performs the restore after the held tick drains");
-            Check(engine.Snapshot().DeltaForceRunning is null, "stopped monitor cannot unlock pages from old observations");
+            clock = clock.AddSeconds(2);
+            Check(engine.Snapshot() is { MonitorRunning: false, DeltaForceRunning: false } stopped
+                && stopped.DeltaForceObservedUtc == clock, "stopped automation retains fresh read-only observation");
             var commandEntered = Signal(); var commandRelease = Signal();
             var command = engine.SerializeAutomationAsync(async () => { commandEntered.SetResult(); await commandRelease.Task; return true; });
             await commandEntered.Task;

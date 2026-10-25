@@ -20,6 +20,23 @@ public partial class AceViewModel : ObservableObject
     [ObservableProperty] private string registryText = "";
     [ObservableProperty] private bool canClean;
     [ObservableProperty] private string coreCheckText = "正在检测 ACE 游戏与 ACE-CORE 组件归属…";
+    [ObservableProperty] private AceCoreCheckLevel coreCheckLevel;
+    [ObservableProperty] private bool coreHasExcess;
+    [ObservableProperty] private string coreCheckSummary = "";
+    public bool CoreNeedsAttention => CoreCheckLevel is AceCoreCheckLevel.NeedsReview or AceCoreCheckLevel.Abnormal or AceCoreCheckLevel.Failed;
+    public string CoreAlertTitle => CoreCheckLevel switch
+    {
+        AceCoreCheckLevel.Abnormal => "ACE-CORE 数量异常：手动关联后仍偏多",
+        AceCoreCheckLevel.Failed => "ACE-CORE 检测未完成",
+        AceCoreCheckLevel.NeedsReview when !CoreHasExcess => "ACE-CORE 归属信息提示（数量未超限）",
+        _ => "ACE-CORE 需要核对",
+    };
+    partial void OnCoreCheckLevelChanged(AceCoreCheckLevel value)
+    {
+        OnPropertyChanged(nameof(CoreNeedsAttention));
+        OnPropertyChanged(nameof(CoreAlertTitle));
+    }
+    partial void OnCoreHasExcessChanged(bool value) => OnPropertyChanged(nameof(CoreAlertTitle));
     [ObservableProperty] private bool coreCheckBusy;
     [ObservableProperty] private string coreCleanupResultText = "";
     [ObservableProperty] private bool hasBlockers;
@@ -47,7 +64,7 @@ public partial class AceViewModel : ObservableObject
         "三角洲进程正在运行——已按需求暂停 ACE 组件检测，未读取任何 ACE 服务 / 目录 / 注册表项。" +
         "请完全退出游戏后点「重新扫描」。";
 
-    public bool CleanRefreshEnabled => !IsBusy && !IsCleaning;
+    public bool CleanRefreshEnabled => !IsBusy && !IsCleaning && !ManualRootsBusy;
 
     partial void OnIsBusyChanged(bool value)
     {
@@ -56,19 +73,19 @@ public partial class AceViewModel : ObservableObject
         RefreshFlags();
     }
 
-    public bool CleanEnabled => !IsBusy && !IsCleaning && !CoreCheckBusy && CanClean && !CleanupNeedsReview;
+    public bool CleanEnabled => !IsBusy && !IsCleaning && !CoreCheckBusy && !ManualRootsBusy && CanClean && !CleanupNeedsReview;
 
     public bool CoreCleanEnabled => CleanEnabled && !DetectionPaused;
 
     public string CoreCleanButtonText => IsCleaning ? "清理中…" : "仅清理 ACE-CORE SYS";
 
-    public bool CanRefresh => !IsBusy && !IsCleaning;
+    public bool CanRefresh => !IsBusy && !IsCleaning && !ManualRootsBusy;
 
     public string CleanButtonText => IsCleaning ? "清理中…" : "一键清除 ACE";
 
     public string CoreCheckButtonText => CoreCheckBusy ? "检测中…" : "开始检测";
 
-    public bool CanCheckCore => !CoreCheckBusy && !DetectionPaused && !IsCleaning && !IsBusy;
+    public bool CanCheckCore => !CoreCheckBusy && !DetectionPaused && !IsCleaning && !IsBusy && !ManualRootsBusy;
 
     public string VirtCheckButtonText => VirtCheckBusy ? "检测中…" : "检测虚拟化环境";
 
@@ -102,6 +119,7 @@ public partial class AceViewModel : ObservableObject
         OnPropertyChanged(nameof(CanCheckCore));
         OnPropertyChanged(nameof(CleanEnabled));
         OnPropertyChanged(nameof(CoreCleanEnabled));
+        OnPropertyChanged(nameof(CanManageManualRoots));
     }
 
     partial void OnDetectionPausedChanged(bool value) => RefreshFlags();
@@ -151,6 +169,7 @@ public partial class AceViewModel : ObservableObject
 
     private void RefreshFlags()
     {
+        OnPropertyChanged(nameof(CanManageManualRoots));
         OnPropertyChanged(nameof(CleanEnabled));
         OnPropertyChanged(nameof(CleanButtonText));
         OnPropertyChanged(nameof(CleanRefreshEnabled));
@@ -162,7 +181,7 @@ public partial class AceViewModel : ObservableObject
 
     public async Task LoadAsync()
     {
-        if (IsBusy || IsCleaning)
+        if (IsBusy || IsCleaning || ManualRootsBusy)
         {
             return;
         }
@@ -279,7 +298,7 @@ public partial class AceViewModel : ObservableObject
         return result;
     }
 
-    /// <summary>ACE 游戏及驱动归属检测；多款游戏正常共存不构成清理依据。</summary>
+    /// <summary>共用手动关联计数策略，检测颜色不授予清理权限。</summary>
     public async Task CheckCoreFilesAsync()
     {
         if (CoreCheckBusy)
@@ -291,6 +310,9 @@ public partial class AceViewModel : ObservableObject
         try
         {
             var result = await _ace.CheckCoreFilesAsync();
+            CoreCheckSummary = result.Summary;
+            CoreHasExcess = result.HasExcessCoreFiles;
+            CoreCheckLevel = result.Level;
 
             if (result.Level == AceCoreCheckLevel.Blocked)
             {
@@ -302,7 +324,7 @@ public partial class AceViewModel : ObservableObject
             }
 
             var text = new StringBuilder();
-            text.AppendLine(DescribeLevel(result.Level) + result.Summary);
+            text.AppendLine(DescribeLevel(result.Level, result.HasExcessCoreFiles) + result.Summary);
             foreach (var line in result.Files)
             {
                 text.AppendLine(line);
@@ -312,7 +334,7 @@ public partial class AceViewModel : ObservableObject
             if (result.Games.Count == 0) text.AppendLine("未确认游戏安装位置；不代表这些驱动是残留。");
             foreach (var game in result.Games)
             {
-                text.AppendLine($"· {game.Name}（{game.Source}）");
+                text.AppendLine($"· {game.Name}（{game.Source}{(game.ManuallyAssociated ? " · 已手动关联" : "")}）");
                 text.AppendLine($"  安装目录：{game.InstallDirectory}");
                 foreach (var directory in game.AceDirectories) text.AppendLine($"  ACE 目录：{directory}");
             }
@@ -327,6 +349,8 @@ public partial class AceViewModel : ObservableObject
         catch (Exception ex)
         {
             Log.Error("ACE-CORE 检测未完成", ex);
+            CoreCheckSummary = "检测未完成：" + ex.Message;
+            CoreCheckLevel = AceCoreCheckLevel.Failed;
             CoreCheckText = "检测未完成：" + ex.Message;
         }
         finally
@@ -335,12 +359,13 @@ public partial class AceViewModel : ObservableObject
         }
     }
 
-    private static string DescribeLevel(AceCoreCheckLevel level) => level switch
+    private static string DescribeLevel(AceCoreCheckLevel level, bool hasExcess) => level switch
     {
         AceCoreCheckLevel.Normal => "✓ ",
-        AceCoreCheckLevel.Abnormal => "⚠ ",
+        AceCoreCheckLevel.Abnormal => "⛔ ",
         AceCoreCheckLevel.Failed => "⛔ ",
         AceCoreCheckLevel.Blocked => "⏸ ",
+        AceCoreCheckLevel.NeedsReview when hasExcess => "⚠ ",
         AceCoreCheckLevel.NeedsReview => "ℹ ",
         _ => "ℹ ",
     };

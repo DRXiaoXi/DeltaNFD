@@ -42,7 +42,7 @@ public sealed class CpuFrameEngine : IDisposable
     private bool _targetCustom;
     private string _targetExe = "";
     private bool _gameRunning;
-    private sealed record DeltaObservation(bool? Running, DateTimeOffset ObservedUtc);
+    private sealed record DeltaObservation(bool? Running, DateTimeOffset ObservedUtc, string Error);
     private DeltaObservation? _deltaObservation;
     private int? _gamePid;
     private long _gameStartTicks;
@@ -597,12 +597,28 @@ public sealed class CpuFrameEngine : IDisposable
         {
         if (AppSettingsStore.Read().FrameModeActive || _powerLockActive) return OperationResult.Fail("请先停用帧格及电源守护，再核对保留当前值。");
         var result = await _tweaks.PreserveCurrentPowerValuesAsync(confirmed).ConfigureAwait(false);
-        if (result.Success && confirmed.Any(c => c.FileName == "frame_power_scheme_snapshot.json"))
+        if (result.Success)
         {
-            AppSettingsStore.Update(s => { s.FramePowerRestorePending = false; s.FramePowerPreviousSchemeGuid = "";
-                s.FramePowerLockedSchemeGuid = ""; s.FramePowerLockEnabled = false; });
-            _powerLockedGuid = ""; _powerLockReady = false;
-            GameTargetService.Default.SetRestoreFailure("帧格电源计划", false);
+            // Match the user's explicit confirmation: no reapplication of the failed power tweak
+            // on the next activation/heartbeat. Keep other feature preferences and valid backups.
+            _tweaksDesired = false;
+            _tweaksArgs = new();
+            var snapshotArchived = confirmed.Any(c => c.FileName == "frame_power_scheme_snapshot.json");
+            AppSettingsStore.Update(s =>
+            {
+                s.FramePowerSaveLatencyEnabled = false;
+                if (snapshotArchived)
+                {
+                    s.FramePowerRestorePending = false; s.FramePowerPreviousSchemeGuid = "";
+                    s.FramePowerLockedSchemeGuid = ""; s.FramePowerLockEnabled = false;
+                }
+            });
+            if (snapshotArchived)
+            {
+                _powerLockedGuid = ""; _powerLockReady = false;
+                GameTargetService.Default.SetRestoreFailure("帧格电源计划", false);
+            }
+            result = OperationResult.Ok(result.Message + " 降低省电延迟已关闭；未恢复或重建丢失的原值。");
         }
         SetResult("帧格旧电源记录处理", result);
         return result;
@@ -1003,16 +1019,19 @@ public sealed class CpuFrameEngine : IDisposable
     {
         // The existing status heartbeat runs while a long command/tick is busy. Query here so a
         // power-policy operation cannot stale the independent Delta observation for minutes.
-        if (_monitorRunning) lock (_observationGate)
+        // A connected backend already emits this heartbeat. Observing a process must not require
+        // starting the automation loop (which may be blocked by an unresolved restore obligation).
+        lock (_observationGate)
         {
             var now = ClockForTests?.Invoke() ?? DateTimeOffset.UtcNow;
             var previous = Volatile.Read(ref _deltaObservation);
             if (previous is null || now - previous.ObservedUtc >= TickInterval || previous.ObservedUtc > now)
             {
                 bool? running;
+                var error = "";
                 try { running = DeltaReaderForTests is { } read ? read() : DeltaForceLocator.IsGameRunning(); }
-                catch { running = null; }
-                Volatile.Write(ref _deltaObservation, new(running, now));
+                catch (Exception ex) { running = null; error = "三角洲进程查询失败：" + ex.Message; }
+                Volatile.Write(ref _deltaObservation, new(running, now, error));
             }
         }
         var version = typeof(CpuFrameEngine).Assembly.GetName().Version ?? new Version(0, 0, 0);
@@ -1026,8 +1045,9 @@ public sealed class CpuFrameEngine : IDisposable
             IsCustomTarget = _targetCustom,
             TargetExecutablePath = _targetExe,
             GameRunning = _gameRunning,
-            DeltaForceRunning = _monitorRunning ? delta?.Running : null,
-            DeltaForceObservedUtc = _monitorRunning ? delta?.ObservedUtc : null,
+            DeltaForceRunning = delta?.Running,
+            DeltaForceObservedUtc = delta?.ObservedUtc,
+            DeltaForceObservationError = delta?.Error ?? "",
             GamePid = _gamePid,
             GameStartTimeUtcTicks = _gameStartTicks,
             GameExecutablePath = _gameExe,

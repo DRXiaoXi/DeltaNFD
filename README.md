@@ -1,13 +1,15 @@
 # 三角帧不掉洲 / DeltaNFD
 
-Alpha0.929-RC2（内部版本 0.9292），内测通道。
+Alpha0.93，内部版本 0.9299，内测通道。
 
-[下载安装包](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9292/DeltaNFD_Setup_0.9292_x64.exe) · [发布页面](https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9292)
+[下载安装包](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9299/DeltaNFD_Setup_0.9299_x64.exe) · [发布页面](https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9299)
 
-修复双 CCD 调度重复读取带来的延迟、鼠标加速即时生效与 HAGS 状态判定、ACE 多游戏共存误报，以及强制替换 14.x 载荷路径。保留 RC1 安装交接编码修复与六个维护后端。
+更新页面外观与卡片悬停；修复主页切页后体检停在灰色、帧格旧电源恢复核对，以及显卡备份丢失时按当前安装驱动核验原型号。增加主页内存提醒、静默自启动、ACE游戏手动关联和14.42/14.44安装基线选择；14.50纳入兼容性红色规则。
 
-不包含卡顿检测、着色器研究、独立预热客户端或私有密钥。系统缓存维护保留，旧恢复记录兼容身份保留。
+内存提醒引导同时启用自动内存回收与帧格。ACE数量正常而归属未确认时仅保留信息提示；数量超额按是否有效手动关联分别提醒/警告。兼容性颜色是本项目规则，不表示已证明文件损坏或必然掉帧。
 
-Windows x64，.NET 8。构建前运行 `python tools/prepare-source-assets.py` 获取固定且逐项核验的既有公开资源，再运行 `installer/make-installer.cmd`。
+本源码和安装包不包含卡顿检测、着色器研究、独立预热客户端或私有密钥。保留六个维护后端、系统缓存维护和旧恢复记录兼容身份。
 
-仅内测预发布，公测版本不变。软件按 GPL-3.0-only 分发，第三方许可见对应声明文件。
+Windows x64，.NET 8。先运行 `python tools/prepare-source-assets.py` 获取固定并逐项核验的二进制构建资源，再运行 `installer/make-installer.cmd`。第三方许可见声明文件，源码按GPL-3.0-only分发。
+
+仅内测预发布，公测通道保持原版本。本轮验证为隔离/模拟、只读与原生窗口生命周期验证，并非真实运行库重装、真实游戏或所有系统操作的完整实机验收。

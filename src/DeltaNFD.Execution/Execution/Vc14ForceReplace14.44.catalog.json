@@ -1,0 +1,308 @@
+[
+  {
+    "Architecture": "x64",
+    "File": "concrt140.dll",
+    "Bytes": 324208,
+    "Sha256": "2405355F0A58067B258F8DF33C327E3A3D716EAAC5A3A5AEBB757842D85BD376"
+  },
+  {
+    "Architecture": "x64",
+    "File": "mfc140.dll",
+    "Bytes": 5629600,
+    "Sha256": "2EBA4E78EDEA7A9654075CF0BFCBF9BA7FAA3332C40BE6F96317F2B707925CC3"
+  },
+  {
+    "Architecture": "x64",
+    "File": "mfc140chs.dll",
+    "Bytes": 51360,
+    "Sha256": "02DB5A7589A6C0469DC08C6E0E33644E0E0509FB06EC64F213E00C30AC1157EE"
+  },
+  {
+    "Architecture": "x64",
+    "File": "mfc140cht.dll",
+    "Bytes": 51328,
+    "Sha256": "85EAD493FBA021337D5EAA09281DE09E0DC2AA630F9856A3BC7A52F0336C062A"
+  },
+  {
+    "Architecture": "x64",
+    "File": "mfc140deu.dll",
+    "Bytes": 80008,
+    "Sha256": "9E7B3E798DB10D5A4B8372BDEEF7EE47CD027BCC70220D91B94297B518171EC3"
+  },
+  {
+    "Architecture": "x64",
+    "File": "mfc140enu.dll",
+    "Bytes": 70272,
+    "Sha256": "59B7DA456A5716E167DA8A736151C1AE841FC9DB21C606BEF35666F2836B4B54"
+  },
+  {
+    "Architecture": "x64",
+    "File": "mfc140esn.dll",
+    "Bytes": 78928,
+    "Sha256": "3D1DE91A735343B8E970DCEBE233ECFE2C32B3AD62F2EC24B389C0C17A960B44"
+  },
+  {
+    "Architecture": "x64",
+    "File": "mfc140fra.dll",
+    "Bytes": 80000,
+    "Sha256": "B49E3F79ABF030D9CFE95E4302ED02E53F357DCB9083555340FDB3B40845E619"
+  },
+  {
+    "Architecture": "x64",
+    "File": "mfc140ita.dll",
+    "Bytes": 77952,
+    "Sha256": "B7947DBA144D3188605EDE7D0432EA7C7668AC8A853DD7E1C06D17DCE7FE5C5F"
+  },
+  {
+    "Architecture": "x64",
+    "File": "mfc140jpn.dll",
+    "Bytes": 59008,
+    "Sha256": "88935EEB6641E9A7981D7A74B19260F4A21F05B99EA9756B65D4E3AD0B0FC93B"
+  },
+  {
+    "Architecture": "x64",
+    "File": "mfc140kor.dll",
+    "Bytes": 58448,
+    "Sha256": "12C87451B0760104155AA7133A38AD2093C8EEFC754DBD0994197B1F201BD08C"
+  },
+  {
+    "Architecture": "x64",
+    "File": "mfc140rus.dll",
+    "Bytes": 75856,
+    "Sha256": "452D45451E712E3231A4A3222657CA612D66D59C76D467C9822AAD4AA2A1D95A"
+  },
+  {
+    "Architecture": "x64",
+    "File": "mfc140u.dll",
+    "Bytes": 5664848,
+    "Sha256": "643CE7FE6A203C53A96A00F272A1A5B42D5B0C320C84364A6FE866307A19BB65"
+  },
+  {
+    "Architecture": "x64",
+    "File": "mfcm140.dll",
+    "Bytes": 96392,
+    "Sha256": "075F599425F6D3BDA354A9560FC3F7111FB80F642AB6E55E2B2971BCD69494AC"
+  },
+  {
+    "Architecture": "x64",
+    "File": "mfcm140u.dll",
+    "Bytes": 96336,
+    "Sha256": "21AC15F807AE8BC7C178039E7D9D29E53003B16F152D9102C629AF95CBA2F433"
+  },
+  {
+    "Architecture": "x64",
+    "File": "msvcp140.dll",
+    "Bytes": 557728,
+    "Sha256": "0F885B509A685D2BBFA652FED26B5FB31D88FBDAB0A978C641D1C7B8AA460AA9"
+  },
+  {
+    "Architecture": "x64",
+    "File": "msvcp140_1.dll",
+    "Bytes": 35952,
+    "Sha256": "BFAD5AEF4C63A669E3C140655CDFDF395B6C979B400A447BD5DCB65ED8826C3D"
+  },
+  {
+    "Architecture": "x64",
+    "File": "msvcp140_2.dll",
+    "Bytes": 280200,
+    "Sha256": "3EA06F0EE098B4823CB79599DF3780E7F23CCE52C19AAC31D2A0D47EFE33A5E9"
+  },
+  {
+    "Architecture": "x64",
+    "File": "msvcp140_atomic_wait.dll",
+    "Bytes": 50304,
+    "Sha256": "640B2AEFCED484D0368EEA5BDD06ADDD0658A3A70A49256E560D6923B404A479"
+  },
+  {
+    "Architecture": "x64",
+    "File": "msvcp140_codecvt_ids.dll",
+    "Bytes": 31872,
+    "Sha256": "F2069A52880EC885EE7F0511186100EB7FADA0411A2B4948FAFEA7735B878A18"
+  },
+  {
+    "Architecture": "x64",
+    "File": "vcamp140.dll",
+    "Bytes": 418944,
+    "Sha256": "52AF68F35476BD03D7B97752B01BEF358FFDDA568D150057D6CE809F77C4F704"
+  },
+  {
+    "Architecture": "x64",
+    "File": "vccorlib140.dll",
+    "Bytes": 352384,
+    "Sha256": "19839407C3FDBC824E5BCE189BF68DDF8097F12EC28B757797FFA0415C144DDD"
+  },
+  {
+    "Architecture": "x64",
+    "File": "vcomp140.dll",
+    "Bytes": 193152,
+    "Sha256": "55ABA23CDCD6484FBB06F4155B8CA75ADFCE7A881F10AFD0C49457165E677164"
+  },
+  {
+    "Architecture": "x64",
+    "File": "vcruntime140.dll",
+    "Bytes": 124544,
+    "Sha256": "D5E4D9A3E835FA679450145D6A7D94E36573A509317111904D9B3712C30D9066"
+  },
+  {
+    "Architecture": "x64",
+    "File": "vcruntime140_1.dll",
+    "Bytes": 49792,
+    "Sha256": "1F2D41C4AA5DB0BC33EBF7B66D72943A817D7CE6CBE880502A9403823633093F"
+  },
+  {
+    "Architecture": "x64",
+    "File": "vcruntime140_threads.dll",
+    "Bytes": 38528,
+    "Sha256": "219915CF20822F34D5E7C1FDD4E21AE7F3396881096C51036225FB8F84B47AFA"
+  },
+  {
+    "Architecture": "x86",
+    "File": "concrt140.dll",
+    "Bytes": 259688,
+    "Sha256": "A2B04C69868B08A600518EBBAD1661D38DE4DD0E0A8E638C22D4641D410E50B1"
+  },
+  {
+    "Architecture": "x86",
+    "File": "mfc140.dll",
+    "Bytes": 4853888,
+    "Sha256": "8CADDDEFEF23353CE05B26B9A7A229A5BBBE2C25D12808ACFDA8FCC921DCFA87"
+  },
+  {
+    "Architecture": "x86",
+    "File": "mfc140chs.dll",
+    "Bytes": 51360,
+    "Sha256": "AFD166241443593DC2984044F6D72B5ED0ECB7AE57B8199ACA409EB8FA5C6FB7"
+  },
+  {
+    "Architecture": "x86",
+    "File": "mfc140cht.dll",
+    "Bytes": 51280,
+    "Sha256": "C8EF7386D03993C4A65322956C5BD5F67EE698F7B496C39CE52CC079D5750891"
+  },
+  {
+    "Architecture": "x86",
+    "File": "mfc140deu.dll",
+    "Bytes": 79984,
+    "Sha256": "82180667B2BCD42D483BF8B68145ADF2BCC3B425C27B61BFC8B376C5BAF94382"
+  },
+  {
+    "Architecture": "x86",
+    "File": "mfc140enu.dll",
+    "Bytes": 70280,
+    "Sha256": "D049F90397AE0307840A1B70469C1C0FD099D008944E267BCE6345A1A430114C"
+  },
+  {
+    "Architecture": "x86",
+    "File": "mfc140esn.dll",
+    "Bytes": 78976,
+    "Sha256": "F56A6DA1FB6CED4098E444A384E0604CA937319113DE08E008F9342B6A66F5E9"
+  },
+  {
+    "Architecture": "x86",
+    "File": "mfc140fra.dll",
+    "Bytes": 79976,
+    "Sha256": "0E7D54A54789C9A12DEE765D1C301200F06A672B5AF60ACCF07D32818636FD37"
+  },
+  {
+    "Architecture": "x86",
+    "File": "mfc140ita.dll",
+    "Bytes": 77936,
+    "Sha256": "9C84102075CCB757119B85946F78E1AC513C33E23744437703179F6D5E3E3355"
+  },
+  {
+    "Architecture": "x86",
+    "File": "mfc140jpn.dll",
+    "Bytes": 59008,
+    "Sha256": "D14527EE252AC87AF326F7993A5CEFB02E712D6C331CF57A3E48D0404F8040AF"
+  },
+  {
+    "Architecture": "x86",
+    "File": "mfc140kor.dll",
+    "Bytes": 58496,
+    "Sha256": "E3E3F49AB060EA80C522B892B0ACEE0932251A4E289D8D796A9A4725F938E83A"
+  },
+  {
+    "Architecture": "x86",
+    "File": "mfc140rus.dll",
+    "Bytes": 75912,
+    "Sha256": "965BC63BDB75956A912857378E67E9A18215F34E3820A0F4A552534F8BE278E3"
+  },
+  {
+    "Architecture": "x86",
+    "File": "mfc140u.dll",
+    "Bytes": 4880464,
+    "Sha256": "E285775AD4238FE1F2117AD890B748A818AAB0CDC0B94B813F6A774263A8E6C4"
+  },
+  {
+    "Architecture": "x86",
+    "File": "mfcm140.dll",
+    "Bytes": 87152,
+    "Sha256": "340C7024FB1B9313147701DC5968E6FEFD27C157FCF07F1E52369CA94A7E5A9B"
+  },
+  {
+    "Architecture": "x86",
+    "File": "mfcm140u.dll",
+    "Bytes": 87120,
+    "Sha256": "2FB9A4C12FD5AEAF108619C398E63967BCED05748B0A1A62D5C366B7EE6C23E0"
+  },
+  {
+    "Architecture": "x86",
+    "File": "msvcp140.dll",
+    "Bytes": 447616,
+    "Sha256": "97E71A3C697FB1AB3AF777DB39009E4602525E8C3AFF0837ECC7031CBA188165"
+  },
+  {
+    "Architecture": "x86",
+    "File": "msvcp140_1.dll",
+    "Bytes": 33896,
+    "Sha256": "01A58552686D0C6B9FD67A7AC81169FC0013AEDF59A8EFDC611F94907489A31C"
+  },
+  {
+    "Architecture": "x86",
+    "File": "msvcp140_2.dll",
+    "Bytes": 294992,
+    "Sha256": "2A5365E03CC6E78B408DFCA81537F3734BF3D7CF9CC13AE33204DFBC641DBE43"
+  },
+  {
+    "Architecture": "x86",
+    "File": "msvcp140_atomic_wait.dll",
+    "Bytes": 47240,
+    "Sha256": "C4A2BAE74E008A5BB2445F9078C14DF9DCB03267248DFA64E7D04CDC8AF5208E"
+  },
+  {
+    "Architecture": "x86",
+    "File": "msvcp140_codecvt_ids.dll",
+    "Bytes": 30824,
+    "Sha256": "A5CBECFD9B8892EC9A60E30FEF7EF2158032C6D91EFDFBACA87C082BCD48BFA9"
+  },
+  {
+    "Architecture": "x86",
+    "File": "vcamp140.dll",
+    "Bytes": 383616,
+    "Sha256": "3DF343F3951C63CAFFA1BD04E93728483EFDFC67220D2C03A81FF36563DFBDF2"
+  },
+  {
+    "Architecture": "x86",
+    "File": "vccorlib140.dll",
+    "Bytes": 287360,
+    "Sha256": "89ED5A6877A87EC3EC9FE4A0FB14DC950599F0B67318E746084A0C333A6C865F"
+  },
+  {
+    "Architecture": "x86",
+    "File": "vcomp140.dll",
+    "Bytes": 163488,
+    "Sha256": "91CBB2DBB3C4F279E5B660049B0C86BA85DE845931A182AD86C45121BB013D6D"
+  },
+  {
+    "Architecture": "x86",
+    "File": "vcruntime140.dll",
+    "Bytes": 91216,
+    "Sha256": "A9D7732A3C3DE09F0601A7FA2555093DCB49F08E2FC62A86091461F0F38393ED"
+  },
+  {
+    "Architecture": "x86",
+    "File": "vcruntime140_threads.dll",
+    "Bytes": 36000,
+    "Sha256": "BB2B1D16187562376FC888059E2CBBF26C5404F6A4BB7197D1D01B970F199667"
+  }
+]

@@ -87,7 +87,7 @@ public partial class App : Application
             Application.Current.Exit();
             return;
         }
-        if (!SingleInstanceGuard.TryBecomePrimary())
+        if (!SingleInstanceGuard.TryBecomePrimary(activateExisting: !StartupPresentation.IsLogonLaunch(commandLine)))
         {
             ExitAlreadyPrepared = true;
             Application.Current.Exit();
@@ -113,7 +113,9 @@ public partial class App : Application
             }
         });
         DeploymentPipe.Start(dispatcherQueue, mainWindow.PrepareDeploymentAsync, mainWindow.ExitForDeployment);
-        mainWindow.Activate();
+        mainWindow.PresentOnStartup(StartupPresentation.ShouldStartHidden(commandLine,
+            AppSettingsStore.Read().SilentStartupEnabled,
+            OfflineModeGuard.BlocksNormalAutomation || AppDataPaths.MigrationWarning is not null || PendingFileFallback is not null));
         if (AppDataPaths.MigrationWarning is { } migrationWarning)
         {
             Log.Warn(migrationWarning);

@@ -4,7 +4,7 @@ using DeltaNFD.Services;
 
 namespace DeltaNFD.Inspection;
 
-/// <summary>Bounded, read-only inventory. A filename suffix or a file count is never ownership evidence.</summary>
+/// <summary>Bounded read-only inventory. Hash associations remain distinct from the user-defined count warning.</summary>
 internal static class AceCoreOwnershipInspection
 {
     private sealed record CoreFile(string Path, long Size, string? Hash);
@@ -39,6 +39,7 @@ internal static class AceCoreOwnershipInspection
             var games = new List<AceGameInstallation>();
             var gameFiles = new List<List<CoreFile>>();
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            Stopwatch? manualWatch = null;
             foreach (var candidate in candidates)
             {
                 if (CheckGame()) throw new OperationCanceledException();
@@ -46,22 +47,48 @@ internal static class AceCoreOwnershipInspection
                 try
                 {
                     var directory = Path.GetFullPath(candidate.Root).TrimEnd(Path.DirectorySeparatorChar);
-                    if (!visited.Add(directory) || !AceGameDiscovery.SafeDirectory(directory) || IsContainer(directory)) continue;
-                    var paths = AceGameDiscovery.FindAceDirectories(directory, CheckGame, budget.Touch, notes);
-                    if (paths.Count == 0) continue;
-                    // Registry/launcher records can point at different levels of the same installation.
-                    var existing = games.FindIndex(g => g.AceDirectories.Intersect(paths, StringComparer.OrdinalIgnoreCase).Any());
-                    if (existing >= 0)
+                    if (!visited.Add(directory))
                     {
-                        foreach (var path in paths.Except(games[existing].AceDirectories, StringComparer.OrdinalIgnoreCase))
+                        if (candidate.ManuallyAssociated)
                         {
-                            games[existing].AceDirectories.Add(path);
-                            gameFiles[existing].AddRange(ReadCoreFiles(path, budget, notes, CheckGame));
+                            var duplicate = games.FindIndex(g => g.InstallDirectory.Equals(directory, StringComparison.OrdinalIgnoreCase));
+                            if (duplicate >= 0) games[duplicate].ManuallyAssociated = true;
                         }
                         continue;
                     }
-                    games.Add(new() { Name = candidate.Name, InstallDirectory = directory, Source = candidate.Source, AceDirectories = paths });
-                    gameFiles.Add(paths.SelectMany(p => ReadCoreFiles(p, budget, notes, CheckGame)).ToList());
+                    if (!AceGameDiscovery.SafeDirectory(directory) || IsContainer(directory)) continue;
+                    if (candidate.SearchChildren)
+                    {
+                        manualWatch ??= Stopwatch.StartNew();
+                        if (manualWatch.Elapsed >= TimeSpan.FromSeconds(5))
+                        { notes.Add("手动目录检索达到累计时间预算，部分游戏目录未读全。"); continue; }
+                    }
+                    var paths = candidate.SearchChildren
+                        ? AceManualGameInspection.FindAceDirectories(directory, CheckGame, budget.Touch, notes,
+                            () => manualWatch!.Elapsed >= TimeSpan.FromSeconds(5))
+                        : AceGameDiscovery.FindAceDirectories(directory, CheckGame, budget.Touch, notes);
+                    if (paths.Count == 0)
+                    {
+                        if (candidate.SearchChildren) notes.Add($"手动目录未发现可识别的 ACE 组件；可能未安装或超出检索范围，未据此判定异常：{directory}");
+                        continue;
+                    }
+                    // Registry/launcher records can point at different levels of the same installation.
+                    var existing = games.FindIndex(g => g.AceDirectories.Intersect(paths, StringComparer.OrdinalIgnoreCase).Any());
+                    List<CoreFile> ComponentFiles(string path) => ReadCoreFiles(path, budget, notes, CheckGame,
+                        recursive: !candidate.SearchChildren || Path.GetFileName(path).Equals("AntiCheatExpert", StringComparison.OrdinalIgnoreCase));
+                    if (existing >= 0)
+                    {
+                        if (candidate.ManuallyAssociated) games[existing].ManuallyAssociated = true;
+                        foreach (var path in paths.Except(games[existing].AceDirectories, StringComparer.OrdinalIgnoreCase))
+                        {
+                            games[existing].AceDirectories.Add(path);
+                            gameFiles[existing].AddRange(ComponentFiles(path));
+                        }
+                        continue;
+                    }
+                    games.Add(new() { Name = candidate.Name, InstallDirectory = directory, Source = candidate.Source,
+                        AceDirectories = paths, ManuallyAssociated = candidate.ManuallyAssociated });
+                    gameFiles.Add(paths.SelectMany(ComponentFiles).ToList());
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex) { notes.Add($"安装位置读取不完整（{candidate.Name}）：{ex.Message}"); }
@@ -81,17 +108,27 @@ internal static class AceCoreOwnershipInspection
                     a.Evidence.Length > 0 ? a.Evidence : "未找到可匹配的游戏内驱动副本；不代表冗余或异常。",
             }).ToList();
             var unknown = associations.Count(a => a.Games.Count == 0);
-            var level = notes.Count > 0 || unknown > 0 ? AceCoreCheckLevel.NeedsReview :
-                shared.Count == 0 ? AceCoreCheckLevel.None : AceCoreCheckLevel.Normal;
+            var manualCount = games.Count(g => g.ManuallyAssociated);
+            var excess = shared.Count > games.Count;
+            var level = AceCoreCountPolicy.Evaluate(shared.Count, games.Count, manualCount, notes.Count > 0 || unknown > 0);
+            var countSummary = $"检测到 {games.Count} 个包含 ACE 组件的游戏安装目录、{shared.Count} 个共享 ACE-CORE 驱动文件；已手动关联 {manualCount} 个游戏。";
+            var detail = level == AceCoreCheckLevel.Abnormal
+                ? $"手动关联后 CORE 数量仍偏多（{shared.Count} > {games.Count}），按本工具计数规则判定异常。"
+                : excess ? $"CORE 数量偏多（{shared.Count} > {games.Count}），尚未完成有效手动关联，请先添加/关联 ACE 游戏。"
+                : level == AceCoreCheckLevel.NeedsReview ? $"CORE 数量未超出已识别游戏数（{shared.Count} ≤ {games.Count}）；"
+                    + (unknown > 0 ? $"{unknown} 个文件归属仍待核对，仅作信息提示。" : "部分信息尚未读全，仅作待核对说明。")
+                : shared.Count > 0 ? "数量未超过已识别游戏数，驱动副本已匹配游戏。" : "未发现共享 ACE-CORE 文件，不代表游戏内没有 ACE。";
+            if (level == AceCoreCheckLevel.Abnormal && (notes.Count > 0 || unknown > 0))
+                detail += "部分读取或驱动归属仍待核对，请查看明细。";
             return new()
             {
                 Level = level, SysCount = shared.Count,
                 Files = shared.Select(f => $"· {Path.GetRelativePath(root, f.Path)}（{(f.Size < 0 ? "大小待核对" : $"{f.Size / 1048576.0:0.0} MB")}）").ToList(),
                 Games = games, Associations = associations, Notes = notes.Distinct().Take(32).ToList(),
-                Summary = $"检测到 {games.Count} 个包含 ACE 组件的游戏安装目录、{shared.Count} 个共享 ACE-CORE 驱动文件。" +
-                    (level == AceCoreCheckLevel.NeedsReview ? $"{unknown} 个文件归属待核对或部分信息未读全；未据此判定异常。" :
-                        shared.Count > 0 ? "驱动副本已匹配游戏，多款 ACE 游戏可正常共存。" : "未发现共享 ACE-CORE 文件，不代表游戏内没有 ACE。"),
-                Advice = "ACE-CORE 文件数量不是异常依据。仅在游戏实际报错时核对对应游戏或使用其启动器修复；不要因多文件而清理其他游戏的组件。",
+                ManuallyAssociatedGameCount = manualCount,
+                Summary = countSummary + detail,
+                Advice = excess ? "请确认所有含 ACE 的游戏均已添加/关联，并重新检测。计数提醒不证明多余文件已失效或可删除，读取缺口和哈希归属请查看明细。"
+                    : "存在未匹配文件或读取缺口时请核对游戏目录；如游戏实际报错，可使用对应启动器修复。检测不会自动删除组件。",
             };
         }
         catch (OperationCanceledException) { return Blocked(); }
@@ -111,7 +148,7 @@ internal static class AceCoreOwnershipInspection
                 .Any(folder => string.Equals(path, Environment.GetFolderPath(folder).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase));
     }
 
-    private static List<CoreFile> ReadCoreFiles(string root, Budget budget, List<string> notes, Func<bool> blocked)
+    private static List<CoreFile> ReadCoreFiles(string root, Budget budget, List<string> notes, Func<bool> blocked, bool recursive = true)
     {
         var result = new List<CoreFile>();
         try { _ = File.GetAttributes(root); }
@@ -136,6 +173,7 @@ internal static class AceCoreOwnershipInspection
                     if ((attributes & FileAttributes.ReparsePoint) != 0) { notes.Add($"跳过链接：{path}"); continue; }
                     if ((attributes & FileAttributes.Directory) != 0)
                     {
+                        if (!recursive) continue;
                         if (item.Depth >= 16) notes.Add($"目录层级超过读取上限：{path}");
                         else pending.Push((path, item.Depth + 1));
                     }

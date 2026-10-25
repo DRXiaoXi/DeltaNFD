@@ -185,6 +185,7 @@ public sealed partial class GpuSpoofPage : Page
 
     private async void RestoreButton_Click(object sender, RoutedEventArgs e)
     {
+        if (ViewModel.IsBusy) return;
         if (ViewModel.SelectedAdapter is null)
         {
             ViewModel.ShowResult(OperationResult.Fail("请先在列表中选择要恢复的显卡。"));
@@ -193,8 +194,7 @@ public sealed partial class GpuSpoofPage : Page
 
         if (!ViewModel.SelectedAdapter.HasBackup)
         {
-            ViewModel.ShowResult(OperationResult.Fail(
-                "该显卡没有原始型号备份，无法重新恢复。若此前已还原，请点击“核对并完成临时还原收尾”。"));
+            await RestoreFromDriverAsync();
             return;
         }
 
@@ -230,6 +230,63 @@ public sealed partial class GpuSpoofPage : Page
         }
 
         ViewModel.ShowResult(restore);
+    }
+
+    private async Task RestoreFromDriverAsync()
+    {
+        var adapter = ViewModel.SelectedAdapter;
+        if (adapter is null) return;
+        if (!adapter.IsMasked)
+        {
+            ViewModel.ShowResult(OperationResult.Fail("当前未检测到纯文本伪装，无原始备份；若此前已还原，请点击“核对并完成临时还原收尾”。"));
+            return;
+        }
+        ViewModel.IsBusy = true;
+        var attempted = false;
+        try
+        {
+            var service = _pageSpoofRecovery;
+            var preview = await service.PreviewDriverNameAsync(adapter.RegistryPath);
+            var confirm = new ContentDialog
+            {
+                XamlRoot = XamlRoot, Title = "备份缺失：按当前驱动恢复型号？",
+                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
+                    Text = $"当前描述：{preview.CurrentDescription}\n驱动提供的型号：{preview.DriverName}\n来源：{preview.InfName}\n硬件 ID：{preview.HardwareId}\n\n原始备份已缺失。这是按已核验的当前驱动重建名称，不能保证与旧驱动时期的字符串完全相同。\n写入前保存当前描述，完成后需重启生效；不会在此重载显卡或自动重启。" } },
+                PrimaryButtonText = "按驱动恢复", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
+            };
+            if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary) return;
+            if (ViewModel.SelectedAdapter?.RegistryPath != adapter.RegistryPath)
+                throw new IOException("所选显卡已变化，请重新核验。");
+            attempted = true;
+            var result = await service.RestoreDriverNameAsync(preview.RegistryPath, preview.Fingerprint);
+            if (result.Success)
+            {
+                try
+                {
+                    if (!ViewModel.Frame.FrameModeEnabled && !AppSettingsStore.ReadRequired().TempSpoofRestorePending)
+                    {
+                        var cleanup = await ViewModel.Frame.DisableLogonAutostartAsync();
+                        if (!cleanup.Success)
+                        {
+                            Log.Warn("显卡名称已恢复，登录任务清理未完成：" + cleanup.Message);
+                            result = OperationResult.Ok(result.Message + " 登录任务清理未完成，请核对：" + cleanup.Message, requiresReboot: true);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn("显卡名称已恢复，登录收尾待核对：" + ex.Message);
+                    result = OperationResult.Ok(result.Message + " 登录收尾尚未确认：" + ex.Message, requiresReboot: true);
+                }
+            }
+            ViewModel.ShowResult(result);
+        }
+        catch (Exception ex) { Log.Error("按当前驱动恢复型号未完成", ex); ViewModel.ShowResult(OperationResult.Fail(ex.Message)); }
+        finally
+        {
+            ViewModel.IsBusy = false;
+            if (attempted) await ViewModel.RefreshAsync();
+        }
     }
 
     private void ResultInfoBar_CloseButtonClick(InfoBar sender, object args)

@@ -5,8 +5,8 @@ using DeltaNFD.Services.AlphaRestore;
 
 namespace DeltaNFD.Services;
 
-internal sealed class Vc14DllVersionMismatch(string architecture, string file, string actual)
-    : IOException($"{architecture} {file} 实际版本为 {actual}，未确认是14.42.34433，不能报告修复成功。")
+internal sealed class Vc14DllVersionMismatch(string architecture, string file, string actual, string expected = "所选 14.x 基线")
+    : IOException($"{architecture} {file} 实际版本为 {actual}，未确认是 {expected}，不能报告修复成功。")
 {
     internal string Architecture { get; } = architecture;
 }
@@ -20,27 +20,49 @@ internal sealed record Vc14FileRepairPackage(string Architecture, string Role, s
 
 internal static class Vc14FileRepairSource
 {
-    // Both MSI file repair and DLL replacement use this one deployed media directory.
+    // Both MSI file repair and DLL replacement use one deployed media directory per baseline.
     internal const string DirectoryName = "Vc14FileRepair14.42";
-    internal static string InstalledRoot => Path.Combine(BackendEnvironment.AssetsRoot, DirectoryName);
-    internal static readonly IReadOnlyList<Vc14FileRepairPackage> Packages = Load();
-    private static Vc14FileRepairPackage[] Load()
+    internal static string DirectoryNameFor(Vc14Baseline baseline) => Vc14BaselineInfo.For(baseline).FileRepairDirectory;
+    internal static string InstalledRoot => Vc14BaselineInfo.Default.FileRepairRoot;
+    internal static string InstalledRootFor(Vc14Baseline baseline) => Vc14BaselineInfo.For(baseline).FileRepairRoot;
+    internal static IReadOnlyList<Vc14FileRepairPackage> Packages => All[Vc14Baseline.V142];
+    internal static IReadOnlyList<Vc14FileRepairPackage> PackagesFor(Vc14Baseline baseline) => All[baseline];
+
+    private static readonly IReadOnlyDictionary<Vc14Baseline, Vc14FileRepairPackage[]> All = LoadAll();
+
+    private static IReadOnlyDictionary<Vc14Baseline, Vc14FileRepairPackage[]> LoadAll()
     {
-        using var stream = typeof(Vc14FileRepairSource).Assembly.GetManifestResourceStream("Vc14FileRepair.catalog.json")
-            ?? throw new IOException("缺少14.42原始MSI/CAB清单。");
-        var packages = JsonSerializer.Deserialize<Vc14FileRepairPackage[]>(stream) ?? throw new IOException("14.42原包清单无效。");
-        if (packages.Length != 4 || Vc14Catalog.Families.Any(f => packages.Count(p => p.Architecture == f.Arch && p.Role == f.Role
-            && p.UpgradeCode.Equals(f.Upgrade, StringComparison.OrdinalIgnoreCase)) != 1)
-            || packages.Any(p => !Vc14Catalog.SameVersion(p.Version, Vc14Reinstall.BaselineVersion)
-                || p.OriginalSha256 != Vc14Reinstall.BaselineHashes[p.Architecture] || p.Files.Length != 2))
-            throw new IOException("14.42原始MSI范围不符。");
-        return packages;
+        var resources = new Dictionary<Vc14Baseline, string>
+        {
+            [Vc14Baseline.V142] = "Vc14FileRepair.catalog.json",
+            [Vc14Baseline.V144] = "Vc14FileRepair14.44.catalog.json",
+        };
+        var result = new Dictionary<Vc14Baseline, Vc14FileRepairPackage[]>();
+        foreach (var (baseline, resource) in resources)
+        {
+            var info = Vc14BaselineInfo.For(baseline);
+            using var stream = typeof(Vc14FileRepairSource).Assembly.GetManifestResourceStream(resource)
+                ?? throw new IOException($"缺少 {info.Label} 原始 MSI/CAB 清单（{resource}）。");
+            var packages = JsonSerializer.Deserialize<Vc14FileRepairPackage[]>(stream)
+                ?? throw new IOException(info.Label + " 原包清单无效。");
+            if (packages.Length != 4 || Vc14Catalog.Families.Any(f => packages.Count(p => p.Architecture == f.Arch && p.Role == f.Role
+                && p.UpgradeCode.Equals(f.Upgrade, StringComparison.OrdinalIgnoreCase)) != 1)
+                || packages.Any(p => !Vc14Catalog.SameVersion(p.Version, info.Version)
+                    || p.OriginalSha256 != info.ExeHashes[p.Architecture] || p.Files.Length != 2))
+                throw new IOException(info.Label + " 原始 MSI 范围不符。");
+            result[baseline] = packages;
+        }
+        return result;
     }
 
-    internal static IReadOnlyList<Vc14FileRepairPackage> Verify(string root, string arch)
+    internal static IReadOnlyList<Vc14FileRepairPackage> Verify(string root, string arch) =>
+        Verify(root, arch, Vc14Baseline.V142);
+
+    internal static IReadOnlyList<Vc14FileRepairPackage> Verify(string root, string arch, Vc14Baseline baseline)
     {
         if (arch is not ("x64" or "x86")) throw new IOException("强制重装架构无效。");
-        var packages = Packages.Where(p => p.Architecture == arch).ToArray();
+        var info = Vc14BaselineInfo.For(baseline);
+        var packages = PackagesFor(baseline).Where(p => p.Architecture == arch).ToArray();
         foreach (var package in packages)
         {
             foreach (var file in package.Files)
@@ -48,7 +70,7 @@ internal static class Vc14FileRepairSource
                 var path = OfficialCppCatalog.Resolve(root, file.Path);
                 using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
                 if (stream.Length != file.Bytes || Convert.ToHexString(SHA256.HashData(stream)) != file.Sha256)
-                    throw new IOException("14.42强制重装原始MSI/CAB校验失败：" + file.Path);
+                    throw new IOException(info.Label + " 强制重装原始 MSI/CAB 校验失败：" + file.Path);
             }
             var msi = OfficialCppCatalog.Resolve(root, package.Msi);
             var metadata = RuntimeMsiMetadata.ReadPackage(msi);
@@ -58,7 +80,7 @@ internal static class Vc14FileRepairSource
             var media = package.Files.Single(f => f.Path.EndsWith(".cab", StringComparison.Ordinal)).Path;
             if (!Path.GetDirectoryName(media)!.Equals(Path.GetDirectoryName(package.Msi), StringComparison.Ordinal)
                 || !RuntimeMsiMetadata.MediaCabinets(msi).SequenceEqual([Path.GetFileName(media)]))
-                throw new IOException("14.42 MSI原始媒体关系不符。");
+                throw new IOException(info.Label + " MSI 原始媒体关系不符。");
         }
         return packages;
     }
@@ -69,7 +91,7 @@ internal static class Vc14FileRepairSource
             || installed.Architecture != source.Architecture || installed.Role != source.Role || installed.Name != source.Name
             || !Vc14Catalog.SameVersion(installed.Version, source.Version)
             || !installed.UpgradeCode.Equals(source.UpgradeCode, StringComparison.OrdinalIgnoreCase))
-            throw new IOException("强制文件重装仅适用于已经核验安装的同一14.42组件，当前身份已变化。");
+            throw new IOException("强制文件重装仅适用于已经核验安装的同一 " + source.Version + " 组件，当前身份已变化。");
     }
 
     internal static ProcessStartInfo BuildCommand(string root, Vc14FileRepairPackage package, string log)
@@ -89,7 +111,8 @@ internal static class Vc14FileRecovery
         IProgress<string>? progress, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        try { environment.VerifyInstalled(); return new(0, Detail: "实际14.42 DLL复检通过。"); }
+        var info = Vc14BaselineInfo.For(environment.Baseline);
+        try { environment.VerifyInstalled(); return new(0, Detail: "实际 " + info.Version + " DLL复检通过。"); }
         catch (IOException ex) { environment.Trace("dll-file-recovery-required", new { Error = ex.Message }); }
         foreach (var arch in new[] { "x64", "x86" })
         {
@@ -114,8 +137,8 @@ internal static class Vc14FileRecovery
             var scan = environment.Scan();
             if (scan.Issues.Count != 0 || scan.Products.Count != 4 || Vc14Catalog.Families.Any(f =>
                 scan.Products.Count(p => p.Architecture == f.Arch && p.Role == f.Role
-                    && Vc14Catalog.SameVersion(p.Version, Vc14Reinstall.BaselineVersion)) != 1))
-                return new(null, Detail: "14.42双架构组件身份未确认，未执行强制文件重装。", PostcheckPassed: false);
+                    && Vc14Catalog.SameVersion(p.Version, info.Version)) != 1))
+                return new(null, Detail: info.Label + " 双架构组件身份未确认，未执行强制文件重装。", PostcheckPassed: false);
             if (environment.Blocker() is { } changed) return new(null, Detail: changed, PostcheckPassed: false);
             token.ThrowIfCancellationRequested();
             progress?.Report(arch + "：普通修复后DLL仍未对齐，回退到忽略文件版本的原始MSI重装…");
@@ -131,6 +154,6 @@ internal static class Vc14FileRecovery
             }
         }
         environment.VerifyInstalled();
-        return new(0, Detail: "实际14.42 DLL复检通过。");
+        return new(0, Detail: "实际 " + info.Version + " DLL复检通过。");
     }
 }

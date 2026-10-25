@@ -5,7 +5,7 @@ using Microsoft.Win32;
 
 namespace DeltaNFD.Inspection;
 
-internal sealed record AceGameCandidate(string Name, string Root, string Source);
+internal sealed record AceGameCandidate(string Name, string Root, string Source, bool SearchChildren = false, bool ManuallyAssociated = false);
 
 /// <summary>Read-only installed locations. No launch commands, drive recursion or name-only ACE allowlist.</summary>
 internal static class AceGameDiscovery
@@ -63,7 +63,26 @@ internal static class AceGameDiscovery
         var epic = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Epic", "EpicGamesLauncher", "Data", "Manifests");
         foreach (var candidate in ReadEpic(epic, notes, blocked)) Add(candidate.Name, candidate.Root, candidate.Source);
         if (candidates.Count >= 1024) notes.Add("游戏安装位置达到读取上限，部分归属待核对。");
-        return candidates.OrderBy(c => c.Source == "Windows 安装记录" ? 1 : 0).ToArray();
+        try
+        {
+            if (blocked()) throw new OperationCanceledException();
+            var manual = AceManualGameInspection.ReadRoots(AppSettingsStore.ReadRequired().AceGameSearchRoots, notes, blocked);
+            MergeManual(candidates, manual);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { notes.Add("手动 ACE 检索目录配置无法读取，待核对：" + ex.Message); }
+        return candidates.OrderBy(c => c.SearchChildren ? 0 : c.Source == "Windows 安装记录" ? 2 : 1).ToArray();
+    }
+
+    internal static void MergeManual(List<AceGameCandidate> candidates, IReadOnlyList<AceGameCandidate> manual)
+    {
+        foreach (var entry in manual)
+        {
+            var existing = candidates.FindIndex(c => c.Root.Equals(entry.Root, StringComparison.OrdinalIgnoreCase));
+            if (existing < 0) candidates.Add(entry);
+            else candidates[existing] = candidates[existing] with { SearchChildren = true, ManuallyAssociated = true,
+                Source = candidates[existing].Source + " / " + AceManualGameInspection.Source };
+        }
     }
 
     internal static IReadOnlyList<AceGameCandidate> ReadSteam(IEnumerable<string> roots, List<string> notes, Func<bool> blocked)

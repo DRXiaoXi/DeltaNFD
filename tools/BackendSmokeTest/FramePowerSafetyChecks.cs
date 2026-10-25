@@ -28,7 +28,7 @@ internal static class FramePowerSafetyChecks
             Assert(!result.Success && fake.Writes.Count == 0 && !File.Exists(Path.Combine(root, "test-setting.json")), "原值查询失败不得写设置或创建空备份");
             fake.QueryFails = false;
             result = await service.ApplyPlanSettingAsync(Subgroup, Setting, "test-setting.json", "fixture", 0);
-            Assert(result.Success, "完整原值方可应用");
+            Assert(result.Success, "完整原值方可应用：" + result.Message);
             fake.Active = Other;
             fake.Writes.Clear();
             result = await service.RevertPlanSettingAsync(Subgroup, Setting, "test-setting.json", "fixture");
@@ -235,7 +235,8 @@ internal static class FramePowerSafetyChecks
                 && SystemTweakService.AssessHyperVFeatureStates("[{\"State\":\"DisablePending\"}]") == false
                 && SystemTweakService.AssessHyperVFeatureStates("bad json") is null,
                 "完整状态必须包含可选功能及重启等待状态，查询失败为未知");
-            Console.WriteLine($"Frame power safety checks passed: {_assertions} assertions; failed reads, precise restore, persistent snapshots, failures, cancellation/drain, stale callbacks, shared Hyper-V backend. All power writes were mocked.");
+            await CheckUnrestorablePowerBackupsAsync(root);
+            Console.WriteLine($"Frame power safety checks passed: {_assertions} assertions; failed reads, precise restore, persistent snapshots, failures, cancellation/drain, stale callbacks, shared Hyper-V backend, deleted/unreadable power backups and explicit retain-current flow. All power writes were mocked.");
         }
         finally
         {
@@ -249,19 +250,138 @@ internal static class FramePowerSafetyChecks
     private static TaskCompletionSource<bool> NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     private static void Assert(bool value, string message) { if (!value) throw new InvalidOperationException(message); _assertions++; }
 
+    private static async Task CheckUnrestorablePowerBackupsAsync(string root)
+    {
+        var directory = Path.Combine(root, "lost-power-fixture"); Directory.CreateDirectory(directory);
+        var fake = new FakePower();
+        var service = new FrameTweaksService(directory, fake.RunAsync, () => fake.Active);
+        const string usbGroup = "2a737441-1930-4402-8d77-b2bebba308a3";
+        const string usbSetting = "48e6b7a6-50f5-4782-a5d4-53bb8f07e226";
+        const string pcieGroup = "501a4d13-42af-4429-9fd1-a8218c268e20";
+        const string pcieSetting = "ee12f906-d277-404b-b6da-e5fa1a576df5";
+        var usb = Path.Combine(directory, "frame_usb_power.json");
+        var pcie = Path.Combine(directory, "frame_pcie_power.json");
+        var json = $"{{\"Scheme\":\"{Scheme}\",\"Ac\":10,\"Dc\":20}}";
+        fake.QueryFails = true;
+        Assert((await service.RevertPlanSettingAsync(usbGroup, usbSetting, "frame_usb_power.json", "USB")).Success
+            && (await service.RevertPlanSettingAsync(pcieGroup, pcieSetting, "frame_pcie_power.json", "PCIe")).Success
+            && fake.Queries.Count == 0 && fake.Writes.Count == 0 && !Directory.EnumerateFiles(directory).Any(),
+            "用户已删除的备份不猜原值、不重建文件、不触发电源写入，不能凭外层状态继续假恢复");
+
+        File.WriteAllText(usb, json); File.WriteAllText(pcie, json);
+        var failed = await service.RevertPlanSettingAsync(usbGroup, usbSetting, "frame_usb_power.json", "USB");
+        Assert(!failed.Success && failed.Message.Contains(Scheme) && failed.Message.Contains("fixture access denied")
+            && fake.Writes.Count == 0 && File.ReadAllText(usb) == json,
+            "完整备份指向不可读计划时停止写入，显示计划和系统原因，原始证据保留");
+        var review = await service.GetIncompletePowerBackupsAsync();
+        Assert(review.Count == 2 && review.All(r => r.Reason.Contains("原值完整") && r.Reason.Contains("未认定计划已删除")),
+            "完整但不可读的 USB/PCIe 备份均进入核对，不把访问错误断定为计划删除");
+        fake.QueryFails = false;
+        Assert(!(await service.PreserveCurrentPowerValuesAsync(review)).Success && File.Exists(usb) && File.Exists(pcie)
+            && fake.Writes.Count == 0, "确认前计划恢复可读则拒绝旧归档请求，保留精确恢复责任");
+
+        fake.QueryFails = true; review = await service.GetIncompletePowerBackupsAsync();
+        File.AppendAllText(pcie, " ");
+        Assert(!(await service.PreserveCurrentPowerValuesAsync(review)).Success && File.Exists(usb) && File.Exists(pcie),
+            "两项确认中第二项字节变化会在移动第一项前阻止归档");
+        review = await service.GetIncompletePowerBackupsAsync();
+        File.Delete(usb);
+        Assert(!(await service.PreserveCurrentPowerValuesAsync(review)).Success && File.Exists(pcie) && fake.Writes.Count == 0,
+            "用户在确认后删除备份不得冒充归档成功或抹去剩余备份");
+        File.WriteAllText(usb, json); review = await service.GetIncompletePowerBackupsAsync();
+        AppSettingsStore.Update(s => { s.FrameModeActive = true; s.FramePowerSaveLatencyEnabled = true; s.FrameForegroundBoostEnabled = true; s.FramePowerLockEnabled = true; });
+        using (var engine = new DeltaNFD.Execution.CpuFrame.CpuFrameEngine(new FakePowerService(fake), service))
+        {
+            Assert(!(await engine.PreserveCurrentPowerValuesAsync(review)).Success && File.Exists(usb)
+                && AppSettingsStore.Read().FramePowerSaveLatencyEnabled, "帧格运行时仍禁止保留当前值处理，不修改开关或证据");
+            AppSettingsStore.Update(s => s.FrameModeActive = false);
+            var result = await engine.PreserveCurrentPowerValuesAsync(review);
+            var settings = AppSettingsStore.Read();
+            Assert(result.Success && !settings.FramePowerSaveLatencyEnabled && result.Message.Contains("不是还原")
+                && result.Message.Contains("降低省电延迟已关闭"), "明确归档后实际关闭省电延迟设置，不只是对话框声称关闭");
+            Assert(settings.FrameForegroundBoostEnabled && settings.FramePowerLockEnabled,
+                "仅 USB/PCIe 归档不改前台加速及无关电源锁定开关");
+            Assert(!File.Exists(usb) && !File.Exists(pcie) && fake.Writes.Count == 0, "保留当前值零电源写入且退出这两项恢复队列");
+            var archived = Directory.GetFiles(Path.Combine(directory, "unresolved-frame-power"));
+            Assert(archived.Length == 2 && archived.Any(p => File.ReadAllText(p) == json)
+                && archived.Any(p => File.ReadAllText(p) == json + " "), "完整及带空白备份均按原字节归档，无证据删除");
+        }
+        fake.QueryFails = false; fake.Ac = 10; fake.Dc = 20; fake.WriteFails = true;
+        File.WriteAllText(usb, json); fake.Writes.Clear();
+        var same = await service.RevertPlanSettingAsync(usbGroup, usbSetting, "frame_usb_power.json", "USB");
+        Assert(same.Success && same.Message.Contains("一致") && fake.Writes.Count == 0 && !File.Exists(usb),
+            "应用从未改变原值时只核对，不因重复写入被 Windows 拒绝而永久卡住");
+        fake.WriteFails = false; fake.Ac = 10; fake.Dc = 99; File.WriteAllText(usb, json); fake.Writes.Clear();
+        Assert((await service.RevertPlanSettingAsync(usbGroup, usbSetting, "frame_usb_power.json", "USB")).Success
+            && fake.Writes.Count == 2 && fake.Writes[0].StartsWith("/setdcvalueindex") && fake.Dc == 20,
+            "只恢复有差异的 DC 并刷新，不重复写原本正确的 AC");
+
+        fake.Ac = 99; fake.Dc = 99; fake.FailWritePrefix = "/setdcvalueindex"; fake.WriteCode = 1;
+        fake.FailureText = "系统策略拒绝该操作\r\nfixture detail"; File.WriteAllText(usb, json); fake.Writes.Clear();
+        failed = await service.RevertPlanSettingAsync(usbGroup, usbSetting, "frame_usb_power.json", "USB");
+        Assert(!failed.Success && failed.Message.Contains("退出码 1") && failed.Message.Contains(Scheme)
+            && failed.Message.Contains(usbSetting) && failed.Message.Contains("系统策略拒绝") && !failed.Message.Contains('\n')
+            && File.ReadAllText(usb) == json && fake.Ac == 10 && fake.Dc == 99 && fake.Writes.Count == 2,
+            "真实退出码1场景保留计划/设置/系统错误及原值，部分写入不冒充成功或切换计划");
+        fake.FailWritePrefix = ""; fake.Writes.Clear();
+        Assert((await service.RevertPlanSettingAsync(usbGroup, usbSetting, "frame_usb_power.json", "USB")).Success
+            && fake.Writes.Count == 2 && fake.Writes[0].StartsWith("/setdcvalueindex") && fake.Dc == 20,
+            "部分失败可重试，只完成剩余 DC 恢复");
+        fake.Ac = 99; fake.Dc = 99; fake.IgnoreWrites = true; File.WriteAllText(usb, json); fake.Writes.Clear();
+        Assert(!(await service.RevertPlanSettingAsync(usbGroup, usbSetting, "frame_usb_power.json", "USB")).Success && File.Exists(usb),
+            "退出码0但写后不符仍保留备份，不放松原有复核门禁");
+        fake.IgnoreWrites = false; fake.WriteFails = true; fake.FailureText = new string('x', 2000); fake.Writes.Clear();
+        failed = await service.RevertPlanSettingAsync(usbGroup, usbSetting, "frame_usb_power.json", "USB");
+        Assert(!failed.Success && failed.Message.Length < 1200 && File.Exists(usb), "系统错误输出长度受限，原始备份不被失败诊断修改");
+
+        fake.Ac = 0; fake.Dc = 0; fake.Writes.Clear();
+        var noChange = Path.Combine(directory, "already-off.json");
+        Assert((await service.ApplyPlanSettingAsync(usbGroup, usbSetting, "already-off.json", "USB", 0)).Success
+            && fake.Writes.Count == 0 && File.Exists(noChange), "已是关闭值时应用只查询备份，不重复写入或激活而误报失败");
+        Assert((await service.RevertPlanSettingAsync(usbGroup, usbSetting, "already-off.json", "USB")).Success
+            && fake.Writes.Count == 0 && !File.Exists(noChange), "无需改变的应用可按原值完整退出");
+        fake.QueryFails = true; fake.Writes.Clear();
+        var originalBytes = File.ReadAllBytes(usb);
+        Assert(!(await service.ApplyPlanSettingAsync(usbGroup, usbSetting, "frame_usb_power.json", "USB", 0)).Success
+            && fake.Writes.Count == 0 && File.ReadAllBytes(usb).SequenceEqual(originalBytes),
+            "已有备份但设置不可读时不再盲目尝试应用或覆盖首次原值");
+
+        // Exercise the same native query path used by the product, against a nonexistent random
+        // GUID only. Any attempted write/activation would throw instead of reaching the host.
+        var nativeRoot = Path.Combine(directory, "native-read-only"); Directory.CreateDirectory(nativeRoot);
+        var missingScheme = Guid.NewGuid().ToString("D");
+        var nativeBackup = Path.Combine(nativeRoot, "frame_usb_power.json");
+        var nativeJson = $"{{\"Scheme\":\"{missingScheme}\",\"Ac\":1,\"Dc\":0}}";
+        File.WriteAllText(nativeBackup, nativeJson);
+        var native = new FrameTweaksService(nativeRoot, (_, _) => throw new Exception("真实只读夹具禁止电源命令"),
+            () => throw new Exception("真实只读夹具禁止计划激活"), nativePowerReads: true);
+        failed = await native.RevertPlanSettingAsync(usbGroup, usbSetting, "frame_usb_power.json", "USB");
+        Assert(!failed.Success && failed.Message.Contains(missingScheme) && failed.Message.Contains("Win32")
+            && File.ReadAllText(nativeBackup) == nativeJson, "真实原生查询不存在计划时返回 Win32 原因，零写入且保留原始文件");
+        review = await native.GetIncompletePowerBackupsAsync();
+        Assert(review.Count == 1 && review[0].Reason.Contains("Win32"), "真实原生不可读设置进入核对路径");
+        Assert((await native.PreserveCurrentPowerValuesAsync(review)).Success && !File.Exists(nativeBackup),
+            "真实原生只读查询后显式保留当前值只归档夹具，不调用任何电源命令");
+    }
+
     private sealed class FakePower
     {
         public string Active = Scheme;
         public long Ac = 10, Dc = 20;
         public bool QueryFails, WriteFails, RefreshFails, Empty;
         public bool HideFromFull, DirectFails;
+        public bool IgnoreWrites;
+        public int WriteCode = 5;
+        public string FailWritePrefix = "", FailureText = "fixture failure";
         public TaskCompletionSource<bool>? QueryEntered, QueryRelease;
         public List<string> Writes { get; } = new();
+        public List<string> Queries { get; } = new();
         public async Task<(int Code, string StdOut, string StdErr)> RunAsync(string arguments, TimeSpan timeout)
         {
             var parts = arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (parts[0] is "/q" or "/qh")
             {
+                Queries.Add(arguments);
                 QueryEntered?.TrySetResult(true);
                 if (QueryRelease is not null) await QueryRelease.Task;
                 if (QueryFails) return (5, "", "fixture access denied");
@@ -271,9 +391,10 @@ internal static class FramePowerSafetyChecks
                 return (0, output, "");
             }
             Writes.Add(arguments);
-            if (WriteFails || (RefreshFails && parts[0] == "/setactive")) return (5, "", "fixture failure");
-            if (parts[0] == "/setacvalueindex") Ac = long.Parse(parts[^1]);
-            if (parts[0] == "/setdcvalueindex") Dc = long.Parse(parts[^1]);
+            if (WriteFails || (RefreshFails && parts[0] == "/setactive")
+                || FailWritePrefix.Length > 0 && arguments.StartsWith(FailWritePrefix)) return (WriteCode, "", FailureText);
+            if (!IgnoreWrites && parts[0] == "/setacvalueindex") Ac = long.Parse(parts[^1]);
+            if (!IgnoreWrites && parts[0] == "/setdcvalueindex") Dc = long.Parse(parts[^1]);
             return (0, "", "");
         }
     }

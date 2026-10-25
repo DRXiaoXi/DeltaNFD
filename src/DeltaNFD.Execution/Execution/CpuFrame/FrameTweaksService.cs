@@ -47,15 +47,16 @@ public sealed class FrameTweaksService
     private readonly Func<string?> _activeSchemeReader;
     private readonly bool _nativePowerReads;
 
-    public FrameTweaksService() : this(AppDataPaths.Root, RunPowerCfgAsync, ReadActivePowerScheme) { _nativePowerReads = true; }
+    public FrameTweaksService() : this(AppDataPaths.Root, RunPowerCfgAsync, ReadActivePowerScheme, nativePowerReads: true) { }
 
     internal FrameTweaksService(string backupRoot,
         Func<string, TimeSpan, Task<(int Code, string StdOut, string StdErr)>> powerRunner,
-        Func<string?> activeSchemeReader)
+        Func<string?> activeSchemeReader, bool nativePowerReads = false)
     {
         _powerBackupRoot = backupRoot;
         _powerRunner = powerRunner;
         _activeSchemeReader = activeSchemeReader;
+        _nativePowerReads = nativePowerReads;
     }
 
     /// <summary>前台加速响应的调度参数改写是否已经生效（有本功能的备份记录即视为已改写）。</summary>
@@ -156,6 +157,7 @@ public sealed class FrameTweaksService
         var skipText = skips.Count == 0 ? "" : " " + string.Join("；", skips) + "。";
         Log.Info($"帧格临时优化：应用完成 —— 成功 {notes.Count} 项（{string.Join("，", notes)}）；" +
             $"跳过 {skips.Count} 项（{string.Join("，", skips)}）；失败 {failures.Count} 项");
+        if (failures.Count > 0) Log.Warn("帧格临时优化失败明细：" + string.Join("；", failures));
         return failures.Count == 0
             ? OperationResult.Ok((notes.Count == 0 ? "没有需要应用的临时优化。" : $"已应用 {notes.Count} 项帧格临时优化。") + skipText)
             : OperationResult.Fail($"帧格临时优化部分失败：{string.Join("；", failures)}" + skipText);
@@ -258,11 +260,27 @@ public sealed class FrameTweaksService
             var path = Path.Combine(_powerBackupRoot, name);
             if (!PowerFileExists(path)) continue;
             var bytes = await ReadPowerBackupBytesAsync(path);
-            var reason = name == "frame_power_scheme_snapshot.json" ? await SnapshotReviewReasonAsync(bytes) : IncompletePowerBackup(bytes, out var why) ? why : null;
+            var reason = await PowerBackupReviewReasonAsync(name, bytes);
             if (reason is null) continue;
             result.Add(new(name, path, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)), reason));
         }
         return result;
+    }
+
+    private async Task<string?> PowerBackupReviewReasonAsync(string name, byte[] bytes)
+    {
+        if (name == "frame_power_scheme_snapshot.json") return await SnapshotReviewReasonAsync(bytes);
+        if (IncompletePowerBackup(bytes, out var reason)) return reason;
+        var backup = System.Text.Json.JsonSerializer.Deserialize<PowerSettingBackup>(bytes)!;
+        var (subgroup, setting, label) = name switch
+        {
+            UsbBackupFile => (UsbSubgroup, UsbSuspendSetting, "USB 选择性暂停"),
+            PcieBackupFile => (PcieSubgroup, PcieAspmSetting, "PCIe 链接状态电源管理"),
+            _ => throw new InvalidOperationException("拒绝查询其他电源备份。"),
+        };
+        var current = await ReadPlanSettingAsync(backup.Scheme, subgroup, setting);
+        return ValidPowerValue(current.Ac) && ValidPowerValue(current.Dc) ? null
+            : $"计划={backup.Scheme}；{label}原值完整，但所属计划或设置当前不可读取（可能已删除、不可用或访问失败），未认定计划已删除。{current.Error}";
     }
 
     private async Task<string?> SnapshotReviewReasonAsync(byte[] bytes)
@@ -315,7 +333,7 @@ public sealed class FrameTweaksService
                 if (item.FileName is not (UsbBackupFile or PcieBackupFile or "frame_power_scheme_snapshot.json")) return OperationResult.Fail("拒绝处理其他备份。");
                 var path = Path.Combine(_powerBackupRoot, item.FileName);
                 var bytes = await ReadPowerBackupBytesAsync(path);
-                var unresolved = item.FileName == "frame_power_scheme_snapshot.json" ? await SnapshotReviewReasonAsync(bytes) is not null : IncompletePowerBackup(bytes, out _);
+                var unresolved = await PowerBackupReviewReasonAsync(item.FileName, bytes) is not null;
                 if (!unresolved || Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)) != item.Fingerprint)
                     return OperationResult.Fail("备份已变化，请重新确认；未移动备份。");
             }
@@ -393,11 +411,13 @@ public sealed class FrameTweaksService
             }
 
             var backupPath = Path.Combine(_powerBackupRoot, backupFile);
+            PowerSettingReading? current = null;
             if (!PowerFileExists(backupPath))
             {
-                var (ac, dc) = await QueryPlanSettingValuesAsync(scheme, subgroup, setting);
+                var original = current = await ReadPlanSettingAsync(scheme, subgroup, setting);
+                var (ac, dc) = (original.Ac, original.Dc);
                 if (!ValidPowerValue(ac) || !ValidPowerValue(dc))
-                    return OperationResult.Fail($"{label} 原值读取失败，未修改设置（不能用默认值代替原值）。");
+                    return OperationResult.Fail($"{label} 原值读取失败，未修改设置（不能用默认值代替原值）。计划={scheme}；{original.Error}");
                 var backup = new PowerSettingBackup { Scheme = scheme, Ac = ac, Dc = dc };
                 await SavePowerJsonOnceAsync(backupPath, backup);
             }
@@ -407,21 +427,31 @@ public sealed class FrameTweaksService
                 || !ValidPowerValue(existing.Ac) || !ValidPowerValue(existing.Dc))
                 return OperationResult.Fail($"{label} 备份无效或属于另一个计划，请先恢复旧记录；未继续修改。");
 
+            current ??= await ReadPlanSettingAsync(scheme, subgroup, setting);
+            if (!ValidPowerValue(current.Ac) || !ValidPowerValue(current.Dc))
+                return OperationResult.Fail($"{label} 当前设置读取失败，原值备份保留且未修改；计划={scheme}；{current.Error}");
+            var wrote = false;
             foreach (var mode in new[] { "ac", "dc" })
             {
-                var (code, _, _) = await _powerRunner(
+                if ((mode == "ac" ? current.Ac : current.Dc) == targetValue) continue;
+                var (code, stdout, stderr) = await _powerRunner(
                     $"/set{mode}valueindex {scheme} {subgroup} {setting} {targetValue}", TimeSpan.FromSeconds(20));
                 if (code != 0)
                 {
-                    return OperationResult.Fail($"{label} {mode.ToUpperInvariant()} 设置失败（退出码 {code}）。");
+                    return PowerCommandFailure($"{label} {mode.ToUpperInvariant()} 设置", code, scheme, subgroup, setting, stdout, stderr);
                 }
+                wrote = true;
             }
 
-            var (activeCode, _, _) = await _powerRunner($"/setactive {scheme}", TimeSpan.FromSeconds(20));
+            if (wrote)
+            {
+                var (code, stdout, stderr) = await _powerRunner($"/setactive {scheme}", TimeSpan.FromSeconds(20));
+                if (code != 0) return PowerCommandFailure($"{label} 电源计划刷新", code, scheme, subgroup, setting, stdout, stderr);
+            }
             var applied = await QueryPlanSettingValuesAsync(scheme, subgroup, setting);
-            return activeCode == 0 && applied.Ac == targetValue && applied.Dc == targetValue
+            return applied.Ac == targetValue && applied.Dc == targetValue
                 ? OperationResult.Ok("")
-                : OperationResult.Fail($"{label} 电源计划刷新或写后复检失败（退出码 {activeCode}），已保留原值备份。");
+                : OperationResult.Fail($"{label} 电源计划写后复检失败；计划={scheme}；已保留原值备份。");
         }
         catch (Exception ex)
         {
@@ -460,42 +490,56 @@ public sealed class FrameTweaksService
                 return OperationResult.Fail($"{label} 原值备份不完整，已保留记录，未使用猜测默认值恢复。备份：{backupPath}");
             }
 
-            foreach (var (mode, value) in new[] { ("ac", backup.Ac), ("dc", backup.Dc) })
+            // An intact JSON can still point at a deleted/inaccessible plan. Do not recreate it,
+            // redirect its originals to the current plan, or issue doomed writes before review.
+            var current = await ReadPlanSettingAsync(backup.Scheme, subgroup, setting);
+            if (!ValidPowerValue(current.Ac) || !ValidPowerValue(current.Dc))
             {
+                var message = $"{label} 原计划或设置当前不可读取，未执行恢复写入；计划={backup.Scheme}；原 AC={backup.Ac}，DC={backup.Dc}。{current.Error} 请在帧格页核对旧电源记录；备份已保留。";
+                Log.Warn(message);
+                return OperationResult.Fail(message);
+            }
+
+            var wrote = false;
+            foreach (var (mode, value, actual) in new[] { ("ac", backup.Ac, current.Ac), ("dc", backup.Dc, current.Dc) })
+            {
+                if (actual == value) continue; // A failed apply may never have changed this index.
                 var restored = value!.Value;
-                var (code, _, _) = await _powerRunner(
+                var (code, stdout, stderr) = await _powerRunner(
                     $"/set{mode}valueindex {backup.Scheme} {subgroup} {setting} {restored}", TimeSpan.FromSeconds(20));
                 if (code != 0)
                 {
-                    return OperationResult.Fail($"{label} {mode.ToUpperInvariant()} 还原失败（退出码 {code}）。");
+                    return PowerCommandFailure($"{label} {mode.ToUpperInvariant()} 还原", code, backup.Scheme, subgroup, setting, stdout, stderr);
                 }
+                wrote = true;
             }
 
             // 只有该计划仍处于激活状态时才 /setactive 刷新（该命令会把计划切成活动计划）。
             // 帧格退出顺序是「先解除电源锁定（切回用户原计划）」再「还原本服务改写的省电项」，
             // 若此处无条件 /setactive，会把刚还原的用户原计划又切回被锁定的目标计划。
             // 计划已不再激活时只写回原值即可（用户日后切到该计划时自然生效）。
-            var activeScheme = _activeSchemeReader();
-            if (activeScheme is null)
-                return OperationResult.Fail($"{label} 原值已写回，但当前活动计划无法确认，已保留备份且未切换计划。");
-            if (activeScheme.Equals(backup.Scheme, StringComparison.OrdinalIgnoreCase))
+            if (wrote)
             {
-                var (activeCode, _, _) = await _powerRunner($"/setactive {backup.Scheme}", TimeSpan.FromSeconds(20));
-                if (activeCode != 0)
+                var activeScheme = _activeSchemeReader();
+                if (activeScheme is null)
+                    return OperationResult.Fail($"{label} 原值已写回，但当前活动计划无法确认，已保留备份且未切换计划。");
+                if (activeScheme.Equals(backup.Scheme, StringComparison.OrdinalIgnoreCase))
                 {
-                    return OperationResult.Fail($"原电源计划激活失败（退出码 {activeCode}）。");
+                    var (activeCode, stdout, stderr) = await _powerRunner($"/setactive {backup.Scheme}", TimeSpan.FromSeconds(20));
+                    if (activeCode != 0)
+                        return PowerCommandFailure($"{label} 原电源计划刷新", activeCode, backup.Scheme, subgroup, setting, stdout, stderr);
                 }
-            }
-            else
-            {
-                Log.Info($"帧格临时优化：{label} 原值已写回计划 {backup.Scheme}（当前激活计划为 {activeScheme}，不做切换）");
+                else
+                {
+                    Log.Info($"帧格临时优化：{label} 原值已写回计划 {backup.Scheme}（当前激活计划为 {activeScheme}，不做切换）");
+                }
             }
 
             var checkedValues = await QueryPlanSettingValuesAsync(backup.Scheme, subgroup, setting);
             if (checkedValues.Ac != backup.Ac || checkedValues.Dc != backup.Dc)
                 return OperationResult.Fail($"{label} 还原后复检不符，已保留备份。");
             File.Delete(backupPath);
-            return OperationResult.Ok($"{label} 已还原。");
+            return OperationResult.Ok(wrote ? $"{label} 已还原。" : $"{label} 当前值与原值一致，已核对。");
         }
         catch (Exception ex)
         {
@@ -545,27 +589,53 @@ public sealed class FrameTweaksService
     private async Task<(long? Ac, long? Dc)> QueryPlanSettingValuesAsync(
         string scheme, string subgroup, string setting)
     {
+        var result = await ReadPlanSettingAsync(scheme, subgroup, setting);
+        return (result.Ac, result.Dc);
+    }
+
+    private sealed record PowerSettingReading(long? Ac, long? Dc, string Error = "");
+
+    private async Task<PowerSettingReading> ReadPlanSettingAsync(string scheme, string subgroup, string setting)
+    {
         if (_nativePowerReads)
         {
-            if (!Guid.TryParse(scheme, out var schemeGuid) || !Guid.TryParse(subgroup, out var subgroupGuid) || !Guid.TryParse(setting, out var settingGuid)) return (null, null);
+            if (!Guid.TryParse(scheme, out var schemeGuid) || !Guid.TryParse(subgroup, out var subgroupGuid) || !Guid.TryParse(setting, out var settingGuid)) return new(null, null, "电源计划或设置 GUID 无效。");
             var acStatus = PowerReadACValueIndex(IntPtr.Zero, ref schemeGuid, ref subgroupGuid, ref settingGuid, out var ac);
             var dcStatus = PowerReadDCValueIndex(IntPtr.Zero, ref schemeGuid, ref subgroupGuid, ref settingGuid, out var dc);
-            return (acStatus == 0 ? ac : null, dcStatus == 0 ? dc : null);
+            var errors = new List<string>();
+            if (acStatus != 0) errors.Add($"AC 读取失败（Win32 {acStatus}：{new System.ComponentModel.Win32Exception(unchecked((int)acStatus)).Message}）");
+            if (dcStatus != 0) errors.Add($"DC 读取失败（Win32 {dcStatus}：{new System.ComponentModel.Win32Exception(unchecked((int)dcStatus)).Message}）");
+            return new(acStatus == 0 ? ac : null, dcStatus == 0 ? dc : null, string.Join("；", errors));
         }
-        var (code, stdout, _) = await _powerRunner(
+        var (code, stdout, stderr) = await _powerRunner(
             $"/q {scheme} {subgroup} {setting}", TimeSpan.FromSeconds(20));
         if (code != 0 || stdout is null)
         {
-            return (null, null);
+            return new(null, null, $"读取退出码 {code}；{PowerOutputDetail(stdout, stderr)}");
         }
 
         var matches = PowerHexValueRegex.Matches(stdout);
         if (matches.Count < 2)
         {
-            return (null, null);
+            return new(null, null, "系统未返回完整 AC/DC 值。");
         }
 
-        return (ParseHexAt(matches, matches.Count - 2), ParseHexAt(matches, matches.Count - 1));
+        return new(ParseHexAt(matches, matches.Count - 2), ParseHexAt(matches, matches.Count - 1));
+    }
+
+    private static string PowerOutputDetail(string? stdout, string? stderr)
+    {
+        var value = string.Join(" ", new[] { stderr, stdout }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        value = Regex.Replace(value, @"[\p{Cc}\s]+", " ").Trim();
+        return value.Length == 0 ? "Windows 未返回错误说明。" : value[..Math.Min(value.Length, 800)];
+    }
+
+    private static OperationResult PowerCommandFailure(string action, int code, string scheme,
+        string subgroup, string setting, string stdout, string stderr)
+    {
+        var message = $"{action}失败（退出码 {code}）；计划={scheme}；子组={subgroup}；设置={setting}；{PowerOutputDetail(stdout, stderr)} 原值备份已保留。";
+        Log.Warn("帧格电源操作：" + message);
+        return OperationResult.Fail(message);
     }
     [System.Runtime.InteropServices.DllImport("powrprof.dll")] private static extern uint PowerReadACValueIndex(IntPtr root, ref Guid scheme, ref Guid subgroup, ref Guid setting, out uint value);
     [System.Runtime.InteropServices.DllImport("powrprof.dll")] private static extern uint PowerReadDCValueIndex(IntPtr root, ref Guid scheme, ref Guid subgroup, ref Guid setting, out uint value);
@@ -1071,6 +1141,8 @@ public sealed class FrameTweaksService
     private static async Task<(int Code, string StdOut, string StdErr)> RunPowerCfgAsync(
         string arguments, TimeSpan timeout)
     {
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+        var encoding = System.Text.Encoding.GetEncoding(System.Globalization.CultureInfo.CurrentUICulture.TextInfo.ANSICodePage);
         var psi = new System.Diagnostics.ProcessStartInfo
         {
             FileName = Path.Combine(Environment.SystemDirectory, "powercfg.exe"),
@@ -1078,6 +1150,8 @@ public sealed class FrameTweaksService
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = encoding,
+            StandardErrorEncoding = encoding,
             CreateNoWindow = true,
         };
 

@@ -44,9 +44,13 @@ public static partial class Vc14Reinstall
     }
 
     internal static string StageFingerprint(IReadOnlyList<Vc14RemovalPlanItem> plan, Vc14RepairMode mode, Vc14Continuation? pending, Vc14Scan? scan = null,
-        SafeInstallerPreparation? temporary = null)
+        SafeInstallerPreparation? temporary = null, Vc14Baseline baseline = Vc14Baseline.V142)
         => Convert.ToHexString(SHA256.HashData(
-            JsonSerializer.SerializeToUtf8Bytes(new { Plan = Fingerprint(plan), Mode = mode, Pending = pending, Scan = ScanProjection(scan), Temporary = temporary })));
+            JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                Plan = Fingerprint(plan, baseline), Mode = mode, Pending = pending, Scan = ScanProjection(scan),
+                Temporary = temporary, Baseline = baseline,
+            })));
 
     private static object? ScanProjection(Vc14Scan? scan) => scan is null ? null : new
     {
@@ -104,7 +108,8 @@ internal sealed class Vc14ContinuationStore(string root)
         if (!File.Exists(PathName)) return null;
         if (new FileInfo(PathName).Length > 4096) throw new IOException("14.x 待安装记录异常，保留记录，请人工核对。");
         var record = JsonSerializer.Deserialize<Vc14Continuation>(File.ReadAllText(PathName));
-        if (record is null || !Guid.TryParseExact(record.Id, "D", out _) || record.CreatedUtc == default)
+        if (record is null || !Guid.TryParseExact(record.Id, "D", out _) || record.CreatedUtc == default
+            || !record.Baseline.IsSupported())
             throw new IOException("14.x 待安装记录损坏，保留记录，请人工核对。");
         return record;
     }

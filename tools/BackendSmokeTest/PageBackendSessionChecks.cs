@@ -137,11 +137,11 @@ internal static class PageBackendSessionChecks
         AuditInspectionAssembly();
         Check(typeof(OptimizationScan).GetProperty("Score") is null, "已取消评分机制");
         var now = DateTimeOffset.UtcNow;
-        Check(PageBackendSessions.ReadDeltaObservation(new() { MonitorRunning = true, IsCustomTarget = true, GameRunning = false, DeltaForceRunning = true, DeltaForceObservedUtc = now }, now) == true, "自定义目标不能掩盖三角洲进程");
-        Check(PageBackendSessions.ReadDeltaObservation(new() { MonitorRunning = true, GameRunning = true, DeltaForceRunning = false, DeltaForceObservedUtc = now }, now) == false, "其他游戏不触发三角洲限制");
-        Check(PageBackendSessions.ReadDeltaObservation(new() { MonitorRunning = false, DeltaForceRunning = false, DeltaForceObservedUtc = now }, now) is null, "监控停止不采信旧状态");
-        Check(PageBackendSessions.ReadDeltaObservation(new() { MonitorRunning = true, DeltaForceRunning = false, DeltaForceObservedUtc = now.AddSeconds(-11) }, now) is null, "过期状态不能解锁");
-        Check(PageBackendSessions.ReadDeltaObservation(new() { MonitorRunning = true, DeltaForceRunning = false, DeltaForceObservedUtc = now.AddSeconds(5) }, now) is null, "未来时间不能解锁");
+        Check(PageBackendSessions.ReadDeltaObservation(new() { UpdatedUtc = now, MonitorRunning = true, IsCustomTarget = true, GameRunning = false, DeltaForceRunning = true, DeltaForceObservedUtc = now }, now) == true, "自定义目标不能掩盖三角洲进程");
+        Check(PageBackendSessions.ReadDeltaObservation(new() { UpdatedUtc = now, MonitorRunning = true, GameRunning = true, DeltaForceRunning = false, DeltaForceObservedUtc = now }, now) == false, "其他游戏不触发三角洲限制");
+        Check(PageBackendSessions.ReadDeltaObservation(new() { UpdatedUtc = now, MonitorRunning = false, DeltaForceRunning = false, DeltaForceObservedUtc = now }, now) == false, "自动执行停止仍采信独立新鲜观测");
+        Check(PageBackendSessions.ReadDeltaObservation(new() { UpdatedUtc = now, MonitorRunning = true, DeltaForceRunning = false, DeltaForceObservedUtc = now.AddSeconds(-11) }, now) is null, "过期状态不能解锁");
+        Check(PageBackendSessions.ReadDeltaObservation(new() { UpdatedUtc = now, MonitorRunning = true, DeltaForceRunning = false, DeltaForceObservedUtc = now.AddSeconds(5) }, now) is null, "未来时间不能解锁");
         Check(PageBackendSessions.ReadDeltaObservation(new() { MonitorRunning = true }, now) is null, "旧后端缺字段不能冒充未运行");
         var immediate = new PageBackendLease("system");
         await Rejected(() => { PageBackendSessions.RecheckPage(immediate, () => true); return Task.CompletedTask; }, "发送前复核封住两次共享监控之间的启动窗口");

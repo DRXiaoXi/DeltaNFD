@@ -9,54 +9,74 @@ using DeltaNFD.Services.AlphaRestore;
 
 namespace DeltaNFD.Services;
 
-/// <summary>内置官方 14.42.34433 载荷中的一个 DLL（清单固定大小与 SHA256）。</summary>
+/// <summary>内置官方 14.x 载荷中的一个 DLL（清单固定大小与 SHA256）。</summary>
 internal sealed record Vc14ForceReplacePayload(string Architecture, string File, long Bytes, string Sha256);
+
+/// <summary>某一基线对应的固定载荷清单、版本与指纹。</summary>
+internal sealed record Vc14ForceReplacePayloadSet(Vc14BaselineInfo Baseline,
+    IReadOnlyList<Vc14ForceReplacePayload> Files, string Fingerprint)
+{
+    internal string ExpectedVersion => Baseline.Version;
+}
 
 /// <summary>写入结果：replaced / renamed / scheduled / failed / cancelled。</summary>
 internal sealed record Vc14ForceReplaceOutcome(string Architecture, string File, string Outcome, string Detail);
 
 /// <summary>
-/// 显式高风险操作：绕过 Windows Installer 的“较新共享文件不覆盖”规则，直接用内置官方
-/// 14.42.34433 文件覆盖 System32/SysWOW64 的 51 个 14.x DLL（x64 26 / x86 25）。
+/// 显式高风险操作：绕过 Windows Installer 的“较新共享文件不覆盖”规则，直接用所选内置官方
+/// 14.42/14.44 文件覆盖 System32/SysWOW64 的 51 个 14.x DLL（x64 26 / x86 25）。
 /// 先备份再替换；被占用时先尝试改名替换，仍失败则登记到下次启动。不修改 MSI/ARP 安装登记。
 /// 仅正常模式、管理员、无待核对事务时可用；预览指纹变化后拒绝执行。
 /// </summary>
 public static class Vc14ForceReplace
 {
+    /// <summary>默认基线（14.42）目标版本；兼容既有固定检查。</summary>
     internal const string ExpectedVersion = "14.42.34433.0";
-    private const string CatalogResource = "Vc14ForceReplace.catalog.json";
     private const int PayloadCount = 51;
     private const uint MoveFileReplaceExisting = 0x1;
     private const uint MoveFileDelayUntilReboot = 0x4;
     private static readonly TimeSpan OperationBudget = TimeSpan.FromMinutes(15);
 
-    private static readonly Lazy<IReadOnlyList<Vc14ForceReplacePayload>> PayloadLazy = new(LoadPayload);
-    private static readonly Lazy<string> PayloadFingerprintLazy = new(ComputePayloadFingerprint);
+    private static readonly Lazy<IReadOnlyDictionary<Vc14Baseline, Vc14ForceReplacePayloadSet>> PayloadSets =
+        new(LoadPayloadSets);
 
-    internal static IReadOnlyList<Vc14ForceReplacePayload> Payload => PayloadLazy.Value;
-    internal static string PayloadFingerprint => PayloadFingerprintLazy.Value;
+    internal static Vc14ForceReplacePayloadSet PayloadSet(Vc14Baseline baseline) =>
+        PayloadSets.Value.TryGetValue(baseline, out var set) ? set
+            : throw new IOException("缺少 " + Vc14BaselineInfo.For(baseline).Label + " 的强制替换载荷清单。");
+    internal static IReadOnlyList<Vc14ForceReplacePayload> Payload => PayloadSet(Vc14Baseline.V142).Files;
+    internal static string PayloadFingerprint => PayloadSet(Vc14Baseline.V142).Fingerprint;
     internal static string WindowsRoot => Environment.GetFolderPath(Environment.SpecialFolder.Windows);
 
     /// <summary>只读预览：核对内置载荷、当前 51 个 DLL 版本与占用情况，生成执行指纹。</summary>
     public static Vc14ForceReplacePreview Preview(CancellationToken token = default) =>
-        PreviewCore(Vc14FileRepairSource.InstalledRoot, WindowsRoot, enforceHostChecks: true, versionReader: null, token);
+        PreviewCore(Vc14FileRepairSource.InstalledRoot, WindowsRoot, enforceHostChecks: true, versionReader: null, token,
+            Vc14Baseline.V142);
 
-    /// <summary>执行强制替换；fingerprint 必须来自本次预览。</summary>
-    public static Task<OperationResult> RunAsync(string fingerprint, IProgress<string>? progress, CancellationToken token) =>
+    public static Vc14ForceReplacePreview Preview(Vc14Baseline baseline, CancellationToken token = default) =>
+        PreviewCore(Vc14BaselineInfo.For(baseline).FileRepairRoot, WindowsRoot, enforceHostChecks: true, versionReader: null, token,
+            baseline);
+
+    /// <summary>执行强制替换；fingerprint 必须来自同一基线的本次预览。</summary>
+    public static Task<OperationResult> RunAsync(string fingerprint, IProgress<string>? progress, CancellationToken token,
+        Vc14Baseline baseline = Vc14Baseline.V142) =>
         Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
         {
             using var budget = CancellationTokenSource.CreateLinkedTokenSource(token);
             budget.CancelAfter(OperationBudget);
-            return RunCoreAsync(fingerprint, progress, budget.Token, Vc14FileRepairSource.InstalledRoot, WindowsRoot,
-                enforceHostChecks: true, versionReader: null).GetAwaiter().GetResult();
+            return RunCoreAsync(fingerprint, progress, budget.Token, Vc14BaselineInfo.For(baseline).FileRepairRoot, WindowsRoot,
+                enforceHostChecks: true, versionReader: null, baseline: baseline).GetAwaiter().GetResult();
         }), token);
 
     // ---- 预览 -----------------------------------------------------------------
 
     internal static Vc14ForceReplacePreview PreviewCore(string sourceRoot, string windowsRoot, bool enforceHostChecks,
-        Func<string, string?>? versionReader, CancellationToken token)
+        Func<string, string?>? versionReader, CancellationToken token, Vc14Baseline baseline = Vc14Baseline.V142)
     {
         versionReader ??= ReadVersion;
+        if (!baseline.IsSupported()) throw new IOException("未知的 14.x 安装基线。");
+        var set = PayloadSet(baseline);
+        var expectedVersion = set.ExpectedVersion;
+        var info = set.Baseline;
         var blocker = "";
         if (enforceHostChecks)
         {
@@ -75,11 +95,11 @@ public static class Vc14ForceReplace
             }
         }
 
-        try { VerifyMedia(sourceRoot); }
-        catch (Exception ex) { if (blocker.Length == 0) blocker = "内置官方 14.42 载荷无法核验：" + ex.Message; }
+        try { VerifyMedia(sourceRoot, baseline); }
+        catch (Exception ex) { if (blocker.Length == 0) blocker = "内置官方 " + info.Label + " 载荷无法核验：" + ex.Message; }
 
-        var items = new List<Vc14ForceReplaceItem>(Payload.Count);
-        foreach (var payload in Payload)
+        var items = new List<Vc14ForceReplaceItem>(set.Files.Count);
+        foreach (var payload in set.Files)
         {
             token.ThrowIfCancellationRequested();
             var target = TargetPath(windowsRoot, payload.Architecture, payload.File);
@@ -103,46 +123,47 @@ public static class Vc14ForceReplace
                 else
                 {
                     current = versionReader(target) ?? "";
-                    if (IsExpectedVersion(current)) { status = "ok"; detail = "已是 " + ExpectedVersion + "。"; }
+                    if (IsExpectedVersion(current, expectedVersion)) { status = "ok"; detail = "已是 " + expectedVersion + "。"; }
                     else if (current.Length == 0) detail = "版本无法读取；将尝试替换并复检。";
-                    else if (IsNewerThanExpected(current))
+                    else if (IsNewerThanExpected(current, expectedVersion))
                     {
                         downgrade = true;
-                        detail = "当前 " + current + " 较新；强制替换会降级到 " + ExpectedVersion + "。";
+                        detail = "当前 " + current + " 较新；强制替换会降级到 " + expectedVersion + "。";
                     }
-                    else detail = "当前 " + current + "；将替换为 " + ExpectedVersion + "。";
+                    else detail = "当前 " + current + "；将替换为 " + expectedVersion + "。";
                     inUse = IsInUse(target);
                 }
             }
             catch (Exception ex) { status = "blocked"; detail = "无法检查目标文件：" + ex.Message; }
-            items.Add(new(payload.Architecture, payload.File, current, ExpectedVersion, status, detail, inUse, downgrade));
+            items.Add(new(payload.Architecture, payload.File, current, expectedVersion, status, detail, inUse, downgrade));
         }
 
         token.ThrowIfCancellationRequested();
         var absent = items.Count(i => i.Status == "absent");
         var blocked = items.Count(i => i.Status == "blocked");
         if (blocker.Length == 0 && absent > 0)
-            blocker = $"有 {absent} 个 14.x DLL 不存在，强制替换不会创建文件；请先用官方安装器安装 14.42 基线。";
+            blocker = $"有 {absent} 个 14.x DLL 不存在，强制替换不会创建文件；请先用官方安装器安装 {info.Label} 基线。";
         if (blocker.Length == 0 && blocked > 0)
             blocker = $"有 {blocked} 个 14.x DLL 无法检查或是链接，已停止。";
 
         return new Vc14ForceReplacePreview(
             CanRun: blocker.Length == 0,
             Blocker: blocker,
-            Fingerprint: ComputeFingerprint(items, windowsRoot),
+            Fingerprint: ComputeFingerprint(items, windowsRoot, set),
             Items: items,
-            PayloadVersion: ExpectedVersion,
+            PayloadVersion: expectedVersion,
             ReplaceCount: items.Count(i => i.Status == "replace"),
             SkipCount: items.Count(i => i.Status == "ok"),
             AbsentCount: absent,
-            DowngradeCount: items.Count(i => i.Downgrade));
+            DowngradeCount: items.Count(i => i.Downgrade)) { Baseline = baseline };
     }
 
-    private static string ComputeFingerprint(IReadOnlyList<Vc14ForceReplaceItem> items, string windowsRoot)
+    private static string ComputeFingerprint(IReadOnlyList<Vc14ForceReplaceItem> items, string windowsRoot, Vc14ForceReplacePayloadSet set)
     {
         var text = new StringBuilder();
         text.Append("root:").Append(Path.GetFullPath(windowsRoot).ToLowerInvariant()).Append('\n');
-        text.Append("payload:").Append(PayloadFingerprint).Append('\n');
+        text.Append("baseline:").Append(set.Baseline.Version).Append('\n');
+        text.Append("payload:").Append(set.Fingerprint).Append('\n');
         foreach (var item in items)
             text.Append(item.Architecture).Append('|').Append(item.File).Append('|')
                 .Append(item.CurrentVersion).Append('|').Append(item.Status).Append('\n');
@@ -153,14 +174,17 @@ public static class Vc14ForceReplace
 
     internal static async Task<OperationResult> RunCoreAsync(string fingerprint, IProgress<string>? progress, CancellationToken token,
         string sourceRoot, string windowsRoot, bool enforceHostChecks, Func<string, string?>? versionReader,
-        Action<string>? afterReplacementForTests = null)
+        Action<string>? afterReplacementForTests = null, Vc14Baseline baseline = Vc14Baseline.V142)
     {
-        var preview = PreviewCore(sourceRoot, windowsRoot, enforceHostChecks, versionReader, token);
+        var preview = PreviewCore(sourceRoot, windowsRoot, enforceHostChecks, versionReader, token, baseline);
         if (!preview.CanRun) return OperationResult.Fail(preview.Blocker);
         if (!string.Equals(preview.Fingerprint, fingerprint, StringComparison.OrdinalIgnoreCase))
             return OperationResult.Fail("14.x DLL 清单已变化，请重新预览确认；本次未修改任何文件。");
+        var set = PayloadSet(baseline);
+        var info = set.Baseline;
+        var expectedVersion = set.ExpectedVersion;
         if (preview.ReplaceCount == 0)
-            return OperationResult.Ok("51 个 14.x DLL 已全部为 " + ExpectedVersion + "，无需强制替换。");
+            return OperationResult.Ok(set.Files.Count + " 个 14.x DLL 已全部为 " + expectedVersion + "，无需强制替换。");
 
         token.ThrowIfCancellationRequested();
         var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
@@ -199,8 +223,8 @@ public static class Vc14ForceReplace
         var payloadRoot = Path.Combine(Path.GetTempPath(), "DeltaNFD-Vc14ForceReplace-" + Guid.NewGuid().ToString("N"));
         try
         {
-            progress?.Report("正在核验并解包内置官方 14.42.34433 载荷…");
-            var payload = ExtractPayload(sourceRoot, payloadRoot, token);
+            progress?.Report("正在核验并解包内置官方 " + info.Label + " " + expectedVersion + " 载荷…");
+            var payload = ExtractPayload(sourceRoot, payloadRoot, token, baseline);
             token.ThrowIfCancellationRequested();
             var stagingRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Temp",
                 "DeltaNFD", "Vc14ForceReplace", stamp + "-" + Guid.NewGuid().ToString("N")[..8]);
@@ -220,8 +244,8 @@ public static class Vc14ForceReplace
                     if (action is "replaced" or "renamed")
                     {
                         var actual = ReadVersion(target) ?? "";
-                        if (!IsExpectedVersion(actual))
-                            throw new IOException("写入后版本为 " + (actual.Length == 0 ? "无法读取" : actual) + "，不是 " + ExpectedVersion + "。");
+                        if (!IsExpectedVersion(actual, expectedVersion))
+                            throw new IOException("写入后版本为 " + (actual.Length == 0 ? "无法读取" : actual) + "，不是 " + expectedVersion + "。");
                     }
                     outcomes.Add(new(item.Architecture, item.File, action, ""));
                 }
@@ -289,9 +313,9 @@ public static class Vc14ForceReplace
 
         var reboot = scheduled > 0;
         var message = new StringBuilder();
-        message.Append("强制替换 14.x：已替换 ").Append(replaced).Append(" 个");
+        message.Append("强制替换 " + info.Label + "：已替换 ").Append(replaced).Append(" 个");
         if (scheduled > 0) message.Append("，安排重启后替换 ").Append(scheduled).Append(" 个");
-        message.Append("，失败 ").Append(failed.Length).Append(" 个，跳过 ").Append(preview.SkipCount).Append(" 个（已是目标版本）。");
+        message.Append("，失败 ").Append(failed.Length).Append(" 个，跳过 ").Append(preview.SkipCount).Append(" 个（已是 " + expectedVersion + "）。");
         message.Append("\n备份与恢复脚本：").Append(directory);
         foreach (var failure in failed)
             message.Append("\n失败：").Append(failure.Architecture).Append(' ').Append(failure.File).Append(" · ").Append(failure.Detail);
@@ -354,42 +378,55 @@ public static class Vc14ForceReplace
 
     // ---- 载荷 -----------------------------------------------------------------
 
-    private static IReadOnlyList<Vc14ForceReplacePayload> LoadPayload()
+    private static IReadOnlyDictionary<Vc14Baseline, Vc14ForceReplacePayloadSet> LoadPayloadSets()
     {
-        using var stream = typeof(Vc14ForceReplace).Assembly.GetManifestResourceStream(CatalogResource)
-            ?? throw new IOException("缺少强制替换载荷清单。");
-        var files = JsonSerializer.Deserialize<Vc14ForceReplacePayload[]>(stream) ?? throw new IOException("强制替换载荷清单无效。");
-        if (files.Length != PayloadCount
-            || files.Count(f => f.Architecture == "x64") != 26
-            || files.Count(f => f.Architecture == "x86") != 25
-            || files.Any(f => f.Architecture is not ("x64" or "x86") || string.IsNullOrWhiteSpace(f.File)
-                || f.File.Contains('\\') || f.File.Contains('/') || f.Bytes <= 0 || f.Sha256.Length != 64))
-            throw new IOException("强制替换载荷清单范围无效。");
-        if (files.Select(f => Key(f.Architecture, f.File)).Distinct(StringComparer.OrdinalIgnoreCase).Count() != files.Length)
-            throw new IOException("强制替换载荷清单存在重复项。");
-        return files;
+        var resources = new Dictionary<Vc14Baseline, string>
+        {
+            [Vc14Baseline.V142] = "Vc14ForceReplace.catalog.json",
+            [Vc14Baseline.V144] = "Vc14ForceReplace14.44.catalog.json",
+        };
+        var result = new Dictionary<Vc14Baseline, Vc14ForceReplacePayloadSet>();
+        foreach (var (baseline, resource) in resources)
+        {
+            var info = Vc14BaselineInfo.For(baseline);
+            using var stream = typeof(Vc14ForceReplace).Assembly.GetManifestResourceStream(resource)
+                ?? throw new IOException("缺少 " + info.Label + " 强制替换载荷清单（" + resource + "）。");
+            var files = JsonSerializer.Deserialize<Vc14ForceReplacePayload[]>(stream)
+                ?? throw new IOException(info.Label + " 强制替换载荷清单无效。");
+            if (files.Length != PayloadCount
+                || files.Count(f => f.Architecture == "x64") != 26
+                || files.Count(f => f.Architecture == "x86") != 25
+                || files.Any(f => f.Architecture is not ("x64" or "x86") || string.IsNullOrWhiteSpace(f.File)
+                    || f.File.Contains('\\') || f.File.Contains('/') || f.Bytes <= 0 || f.Sha256.Length != 64))
+                throw new IOException(info.Label + " 强制替换载荷清单范围无效。");
+            if (files.Select(f => Key(f.Architecture, f.File)).Distinct(StringComparer.OrdinalIgnoreCase).Count() != files.Length)
+                throw new IOException(info.Label + " 强制替换载荷清单存在重复项。");
+            var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+                string.Join("\n", files.OrderBy(p => p.Architecture, StringComparer.Ordinal)
+                    .ThenBy(p => p.File, StringComparer.OrdinalIgnoreCase)
+                    .Select(p => $"{p.Architecture}|{p.File}|{p.Bytes}|{p.Sha256}")))));
+            result[baseline] = new Vc14ForceReplacePayloadSet(info, files, fingerprint);
+        }
+        return result;
     }
 
-    private static string ComputePayloadFingerprint() => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-        string.Join("\n", Payload.OrderBy(p => p.Architecture, StringComparer.Ordinal)
-            .ThenBy(p => p.File, StringComparer.OrdinalIgnoreCase)
-            .Select(p => $"{p.Architecture}|{p.File}|{p.Bytes}|{p.Sha256}")))));
-
-    private static void VerifyMedia(string sourceRoot)
+    private static void VerifyMedia(string sourceRoot, Vc14Baseline baseline)
     {
-        Vc14FileRepairSource.Verify(sourceRoot, "x64");
-        Vc14FileRepairSource.Verify(sourceRoot, "x86");
+        Vc14FileRepairSource.Verify(sourceRoot, "x64", baseline);
+        Vc14FileRepairSource.Verify(sourceRoot, "x86", baseline);
     }
 
     /// <summary>从四个官方 CAB 解包并用固定清单逐项校验；返回 arch|file → 解包文件路径。</summary>
-    internal static IReadOnlyDictionary<string, string> ExtractPayload(string sourceRoot, string destination, CancellationToken token)
+    internal static IReadOnlyDictionary<string, string> ExtractPayload(string sourceRoot, string destination, CancellationToken token,
+        Vc14Baseline baseline = Vc14Baseline.V142)
     {
-        VerifyMedia(sourceRoot);
-        var expected = Payload.ToDictionary(p => Key(p.Architecture, p.File), StringComparer.OrdinalIgnoreCase);
+        VerifyMedia(sourceRoot, baseline);
+        var set = PayloadSet(baseline);
+        var expected = set.Files.ToDictionary(p => Key(p.Architecture, p.File), StringComparer.OrdinalIgnoreCase);
         var extracted = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var architecture in new[] { "x64", "x86" })
         {
-            foreach (var package in Vc14FileRepairSource.Packages.Where(p => p.Architecture == architecture))
+            foreach (var package in Vc14FileRepairSource.PackagesFor(baseline).Where(p => p.Architecture == architecture))
             {
                 token.ThrowIfCancellationRequested();
                 var media = package.Files.Single(f => f.Path.EndsWith(".cab", StringComparison.OrdinalIgnoreCase));
@@ -412,8 +449,8 @@ public static class Vc14ForceReplace
             }
         }
         token.ThrowIfCancellationRequested();
-        if (extracted.Count != Payload.Count)
-            throw new IOException($"内置载荷数量不符：{extracted.Count}/{Payload.Count}。");
+        if (extracted.Count != set.Files.Count)
+            throw new IOException($"内置载荷数量不符：{extracted.Count}/{set.Files.Count}。");
         return extracted;
     }
 
@@ -473,11 +510,12 @@ public static class Vc14ForceReplace
         catch (Exception) { return null; }
     }
 
-    private static bool IsExpectedVersion(string? version) =>
-        Version.TryParse(version, out var parsed) && parsed.Major == 14 && parsed.Minor == 42 && parsed.Build == 34433;
+    private static bool IsExpectedVersion(string? version, string expectedVersion) =>
+        Version.TryParse(version, out var parsed) && Version.TryParse(expectedVersion, out var expected)
+        && parsed.Major == expected.Major && parsed.Minor == expected.Minor && parsed.Build == expected.Build;
 
-    private static bool IsNewerThanExpected(string version) =>
-        Version.TryParse(version, out var parsed) && Version.TryParse(ExpectedVersion, out var expected) && parsed > expected;
+    private static bool IsNewerThanExpected(string version, string expectedVersion) =>
+        Version.TryParse(version, out var parsed) && Version.TryParse(expectedVersion, out var expected) && parsed > expected;
 
     private static bool IsInUse(string path)
     {
@@ -511,7 +549,8 @@ public static class Vc14ForceReplace
         var inventory = new
         {
             tool = "DeltaNFD", kind = "vc14-force-replace", createdAtUtc = DateTimeOffset.UtcNow,
-            expectedVersion = ExpectedVersion, windowsRoot, preview.Fingerprint, preview.PayloadVersion, items,
+            baseline = preview.Baseline, expectedVersion = preview.PayloadVersion, windowsRoot,
+            preview.Fingerprint, preview.PayloadVersion, items,
         };
         File.WriteAllText(Path.Combine(directory, "inventory.json"),
             JsonSerializer.Serialize(inventory, new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
@@ -524,8 +563,8 @@ public static class Vc14ForceReplace
             ================================
 
             本目录保存了强制替换前的 14.x DLL，以及 inventory.json、restore.ps1。
-            目标：用内置官方 14.42.34433 文件覆盖 %SystemRoot%\System32 与 %SystemRoot%\SysWOW64 中的
-            14.x DLL（本次预览待替换 {preview.ReplaceCount} 个）。
+            目标：用内置官方 {preview.PayloadVersion}（{Vc14BaselineOption.Display(preview.Baseline)}）文件覆盖
+            %SystemRoot%\System32 与 %SystemRoot%\SysWOW64 中的 14.x DLL（本次预览待替换 {preview.ReplaceCount} 个）。
 
             恢复方法（需要管理员）：
               1. 如果本次结果提示“已登记到下次启动替换”，先重启 Windows 让替换完成。

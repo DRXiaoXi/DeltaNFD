@@ -5,6 +5,7 @@ namespace DeltaNFD.Services.AlphaRestore;
 
 internal interface IRuntimeBetaRepairEnvironment
 {
+    Vc14Baseline Baseline => Vc14Baseline.V142;
     void VerifyInstalled();
     Task<RuntimeStepResult> RecoverBaselineFilesAsync(TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
         => Task.FromResult(new RuntimeStepResult(0, "继续实际DLL复检。"));
@@ -28,9 +29,10 @@ internal sealed class RuntimeBetaRepair(IRuntimeBetaRepairEnvironment environmen
         var budget = totalBudget ?? RuntimeRepairCoordinator.TotalBudget;
         deadline.CancelAfter(budget);
         var clock = Stopwatch.StartNew();
+        var info = Vc14BaselineInfo.For(environment.Baseline);
         var issues = new List<string>();
         var reboot = false; var executionStarted = false;
-        diagnostics.Save("engine.json", new { Engine = "official-cpp-full", SourceCommit = "e9bca41", Budget = budget });
+        diagnostics.Save("engine.json", new { Engine = "official-cpp-full", SourceCommit = "e9bca41", Budget = budget, Baseline = environment.Baseline });
         TimeSpan Remaining(TimeSpan maximum)
         {
             deadline.Token.ThrowIfCancellationRequested();
@@ -92,7 +94,7 @@ internal sealed class RuntimeBetaRepair(IRuntimeBetaRepairEnvironment environmen
             var files = await environment.RecoverBaselineFilesAsync(Remaining(TimeSpan.FromMinutes(20)), progress, deadline.Token);
             reboot |= files.RequiresReboot;
             diagnostics.Save("baseline-file-recovery.json", files);
-            if (!files.Success || files.RequiresReboot) return Stop(files, "14.42实际文件恢复");
+            if (!files.Success || files.RequiresReboot) return Stop(files, info.Label + " 实际文件恢复");
             environment.VerifyInstalled();
             var after = await environment.ScanAsync(deadline.Token);
             diagnostics.Save("after-scan.json", after);
@@ -115,13 +117,14 @@ internal sealed class RuntimeBetaRepair(IRuntimeBetaRepairEnvironment environmen
     }
 }
 
-internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, RuntimeRepairDiagnostics diagnostics, string expectedV14Fingerprint = "")
-    : IRuntimeBetaRepairEnvironment
+internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, RuntimeRepairDiagnostics diagnostics,
+    Vc14Baseline baseline = Vc14Baseline.V142, string expectedV14Fingerprint = "") : IRuntimeBetaRepairEnvironment
 {
-    public void VerifyInstalled() => new Vc14ReinstallEnvironment().VerifyInstalled();
+    public Vc14Baseline Baseline { get; } = baseline;
+    public void VerifyInstalled() => new Vc14ReinstallEnvironment(baseline: Baseline).VerifyInstalled();
     public async Task<RuntimeStepResult> RecoverBaselineFilesAsync(TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
     {
-        var environment = new Vc14ReinstallEnvironment();
+        var environment = new Vc14ReinstallEnvironment(baseline: Baseline);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(timeout);
         var result = await Vc14FileRecovery.RunAsync(environment, progress, deadline.Token);
@@ -130,10 +133,11 @@ internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, 
     }
     public void CompletePendingInstall()
     {
-        var environment = new Vc14ReinstallEnvironment();
+        var info = Vc14BaselineInfo.For(Baseline);
+        var environment = new Vc14ReinstallEnvironment(baseline: Baseline);
         var scan = environment.Scan();
-        if (scan.Issues.Count != 0 || scan.Products.Count != 4 || scan.Products.Any(p => !Vc14Catalog.SameVersion(p.Version, Vc14Reinstall.BaselineVersion)))
-            throw new IOException("14.42 最终组件状态未确认，保留待安装记录。");
+        if (scan.Issues.Count != 0 || scan.Products.Count != 4 || scan.Products.Any(p => !Vc14Catalog.SameVersion(p.Version, info.Version)))
+            throw new IOException(info.Label + " 最终组件状态未确认，保留待安装记录。");
         environment.VerifyInstalled();
         environment.CompletePendingInstall();
     }
@@ -145,7 +149,7 @@ internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, 
     public async Task<OperationResult> VerifyAsync(IProgress<string>? progress, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        if (new Vc14ReinstallEnvironment().Blocker() is { } blocked) return OperationResult.Fail(blocked);
+        if (new Vc14ReinstallEnvironment(baseline: Baseline).Blocker() is { } blocked) return OperationResult.Fail(blocked);
         var readiness = await service.CheckRepairEnvironmentAsync(token);
         diagnostics.Save("environment-before-uninstall.json", readiness);
         progress?.Report(readiness.Summary);
@@ -176,7 +180,7 @@ internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, 
         return info;
     }
     public Task<OperationResult> PrepareV14Async(IProgress<string>? progress, CancellationToken token)
-        => PrepareV14Async(new Vc14ReinstallEnvironment(), expectedV14Fingerprint, progress, token);
+        => PrepareV14Async(new Vc14ReinstallEnvironment(baseline: Baseline), expectedV14Fingerprint, progress, token);
 
     // Reuse the same wrapper-first executor as the standalone V14 repair, including
     // immediate MSI postchecks, dependency checks and durable continuation records.
@@ -186,16 +190,17 @@ internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, 
         token.ThrowIfCancellationRequested();
         if (environment.IsSafeMode) return OperationResult.Fail("安全模式仅使用单独卸载入口，完整安装请回正常模式。");
         if (environment.Blocker() is { } blocked) return OperationResult.Fail(blocked);
+        var info = Vc14BaselineInfo.For(environment.Baseline);
         var scan = environment.Scan();
         if (scan.Issues.Count > 0) return OperationResult.Fail(string.Join("\n", scan.Issues));
         var plan = environment.Plan(scan);
-        if (Vc14Reinstall.Fingerprint(plan) != expectedFingerprint)
+        if (Vc14Reinstall.Fingerprint(plan, environment.Baseline) != expectedFingerprint)
             return OperationResult.Fail("V14 状态已变化，请重新预览。");
-        if (RuntimeHighFpsMaintenance.NeedsV14Uninstall(scan, plan, environment.PendingInstall()))
+        if (RuntimeHighFpsMaintenance.NeedsV14Uninstall(scan, plan, environment.PendingInstall(), environment.Baseline))
         {
             var preview = Vc14Reinstall.Preview(environment, Vc14RepairMode.UninstallOnly);
             if (!preview.CanRepair) return OperationResult.Fail(preview.Blocker);
-            if (Vc14Reinstall.Fingerprint(preview.RemovalPlan) != expectedFingerprint)
+            if (Vc14Reinstall.Fingerprint(preview.RemovalPlan, environment.Baseline) != expectedFingerprint)
                 return OperationResult.Fail("V14 卸载清单已变化，请重新预览。");
             var result = await Vc14Reinstall.RunAsync(environment, preview.Fingerprint, progress, token, Vc14RepairMode.UninstallOnly);
             if (!result.Success || result.RequiresReboot) return result;
@@ -207,10 +212,10 @@ internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, 
         if (scan.Products.Count == 0)
         {
             var pending = environment.PendingInstall() ?? new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow);
-            environment.SavePendingInstall(pending with { UninstallVerified = false });
+            environment.SavePendingInstall(pending with { UninstallVerified = false, Baseline = environment.Baseline });
             var cleanup = environment.Cleanup(scan, progress, token);
             if (!cleanup.Success) return cleanup;
-            environment.SavePendingInstall(pending with { UninstallVerified = true });
+            environment.SavePendingInstall(pending with { UninstallVerified = true, Baseline = environment.Baseline });
         }
         return OperationResult.Ok("无待卸载项或仅续装已核验的部分基线，继续安装/修复。");
     }
@@ -232,7 +237,8 @@ internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, 
     }
     public async Task<RuntimeStepResult> InstallBaselineAsync(string arch, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
     {
-        var environment = new Vc14ReinstallEnvironment();
+        var info = Vc14BaselineInfo.For(Baseline);
+        var environment = new Vc14ReinstallEnvironment(baseline: Baseline);
         if (environment.Blocker() is { } blocked) return new(null, blocked, PostcheckPassed: false);
         environment.VerifyBaselines();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -241,7 +247,7 @@ internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, 
         if (!step.Success || step.Reboot) return new(step.ExitCode, step.Detail, step.Unknown);
         var scan = environment.Scan();
         var complete = scan.Issues.Count == 0 && Vc14Catalog.Families.Where(f => f.Arch == arch).All(f =>
-            scan.Products.Count(p => p.Architecture == arch && p.Role == f.Role && Vc14Catalog.SameVersion(p.Version, Vc14Reinstall.BaselineVersion)) == 1);
-        return new(step.ExitCode, step.Detail + (complete ? "\n14.42 组件复检通过。" : "\n14.42 MSI 组件未装齐，已停止。"), step.Unknown, PostcheckPassed: complete);
+            scan.Products.Count(p => p.Architecture == arch && p.Role == f.Role && Vc14Catalog.SameVersion(p.Version, info.Version)) == 1);
+        return new(step.ExitCode, step.Detail + (complete ? "\n" + info.Label + " 组件复检通过。" : "\n" + info.Label + " MSI 组件未装齐，已停止。"), step.Unknown, PostcheckPassed: complete);
     }
 }

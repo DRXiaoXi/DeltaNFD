@@ -4,7 +4,8 @@ namespace DeltaNFD.Services;
 public sealed record FrameIncompletePowerBackup(string FileName, string Path, string Fingerprint, string Reason);
 
 /// <summary>
-/// CPU/帧格后端的实际生效状态快照（T4）。由后端在其持久监控循环里生成，经状态帧推送给前端；
+/// CPU/帧格后端的实际生效状态快照（T4）。由现有状态心跳生成，经状态帧推送给前端；
+/// 独立只读游戏观测不要求启动会执行优化的监控循环。
 /// 前端只据此展示「实际生效状态」，绝不把偏好当作生效状态，也不再自行建立第二份进程监控。
 /// 所有时间/代次/身份字段都来自后端对目标的实时复核。
 /// </summary>
@@ -16,7 +17,7 @@ public sealed class CpuFrameStatusSnapshot
     /// <summary>后端模块版本（三段数字），供前端核对。</summary>
     public string ModuleVersion { get; init; } = "";
 
-    /// <summary>后端两秒共享监控是否正在运行。</summary>
+    /// <summary>会执行优化的两秒自动监控是否正在运行；独立只读观测不依赖它。</summary>
     public bool MonitorRunning { get; init; }
 
     /// <summary>当前目标代次（目标切换会自增；操作前后端会复核代次）。</summary>
@@ -37,6 +38,7 @@ public sealed class CpuFrameStatusSnapshot
     /// <summary>Independent Delta Force presence; null means no trustworthy observation, irrespective of selected target.</summary>
     public bool? DeltaForceRunning { get; init; }
     public DateTimeOffset? DeltaForceObservedUtc { get; init; }
+    public string DeltaForceObservationError { get; init; } = "";
 
     /// <summary>当前游戏进程 PID（未运行时为 null）。</summary>
     public int? GamePid { get; init; }

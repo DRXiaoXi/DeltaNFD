@@ -1,156 +1,138 @@
-<Window
-    x:Class="DeltaNFD.MainWindow"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d">
-
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" x:Class="DeltaNFD.MainWindow" mc:Ignorable="d">
     <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
-            <RowDefinition Height="48" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="48"/>
+            <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-
         <!-- 背景图（自定义图或 Assets\background.* 存在时显示，覆盖整个窗口；遮罩浓度可在设置里调） -->
-        <Image x:Name="BgImage" Grid.RowSpan="2" Stretch="UniformToFill" Visibility="Collapsed" />
+        <Image x:Name="BgImage" Grid.RowSpan="2" Stretch="UniformToFill" Visibility="Collapsed"/>
         <!-- 背景图上的暗色遮罩，保证卡片与文字可读 -->
-        <Border x:Name="BgDim" Grid.RowSpan="2" Visibility="Collapsed" />
-
+        <Border x:Name="BgDim" Grid.RowSpan="2" Visibility="Collapsed"/>
         <!-- 自定义标题栏（延伸进内容区） -->
         <Grid x:Name="AppTitleBar" Background="Transparent">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="10" Margin="16,0,0,0">
                 <Border Width="26" Height="26" CornerRadius="7">
-                    <Image x:Name="AppLogoImage" Source="ms-appx:///Assets/DeltaNFD.png"
-                           Stretch="Uniform" />
+                    <Image x:Name="AppLogoImage" Source="ms-appx:///Assets/DeltaNFD.png" Stretch="Uniform"/>
                 </Border>
-                <TextBlock Text="三角帧不掉洲" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
-                <Border Style="{StaticResource ChipBorderStyle}" Background="{StaticResource AppAccentChipBrush}"
-                        VerticalAlignment="Center">
-                    <TextBlock x:Name="AppVersionText" FontSize="10" FontWeight="SemiBold"
-                               Foreground="{StaticResource AppAccentBrush}" />
+                <TextBlock Text="三角帧不掉洲" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <Border Style="{StaticResource ChipBorderStyle}" Background="{StaticResource AppAccentChipBrush}" VerticalAlignment="Center">
+                    <TextBlock x:Name="AppVersionText" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource AppAccentBrush}"/>
                 </Border>
-                <TextBlock Text="三角洲行动优化工具 · 作者 逐梦之子-晓夕" FontSize="12" Opacity="0.55" VerticalAlignment="Center" />
+                <TextBlock Text="三角洲行动优化工具 · 作者 逐梦之子-晓夕" FontSize="12" Opacity="0.55" VerticalAlignment="Center"/>
             </StackPanel>
         </Grid>
-
-        <NavigationView
-            x:Name="NavView"
-            Grid.Row="1"
-            PaneDisplayMode="Left"
-            OpenPaneLength="190"
-            IsBackButtonVisible="Collapsed"
-            IsSettingsVisible="False"
-            SelectionChanged="NavView_SelectionChanged">
-
+        <NavigationView x:Name="NavView" Grid.Row="1" PaneDisplayMode="Left" OpenPaneLength="224" IsBackButtonVisible="Collapsed" IsSettingsVisible="False" SelectionChanged="NavView_SelectionChanged" IsPaneOpen="True">
             <NavigationView.Resources>
-                <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
+                <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent"/>
             </NavigationView.Resources>
-
             <NavigationView.MenuItems>
                 <NavigationViewItem Tag="dashboard" Content="主页">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE80F;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Tag="system" Content="系统优化">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE945;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Tag="spoof" Content="显卡伪装">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE8AB;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Tag="nvsettings" Content="NVIDIA显卡设置">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE7F4;" />
+                        <FontIcon Glyph=""/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Tag="frame" Content="帧格">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE9D9;" />
+                        <FontIcon Glyph=""/>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItemHeader Content="系统优化"/>
+                <NavigationViewItem Tag="system" Content="系统优化">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph=""/>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="RuntimeNavigationItem" Tag="runtime" Content="运行库">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph=""/>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Tag="process" Content="进程管理">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph=""/>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItemHeader Content="游戏相关"/>
+                <NavigationViewItem Tag="spoof" Content="显卡伪装">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph=""/>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Tag="nvsettings" Content="NVIDIA显卡设置">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph=""/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Tag="shader" Content="着色器">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xF211;" />
+                        <FontIcon Glyph=""/>
                     </NavigationViewItem.Icon>
                     <NavigationViewItem.MenuItems>
                     </NavigationViewItem.MenuItems>
                 </NavigationViewItem>
                 <NavigationViewItem Tag="ace" Content="ACE相关">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE72E;" />
+                        <FontIcon Glyph=""/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem x:Name="RuntimeNavigationItem" Tag="runtime" Content="运行库">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE90F;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
+                <NavigationViewItemHeader Content="高级功能"/>
                 <NavigationViewItem Tag="lab" Content="CPU实验室">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE71D;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem Tag="process" Content="进程管理">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE9D5;" />
+                        <FontIcon Glyph=""/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Tag="plugins" Content="拓展插件">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xEA86;" />
+                        <FontIcon Glyph=""/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
-
             <NavigationView.FooterMenuItems>
                 <NavigationViewItem x:Name="SettingsNavItem" Tag="settings" Content="设置">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE713;" />
+                        <FontIcon Glyph=""/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.FooterMenuItems>
-
             <Grid>
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <StackPanel>
-                <InfoBar x:Name="PageOperationResult" IsOpen="False" Severity="Informational" Margin="16,8,16,0" />
-                <InfoBar x:Name="GamePageRestriction" IsOpen="False" IsClosable="False" Severity="Informational"
-                         Title="三角洲运行期间的功能限制" Margin="16,8,16,0" />
-                <InfoBar x:Name="PageBackendStatus" IsOpen="False" IsClosable="False" Severity="Informational"
-                         Title="栏目后台状态" Margin="16,8,16,0" />
-                <InfoBar x:Name="GpuSpoofWarning" IsOpen="False" Visibility="Collapsed" Severity="Warning"
-                         Title="驱动已变化，显卡伪装已失效" Closed="GpuSpoofWarning_Closed" Margin="16,8,16,0">
-                    <InfoBar.Content>
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button Content="重新应用伪装" Click="OpenGpuSpoof_Click" />
-                            <Button x:Name="ShaderCacheButton" Content="检查着色器缓存" Click="OpenShaderCache_Click" />
-                        </StackPanel>
-                    </InfoBar.Content>
-                </InfoBar>
+                    <InfoBar x:Name="PageOperationResult" IsOpen="False" Severity="Informational" Margin="16,8,16,0"/>
+                    <InfoBar x:Name="GamePageRestriction" IsOpen="False" IsClosable="False" Severity="Informational" Title="三角洲运行期间的功能限制" Margin="16,8,16,0">
+                        <InfoBar.ActionButton>
+                            <Button x:Name="GameStateRetryButton" Content="重新确认" Click="GameStateRetry_Click"/>
+                        </InfoBar.ActionButton>
+                    </InfoBar>
+                    <InfoBar x:Name="PageBackendStatus" IsOpen="False" IsClosable="False" Severity="Informational" Title="栏目后台状态" Margin="16,8,16,0"/>
+                    <InfoBar x:Name="GpuSpoofWarning" IsOpen="False" Visibility="Collapsed" Severity="Warning" Title="驱动已变化，显卡伪装已失效" Closed="GpuSpoofWarning_Closed" Margin="16,8,16,0">
+                        <InfoBar.Content>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="重新应用伪装" Click="OpenGpuSpoof_Click"/>
+                                <Button x:Name="ShaderCacheButton" Content="检查着色器缓存" Click="OpenShaderCache_Click"/>
+                            </StackPanel>
+                        </InfoBar.Content>
+                    </InfoBar>
                 </StackPanel>
-                <Frame x:Name="ContentFrame" Grid.Row="1" />
+                <Frame xmlns:ns0="using:DeltaNFD.Controls" x:Name="ContentFrame" Grid.Row="1" ns0:PageMotion.Enabled="True">
+                    <Frame.ContentTransitions>
+                        <TransitionCollection>
+                            <NavigationThemeTransition/>
+                        </TransitionCollection>
+                    </Frame.ContentTransitions>
+                </Frame>
             </Grid>
         </NavigationView>
-        <Grid x:Name="ExitOverlay" Grid.Row="1" Visibility="Collapsed"
-              Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-            <Border Style="{StaticResource CardBorderStyle}" MaxWidth="520" Margin="24"
-                    HorizontalAlignment="Center" VerticalAlignment="Center">
+        <Grid x:Name="ExitOverlay" Grid.Row="1" Visibility="Collapsed" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+            <Border Style="{StaticResource CardBorderStyle}" MaxWidth="520" Margin="24" HorizontalAlignment="Center" VerticalAlignment="Center">
                 <StackPanel Spacing="16">
-                    <TextBlock Text="正在退出" Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <ProgressRing x:Name="ExitProgressRing" IsActive="False" Width="32" Height="32"
-                                  HorizontalAlignment="Left" AutomationProperties.Name="正在安全退出" />
-                    <TextBlock x:Name="ExitStageText" TextWrapping="Wrap" />
-                    <TextBlock Text="正在停止后台功能并恢复临时设置，完成后会自动退出。"
-                               TextWrapping="Wrap" Opacity="0.7" />
-                    <TextBlock x:Name="ExitElapsedText" AutomationProperties.LiveSetting="Off" />
+                    <TextBlock Text="正在退出" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                    <ProgressRing x:Name="ExitProgressRing" IsActive="False" Width="32" Height="32" HorizontalAlignment="Left" AutomationProperties.Name="正在安全退出"/>
+                    <TextBlock x:Name="ExitStageText" TextWrapping="Wrap"/>
+                    <TextBlock Text="正在停止后台功能并恢复临时设置，完成后会自动退出。" TextWrapping="Wrap" Opacity="0.7"/>
+                    <TextBlock x:Name="ExitElapsedText" AutomationProperties.LiveSetting="Off"/>
                 </StackPanel>
             </Border>
         </Grid>

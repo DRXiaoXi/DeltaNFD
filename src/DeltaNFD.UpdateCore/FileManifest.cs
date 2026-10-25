@@ -43,7 +43,7 @@ public static class FileUpdateRules
     public const int MaximumManifestBytes = 8 * 1024 * 1024;
     public static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
     private static readonly HashSet<string> Directories = new(StringComparer.OrdinalIgnoreCase)
-        { "Assets", "Backends", "Views", "licenses", "Tools", "Microsoft.UI.Xaml", "NpuDetect" };
+        { "Assets", "Backends", "Views", "licenses", "Tools", "Microsoft.UI.Xaml", "NpuDetect", "Controls", "Themes" };
     private static readonly string[] Required = ["DeltaNFD.exe", "DeltaNFD.dll", "DeltaNFD.deps.json", "DeltaNFD.runtimeconfig.json",
         "DeltaNFD.Shared.dll", "DeltaNFD.Contracts.dll", "DeltaNFD.UpdateCore.dll", "DeltaNFD.pri", "Tools/DeploymentControl.ps1",
         "Backends/DeltaNFD.FileUpdater.exe", "Backends/DeltaNFD.FileUpdater.dll", "Backends/DeltaNFD.FileUpdater.deps.json", "Backends/DeltaNFD.FileUpdater.runtimeconfig.json"];
@@ -69,6 +69,10 @@ public static class FileUpdateRules
                 || new[] { "logs", "backups", "plugins", "userdata" }.Contains(part, StringComparer.OrdinalIgnoreCase))
                 throw new InvalidDataException("更新路径含受保护或保留名称。");
         }
+        if (product && (parts[0].Equals("Controls", StringComparison.OrdinalIgnoreCase)
+                || parts[0].Equals("Themes", StringComparison.OrdinalIgnoreCase))
+            && (parts.Length != 2 || !parts[1].EndsWith(".xbf", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException("UI 更新目录仅允许直接包含编译后的 XBF 资源。");
         if (product && ((parts.Length > 1 && !Directories.Contains(parts[0])
                 && !Regex.IsMatch(parts[0], @"^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$"))
             || (parts.Length == 1 && (parts[0].StartsWith("unins", StringComparison.OrdinalIgnoreCase)

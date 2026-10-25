@@ -1,5 +1,33 @@
 using DeltaNFD.Services;
 
+if (args is ["--dashboard-navigation-health-checks"])
+{
+    try { await DashboardNavigationHealthChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--gpu-driver-name-backend-readonly", var gpuNameLayout])
+{
+    try { GpuDriverNameChecks.Run(true, gpuNameLayout); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--gpu-driver-name-checks"] or ["--gpu-driver-name-native-readonly"])
+{
+    try { GpuDriverNameChecks.Run(args[0].EndsWith("native-readonly")); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--dashboard-memory-health-checks"])
+{
+    try { DashboardMemoryHealthChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args is ["--vc14-installed-media-child", var mediaApp, var mediaWindows, var mediaScenario])
 {
     try { await Vc14InstalledMediaChecks.ChildAsync(mediaApp, mediaWindows, mediaScenario); }
@@ -16,6 +44,20 @@ if (args is ["--vc14-installed-media-checks", var installedMediaSource])
 if (args is ["--ace-ownership-checks"])
 {
     try { AceOwnershipChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--ace-core-count-checks"])
+{
+    try { AceCoreCountChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--ace-manual-game-checks"])
+{
+    try { AceManualGameChecks.Run(); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
@@ -60,6 +102,12 @@ if (args is ["--ccd-latency-checks"])
     return;
 }
 
+if (args is ["--game-observation-checks"])
+{
+    try { await GameObservationChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
 if (args is ["--frame-close-checks"])
 {
     try { await FrameCloseChecks.RunAsync(); }
@@ -212,6 +260,13 @@ if (args is ["--vc14-dependency-log-replay", var logReplayRoot])
 if (args is ["--vc14-force-replace-checks", var forceReplaceRoot])
 {
     try { await Vc14ForceReplaceChecks.RunAsync(forceReplaceRoot); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--vc14-baseline-checks", var vc14AssetsRoot])
+{
+    try { await Vc14BaselineChecks.RunAsync(vc14AssetsRoot); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
@@ -973,7 +1028,14 @@ if (args.Contains("--offline-cpu-plan-checks", StringComparer.OrdinalIgnoreCase)
 
 if (args.Contains("--offline-task-ownership-checks", StringComparer.OrdinalIgnoreCase))
 {
-    try { OfflineTaskOwnershipChecks.Run(); }
+    try { await OfflineTaskOwnershipChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--silent-startup-checks"])
+{
+    try { await StartupPresentationChecks.RunAsync(); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }

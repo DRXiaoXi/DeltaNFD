@@ -31,14 +31,17 @@ internal static class SingleInstanceGuard
     }
 
     /// <summary>首个进程返回 true；后续进程通知主进程恢复窗口后退出。</summary>
-    public static bool TryBecomePrimary()
+    public static bool TryBecomePrimary(bool activateExisting = true)
     {
         var activationEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ActivationEventName);
         var mutex = new Mutex(false, MutexName);
         if (!TryAcquire(mutex))
         {
-            GrantForegroundPermissionToPrimary();
-            activationEvent.Set();
+            if (activateExisting)
+            {
+                GrantForegroundPermissionToPrimary();
+                activationEvent.Set();
+            }
             activationEvent.Dispose();
             mutex.Dispose();
             return false;

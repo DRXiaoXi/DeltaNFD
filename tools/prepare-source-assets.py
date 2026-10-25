@@ -41,24 +41,24 @@ def download(urls, limit, expected):
     raise RuntimeError("No verified source is available: " + "; ".join(failures))
 
 
-def prepare(root, cache, manifest_bytes):
+def prepare(root, cache, manifest_bytes, expected_sha=MANIFEST_SHA256, expected_version="0.9200", directories=DIRECTORIES, include_background=True):
     # VSTO resource paths exceed MAX_PATH in deep Windows checkouts.
     if os.name == "nt":
         root = Path(os.path.abspath(root))
         cache = Path(os.path.abspath(cache))
         root = root if str(root).startswith("\\\\?\\") else Path("\\\\?\\" + str(root))
         cache = cache if str(cache).startswith("\\\\?\\") else Path("\\\\?\\" + str(cache))
-    if digest(manifest_bytes) != MANIFEST_SHA256:
+    if digest(manifest_bytes) != expected_sha:
         raise ValueError("Fixed manifest SHA256 mismatch")
     manifest = json.loads(manifest_bytes)
-    if manifest["version"] != "0.9200":
+    if manifest["version"] != expected_version:
         raise ValueError("Unexpected resource baseline")
     selected = []
     for item in manifest["files"]:
         path = PurePosixPath(item["path"])
         if path.parts[:1] != ("Assets",):
             continue
-        if item["path"] != "Assets/background.png" and (len(path.parts) < 3 or path.parts[1] not in DIRECTORIES):
+        if not (include_background and item["path"] == "Assets/background.png") and (len(path.parts) < 3 or path.parts[1] not in directories):
             continue
         if path.is_absolute() or any(p in ("..", ".") or ":" in p or "\\" in p for p in path.parts):
             raise ValueError("Invalid resource path")
@@ -108,14 +108,26 @@ def prepare(root, cache, manifest_bytes):
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         restored = sum(pool.map(restore, selected))
-    return {"verifiedInputs": len(selected), "restoredInputs": restored, "baseline": "0.9200"}
+    return {"verifiedInputs": len(selected), "restoredInputs": restored, "baseline": expected_version}
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache-dir", type=Path, help="Verified compressed-object cache (default: _buildcheck/source-assets-cache)")
     parser.add_argument("--manifest", type=Path, help="Optional local copy; the same fixed manifest SHA256 is required")
+    parser.add_argument("--extra-manifest", type=Path, help="Optional immutable 0.9299 inventory for 14.44 inputs")
     options = parser.parse_args()
     repository = Path(__file__).resolve().parent.parent
     raw = options.manifest.read_bytes() if options.manifest else download(MANIFEST_URLS, 1024 * 1024, MANIFEST_SHA256)
-    print(json.dumps(prepare(repository, options.cache_dir or repository / "_buildcheck/source-assets-cache", raw)))
+    cache = options.cache_dir or repository / "_buildcheck/source-assets-cache"
+    original = prepare(repository, cache, raw)
+    extra_sha = 'c90973ae81b01bd33288ccffe915215238bc960519f420410eae867bb627199d'
+    extra_urls = (
+        "https://deltaxiaoxi.xin/updates/packages/0.9299/files.json",
+        "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9299/DeltaNFD_Files_0.9299.0_x64.json",
+    )
+    extra_raw = options.extra_manifest.read_bytes() if options.extra_manifest else download(extra_urls, 2 * 1024 * 1024, extra_sha)
+    extra = prepare(repository, cache, extra_raw, extra_sha, "0.9299", {"Vc14Baseline14.44", "Vc14FileRepair14.44"}, False)
+    if extra["verifiedInputs"] != 10:
+        raise ValueError("The Microsoft 14.44 inventory must contain exactly 10 fixed files")
+    print(json.dumps({"original": original, "additional144": extra}))

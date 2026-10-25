@@ -55,24 +55,26 @@ public sealed partial class RuntimePage : Page
                     { "msi" => "已核验 14.x MSI", "bundle" => "已核验包装", "inf" => "已核验旧 14.x INF", _ => "登记卸载命令" } : "保留不处理") + "）\n  " + p.Method));
             var skipped = string.Join("\n", preview.RemovalPlan.Where(p => !p.CanRemove).Select(p => p.Name + "：" + p.Detail));
             var installMissing = preview.Scan.IsMissing && preview.RemovalPlan.Count == 0 && mode != Vc14RepairMode.UninstallOnly;
+            var selected = preview.Baseline;
+            var targetVersion = selected.FullVersion();
             var dialog = new ContentDialog
             {
                 XamlRoot = XamlRoot, Title = mode == Vc14RepairMode.UninstallOnly ? "确认仅卸载 C++ 14.x？"
-                    : installMissing ? "确认补装 C++ 14.42？" : mode == Vc14RepairMode.InstallOnly ? "确认继续安装 14.42？" : "确认仅修复 C++ 14.x？",
+                    : installMissing ? "确认补装 C++ " + selected.Display() + "？" : mode == Vc14RepairMode.InstallOnly ? "确认继续安装 " + selected.Display() + "？" : "确认仅修复 C++ 14.x？",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
                     Text = (installMissing
-                        ? "已完成检测，未发现已安装的 C++ 14.x 组件。将安装 2015–2022 x64/x86 14.42.34433 微软原包，并复检组件与实际 DLL。失败时保留待安装记录，供下次继续安装。\n本次不会执行运行库卸载；安装前会核对并受控处理旧包装残留，无法确认时停止。\n"
+                        ? "已完成检测，未发现已安装的 C++ 14.x 组件。将安装 2015–2022 x64/x86 " + targetVersion + " 微软原包，并复检组件与实际 DLL。失败时保留待安装记录，供下次继续安装。\n本次不会执行运行库卸载；安装前会核对并受控处理旧包装残留，无法确认时停止。\n"
                         : mode == Vc14RepairMode.InstallOnly
-                        ? "将在当前正常模式安装/修复 14.42 双架构基线；不会执行卸载。失败时保留待安装记录供核对重试。\n\n"
+                        ? "将在当前正常模式安装/修复 " + selected.Display() + " 双架构基线；不会执行卸载。失败时保留待安装记录供核对重试。\n\n"
                         : "将在当前环境卸载下列 x86/x64 C++ 14.x。优先使用已核验的微软 Redistributable 原包装，缺少可用原包装的组件才按 MSI 产品码处理；仍保留依赖与结果复检。\n" + list
                         + "\n旧 INF 卸载节会实际调用其中的 MSI 卸载命令；已核对其目标属于 14.x，执行前会备份包装登记及 INF/PNF。"
-                        + (mode == Vc14RepairMode.UninstallOnly ? "\n\n本次仅卸载和复检，保存待安装记录，不安装基线。完成后请手动重启回正常模式，点击“继续安装 14.42”并重新确认。不会自动重启或续跑；期间其他依赖 C++ 的软件可能无法运行。"
-                            : "\n\n随后安装 2015–2022 x64/x86 14.42.34433 原包并复检组件与 DLL；若 DLL 版本未对齐会自动用原包修复。")
+                        + (mode == Vc14RepairMode.UninstallOnly ? "\n\n本次仅卸载和复检，保存待安装记录，不安装基线。完成后请手动重启回正常模式，点击“继续安装 " + selected.Display() + "”并重新确认。不会自动重启或续跑；期间其他依赖 C++ 的软件可能无法运行。"
+                            : "\n\n随后安装 2015–2022 x64/x86 " + targetVersion + " 原包并复检组件与 DLL；若 DLL 版本未对齐会自动用原包修复。")
                         + "\n卸载完成后、安装前会自动备份并清理旧版工具留下的 v14/2026 残留登记（避免其阻止基线安装），备份会保留。"
                         + (skipped.Length > 0 ? "\n\n以下登记重装阶段不卸载（由残留清理阶段评估）：\n" + skipped : "")
                         + "\n保留 2005–2013、SDK/Debug、ARM64 和 DirectX。")
-                        + "\n请先关闭游戏与其他应用及运行库防护。共享运行库降级可能影响需要较新版本的软件。"
-                        + (mode == Vc14RepairMode.UninstallOnly ? "" : "\n普通原包修复后DLL仍是错误版本时，将自动尝试一次忽略文件版本的14.42原始MSI重装，并再次检查实际DLL。")
+                        + "\n请先关闭游戏与其他应用及运行库防护。共享运行库变更（" + selected.Display() + "）可能影响需要其他版本的软件。"
+                        + (mode == Vc14RepairMode.UninstallOnly ? "" : "\n普通原包修复后DLL仍是错误版本时，将自动尝试一次忽略文件版本的 " + selected.Display() + " 原始MSI重装，并再次检查实际DLL。")
                         + "\n失败、身份变化、需要重启或结果未确认时停止；不会强杀安装器。" } },
                 PrimaryButtonText = mode == Vc14RepairMode.UninstallOnly ? "确认仅卸载" : installMissing || mode == Vc14RepairMode.InstallOnly ? "确认安装" : "确认仅修复",
                 CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
@@ -130,18 +132,19 @@ public sealed partial class RuntimePage : Page
         _repairCancellation = cancellation;
         try
         {
-            ViewModel.RepairStatusText = "正在核对内置 14.42 载荷与系统 14.x DLL…";
+            ViewModel.RepairStatusText = "正在核对内置 " + ViewModel.SelectedBaseline.Display() + " 载荷与系统 14.x DLL…";
             var preview = await ViewModel.PreviewForceReplaceAsync(cancellation.Token);
             if (!preview.CanRun) { ViewModel.RecordRepairBlocker(preview.Blocker); return; }
             var list = string.Join("\n", preview.Items.Where(item => item.Status == "replace").Select(item =>
                 item.Architecture + " " + item.File + "：" + (item.CurrentVersion.Length == 0 ? "版本未知" : item.CurrentVersion)
                 + " → " + item.ExpectedVersion + (item.Downgrade ? "（降级）" : "") + (item.InUse ? "（占用，将安排重启后替换）" : "")));
             var warning = "将绕过 Windows Installer，直接覆盖 %SystemRoot%\\System32 与 SysWOW64 中的 14.x DLL。\n"
+                + "目标版本：" + preview.PayloadVersion + "（" + Vc14BaselineOption.Display(preview.Baseline) + "）\n"
                 + "待替换 " + preview.ReplaceCount + " 个，已匹配 " + preview.SkipCount + " 个。\n\n" + (list.Length == 0 ? "（无）" : list)
-                + (preview.DowngradeCount > 0 ? "\n\n注意：其中 " + preview.DowngradeCount + " 个当前版本较新，执行后会降级。" : "")
+                + (preview.DowngradeCount > 0 ? "\n\n注意：其中 " + preview.DowngradeCount + " 个当前版本较新，执行后会降级到目标版本。" : "")
                 + "\n\n执行前自动备份并生成 restore.ps1、README.txt；被占用文件安排到下次启动替换。\n"
                 + "不会修改 MSI/ARP 安装登记；如需登记一致，请改用“预览并仅修复 14.x”。\n"
-                + "请先关闭游戏、其他应用和运行库防护；共享运行库降级可能影响需要较新版本的软件。";
+                + "请先关闭游戏、其他应用和运行库防护；共享运行库变更可能影响需要其他版本的软件。";
             var dialog = new ContentDialog
             {
                 XamlRoot = XamlRoot,
@@ -348,9 +351,10 @@ public sealed partial class RuntimePage : Page
             if (!await HandleRuntimeFileUseAsync(cancellation.Token, RuntimeFileUseScope.FullRepair)) return;
             preview = await ViewModel.PreviewHighFpsAsync(false);
             if (!preview.CanRepair) { ViewModel.RecordRepairBlocker(preview.Blocker); return; }
-            var description = (preview.HasUninstallSteps ? "将在当前环境受控卸载清单中的 V14，优先使用已核验的微软原包装并复检。" : "已核对无待卸载项或仅需继续补装已核验的 14.42 基线。")
-                + "C++ 2005–2013 不先卸载，使用十个微软 x86/x64 原包逐包安装或修复。另处理 VSTO 与旧 VC/VB 辅助组件，最后安装你提供的 14.42 双架构基线。已核验的较新旧版 C++ 组件保留，不盲目降级。"
-                + "\n14.42普通原包修复后DLL仍是错误版本时，会自动尝试一次忽略文件版本的原始MSI重装，并再次检查实际DLL。";
+            var selected = preview.Baseline;
+            var description = (preview.HasUninstallSteps ? "将在当前环境受控卸载清单中的 V14，优先使用已核验的微软原包装并复检。" : "已核对无待卸载项或仅需继续补装已核验的 " + selected.Display() + " 基线。")
+                + "C++ 2005–2013 不先卸载，使用十个微软 x86/x64 原包逐包安装或修复。另处理 VSTO 与旧 VC/VB 辅助组件，最后安装工具内置的 " + selected.FullVersion() + " 双架构基线。已核验的较新旧版 C++ 组件保留，不盲目降级。"
+                + "\n" + selected.Display() + " 普通原包修复后DLL仍是错误版本时，会自动尝试一次忽略文件版本的原始MSI重装，并再次检查实际DLL。";
             var confirm = new ContentDialog
             {
                 XamlRoot = XamlRoot, Title = "确认全量修复？",

@@ -63,9 +63,11 @@ def build(layout, output, base_url, installer_manifest, previous=None, github_ba
             if (any(p.lower() in {"logs", "backups", "plugins", "userdata"} for p in parts)
                     or name.lower().startswith("unins") or name.lower() in {"settings.json", "update-source.json"}):
                 raise ValueError("User data or installer-generated state found in publish layout: " + relative)
-            if (len(parts) > 1 and parts[0] not in {"Assets", "Backends", "Views", "Tools", "licenses", "Microsoft.UI.Xaml", "NpuDetect"}
+            if (len(parts) > 1 and parts[0] not in {"Assets", "Backends", "Views", "Tools", "licenses", "Microsoft.UI.Xaml", "NpuDetect", "Controls", "Themes"}
                     and not re.fullmatch(r"[a-z]{2,3}(?:-[a-zA-Z0-9]{2,8}){0,2}", parts[0])):
                 raise ValueError("Unexpected publish directory: " + relative)
+            if parts[0] in {"Controls", "Themes"} and (len(parts) != 2 or not name.lower().endswith(".xbf")):
+                raise ValueError("UI directories allow compiled XBF resources only: " + relative)
             paths.append((relative, path))
     if not required.issubset({name for name, _ in paths}):
         raise ValueError("Publish layout is missing application, backend or updater components")

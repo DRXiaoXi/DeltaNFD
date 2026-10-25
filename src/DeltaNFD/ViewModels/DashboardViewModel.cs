@@ -41,7 +41,9 @@ public partial class DashboardViewModel : ObservableObject
     public bool RuntimeUiEnabled => ReleaseFeatures.RuntimeUiEnabled;
     public bool IsLimitedTestBuild => !RuntimeUiEnabled;
     public string RuntimeActionText => RuntimeHealthState == DashboardHealthState.Disabled ? "检测设置" : "去处理";
-    public string HealthSummary => Services.Backends.PageBackendSessions.Manager.DeltaRunning != false ? HealthPauseReason : DashboardHealthPresentation.Summary(IsHealthScanning, ShaderHealthState, AceHealthState, RuntimeHealthState);
+    public string HealthSummary => Services.Backends.PageBackendSessions.Manager.DeltaRunning != false
+        ? DashboardMemoryHealth.PausedSummary(MemoryHealthState, HealthPauseReason)
+        : DashboardHealthPresentation.Summary(IsHealthScanning, ShaderHealthState, AceHealthState, RuntimeHealthState, MemoryHealthState);
 
     [ObservableProperty]
     private string targetName = "三角洲";
@@ -149,78 +151,6 @@ public partial class DashboardViewModel : ObservableObject
     }
 
     private Task InitializeAsync() => Task.CompletedTask;
-    /// <summary>刷新主页组件状态；调用真实页面后端使用的同一组扫描服务。</summary>
-    public async Task RefreshHealthAsync()
-    {
-        RefreshRuntimeDetectionPreference();
-        if (!_healthAttached || Services.Backends.PageBackendSessions.Manager.DeltaRunning != false)
-        {
-            OnHealthGameState(Services.Backends.PageBackendSessions.Manager.DeltaRunning);
-            return;
-        }
-
-        if (IsHealthScanning)
-            return;
-        var generation = ++_healthGeneration;
-        _healthBefore = new(ShaderHealthState, ShaderStatusText, AceHealthState, AceStatusText, RuntimeHealthState, RuntimeStatusText, ShaderCacheNeedsAttention);
-        _healthEverStarted = true;
-        IsHealthScanning = true;
-        try
-        {
-            foreach (var read in new (string Area, Func<Task> Read)[]
-            {
-                ("着色器", () => LoadShaderHealthAsync(generation)),
-                ("ACE", () => LoadAceHealthAsync(generation)),
-                ("运行库", async () =>
-                {
-                    if (RuntimeUiEnabled)
-                        await LoadRuntimeHealthAsync(generation);
-                })
-            }
-
-            )
-            {
-                if (!CanApplyHealth(generation))
-                    return;
-                try
-                {
-                    await read.Read();
-                }
-                catch (Exception ex)
-                {
-                    if (!CanApplyHealth(generation))
-                        return;
-                    if (read.Area == "着色器")
-                    {
-                        ShaderHealthState = DashboardHealthState.Failed;
-                        ShaderStatusText = "检测失败：" + ex.Message;
-                    }
-                    else if (read.Area == "ACE")
-                    {
-                        AceHealthState = DashboardHealthState.Failed;
-                        AceStatusText = "检测失败：" + ex.Message;
-                    }
-                    else
-                    {
-                        RuntimeHealthState = DashboardHealthState.Failed;
-                        RuntimeStatusText = "检测失败：" + ex.Message;
-                    }
-                }
-            }
-
-            if (CanApplyHealth(generation))
-            {
-                LastHealthCheckText = "最近检测 " + DateTimeOffset.Now.ToString("HH:mm:ss");
-                _healthBefore = null;
-            }
-        }
-        finally
-        {
-            if (generation == _healthGeneration)
-                IsHealthScanning = false;
-        }
-    }
-
     private async Task LoadShaderHealthAsync(int generation)
     {
         if (ServiceLocator.GameTarget.IsCustom)
@@ -247,7 +177,7 @@ public partial class DashboardViewModel : ObservableObject
             return;
         }
 
-        // 与 ACE 页共用只读组件/游戏归属检查，不按驱动文件数量判异常。
+        // 与 ACE 页共用归属检测及“未关联黄、有效手动关联后仍过多红”的计数策略。
         var scan = await ServiceLocator.Ace.ScanAsync();
         if (!CanApplyHealth(generation))
             return;
@@ -272,14 +202,14 @@ public partial class DashboardViewModel : ObservableObject
 
         if (core.Level == AceCoreCheckLevel.Abnormal)
         {
-            AceHealthState = DashboardHealthState.Abnormal;
+            AceHealthState = DashboardHealthPresentation.AceCore(core.Level, core.HasExcessCoreFiles);
             AceStatusText = core.Summary;
             return;
         }
 
         if (core.Level == AceCoreCheckLevel.NeedsReview)
         {
-            AceHealthState = DashboardHealthState.Information;
+            AceHealthState = DashboardHealthPresentation.AceCore(core.Level, core.HasExcessCoreFiles);
             AceStatusText = core.Summary;
             return;
         }
@@ -329,7 +259,7 @@ public partial class DashboardViewModel : ObservableObject
             throw error;
         var(status, scan) = read.Value;
         RuntimeHealthState = scan.HasAbnormal ? DashboardHealthState.Abnormal : scan.HasWarning || status.GuardIssue.Length > 0 || status.IfeoRestorePending || status.Ue4RestorePending || status.Ue4PrereqDenied || status.IfeoManagedCount > 0 && !status.IfeoApplied ? DashboardHealthState.Warning : DashboardHealthState.Normal;
-        RuntimeStatusText = scan.IsMissing ? "缺少 C++ 14.x 运行库，可能导致三角洲无法启动；请进入运行库页安装 14.42" : scan.HasAbnormal ? "14.x 兼容性异常：检测到 14.51 或 Visual C++ v14 组件，请进入运行库页核对" : scan.HasWarning ? "14.x 版本非 14.42/14.44 或状态待核对，请进入运行库页查看" : status.GuardIssue.Length > 0 ? "防护状态待核对：" + status.GuardIssue : status.IfeoRestorePending || status.Ue4RestorePending ? "旧防护有待恢复记录" : status.IfeoApplied ? $"防护已开启，拦截 {status.ScopeManagedCount}/{status.IfeoTotal} 个安装器" : status.IfeoManagedCount > 0 || status.Ue4PrereqDenied ? "防护部分生效或有残留，可进入防护页核对" : "14.x 未发现版本异常；防护未开启";
+        RuntimeStatusText = scan.IsMissing ? "缺少 C++ 14.x 运行库，可能导致三角洲无法启动；请进入运行库页安装 14.42 或 14.44" : scan.HasAbnormal ? "14.x 兼容性异常：检测到 14.50、14.51 或 Visual C++ v14 组件，请进入运行库页核对" : scan.HasWarning ? "14.x 版本非 14.42/14.44 或状态待核对，请进入运行库页查看" : status.GuardIssue.Length > 0 ? "防护状态待核对：" + status.GuardIssue : status.IfeoRestorePending || status.Ue4RestorePending ? "旧防护有待恢复记录" : status.IfeoApplied ? $"防护已开启，拦截 {status.ScopeManagedCount}/{status.IfeoTotal} 个安装器" : status.IfeoManagedCount > 0 || status.Ue4PrereqDenied ? "防护部分生效或有残留，可进入防护页核对" : "14.x 未发现版本异常；防护未开启";
     }
 
     [RelayCommand]

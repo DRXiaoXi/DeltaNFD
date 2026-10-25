@@ -2,95 +2,74 @@ using Microsoft.UI.Dispatching;
 
 namespace DeltaNFD.Services;
 
-/// <summary>
-/// 共享的三角洲进程状态订阅：唯一权威是 CPU/帧格后端的两秒监控。
-/// 订阅所选目标及独立三角洲状态快照，派发回 UI；栏目执行前另作即时复核，前端不新增轮询循环。
-/// 后端缺失或脱机时不启动后端（保持零进程默认模式）。
-/// </summary>
+/// <summary>One subscription to the backend heartbeat; observation survives a refused automation start.</summary>
 internal sealed class GameProcessMonitor : IDisposable
 {
     private readonly DispatcherQueue? _dispatcher = DispatcherQueue.GetForCurrentThread();
-    private readonly CancellationTokenSource _cts = new();
-
+    private readonly Backends.BackendCpuFrameService _service = Backends.BackendCpuFrameService.Instance;
+    private readonly GameObservationState _state;
+    private int _disposed;
     internal event Action<bool, int?>? Tick;
     internal event Action<bool?>? DeltaStateChanged;
+    internal event Action? StatusChanged;
     internal bool? DeltaRunning { get; private set; }
     internal bool IsRunning { get; private set; }
     internal int? ProcessId { get; private set; }
+    internal bool? TargetRunning => _state.TargetRunning;
+    internal CpuFrameStatusSnapshot? Latest => _state.Latest;
+    internal string StatusDetail => _state.Detail;
+    internal string AutomationError => _service.AutomationError.Length > 0 ? _service.AutomationError : _state.AutomationFailure;
+    internal bool IsConnecting => _state.IsConnecting;
 
     internal GameProcessMonitor()
     {
+        _state = new(_service.EnsureObservationAsync, _service.EnsureMonitorAsync, () => OfflineModeGuard.BlocksNormalAutomation);
+        _state.Changed += OnStateChanged;
+        _service.StatusUpdated += OnStatusUpdated;
+        _service.ConnectionEnded += OnConnectionEnded;
         GameTargetService.Default.Changed += OnTargetChanged;
-        _ = RunAsync();
+        _ = _state.ConnectAsync(bootstrapAutomation: true);
     }
-
-    private void OnTargetChanged(GameTarget target) => Deliver(false, null);
-
-    private async Task RunAsync()
+    internal Task ReconnectAsync() => _state.ConnectAsync(); // Observation-only; no mutation replay.
+    private void OnTargetChanged(GameTarget target) => Dispatch(() => { IsRunning = false; ProcessId = null; Notify(Tick, false, null); });
+    private void OnStatusUpdated(CpuFrameStatusSnapshot snapshot) => _state.Accept(snapshot);
+    private void OnConnectionEnded() => _state.Unavailable("CPU/帧格状态连接已中断或超时，请点击“重新确认”；如有未确认执行者，请先核对恢复记录。");
+    private void OnStateChanged() => Dispatch(() =>
     {
-        // 零进程脱机/恢复流程：不启动后端监控（普通自动化已暂停）。
-        if (OfflineModeGuard.BlocksNormalAutomation) return;
-
-        var service = Backends.BackendCpuFrameService.Instance;
-        service.StatusUpdated += OnStatusUpdated;
-        service.ConnectionEnded += OnConnectionEnded;
-        try
+        var running = _state.DeltaRunning;
+        Backends.PageBackendSessions.Manager.ObserveDelta(running);
+        if (DeltaRunning != running)
         {
-            await service.EnsureMonitorAsync(_cts.Token);
-            await Task.Delay(Timeout.Infinite, _cts.Token);
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            Log.Warn("CPU/帧格状态监控启动失败（不自行建立第二份进程监控）：" + ex.Message);
-        }
-        finally
-        {
-            service.StatusUpdated -= OnStatusUpdated;
-            service.ConnectionEnded -= OnConnectionEnded;
-            DeliverDelta(null);
-        }
-    }
-
-    private void OnStatusUpdated(CpuFrameStatusSnapshot snapshot)
-    {
-        Deliver(snapshot.GameRunning, snapshot.GamePid);
-        DeliverDelta(Backends.PageBackendSessions.ReadDeltaObservation(snapshot, DateTimeOffset.UtcNow));
-    }
-    private void OnConnectionEnded() => DeliverDelta(null);
-    private void DeliverDelta(bool? running)
-    {
-        void Apply()
-        {
-            Backends.PageBackendSessions.Manager.ObserveDelta(running);
-            if (DeltaRunning == running) return;
             DeltaRunning = running;
             foreach (Action<bool?> handler in DeltaStateChanged?.GetInvocationList() ?? [])
                 try { handler(running); } catch (Exception ex) { Log.Error("栏目游戏状态订阅失败", ex); }
         }
-        if (_dispatcher is null || _dispatcher.HasThreadAccess) Apply(); else _dispatcher.TryEnqueue(Apply);
-    }
-
-    private void Deliver(bool running, int? pid)
-    {
-        void Apply()
+        if (_state.TargetRunning is { } target)
         {
-            IsRunning = running;
-            ProcessId = pid;
-            foreach (Action<bool, int?> handler in Tick?.GetInvocationList() ?? [])
-            {
-                try { handler(running, pid); }
-                catch (Exception ex) { Log.Error("游戏进程监控订阅处理失败", ex); }
-            }
+            IsRunning = target;
+            ProcessId = target && _state.Latest?.MonitorRunning == true ? _state.Latest.GamePid : null;
+            Notify(Tick, target, ProcessId);
         }
-
-        if (_dispatcher is null || _dispatcher.HasThreadAccess) Apply();
-        else _dispatcher.TryEnqueue(Apply);
+        foreach (Action handler in StatusChanged?.GetInvocationList() ?? [])
+            try { handler(); } catch (Exception ex) { Log.Error("游戏状态说明订阅失败", ex); }
+    });
+    private static void Notify(Action<bool, int?>? handlers, bool running, int? pid)
+    {
+        foreach (Action<bool, int?> handler in handlers?.GetInvocationList() ?? [])
+            try { handler(running, pid); } catch (Exception ex) { Log.Error("游戏状态订阅失败", ex); }
     }
-
+    private void Dispatch(Action apply)
+    {
+        void Guarded() { if (Volatile.Read(ref _disposed) == 0) apply(); }
+        if (_dispatcher is null || _dispatcher.HasThreadAccess) Guarded(); else _dispatcher.TryEnqueue(Guarded);
+    }
     public void Dispose()
     {
-        try { _cts.Cancel(); } catch (ObjectDisposedException) { }
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _state.Dispose();
+        _state.Changed -= OnStateChanged;
+        _service.StatusUpdated -= OnStatusUpdated;
+        _service.ConnectionEnded -= OnConnectionEnded;
         GameTargetService.Default.Changed -= OnTargetChanged;
     }
 }

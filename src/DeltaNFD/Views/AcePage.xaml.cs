@@ -9,8 +9,15 @@ namespace DeltaNFD.Views;
 
 public sealed partial class AcePage : Page
 {
+    public InfoBarSeverity CoreAlertSeverity(AceCoreCheckLevel level, bool hasExcess) => level switch
+    {
+        AceCoreCheckLevel.Abnormal or AceCoreCheckLevel.Failed => InfoBarSeverity.Error,
+        AceCoreCheckLevel.NeedsReview when hasExcess => InfoBarSeverity.Warning,
+        _ => InfoBarSeverity.Informational,
+    };
     private readonly DeltaNFD.Services.Backends.PageBackendLease? _pageOwner = DeltaNFD.Services.Backends.PageBackendSessions.Manager.Current;
     private bool _cleanupFlowBusy;
+    private bool _pageLoaded;
     public AceViewModel ViewModel { get; } = new();
 
     public AcePage()
@@ -174,10 +181,18 @@ public sealed partial class AcePage : Page
         await ViewModel.FixVirtualizationConflictsAsync();
     }
 
-    private void OnPageLoaded(object sender, RoutedEventArgs e) => ViewModel.AttachGameState();
+    private void OnPageLoaded(object sender, RoutedEventArgs e)
+    {
+        _pageLoaded = true;
+        ViewModel.AttachGameState();
+    }
 
     /// <summary>
     /// 页面只摘除订阅，统一栏目会话管理器等待当前请求结束后关闭本页后端。
     /// </summary>
-    private void OnPageUnloaded(object sender, RoutedEventArgs e) => ViewModel.DetachGameState();
+    private void OnPageUnloaded(object sender, RoutedEventArgs e)
+    {
+        _pageLoaded = false;
+        ViewModel.DetachGameState();
+    }
 }

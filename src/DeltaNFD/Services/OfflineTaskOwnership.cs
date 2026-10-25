@@ -12,7 +12,10 @@ public enum OfflineScheduledTaskState
     ForeignOrUnknown,
 }
 
-public sealed record OfflineScheduledTaskInspection(OfflineScheduledTaskState State, string ExecutablePath, bool Enabled, string Message);
+public sealed record OfflineScheduledTaskInspection(OfflineScheduledTaskState State, string ExecutablePath, bool Enabled, string Message)
+{
+    public string Arguments { get; init; } = "";
+}
 
 /// <summary>脱机模式只查询/删除经 XML 动作确认属于本产品的登录任务。</summary>
 public static class OfflineTaskOwnership
@@ -34,9 +37,9 @@ public static class OfflineTaskOwnership
         try
         {
             var isOwned = IsOwnedTaskXml(query.StdOut, currentExePath ?? Environment.ProcessPath ?? "", KnownLegacyExecutables,
-                out var executablePath, out var enabled, out var reason);
+                out var executablePath, out var enabled, out var reason, out var arguments);
             return isOwned
-                ? new(OfflineScheduledTaskState.Owned, executablePath, enabled, "任务动作指向本产品安装程序。")
+                ? new(OfflineScheduledTaskState.Owned, executablePath, enabled, "任务动作指向本产品安装程序。") { Arguments = arguments }
                 : new(OfflineScheduledTaskState.ForeignOrUnknown, executablePath, enabled, reason);
         }
         catch (Exception ex)
@@ -75,19 +78,32 @@ public static class OfflineTaskOwnership
 
         var before = await InspectAsync(taskName, normalized);
         if (before.State == OfflineScheduledTaskState.Owned)
+        {
+            if (before.Arguments != StartupPresentation.LogonArgument
+                || !string.Equals(before.ExecutablePath, normalized, StringComparison.OrdinalIgnoreCase))
+            {
+                // Change only an owned action. Preserve trigger, principal and all task settings.
+                var changed = await RunSchtasksAsync(["/Change", "/TN", taskName, "/TR", $"\"{normalized}\" {StartupPresentation.LogonArgument}"], TimeSpan.FromSeconds(30));
+                if (changed.Code != 0) return OperationResult.Fail("更新登录启动标记失败：" + FirstLine(changed.StdErr.Length == 0 ? changed.StdOut : changed.StdErr));
+                before = await InspectAsync(taskName, normalized);
+                if (before.State != OfflineScheduledTaskState.Owned || before.Arguments != StartupPresentation.LogonArgument
+                    || !string.Equals(before.ExecutablePath, normalized, StringComparison.OrdinalIgnoreCase))
+                    return OperationResult.Fail("更新后无法核验登录启动动作，未启用任务。");
+            }
             return before.Enabled == enabled
                 ? OperationResult.Ok($"本工具计划任务 {taskName} 已存在且状态匹配。")
                 : await SetOwnedTaskEnabledAsync(taskName, normalized, enabled);
+        }
         if (before.State != OfflineScheduledTaskState.Missing)
             return OperationResult.Fail($"计划任务 {taskName} 已存在但无法确认归属，拒绝覆盖：{before.Message}");
 
         var result = await RunSchtasksAsync(
-            ["/Create", "/TN", taskName, "/TR", $"\"{normalized}\"", "/SC", "ONLOGON", "/RL", "HIGHEST"],
+            ["/Create", "/TN", taskName, "/TR", $"\"{normalized}\" {StartupPresentation.LogonArgument}", "/SC", "ONLOGON", "/RL", "HIGHEST"],
             TimeSpan.FromSeconds(30));
         if (result.Code != 0)
             return OperationResult.Fail($"创建计划任务 {taskName} 失败：{FirstLine(result.StdErr.Length == 0 ? result.StdOut : result.StdErr)}");
         var after = await InspectAsync(taskName, normalized);
-        if (after.State != OfflineScheduledTaskState.Owned)
+        if (after.State != OfflineScheduledTaskState.Owned || after.Arguments != StartupPresentation.LogonArgument)
             return OperationResult.Fail($"创建后无法确认任务归属：{after.Message}");
         return after.Enabled == enabled ? OperationResult.Ok($"已创建本工具计划任务 {taskName}。")
             : await SetOwnedTaskEnabledAsync(taskName, normalized, enabled);
@@ -95,8 +111,13 @@ public static class OfflineTaskOwnership
 
     internal static bool IsOwnedTaskXml(string xml, string currentExePath, IReadOnlyCollection<string> legacyPaths,
         out string executablePath, out bool enabled, out string reason)
+        => IsOwnedTaskXml(xml, currentExePath, legacyPaths, out executablePath, out enabled, out reason, out _);
+
+    private static bool IsOwnedTaskXml(string xml, string currentExePath, IReadOnlyCollection<string> legacyPaths,
+        out string executablePath, out bool enabled, out string reason, out string arguments)
     {
         executablePath = "";
+        arguments = "";
         enabled = false;
         reason = "任务动作不是本工具可识别的 EXE。";
         var readerSettings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = 1_000_000 };
@@ -135,9 +156,16 @@ public static class OfflineTaskOwnership
             return false;
         }
 
-        var command = actions[0].Elements().FirstOrDefault(x => x.Name.LocalName == "Command")?.Value.Trim() ?? "";
-        var arguments = actions[0].Elements().FirstOrDefault(x => x.Name.LocalName == "Arguments")?.Value.Trim() ?? "";
-        if (command.Length == 0 || arguments.Length != 0)
+        var commands = actions[0].Elements().Where(x => x.Name.LocalName == "Command").ToArray();
+        var argumentNodes = actions[0].Elements().Where(x => x.Name.LocalName == "Arguments").ToArray();
+        if (commands.Length != 1 || argumentNodes.Length > 1)
+        {
+            reason = "计划任务命令或参数节点不唯一。";
+            return false;
+        }
+        var command = commands[0].Value.Trim();
+        arguments = argumentNodes.FirstOrDefault()?.Value.Trim() ?? "";
+        if (command.Length == 0 || (arguments.Length != 0 && arguments != StartupPresentation.LogonArgument))
         {
             reason = "计划任务命令为空或包含额外参数。";
             return false;

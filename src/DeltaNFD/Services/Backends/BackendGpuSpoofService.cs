@@ -73,6 +73,35 @@ internal sealed class BackendGpuSpoofService : IGpuSpoofService
     }
 
     public Task<IReadOnlyList<GpuSpoofInvalidation>> CheckInvalidationAsync() => DeltaNFD.Inspection.InspectionScheduler.Run(() => DeltaNFD.Inspection.GpuSpoofReadWatch.Check());
+    public async Task<GpuDriverNamePreview> PreviewDriverNameAsync(string registryPath)
+    {
+        var result = await InvokeAsync(BackendCommands.GpuDriverNamePreview, new GpuSpoofPathArgs { RegistryPath = registryPath }, null, CancellationToken.None);
+        RequireOk(result, "核验驱动型号");
+        return BackendResults.RequireData<GpuDriverNamePreview>(result, "核验驱动型号");
+    }
+    public async Task<OperationResult> RestoreDriverNameAsync(string registryPath, string fingerprint)
+    {
+        var result = await InvokeAsync(BackendCommands.GpuDriverNameRestore,
+            new GpuDriverNameRestoreArgs { RegistryPath = registryPath, Fingerprint = fingerprint }, null, CancellationToken.None);
+        return MapDriverNameResult(result);
+    }
+    internal static OperationResult MapDriverNameResult(BackendResult result)
+    {
+        if (result.Data is { } data)
+        {
+            var operation = BackendJson.Deserialize<OperationResult>(data);
+            return new OperationResult
+            {
+                Success = operation.Success && result.Status is BackendResultStatuses.Ok or BackendResultStatuses.Partial,
+                Message = operation.Message, IsPartial = operation.IsPartial, OutcomeUnknown = operation.OutcomeUnknown || result.PendingRestore,
+                RequiresReboot = operation.RequiresReboot, RequiresLogoff = operation.RequiresLogoff,
+                RequiresDisplayConfirm = operation.RequiresDisplayConfirm, IsSkipped = operation.IsSkipped && result.Status == BackendResultStatuses.Ok,
+                DiagnosticsDirectory = operation.DiagnosticsDirectory,
+            };
+        }
+        return result.PendingRestore ? new OperationResult { OutcomeUnknown = true, Message = result.Message }
+            : BackendResults.Map(result, "按驱动重建显卡型号");
+    }
     private static void RequireOk(BackendResult result, string what)
     {
         if (result.Status != BackendResultStatuses.Ok)

@@ -24,10 +24,13 @@ public sealed partial class MainWindow
             _ = OptimizationScan.RunIfNotScannedAsync();
         };
         ServiceLocator.GameMonitor.DeltaStateChanged += OnDeltaPageState;
+        ServiceLocator.GameMonitor.StatusChanged += OnGameObservationStatus;
         PageBackendSessions.Manager.Changed += OnPageBackendState;
         Closed += (_, _) =>
         {
             ServiceLocator.GameMonitor.DeltaStateChanged -= OnDeltaPageState;
+            ServiceLocator.GameMonitor.StatusChanged -= OnGameObservationStatus;
+            ServiceLocator.GameMonitor.Dispose();
             PageBackendSessions.Manager.Changed -= OnPageBackendState;
             PageBackendSessions.Manager.Navigate("");
         };
@@ -71,6 +74,11 @@ public sealed partial class MainWindow
         if (!CanEnterGamePage(PageRoute(ContentFrame.CurrentSourcePageType))) NavigateByTag("dashboard");
         if (ContentFrame.Content is SystemOptimizePage system) system.RefreshGameReadOnlyState();
     }
+    private void OnGameObservationStatus() => UpdatePageAvailability();
+    private async void GameStateRetry_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        await ServiceLocator.GameMonitor.ReconnectAsync();
+    }
     private void OnPageBackendState() => DispatcherQueue.TryEnqueue(() =>
     {
         UpdatePageAvailability();
@@ -100,7 +108,9 @@ public sealed partial class MainWindow
         GamePageRestriction.Title = running == true ? "三角洲运行期间的功能限制" : "三角洲运行状态待确认";
         GamePageRestriction.Message = running == true
             ? "显卡伪装、着色器、ACE相关和运行库暂不可用；系统优化仅供查看。完全退出三角洲后恢复。"
-            : "正在确认三角洲运行状态。系统优化暂时仅供查看，其他维护栏目确认后开放。";
+            : ServiceLocator.GameMonitor.StatusDetail + " 系统优化暂时仅供查看，其他维护栏目确认后开放。";
+        GameStateRetryButton.Visibility = running is null ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+        GameStateRetryButton.IsEnabled = !ServiceLocator.GameMonitor.IsConnecting;
         ShaderCacheButton.IsEnabled = !ServiceLocator.GameTarget.IsCustom && CanEnterGamePage("shader");
         _pageLeases.RemoveWhere(l => !ReferenceEquals(l, PageBackendSessions.Manager.Current) && l.Stopping.IsCompleted && l.Status == "栏目后端已关闭");
         var pending = _pageLeases.Where(l => l.Status.Length > 0 && l.Status != "栏目后端已关闭").Select(l => l.Status).Distinct().ToArray();

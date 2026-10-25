@@ -116,11 +116,11 @@ internal static class FrameModeFlow
                     var details = string.Join("\n", incomplete.Select(x => x.Path + "\n" + x.Reason));
                     var confirm = new ContentDialog
                     {
-                        XamlRoot = root, Title = "旧电源备份缺少原值",
+                        XamlRoot = root, Title = "旧电源记录无法精确恢复",
                         Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock
                         {
                             TextWrapping = TextWrapping.Wrap,
-                            Text = details + "\n\n这些原值或设置项无法完整确认。是否保留当前电源值，并将列出的旧记录移至证据目录？\n这不是恢复默认值或还原成功，归档步骤不会写入电源值。\n同时关闭“降低省电延迟”；若包括内容快照，也会关闭电源计划锁定，再尝试其他帧格功能。原 JSON 保留用于后续排查；其他有效备份仍按原值恢复。",
+                            Text = details + "\n\n这些记录的原值不完整，或所属电源计划/设置当前不可读取。是否保留当前电源值，并将列出的旧记录移至证据目录？\n这不是恢复默认值或还原成功，归档步骤不会写入电源值，也不会重建已删除的计划或原值。\n同时关闭“降低省电延迟”；若包括内容快照，也会关闭电源计划锁定，再尝试其他帧格功能。原 JSON 保留用于后续排查；其他有效备份仍按原值恢复。",
                         } },
                         PrimaryButtonText = "保留当前值并继续", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
                     };

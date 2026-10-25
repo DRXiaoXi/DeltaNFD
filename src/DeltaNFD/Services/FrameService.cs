@@ -122,6 +122,7 @@ public sealed class FrameService : IFrameService
         }
 
         ServiceLocator.GameMonitor.Tick += OnGameMonitorTick;
+        ServiceLocator.GameMonitor.StatusChanged += OnObservationStateChanged;
         // 后端状态：显示实际生效状态（游戏运行、内存清理状态文字）。
         Backends.BackendCpuFrameService.Instance.StatusUpdated += OnCpuFrameStatus;
         if (!automationBlocked) _ = RestorePersistentCpuSchedulingAsync();
@@ -619,7 +620,23 @@ public sealed class FrameService : IFrameService
         try
         {
             if (_frameModeActive) return OperationResult.Fail("帧格正在运行，禁止隔离恢复记录。");
-            return await Backends.BackendCpuFrameService.Instance.PreserveCurrentPowerValuesAsync(confirmed);
+            await _executionSync.WaitAsync();
+            try
+            {
+                var result = await Backends.BackendCpuFrameService.Instance.PreserveCurrentPowerValuesAsync(confirmed);
+                if (result.Success)
+                {
+                    var settings = AppSettingsStore.Read();
+                    _powerSaveLatencyEnabled = settings.FramePowerSaveLatencyEnabled;
+                    _powerPlanLockEnabled = settings.FramePowerLockEnabled;
+                    OnPropertyChanged(nameof(PowerSaveLatencyEnabled));
+                    OnPropertyChanged(nameof(PowerPlanLockEnabled));
+                    OnPropertyChanged(nameof(PowerPlanLockText));
+                    UpdateStatus();
+                }
+                return result;
+            }
+            finally { _executionSync.Release(); }
         }
         finally { _modeTransition.Release(); }
     }
@@ -1061,6 +1078,11 @@ public sealed class FrameService : IFrameService
     }
 
     private void UpdateStatus() => StatusText = DescribeStatus();
+    private void OnObservationStateChanged()
+    {
+        if (_dispatcher is null || _dispatcher.HasThreadAccess) UpdateStatus();
+        else _dispatcher.TryEnqueue(UpdateStatus);
+    }
 
     private string DescribeStatus()
     {
@@ -1068,20 +1090,21 @@ public sealed class FrameService : IFrameService
 
         if (_frameModeActive)
         {
+            var observation = ServiceLocator.GameMonitor;
+            var now = DateTimeOffset.UtcNow;
+            var snapshot = observation.Latest;
             var spoofPart = IsGpuSpoofInFrame && _gpuSpoofEnabled
                 ? $" · 显卡伪装为「{_gpuSpoofFakeName}」" : "";
-            var powerPart = _powerPlanLockEnabled
-                ? (Backends.BackendCpuFrameService.Instance.Latest is { PowerLockActive: true }
-                    ? (string.IsNullOrWhiteSpace(_powerLockTargetGuid) ? " · 电源计划锁定已生效" : " · 电源计划锁定已生效（指定计划）")
-                    : " · 电源锁定尚未确认（请核对恢复记录）") : "";
+            var powerPart = FrameStatusPresentation.Power(_powerPlanLockEnabled, _powerLockTargetGuid, snapshot, now);
             var dualPart = _dualCcdArmed && _dualCcdEnabled ? " · 双CCD调度" : "";
             var boostPart = _responseBoostEnabled ? " · 加速响应" : "";
             var foregroundPart = _foregroundBoostEnabled ? " · 前台加速" : "";
             var powerSavePart = _powerSaveLatencyEnabled ? " · 省电延迟" : "";
             var memCleanPart = _memoryCleanEnabled ? " · 内存清理" : "";
             var target = GameTargetService.Default.Current.DisplayName;
-            var gamePart = _isGameRunning ? $" · {target}运行中" : $" · 等待 {target} 启动";
-            return $"帧格模式运行中{spoofPart}{powerPart}{dualPart}{boostPart}{foregroundPart}{powerSavePart}{memCleanPart}{gamePart}";
+            var gamePart = FrameStatusPresentation.Game(observation.TargetRunning, target);
+            var execution = FrameStatusPresentation.Execution(snapshot, now, observation.AutomationError);
+            return $"{execution}{spoofPart}{powerPart}{dualPart}{boostPart}{foregroundPart}{powerSavePart}{memCleanPart}{gamePart}";
         }
 
         return GameTargetService.Default.Status;
@@ -1429,6 +1452,14 @@ public sealed class FrameService : IFrameService
 
     private async Task MigrateLegacyAutostartTaskAsync()
     {
+        // Existing frame logon tasks must carry the same launch marker as general autostart,
+        // otherwise two simultaneous logon tasks could reopen a silently started window.
+        var current = await OfflineTaskOwnership.InspectAsync(AutostartTaskName);
+        if (current.State == OfflineScheduledTaskState.Owned && Environment.ProcessPath is { } executable)
+        {
+            var marked = await OfflineTaskOwnership.EnsureOwnedTaskAsync(AutostartTaskName, executable, current.Enabled);
+            if (!marked.Success) Log.Warn("帧格登录启动标记迁移失败：" + marked.Message);
+        }
         var legacy = await OfflineTaskOwnership.InspectAsync(LegacyAutostartTaskName);
         if (legacy.State == OfflineScheduledTaskState.Missing) return;
         if (legacy.State != OfflineScheduledTaskState.Owned)

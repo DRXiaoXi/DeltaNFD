@@ -62,7 +62,7 @@ internal static class AceOwnershipChecks
             candidates.Add(new("三角洲行动", g1, "WeGame"));
             Write(@"DeltaGame\DeltaForce\Binaries\Win64\AntiCheatExpert\ACE-CORE-v2.sys", "game-two-v2");
             result = Read();
-            Check(result.Level == AceCoreCheckLevel.Normal && result.Games.Count == 1, "One game can supply multiple verified versions without a count error");
+            Check(result.Level == AceCoreCheckLevel.NeedsReview && result.Games.Count == 1, "One game with multiple cores is yellow until manual association, even when hashes match");
             candidates.Add(new("暗区突围：无限", g2, "Steam"));
             result = Read();
             Check(result.Associations.Any(x => x.Games.Count == 2 && x.Evidence.Contains("不能确认独占")), "Shared identical payload is not falsely attributed exclusively");

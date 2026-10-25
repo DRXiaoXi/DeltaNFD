@@ -224,8 +224,7 @@ internal static class PageBackendSessions
         throw new PageBackendUnavailableException(running == true ? "请完全退出三角洲后再执行此操作。" : "游戏运行状态无法确认，未执行操作。");
     }
     internal static bool? ReadDeltaObservation(CpuFrameStatusSnapshot snapshot, DateTimeOffset now) =>
-        snapshot.Module == BackendModules.CpuFrame && snapshot.MonitorRunning && snapshot.DeltaForceObservedUtc is { } observed
-        && now - observed <= TimeSpan.FromSeconds(10) && observed <= now.AddSeconds(2) ? snapshot.DeltaForceRunning : null;
+        GameObservationState.ReadDelta(snapshot, now);
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> ModuleGates = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<(string Module, Guid Owner), Task> Drains = new();
     internal static SemaphoreSlim ModuleGate(string module) => ModuleGates.GetOrAdd(module, _ => new(1, 1));

@@ -36,7 +36,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
             }
             var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "无法精确恢复的电源记录",
                 Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = string.Join("\n", unresolved.Select(r => r.Path + "\n" + r.Reason))
-                    + "\n\n先前恢复已尽力处理可读取项。若确认当前电源设置可以保留，可将列出的原记录归档并停用相关保护。这不是恢复成功或恢复默认，不会在此步骤写入电源值；归档后原文件仍可用于排查。" },
+                    + "\n\n先前恢复已尽力处理可读取项。若确认当前电源设置可以保留，可将列出的原记录归档并关闭“降低省电延迟”；若包含内容快照，也会关闭电源计划锁定。这不是恢复成功或恢复默认，不会在此步骤写入电源值或重建已删除的计划、原值；归档后原文件仍可用于排查。" },
                 PrimaryButtonText = "保留当前值并归档", CloseButtonText = "继续保留待恢复", DefaultButton = ContentDialogButton.Close };
             if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
             var result = await FrameSrv.PreserveCurrentPowerValuesAsync(unresolved);
@@ -75,6 +75,25 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
 
     /// <summary>程序化回写总开关时置 true，防止 Toggled 处理器重复弹窗。</summary>
     private bool _suppressFrameModeToggle;
+    private bool _memoryGuidanceRequested;
+
+    public void ShowAutomaticMemorySettings()
+    {
+        _memoryGuidanceRequested = true;
+        ShowMemoryGuidanceIfReady();
+    }
+
+    private void ShowMemoryGuidanceIfReady()
+    {
+        if (!_memoryGuidanceRequested || !IsLoaded) return;
+        _memoryGuidanceRequested = false;
+        MemoryRecoveryGuidanceInfo.IsOpen = true;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (IsLoaded) MemoryRecoveryGuidanceInfo.StartBringIntoView(new BringIntoViewOptions
+            { AnimationDesired = false, VerticalAlignmentRatio = 0 });
+        });
+    }
 
     /// <summary>下拉选项填充期间的程序化 SelectionChanged 不写回服务。</summary>
     private bool _suppressPowerTargetSelection;
@@ -175,6 +194,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
             UpdateGameDot();
             RefreshFeaturePresentation();
             _ = LoadFrameBackgroundAsync();
+            ShowMemoryGuidanceIfReady();
         };
         Unloaded += (_, _) => FrameSrv.PropertyChanged -= OnFramePropertyChanged;
         UpdateGameDot();

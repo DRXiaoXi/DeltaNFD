@@ -15,6 +15,8 @@ public sealed partial class DashboardPage : Page
     public DashboardPage()
     {
         InitializeComponent();
+        // Keep completed health results across navigation; Unloaded still detaches every subscription.
+        NavigationCacheMode = NavigationCacheMode.Required;
         Loaded += Page_Loaded;
         Unloaded += Page_Unloaded;
         ActualThemeChanged += (_, _) => Bindings.Update();
@@ -29,6 +31,7 @@ public sealed partial class DashboardPage : Page
         ViewModel.RefreshTargetDisplay();
         ViewModel.RefreshRuntimeDetectionPreference();
         ViewModel.AttachHealth();
+        ViewModel.AttachMemoryHealth();
         ViewModel.StartOptimizationScan();
     }
 
@@ -38,21 +41,13 @@ public sealed partial class DashboardPage : Page
         ServiceLocator.GameTarget.Changed -= OnTargetChanged;
         ViewModel.DetachScanListener();
         ViewModel.DetachHealth();
+        ViewModel.DetachMemoryHealth();
     }
 
     private void OnTargetChanged(GameTarget target) => DispatcherQueue.TryEnqueue(() =>
     { if (_attached) ViewModel.RefreshTargetDisplay(); });
 
     public string StateLabel(DashboardHealthState state) => DashboardHealthPresentation.Label(state);
-
-    protected override void OnNavigatedTo(NavigationEventArgs e)
-    {
-        base.OnNavigatedTo(e);
-        if (App.MainWindow?.StartupGameDirectoryCheckCompleted == true)
-        {
-            _ = ViewModel.RefreshHealthAsync();
-        }
-    }
 
     private async void RefreshHealthButton_Click(object sender, RoutedEventArgs e)
     {
@@ -102,6 +97,11 @@ public sealed partial class DashboardPage : Page
         {
             App.MainWindow?.NavigateByTag(tag);
         }
+    }
+
+    private void MemoryRecoveryButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_attached && ViewModel.MemoryRecoverySuggested) App.MainWindow?.NavigateToFrameMemory();
     }
 
     /// <summary>程序化回写总开关时置 true，防止 Toggled 处理器重复弹窗。</summary>

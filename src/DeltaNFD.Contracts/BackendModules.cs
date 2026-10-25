@@ -15,6 +15,8 @@ public static class BackendCommands
     public const string GpuSpoofStatus = "gpu.spoof.status";
     public const string GpuSpoofApply = "gpu.spoof.apply";
     public const string GpuSpoofRestore = "gpu.spoof.restore";
+    public const string GpuDriverNamePreview = "gpu.spoof.driver-name.preview";
+    public const string GpuDriverNameRestore = "gpu.spoof.driver-name.restore";
     public const string GpuSpoofReload = "gpu.spoof.reload";
     public const string GpuWatchEvaluate = "gpu.watch.evaluate";
     public const string GpuDriverStatus = "gpu.driver.status";
@@ -237,6 +239,8 @@ public static class BackendModules
                     [BackendCommands.GpuSpoofStatus] = TwoMinutes,
                     [BackendCommands.GpuSpoofApply] = FiveMinutes,
                     [BackendCommands.GpuSpoofRestore] = FiveMinutes,
+                    [BackendCommands.GpuDriverNamePreview] = TwoMinutes,
+                    [BackendCommands.GpuDriverNameRestore] = FiveMinutes,
                     [BackendCommands.GpuSpoofReload] = FiveMinutes,
                     [BackendCommands.GpuWatchEvaluate] = TwoMinutes,
                     [BackendCommands.GpuDriverStatus] = TwoMinutes,
@@ -422,7 +426,7 @@ public static class BackendModules
         BackendCommands.ProcmanBackgroundGet,
         BackendCommands.AceScan, BackendCommands.AceCoreCheck, BackendCommands.AceReconcile,
         BackendCommands.AceVirtCheck,
-        BackendCommands.GpuSpoofStatus, BackendCommands.GpuWatchEvaluate,
+        BackendCommands.GpuSpoofStatus, BackendCommands.GpuDriverNamePreview, BackendCommands.GpuWatchEvaluate,
         BackendCommands.GpuDriverStatus, BackendCommands.GpuDriverRead, BackendCommands.GpuReconcile,
         BackendCommands.RuntimeStatus, BackendCommands.RuntimeReconcile, BackendCommands.Vc14Scan, BackendCommands.Vc14Preview,
         BackendCommands.Vc14ForceReplacePreview,

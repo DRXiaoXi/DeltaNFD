@@ -134,7 +134,7 @@ public enum AceCoreCheckLevel
     /// <summary>已匹配游戏的 ACE-CORE 文件；多款游戏可以正常共存。</summary>
     Normal,
 
-    /// <summary>保留兼容旧结果；不得仅凭文件数量判定异常。</summary>
+    /// <summary>已有效手动关联游戏，且共享 CORE 文件数仍超过去重游戏数；属于工具计数策略，不证明文件可删除。</summary>
     Abnormal,
 
     /// <summary>扫描目录失败，不能据此判定 ACE 状态。</summary>
@@ -143,7 +143,7 @@ public enum AceCoreCheckLevel
     /// <summary>三角洲进程运行中，已跳过检测（未读取 ACE 目录），不能据此判定 ACE 状态。</summary>
     Blocked,
 
-    /// <summary>归属/扫描信息待核对，不代表文件冗余或游戏异常。</summary>
+    /// <summary>待核对：数量偏多时黄色；数量未超限时仅作信息提示。归属/扫描缺口仍保留。</summary>
     NeedsReview,
 }
 
@@ -153,6 +153,8 @@ public sealed class AceGameInstallation
     public string InstallDirectory { get; init; } = "";
     public string Source { get; init; } = "";
     public List<string> AceDirectories { get; init; } = [];
+    /// <summary>该安装目录由玩家手动添加并检索到可识别的 ACE 组件；不代表玩家已经登记全部游戏。</summary>
+    public bool ManuallyAssociated { get; set; }
 }
 
 public sealed class AceCoreAssociation
@@ -179,6 +181,8 @@ public sealed class AceCoreCheckResult
     public List<AceGameInstallation> Games { get; init; } = [];
     public List<AceCoreAssociation> Associations { get; init; } = [];
     public List<string> Notes { get; init; } = [];
+    public int ManuallyAssociatedGameCount { get; init; }
+    public bool HasExcessCoreFiles => SysCount > Games.Count;
 }
 
 /// <summary>
@@ -204,7 +208,7 @@ public interface IAceService
 
     /// <summary>
     /// ACE 游戏与驱动归属检测（纯只读）：统计 %ProgramFiles%\AntiCheatExpert 下
-    /// 文件名含 ACE-CORE 的 .sys 文件，并核对已安装游戏的组件归属；不能仅凭数量判异常。
+    /// 文件名含 ACE-CORE 的 .sys 文件并核对游戏归属；数量偏多时按是否有效手动关联显示黄/红提醒。
     /// </summary>
     Task<AceCoreCheckResult> CheckCoreFilesAsync();
 

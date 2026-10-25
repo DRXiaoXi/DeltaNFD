@@ -3,7 +3,7 @@ using DeltaNFD.Services;
 
 namespace DeltaNFD.ViewModels;
 
-/// <summary>运行库防护、14.x 兼容性检测与仅修复 14.x（原全量重装：卸载检测到的 14.x 后安装内置 14.42 基线）。</summary>
+/// <summary>运行库防护、14.x 兼容性检测与仅修复 14.x（原全量重装：卸载检测到的 14.x 后安装所选 14.42/14.44 内置基线）。</summary>
 public partial class RuntimeViewModel : ObservableObject
 {
     public Task<RuntimeFileUseScan> ScanFileUseAsync(CancellationToken token, RuntimeFileUseScope scope = RuntimeFileUseScope.Vc14) => _guard.ScanFileUseAsync(token, scope);
@@ -11,7 +11,21 @@ public partial class RuntimeViewModel : ObservableObject
     public static RuntimeViewModel Current { get; } = new();
     private readonly IRuntimeGuardService _guard = ServiceLocator.Guard;
     [ObservableProperty] private bool repairIsBusy;
+    [ObservableProperty] private int baselineIndex;
     [ObservableProperty] private string repairStatusText = "修复前将预览全部 14.x 卸载清单；请先关闭运行库防护。";
+    public Vc14Baseline SelectedBaseline => BaselineIndex == 1 ? Vc14Baseline.V144 : Vc14Baseline.V142;
+    public string SelectedBaselineLabel => SelectedBaseline.Label();
+    public string SelectedBaselineVersion => SelectedBaseline.FullVersion();
+    public string SelectedBaselineDescription => SelectedBaseline.Description();
+    public string ContinueInstallLabel => "继续安装 " + SelectedBaseline.Display();
+    partial void OnBaselineIndexChanged(int value)
+    {
+        OnPropertyChanged(nameof(SelectedBaseline));
+        OnPropertyChanged(nameof(SelectedBaselineLabel));
+        OnPropertyChanged(nameof(SelectedBaselineVersion));
+        OnPropertyChanged(nameof(SelectedBaselineDescription));
+        OnPropertyChanged(nameof(ContinueInstallLabel));
+    }
     [ObservableProperty] private string abnormalText = "";
     [ObservableProperty] private string abnormalTitle = "C++ 14.x 运行库异常";
     [ObservableProperty] private string warningText = "";
@@ -63,19 +77,20 @@ public partial class RuntimeViewModel : ObservableObject
         OnPropertyChanged(nameof(GuardModeEnabled));
         OnPropertyChanged(nameof(GuardCleanupEnabled));
     }
-    public Task<Vc14ReinstallPreview> PreviewRepairAsync(Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false) => _guard.Preview14RepairAsync(mode, allowTemporaryInstaller);
-    public Task<RuntimeHighFpsPreview> PreviewHighFpsAsync(bool strongMode) => _guard.PreviewHighFpsAsync(strongMode);
+    public Task<Vc14ReinstallPreview> PreviewRepairAsync(Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false)
+        => _guard.Preview14RepairAsync(mode, allowTemporaryInstaller, SelectedBaseline);
+    public Task<RuntimeHighFpsPreview> PreviewHighFpsAsync(bool strongMode) => _guard.PreviewHighFpsAsync(strongMode, SelectedBaseline);
     public Task<OperationResult> RepairHighFpsAsync(string fingerprint, bool strongMode, CancellationToken token)
-        => _guard.RepairHighFpsAsync(fingerprint, strongMode, new Progress<string>(s => RepairStatusText = s), token);
+        => _guard.RepairHighFpsAsync(fingerprint, strongMode, new Progress<string>(s => RepairStatusText = s), token, SelectedBaseline);
     public Task<RuntimeSafeUninstallPreview> PreviewSafeUninstallAsync(CancellationToken token)
         => _guard.PreviewSafeUninstallAsync(token);
     public Task<OperationResult> SafeUninstallAllCppAsync(string fingerprint, bool allowTemporaryInstaller, CancellationToken token)
         => _guard.SafeUninstallAllCppAsync(fingerprint, allowTemporaryInstaller, new Progress<string>(s => RepairStatusText = s), token);
     public Task<OperationResult> RepairAsync(string fingerprint, CancellationToken token, Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false)
-        => _guard.Repair14Async(fingerprint, new Progress<string>(s => RepairStatusText = s), token, mode, allowTemporaryInstaller);
-    public Task<Vc14ForceReplacePreview> PreviewForceReplaceAsync(CancellationToken token) => _guard.PreviewForceReplace14Async(token);
+        => _guard.Repair14Async(fingerprint, new Progress<string>(s => RepairStatusText = s), token, mode, allowTemporaryInstaller, SelectedBaseline);
+    public Task<Vc14ForceReplacePreview> PreviewForceReplaceAsync(CancellationToken token) => _guard.PreviewForceReplace14Async(token, SelectedBaseline);
     public Task<OperationResult> ForceReplaceAsync(string fingerprint, CancellationToken token)
-        => _guard.ForceReplace14Async(fingerprint, new Progress<string>(s => RepairStatusText = s), token);
+        => _guard.ForceReplace14Async(fingerprint, new Progress<string>(s => RepairStatusText = s), token, SelectedBaseline);
     public Task<OperationResult> RestoreTemporaryInstallerAsync() => _guard.RestoreTemporaryInstallerAsync();
     [ObservableProperty] private string installedText = "尚未读取安装登记。";
     [ObservableProperty] private bool guardIsEnabled;

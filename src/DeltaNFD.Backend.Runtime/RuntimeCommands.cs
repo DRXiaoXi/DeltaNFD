@@ -140,44 +140,53 @@ internal static class RuntimeCommands
         BackendResult.Ok(BackendCommands.RuntimeFileUseClose, "运行库占用进程处理完成", await RuntimeFileUseMaintenance.CloseAsync(
             context.ArgsAs<RuntimeFileUseCloseArgs>(), context.CancellationToken));
 
-    private static async Task<BackendResult> HighFpsPreviewAsync(BackendCommandContext context) =>
-        BackendResult.Ok(BackendCommands.RuntimeHighFpsPreview, "全量修复预览",
-            await RuntimeHighFpsMaintenance.PreviewAsync(context.ArgsAs<RuntimeHighFpsArgs>().StrongMode));
+    private static async Task<BackendResult> HighFpsPreviewAsync(BackendCommandContext context)
+    {
+        var args = context.ArgsAs<RuntimeHighFpsArgs>();
+        return BackendResult.Ok(BackendCommands.RuntimeHighFpsPreview, "全量修复预览",
+            await RuntimeHighFpsMaintenance.PreviewAsync(args.StrongMode, args.Baseline));
+    }
 
     private static async Task<BackendResult> HighFpsRepairAsync(BackendCommandContext context)
     {
         var args = context.ArgsAs<RuntimeHighFpsArgs>();
         return Wrap(BackendCommands.RuntimeHighFpsRepair, await RuntimeHighFpsMaintenance.RepairAsync(
-            args.Fingerprint, args.StrongMode, new Progress<string>(s => context.ReportProgress(s, null, "high-fps-repair")), context.CancellationToken));
+            args.Fingerprint, args.StrongMode, new Progress<string>(s => context.ReportProgress(s, null, "high-fps-repair")),
+            context.CancellationToken, args.Baseline));
     }
 
     private static async Task<BackendResult> VcPreviewAsync(BackendCommandContext context)
     {
         var args = context.ArgsAs<Vc14RepairArgs>();
-        return BackendResult.Ok(BackendCommands.Vc14Preview, "14.x 阶段预览", await Vc14Maintenance.PreviewAsync(args.Mode, args.AllowTemporaryInstaller));
+        return BackendResult.Ok(BackendCommands.Vc14Preview, "14.x 阶段预览",
+            await Vc14Maintenance.PreviewAsync(args.Mode, args.AllowTemporaryInstaller, args.Baseline));
     }
 
     private static async Task<BackendResult> VcRepairAsync(BackendCommandContext context)
     {
         var args = context.ArgsAs<Vc14RepairArgs>();
         var progress = new Progress<string>(s => context.ReportProgress(s, null, "vc14-repair"));
-        return Wrap(BackendCommands.Vc14Repair, await Vc14Maintenance.RepairAsync(args.Fingerprint, progress, context.CancellationToken, args.Mode, args.AllowTemporaryInstaller));
+        return Wrap(BackendCommands.Vc14Repair, await Vc14Maintenance.RepairAsync(args.Fingerprint, progress,
+            context.CancellationToken, args.Mode, args.AllowTemporaryInstaller, args.Baseline));
     }
 
     private static async Task<BackendResult> SafeUninstallPreviewAsync(BackendCommandContext context) =>
         BackendResult.Ok(BackendCommands.RuntimeSafeUninstallPreview, "安全模式 C++ 全量卸载预览",
             await RuntimeSafeUninstall.PreviewAsync(context.CancellationToken));
 
-    private static Task<BackendResult> VcForceReplacePreviewAsync(BackendCommandContext context) =>
-        Task.FromResult(BackendResult.Ok(BackendCommands.Vc14ForceReplacePreview, "强制替换 14.x 预览",
-            Vc14ForceReplace.Preview(context.CancellationToken)));
+    private static Task<BackendResult> VcForceReplacePreviewAsync(BackendCommandContext context)
+    {
+        var args = context.ArgsAs<Vc14ForceReplaceArgs>();
+        return Task.FromResult(BackendResult.Ok(BackendCommands.Vc14ForceReplacePreview, "强制替换 14.x 预览",
+            Vc14ForceReplace.Preview(args.Baseline, context.CancellationToken)));
+    }
 
     private static async Task<BackendResult> VcForceReplaceAsync(BackendCommandContext context)
     {
         var args = context.ArgsAs<Vc14ForceReplaceArgs>();
         var progress = new Progress<string>(s => context.ReportProgress(s, null, "vc14-force-replace"));
         return Wrap(BackendCommands.Vc14ForceReplace, await Vc14ForceReplace.RunAsync(
-            args.Fingerprint, progress, context.CancellationToken));
+            args.Fingerprint, progress, context.CancellationToken, args.Baseline));
     }
 
     private static async Task<BackendResult> SafeUninstallAsync(BackendCommandContext context)

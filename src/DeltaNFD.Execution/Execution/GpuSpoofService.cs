@@ -14,9 +14,6 @@ public sealed class GpuSpoofService : IGpuSpoofService
 
     private const string EnumPciPath = @"SYSTEM\CurrentControlSet\Enum\PCI";
 
-    /// <summary>伪装命中标记，与 bat 脚本的 findstr 条目一致。</summary>
-    private static readonly string[] MaskMarkers = ["1050 Ti", "RX 540", "GTX 750"];
-
     private readonly TweakBackupStore _backups;
 
     public GpuSpoofService() : this(TweakBackupStore.Default)
@@ -47,6 +44,13 @@ public sealed class GpuSpoofService : IGpuSpoofService
 
     public Task<OperationResult> RestoreByPathAsync(string registryPath)
         => Task.Run(() => Restore(registryPath));
+
+    public Task<GpuDriverNamePreview> PreviewDriverNameAsync(string registryPath) => Task.Run(() =>
+        GpuDriverNameRecovery.Create(_backups).Preview(registryPath));
+
+    public Task<OperationResult> RestoreDriverNameAsync(string registryPath, string fingerprint) => Task.Run(() =>
+        ElevationHelper.IsElevated ? GpuDriverNameRecovery.Create(_backups).Restore(registryPath, fingerprint)
+            : OperationResult.Fail(ElevationHelper.NotElevatedMessage));
 
     private List<DisplayAdapterInfo> GetAdapters()
     {
@@ -87,10 +91,8 @@ public sealed class GpuSpoofService : IGpuSpoofService
 
                 // 伪装判定与“是否有备份”无关（仅备份未修改过的适配器也存在备份记录）：
                 // Windows 原生 DeviceDesc 恒为 "@oemXX.inf,%id%;名称" 的 INF 引用格式，
-                // 本工具伪装时写入纯文本型号 → 纯文本 = 已伪装；标记词仅作兜底。
-                var isMasked =
-                    (!string.IsNullOrWhiteSpace(deviceDesc) && !deviceDesc.StartsWith('@'))
-                    || MaskMarkers.Any(m => deviceDesc.Contains(m, StringComparison.OrdinalIgnoreCase));
+                // 本工具伪装时写入纯文本型号 → 纯文本 = 已伪装；真实1050Ti等原生INF名称不能仅因型号词误报。
+                var isMasked = IsMaskedDescription(deviceDesc);
 
                 result.Add(new DisplayAdapterInfo
                 {
@@ -105,6 +107,8 @@ public sealed class GpuSpoofService : IGpuSpoofService
 
         return result.OrderBy(a => a.RegistryPath, StringComparer.OrdinalIgnoreCase).ToList();
     }
+
+    internal static bool IsMaskedDescription(string value) => !string.IsNullOrWhiteSpace(value) && !value.StartsWith('@');
 
     /// <summary>"@oem12.inf,%nvidia_dev.2504%;NVIDIA GeForce RTX 4060" → "NVIDIA GeForce RTX 4060"。</summary>
     private static string ParseVisibleName(string deviceDesc)

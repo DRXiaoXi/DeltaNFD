@@ -101,11 +101,12 @@ internal static class Vc14DependencyPolicy
                     if (!Guid.TryParseExact(client, "B", out var code) || code == Guid.Empty)
                         throw new IOException("引用不是有效的包装 GUID");
                     owners = readOwners(client).OrderBy(o => o.Location, StringComparer.Ordinal).ToArray();
-                    var baseline = Vc14Reinstall.BaselineBundles.TryGetValue(product.Architecture, out var baselineId) && SameCode(client, baselineId);
+                    var baselineInfo = Vc14BaselineInfo.FromBundle(product.Architecture, client);
+                    var baseline = baselineInfo is not null;
                     var pinned = baseline && verifyPinnedBaseline(product.Architecture);
-                    if (baseline && !pinned) throw new IOException("内置 14.42 原包未通过固定哈希、版本或微软签名校验");
+                    if (baseline && !pinned) throw new IOException("内置 " + baselineInfo!.Label + " 原包未通过固定哈希、版本或微软签名校验");
                     owners = owners.Select(o => CompleteMissingOwnerIdentity(client, product.Architecture, o)).ToArray();
-                    if (pinned) owners = owners.Select(o => CompletePinnedBaselineIdentity(product.Architecture, o)).ToArray();
+                    if (pinned) owners = owners.Select(o => CompletePinnedBaselineIdentity(product.Architecture, baselineInfo!, o)).ToArray();
                     if (owners.Length == 0 && !pinned)
                         throw new IOException("四视图未找到引用者的卸载登记，精确 GUID 缓存目录也没有可核验原包（孤立引用）");
                     foreach (var owner in owners)
@@ -116,8 +117,8 @@ internal static class Vc14DependencyPolicy
                             throw new IOException("引用归属为其他软件或名称/发布者/架构不符：" + owner.Name + "；" + owner.Location);
                         if (!Version.TryParse(owner.Version, out var parsed) || parsed.Major != 14)
                             throw new IOException("引用者不是已核验的 14.x 版本：" + owner.Version);
-                        if (baseline && !Vc14Catalog.SameVersion(owner.Version, Vc14Reinstall.BaselineVersion))
-                            throw new IOException("固定 14.42 包装码与登记版本互相矛盾：" + owner.Version);
+                        if (baseline && !Vc14Catalog.SameVersion(owner.Version, baselineInfo!.Version))
+                            throw new IOException("固定 " + baselineInfo!.Label + " 包装码与登记版本互相矛盾：" + owner.Version);
                         if (owner.CacheExists ? !owner.CacheVerified : !pinned)
                             throw new IOException(owner.Proof is { Verified: true } cache
                                 ? $"缓存原包版本/架构与登记不一致：登记 {owner.Version}；原包 {cache.Version}/{cache.Architecture}"
@@ -135,7 +136,7 @@ internal static class Vc14DependencyPolicy
                         historical ? "已核验的历史 C++ 14.x 自身包装引用" : "已核验的 C++ 14.x 自身包装引用"));
                     clients.Add(client);
                     proofs.Add(new { provider.Location, provider.Key, Client = client, Owners = owners,
-                        PinnedBaselineSha256 = pinned ? Vc14Reinstall.BaselineHashes[product.Architecture] : "" });
+                        PinnedBaselineSha256 = pinned ? baselineInfo!.ExeHashes[product.Architecture] : "" });
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
                 {
@@ -266,29 +267,33 @@ internal static class Vc14DependencyPolicy
             IdentitySource = "SignedOriginalMissingArpFields" };
     }
 
-    private static Vc14DependencyOwner CompletePinnedBaselineIdentity(string arch, Vc14DependencyOwner owner)
+    private static Vc14DependencyOwner CompletePinnedBaselineIdentity(string arch, Vc14BaselineInfo info, Vc14DependencyOwner owner)
     {
         // Called only after verifying this architecture's exact pinned BundleId, SHA256 and signature.
         // Existing bad caches and nonempty contradictory fields must never use the missing-cache path.
         if (owner.ReadIssue.Length > 0 || owner.CacheExists || owner.Proof is not null) return owner;
-        var name = $"Microsoft Visual C++ 2015-2022 Redistributable ({arch}) - 14.42.34433";
+        var name = $"Microsoft Visual C++ 2015-2022 Redistributable ({arch}) - {info.ShortVersion}";
         if ((!string.IsNullOrWhiteSpace(owner.Name) && !owner.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
-            || (!string.IsNullOrWhiteSpace(owner.Version) && !Vc14Catalog.SameVersion(owner.Version, Vc14Reinstall.BaselineVersion))
+            || (!string.IsNullOrWhiteSpace(owner.Version) && !Vc14Catalog.SameVersion(owner.Version, info.Version))
             || (!string.IsNullOrWhiteSpace(owner.Publisher) && !owner.Publisher.Equals("Microsoft Corporation", StringComparison.OrdinalIgnoreCase)))
             return owner;
-        return owner with { Name = name, Version = Vc14Reinstall.BaselineVersion, Publisher = "Microsoft Corporation",
+        return owner with { Name = name, Version = info.Version, Publisher = "Microsoft Corporation",
             IdentitySource = "PinnedOriginalMissingArpFields" };
     }
 
     internal static bool HasVerifiedBaselineOwners(string arch, IReadOnlyList<Vc14DependencyOwner> owners, bool pinned = false)
-        => Vc14Reinstall.BaselineBundles.TryGetValue(arch, out var id) && owners.Count > 0
-        && owners.Select(o => pinned ? CompletePinnedBaselineIdentity(arch, o) : o).All(o =>
+        => HasVerifiedBaselineOwners(Vc14BaselineInfo.Default, arch, owners, pinned);
+
+    internal static bool HasVerifiedBaselineOwners(Vc14BaselineInfo info, string arch,
+        IReadOnlyList<Vc14DependencyOwner> owners, bool pinned = false)
+        => info.BundleIds.TryGetValue(arch, out var id) && owners.Count > 0
+        && owners.Select(o => pinned ? CompletePinnedBaselineIdentity(arch, info, o) : o).All(o =>
             o.ReadIssue.Length == 0 && IsRuntimeName(o.Name, arch)
             && o.Publisher.Equals("Microsoft Corporation", StringComparison.OrdinalIgnoreCase)
-            && Vc14Catalog.SameVersion(o.Version, Vc14Reinstall.BaselineVersion)
+            && Vc14Catalog.SameVersion(o.Version, info.Version)
             && ((pinned && !o.CacheExists && o.Proof is null)
             || (o.CacheVerified && o.Proof is { Verified: true } p && SameCode(p.BundleId, id) && p.Architecture == arch
-            && Vc14Catalog.SameVersion(p.Version, Vc14Reinstall.BaselineVersion)
+            && Vc14Catalog.SameVersion(p.Version, info.Version)
             && Regex.IsMatch(p.Sha256, "^[0-9a-fA-F]{64}$"))));
 
     private static bool CacheExists(string? path)
@@ -304,11 +309,15 @@ internal static class Vc14DependencyPolicy
         catch (DirectoryNotFoundException) { return false; }
     }
 
-    internal static bool VerifyPinnedBaseline(string arch)
+    internal static bool VerifyPinnedBaseline(string arch) =>
+        Vc14BaselineInfo.All.Any(info => VerifyPinnedBaseline(info, arch));
+
+    internal static bool VerifyPinnedBaseline(Vc14BaselineInfo info, string arch)
     {
-        var path = Vc14ReinstallEnvironment.Baseline(arch);
-        return HashFile(path).Equals(Vc14Reinstall.BaselineHashes[arch], StringComparison.OrdinalIgnoreCase)
-            && Vc14PackageTrust.Verify(path, Vc14Reinstall.BaselineVersion, arch);
+        if (!info.ExeHashes.TryGetValue(arch, out var expected)) return false;
+        var path = info.Exe(arch);
+        return HashFile(path).Equals(expected, StringComparison.OrdinalIgnoreCase)
+            && Vc14PackageTrust.Verify(path, info.Version, arch);
     }
     private static string HashFile(string path)
     {

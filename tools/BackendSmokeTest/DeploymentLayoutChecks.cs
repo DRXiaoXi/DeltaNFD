@@ -203,11 +203,15 @@ internal static class DeploymentLayoutChecks
 
     internal static void CheckVc14Media(string layoutAssets)
     {
-        // Validate the same nested root used by the production runtime repair entry points.
-        var vc14Media = Path.Combine(layoutAssets, DeltaNFD.Services.Vc14FileRepairSource.DirectoryName);
-        foreach (var arch in new[] { "x64", "x86" })
-            Check(DeltaNFD.Services.Vc14FileRepairSource.Verify(vc14Media, arch).Count == 2,
-                $"{arch} 14.42 原始 MSI/CAB 位于正式子目录并通过哈希/身份核验");
+        // Validate the same nested roots used by the production runtime repair entry points.
+        foreach (var baseline in new[] { DeltaNFD.Services.Vc14Baseline.V142, DeltaNFD.Services.Vc14Baseline.V144 })
+        {
+            var directory = DeltaNFD.Services.Vc14FileRepairSource.DirectoryNameFor(baseline);
+            var vc14Media = Path.Combine(layoutAssets, directory);
+            foreach (var arch in new[] { "x64", "x86" })
+                Check(DeltaNFD.Services.Vc14FileRepairSource.Verify(vc14Media, arch, baseline).Count == 2,
+                    $"{arch} {DeltaNFD.Services.Vc14BaselineOption.Display(baseline)} 原始 MSI/CAB 位于正式子目录并通过哈希/身份核验");
+        }
     }
 
     private static bool SameHash(string left, string right) =>

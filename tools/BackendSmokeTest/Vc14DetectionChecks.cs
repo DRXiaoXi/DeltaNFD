@@ -9,6 +9,10 @@ internal static class Vc14DetectionChecks
         void Check(bool value, string name) { if (!value) throw new Exception(name); count++; }
         foreach (var (name, version, severity) in new[] {
             ("Microsoft Visual C++ 2022", "14.51.36247.0", Vc14Severity.Abnormal),
+            ("Microsoft Visual C++ 2022", "14.50.35719.0", Vc14Severity.Abnormal),
+            ("Microsoft Visual C++ 2022", "14.50.0", Vc14Severity.Abnormal),
+            ("Microsoft Visual C++ 2022", "14.500.35719", Vc14Severity.Warning),
+            ("Microsoft Visual C++ 2022", "14.49.35719", Vc14Severity.Warning),
             ("Microsoft Visual C++ v14", "14.42.34433.0", Vc14Severity.Abnormal),
             ("Microsoft Visual C++ v14", "unknown", Vc14Severity.Abnormal),
             ("Microsoft Visual C++ 2022", "14.44.0", Vc14Severity.Normal),
@@ -42,6 +46,17 @@ internal static class Vc14DetectionChecks
             Check((scan1444 with { Notices = [.. notices1444, new("Microsoft Visual C++ v14", "14.51.36247", arch,
                     Vc14Catalog.Classify("Microsoft Visual C++ v14", "14.51.36247"), "incompatible fixture")] }).HasAbnormal,
                 arch + " 14.44 cannot hide co-installed abnormal 14.51");
+            var products1450 = products1444.Select(p => p with { Name = p.Name.Replace("14.44.35211", "14.50.35719"), Version = "14.50.35719" }).ToArray();
+            var notices1450 = products1450.Select(p => new Vc14Notice(p.Name, p.Version, p.Architecture,
+                Vc14Catalog.Classify(p.Name, p.Version, true, products1450), "verified 14.50 fixture")).ToArray();
+            Check(notices1450.All(n => n.Severity == Vc14Severity.Abnormal), arch + " verified 14.50 minimum/additional roles are red");
+            var scan1450 = System.Text.Json.JsonSerializer.Deserialize<Vc14Scan>(System.Text.Json.JsonSerializer.Serialize(
+                new Vc14Scan([.. products1444, .. products1450], [.. notices1444, .. notices1450], [])))!;
+            Check(scan1450.HasAbnormal && scan1450.AbnormalTitle.Contains("14.50"), arch + " 14.44 cannot hide co-installed red 14.50 across IPC");
+            Check(Vc14Catalog.Classify(wrapper1444, "14.50.35719", false, noProducts) == Vc14Severity.Warning,
+                arch + " unverified 14.50 wrapper remains yellow");
+            Check(Vc14Catalog.Classify("Visual C++ Library CRT Desktop Appx Package", "14.50.35719", false, noProducts) == Vc14Severity.Normal,
+                arch + " 14.50 Appx remains informational");
         }
         Check(Vc14Catalog.Classify("Microsoft Visual C++ v14 Redistributable (x64)", "14.51.36247.0", installedMsi: false, products: noProducts) == Vc14Severity.Warning,
             "wrapper registration must not drive the red banner");

@@ -22,6 +22,17 @@ public partial class SettingsViewModel : ObservableObject
     private bool autoStart;
 
     [ObservableProperty]
+    private bool silentStartup;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanChangeAutoStart))]
+    [NotifyPropertyChangedFor(nameof(CanChangeSilentStartup))]
+    private bool autoStartBusy = true;
+
+    public bool CanChangeAutoStart => NormalAutomationSettingsEnabled && !AutoStartBusy;
+    public bool CanChangeSilentStartup => CanChangeAutoStart && AutoStart;
+
+    [ObservableProperty]
     private bool minimizeToTray;
 
     [ObservableProperty]
@@ -29,18 +40,27 @@ public partial class SettingsViewModel : ObservableObject
 
     public bool NormalAutomationSettingsEnabled => !OfflineModeGuard.BlocksNormalAutomation;
 
-    public void RefreshAutomationControls() => OnPropertyChanged(nameof(NormalAutomationSettingsEnabled));
+    public void RefreshAutomationControls()
+    {
+        OnPropertyChanged(nameof(NormalAutomationSettingsEnabled));
+        OnPropertyChanged(nameof(CanChangeAutoStart));
+        OnPropertyChanged(nameof(CanChangeSilentStartup));
+    }
 
     /// <summary>显示版本（唯一来源：csproj 的 InformationalVersion，已去掉 SourceLink 提交哈希后缀）。</summary>
     public string VersionText => AppVersion.Text;
 
     private bool _suppressAutoStartChanged;
     private bool _suppressTrayChanged;
+    private bool _suppressSilentStartupChanged;
 
     public SettingsViewModel()
     {
         var settings = AppSettingsStore.Read();
         BackgroundImageEnabled = settings.BackgroundImageEnabled;
+        _suppressSilentStartupChanged = true;
+        SilentStartup = settings.SilentStartupEnabled;
+        _suppressSilentStartupChanged = false;
 
         // 初始化时不重复应用主题：先挂起变更再赋初值（从设置文件恢复；
         // 背景图片模式开启时显示为深色但不动用户保存的明暗偏好）
@@ -55,16 +75,20 @@ public partial class SettingsViewModel : ObservableObject
 
     private async Task InitializeAsync()
     {
-        // 先取值，仅在同步赋值窗口内抑制事件：suppress 跨 await 会让初始化期间
-        // 用户拨动自启开关的操作被静默丢弃
-        var autoStartValue = await _appControl.IsAutoStartEnabledAsync();
-        _suppressAutoStartChanged = true;
-        AutoStart = autoStartValue;
-        _suppressAutoStartChanged = false;
+        try
+        {
+            // Initial query completes before the two startup controls become interactive.
+            var autoStartValue = await _appControl.IsAutoStartEnabledAsync();
+            _suppressAutoStartChanged = true;
+            AutoStart = autoStartValue;
+            _suppressAutoStartChanged = false;
 
-        _suppressTrayChanged = true;
-        MinimizeToTray = _appControl.CloseToTrayEnabled;
-        _suppressTrayChanged = false;
+            _suppressTrayChanged = true;
+            MinimizeToTray = _appControl.CloseToTrayEnabled;
+            _suppressTrayChanged = false;
+        }
+        catch (Exception ex) { GeneralStatusText = "读取自启动状态失败：" + ex.Message; }
+        finally { AutoStartBusy = false; }
     }
 
     private static int _sharedThemeIndex;
@@ -115,6 +139,7 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnAutoStartChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanChangeSilentStartup));
         if (_suppressAutoStartChanged)
         {
             return;
@@ -135,18 +160,59 @@ public partial class SettingsViewModel : ObservableObject
 
     private async Task ApplyAutoStartAsync(bool enable)
     {
-        var result = await _appControl.SetAutoStartAsync(enable);
-        if (!result.Success)
+        AutoStartBusy = true;
+        try
         {
-            GeneralStatusText = result.Message;
-            // 失败回拨开关
+            var result = await _appControl.SetAutoStartAsync(enable);
+            if (!result.Success)
+            {
+                GeneralStatusText = result.Message;
+                // 失败回拨开关
+                _suppressAutoStartChanged = true;
+                AutoStart = !enable;
+                _suppressAutoStartChanged = false;
+                return;
+            }
+
+            GeneralStatusText = enable ? "开机自动启动：已开启" : "开机自动启动：已关闭";
+        }
+        catch (Exception ex)
+        {
             _suppressAutoStartChanged = true;
             AutoStart = !enable;
             _suppressAutoStartChanged = false;
-            return;
+            GeneralStatusText = "更改自启动失败：" + ex.Message;
         }
+        finally { AutoStartBusy = false; }
+    }
 
-        GeneralStatusText = enable ? "开机自动启动：已开启" : "开机自动启动：已关闭";
+    partial void OnSilentStartupChanged(bool value)
+    {
+        if (_suppressSilentStartupChanged) return;
+        _ = ApplySilentStartupAsync(value);
+    }
+
+    private async Task ApplySilentStartupAsync(bool enable)
+    {
+        AutoStartBusy = true;
+        try
+        {
+            if (!NormalAutomationSettingsEnabled || !AutoStart)
+                throw new InvalidOperationException("请先开启开机自动启动，并完成旧版设置恢复。");
+            // Also upgrades an owned pre-feature task: a preference alone cannot distinguish manual launches.
+            var result = await _appControl.SetAutoStartAsync(true);
+            if (!result.Success) throw new InvalidOperationException(result.Message);
+            AppSettingsStore.UpdateRequired(s => s.SilentStartupEnabled = enable);
+            GeneralStatusText = enable ? "静默启动已开启：登录后仅显示托盘图标；手动打开仍显示窗口。" : "静默启动已关闭：登录后显示主窗口。";
+        }
+        catch (Exception ex)
+        {
+            _suppressSilentStartupChanged = true;
+            SilentStartup = AppSettingsStore.Read().SilentStartupEnabled;
+            _suppressSilentStartupChanged = false;
+            GeneralStatusText = "更改静默启动失败：" + ex.Message;
+        }
+        finally { AutoStartBusy = false; }
     }
 
     partial void OnMinimizeToTrayChanged(bool value)
