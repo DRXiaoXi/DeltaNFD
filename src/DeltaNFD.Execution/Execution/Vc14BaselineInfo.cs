@@ -4,7 +4,7 @@ namespace DeltaNFD.Services;
 
 /// <summary>
 /// 工具内置的官方 2015–2022 14.x 基线元数据。载荷来源为微软官方 vc_redist 原包及其
-/// MSI/CAB；各文件固定哈希并在预览/执行前复核。默认 14.42，用户可按需选择 14.44。
+/// MSI/CAB；各文件固定哈希并在预览/执行前复核。当前安装/修复仅支持 14.44；14.42 元数据仅用于旧记录与身份核对。
 /// </summary>
 internal sealed class Vc14BaselineInfo
 {
@@ -52,12 +52,12 @@ internal sealed class Vc14BaselineInfo
             ["x86"] = "{0b5169e3-39da-4313-808e-1f9c0407f3bf}",
         });
 
-    internal static IReadOnlyList<Vc14BaselineInfo> All { get; } = [V142, V144];
-    internal static Vc14BaselineInfo Default => V142;
+    internal static IReadOnlyList<Vc14BaselineInfo> All { get; } = [V144];
+    internal static Vc14BaselineInfo Default => V144;
 
     internal static Vc14BaselineInfo For(Vc14Baseline baseline) => baseline switch
     {
-        Vc14Baseline.V142 => V142,
+        Vc14Baseline.V142 => throw new IOException("14.42 已过时，新版不再提供其安装包。请重新预览并使用 14.44。"),
         Vc14Baseline.V144 => V144,
         _ => throw new ArgumentOutOfRangeException(nameof(baseline), "未知的 14.x 基线。"),
     };

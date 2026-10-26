@@ -21,11 +21,11 @@ internal sealed record Vc14FileRepairPackage(string Architecture, string Role, s
 internal static class Vc14FileRepairSource
 {
     // Both MSI file repair and DLL replacement use one deployed media directory per baseline.
-    internal const string DirectoryName = "Vc14FileRepair14.42";
+    internal const string DirectoryName = "Vc14FileRepair14.44";
     internal static string DirectoryNameFor(Vc14Baseline baseline) => Vc14BaselineInfo.For(baseline).FileRepairDirectory;
     internal static string InstalledRoot => Vc14BaselineInfo.Default.FileRepairRoot;
     internal static string InstalledRootFor(Vc14Baseline baseline) => Vc14BaselineInfo.For(baseline).FileRepairRoot;
-    internal static IReadOnlyList<Vc14FileRepairPackage> Packages => All[Vc14Baseline.V142];
+    internal static IReadOnlyList<Vc14FileRepairPackage> Packages => All[Vc14Baseline.V144];
     internal static IReadOnlyList<Vc14FileRepairPackage> PackagesFor(Vc14Baseline baseline) => All[baseline];
 
     private static readonly IReadOnlyDictionary<Vc14Baseline, Vc14FileRepairPackage[]> All = LoadAll();
@@ -34,7 +34,6 @@ internal static class Vc14FileRepairSource
     {
         var resources = new Dictionary<Vc14Baseline, string>
         {
-            [Vc14Baseline.V142] = "Vc14FileRepair.catalog.json",
             [Vc14Baseline.V144] = "Vc14FileRepair14.44.catalog.json",
         };
         var result = new Dictionary<Vc14Baseline, Vc14FileRepairPackage[]>();
@@ -56,7 +55,7 @@ internal static class Vc14FileRepairSource
     }
 
     internal static IReadOnlyList<Vc14FileRepairPackage> Verify(string root, string arch) =>
-        Verify(root, arch, Vc14Baseline.V142);
+        Verify(root, arch, Vc14Baseline.V144);
 
     internal static IReadOnlyList<Vc14FileRepairPackage> Verify(string root, string arch, Vc14Baseline baseline)
     {

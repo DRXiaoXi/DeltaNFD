@@ -185,21 +185,21 @@ internal static class Vc14StagedChecks
 
             var none = Fresh();
             Check(!Vc14Reinstall.Preview(none, Vc14RepairMode.InstallOnly).CanRepair, "no checkpoint, no install-only execution");
-            none.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow));
+            none.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow) { Baseline = Vc14Baseline.V144 });
             Check(!Vc14Reinstall.Preview(none, Vc14RepairMode.InstallOnly).CanRepair, "checkpoint must not bypass remaining old components");
             var partial = Fresh(); partial.Products.Clear(); partial.AddBaseline("x64");
-            partial.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow));
+            partial.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow) { Baseline = Vc14Baseline.V144 });
             Check((await Run(partial, Vc14RepairMode.InstallOnly)).Success && !partial.Calls.Contains("cleanup"), "partial baseline retry preserves installed components and repairs both architectures");
             var installFail = Fresh(); installFail.Products.Clear(); installFail.InstallFail = "x86";
-            installFail.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow));
+            installFail.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow) { Baseline = Vc14Baseline.V144 });
             Check(!(await Run(installFail, Vc14RepairMode.InstallOnly)).Success && installFail.PendingInstall() is not null, "failed baseline install retains checkpoint");
             installFail.InstallFail = "";
             Check((await Run(installFail, Vc14RepairMode.InstallOnly)).Success, "resume partial failed install without another uninstall");
             var stale = Fresh(); var consent = Vc14Reinstall.Preview(stale, Vc14RepairMode.UninstallOnly);
             Check(!(await Vc14Reinstall.RunAsync(stale, consent.Fingerprint, null, default)).Success && stale.Calls.Count == 0, "mode switching invalidates confirmation");
-            var installConsent = Fresh(); installConsent.Products.Clear(); installConsent.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow));
+            var installConsent = Fresh(); installConsent.Products.Clear(); installConsent.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow) { Baseline = Vc14Baseline.V144 });
             var before = Vc14Reinstall.Preview(installConsent, Vc14RepairMode.InstallOnly);
-            installConsent.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow));
+            installConsent.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow) { Baseline = Vc14Baseline.V144 });
             Check(!(await Vc14Reinstall.RunAsync(installConsent, before.Fingerprint, null, default, Vc14RepairMode.InstallOnly)).Success, "checkpoint identity bound to consent");
             var cannotSave = Fresh(); cannotSave.SaveError = true;
             Check(!(await Run(cannotSave, Vc14RepairMode.UninstallOnly)).Success && cannotSave.Calls.Count == 0, "checkpoint persistence failure must prevent uninstall");

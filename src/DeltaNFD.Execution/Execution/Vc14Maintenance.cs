@@ -11,15 +11,15 @@ public static class Vc14Maintenance
     });
 
     public static Task<Vc14ReinstallPreview> PreviewAsync(Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false,
-        Vc14Baseline baseline = Vc14Baseline.V142) =>
+        Vc14Baseline baseline = Vc14Baseline.V144) =>
         !baseline.IsSupported()
-            ? Task.FromResult(new Vc14ReinstallPreview(new Vc14Scan([], [], ["未知的 14.x 安装基线。"]), [], "", false, "未知的 14.x 安装基线。") { Baseline = baseline })
+            ? Task.FromResult(new Vc14ReinstallPreview(new Vc14Scan([], [], [baseline.UnsupportedMessage()]), [], "", false, baseline.UnsupportedMessage()) { Baseline = baseline })
             : Task.Run(() => Vc14Reinstall.Preview(new Vc14ReinstallEnvironment(allowTemporaryInstaller, baseline), mode));
 
     public static Task<OperationResult> RepairAsync(string fingerprint, IProgress<string>? progress, CancellationToken token, Vc14RepairMode mode = Vc14RepairMode.Full,
-        bool allowTemporaryInstaller = false, Vc14Baseline baseline = Vc14Baseline.V142)
+        bool allowTemporaryInstaller = false, Vc14Baseline baseline = Vc14Baseline.V144)
         => !baseline.IsSupported()
-            ? Task.FromResult(OperationResult.Fail("未知的 14.x 安装基线，未执行修复。"))
+            ? Task.FromResult(OperationResult.Fail(baseline.UnsupportedMessage()))
             : Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
         {
             using var budget = CancellationTokenSource.CreateLinkedTokenSource(token);

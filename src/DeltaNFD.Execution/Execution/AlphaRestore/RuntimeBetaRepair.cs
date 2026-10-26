@@ -5,7 +5,7 @@ namespace DeltaNFD.Services.AlphaRestore;
 
 internal interface IRuntimeBetaRepairEnvironment
 {
-    Vc14Baseline Baseline => Vc14Baseline.V142;
+    Vc14Baseline Baseline => Vc14Baseline.V144;
     void VerifyInstalled();
     Task<RuntimeStepResult> RecoverBaselineFilesAsync(TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
         => Task.FromResult(new RuntimeStepResult(0, "继续实际DLL复检。"));
@@ -118,7 +118,7 @@ internal sealed class RuntimeBetaRepair(IRuntimeBetaRepairEnvironment environmen
 }
 
 internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, RuntimeRepairDiagnostics diagnostics,
-    Vc14Baseline baseline = Vc14Baseline.V142, string expectedV14Fingerprint = "") : IRuntimeBetaRepairEnvironment
+    Vc14Baseline baseline = Vc14Baseline.V144, string expectedV14Fingerprint = "") : IRuntimeBetaRepairEnvironment
 {
     public Vc14Baseline Baseline { get; } = baseline;
     public void VerifyInstalled() => new Vc14ReinstallEnvironment(baseline: Baseline).VerifyInstalled();

@@ -27,7 +27,7 @@ internal static class Vc14CatalogInspection
 
     internal static Vc14Severity Classify(string name, string version)
     {
-        // 14.42/14.44 are the two selectable official repair baselines; both are compatible here.
+        // 14.44 is the only current install baseline; 14.42 is obsolete (warning).
         // Detection is baseline-independent; the user's selected baseline only changes repair/force target.
         Version.TryParse(version, out var v);
         if (v is { Major: 14, Minor: 44 })
@@ -38,8 +38,12 @@ internal static class Vc14CatalogInspection
             return Vc14Severity.Warning;
         if (v.Major == 14 && v.Minor is 50 or 51)
             return Vc14Severity.Abnormal;
-        return v.Major == 14 && v.Minor != 42 ? Vc14Severity.Warning : Vc14Severity.Normal;
+        return v.Major == 14 ? Vc14Severity.Warning : Vc14Severity.Normal;
     }
+
+    internal static string CompatibilityDetail(string version, string evidence) =>
+        Vc14BaselineOption.IsObsoleteVersion(version)
+            ? "14.42 已过时，建议使用 14.44。" + evidence : evidence;
 
     internal static string Fingerprint(Vc14Scan scan, bool includeLegacy = true) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { Products = scan.Products.OrderBy(p => p.Code, StringComparer.OrdinalIgnoreCase), Legacy = includeLegacy ? "" : "" }))));
     internal static void Validate(Vc14Entry product, string cacheCode, string cacheName, string cacheVersion, string publisher, string architecture, string upgrade)
@@ -68,7 +72,7 @@ internal static class Vc14CatalogInspection
                     if (p is null)
                         continue;
                     products.Add(p);
-                    notices.Add(new(p.Name, p.Version, p.Architecture, Classify(p.Name, p.Version), "已核对 MSI 身份；此颜色为兼容性规则，不等于 DLL 损坏或已验证掉帧。"));
+                    notices.Add(new(p.Name, p.Version, p.Architecture, Classify(p.Name, p.Version), CompatibilityDetail(p.Version, "已核对 MSI 身份；此颜色为兼容性规则，不等于 DLL 损坏或已验证掉帧。")));
                 }
             }
             catch (Exception ex)
@@ -86,7 +90,7 @@ internal static class Vc14CatalogInspection
                 if (products.Any(p => p.Code.Equals(discovered.Code, StringComparison.OrdinalIgnoreCase)))
                     continue;
                 products.Add(discovered);
-                notices.Add(new(discovered.Name, discovered.Version, discovered.Architecture, Classify(discovered.Name, discovered.Version), "已核对 MSI 身份（动态发现家族：" + discovered.UpgradeCode + "）；此颜色为兼容性规则，不等于 DLL 损坏或已验证掉帧。"));
+                notices.Add(new(discovered.Name, discovered.Version, discovered.Architecture, Classify(discovered.Name, discovered.Version), CompatibilityDetail(discovered.Version, "已核对 MSI 身份（动态发现家族：" + discovered.UpgradeCode + "）；此颜色为兼容性规则，不等于 DLL 损坏或已验证掉帧。")));
             }
             catch (Exception ex)
             {

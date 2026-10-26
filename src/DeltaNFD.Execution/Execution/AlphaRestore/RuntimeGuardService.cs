@@ -26,7 +26,7 @@ internal sealed class RuntimeGuardService
 
     /// <summary>
     /// 各分支推荐（最适）版本：低于该版本或未安装 → 判定「运行库非最适版本」（黄色提醒）。
-    /// v14 分支基准 = 作者实机的 2015-2022 运行库（14.42.34433，与内置官方安装包一致，2026-09 核对）；
+    /// v14 分支基准 = 作者实机的 2015-2022 运行库（14.44.35211，与内置官方安装包一致，2026-09 核对）；
     /// 其余分支与内置 AIO 修复包所装官方版本一致。
     /// </summary>
     private static readonly (string Branch, string Arch, string MinVersion)[] RecommendedRedists =
@@ -41,8 +41,8 @@ internal sealed class RuntimeGuardService
         ("2012", "x86", "11.0.61030"),
         ("2013", "x64", "12.0.40664.0"),
         ("2013", "x86", "12.0.40664.0"),
-        ("2015-2026", "x64", "14.42.34433.0"),
-        ("2015-2026", "x86", "14.42.34433.0"),
+        ("2015-2026", "x64", "14.44.35211.0"),
+        ("2015-2026", "x86", "14.44.35211.0"),
     ];
 
     public Task<VcRedistScanReport> ScanVcRedistsAsync() => Task.Run(() =>
@@ -250,13 +250,13 @@ internal sealed class RuntimeGuardService
     /// <summary>内置官方 2015-2022 运行库安装包（x64/x86）的 SHA256（防篡改校验）。</summary>
     private static readonly (string File, string Sha256)[] V14InstallerSha256 =
     [
-        ("VCRedist2015-2022-x64.exe", "1821577409C35B2B9505AC833E246376CC68A8262972100444010B57226F0940"),
-        ("VCRedist2015-2022-x86.exe", "DD1A8BE03398367745A87A5E35BEBDAB00FDAD080CF42AF0C3F20802D08C25D4"),
+        ("VCRedist2015-2022-x64.exe", "CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B"),
+        ("VCRedist2015-2022-x86.exe", "0C09F2611660441084CE0DF425C51C11E147E6447963C3690F97E0B25C55ED64"),
     ];
 
     public Task<OperationResult> RepairVcRedistAsync(IProgress<string>? progress = null,
         RuntimeRepairMode mode = RuntimeRepairMode.FullReinstall, CancellationToken cancellationToken = default, bool strongRepairMode = false,
-        string confirmedFingerprint = "", Vc14Baseline baseline = Vc14Baseline.V142) =>
+        string confirmedFingerprint = "", Vc14Baseline baseline = Vc14Baseline.V144) =>
         Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
             RepairVcRedistCoreAsync(progress, mode, cancellationToken, strongRepairMode, confirmedFingerprint, baseline).GetAwaiter().GetResult()));
 
@@ -320,7 +320,7 @@ internal sealed class RuntimeGuardService
             // 先核对将要在卸载旧运行库后使用的官方 v14 安装包，缺失或损坏时提前中止。
             foreach (var (file, expectedHash) in V14InstallerSha256)
             {
-                var path = Path.Combine(assetsRoot, "Vc14Baseline14.42", file.Replace("VCRedist2015-2022-", "vc_redist."));
+                var path = Path.Combine(assetsRoot, "Vc14Baseline14.44", file.Replace("VCRedist2015-2022-", "vc_redist."));
                 if (!File.Exists(path))
                 {
                     return OperationResult.Fail($"缺少官方运行库安装包：{file}");

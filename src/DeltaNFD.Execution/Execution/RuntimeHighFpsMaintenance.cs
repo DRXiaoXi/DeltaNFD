@@ -7,11 +7,11 @@ namespace DeltaNFD.Services;
 /// <summary>Alpha0.916 高帧性流程的受控恢复；AIO 与覆盖安装均不含 2026 安装内容。</summary>
 public static class RuntimeHighFpsMaintenance
 {
-    public static Task<RuntimeHighFpsPreview> PreviewAsync(bool strongMode, Vc14Baseline baseline = Vc14Baseline.V142) => Task.Run(async () =>
+    public static Task<RuntimeHighFpsPreview> PreviewAsync(bool strongMode, Vc14Baseline baseline = Vc14Baseline.V144) => Task.Run(async () =>
     {
         try
         {
-            if (!baseline.IsSupported()) return new(false, "未知的 14.x 安装基线，未执行修复。", "", strongMode, []) { Baseline = baseline };
+            if (!baseline.IsSupported()) return new(false, baseline.UnsupportedMessage(), "", strongMode, []) { Baseline = baseline };
             var selected = Vc14BaselineInfo.For(baseline);
             if (strongMode) return new(false, "强力修复模式已移除，请使用全量修复重新预览确认。", "", false, []) { Baseline = baseline };
             if (Vc14InstallerReadiness.IsSafeMode)
@@ -43,15 +43,15 @@ public static class RuntimeHighFpsMaintenance
         catch (Exception ex) { return new(false, "修复前核对未完成：" + ex.Message, "", strongMode, []) { Baseline = baseline }; }
     });
 
-    internal static string Fingerprint(string legacy, string v14, bool strongMode, Vc14Baseline baseline = Vc14Baseline.V142) =>
+    internal static string Fingerprint(string legacy, string v14, bool strongMode, Vc14Baseline baseline = Vc14Baseline.V144) =>
         Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { Legacy = legacy, V14 = v14, StrongMode = strongMode, Baseline = baseline })));
 
     internal static bool NeedsV14Uninstall(Vc14Scan scan, IReadOnlyList<Vc14RemovalPlanItem> plan, Vc14Continuation? pending = null,
-        Vc14Baseline baseline = Vc14Baseline.V142)
+        Vc14Baseline baseline = Vc14Baseline.V144)
     {
         if (scan.Products.Count == 0 && plan.Count == 0) return false;
         var version = Vc14BaselineInfo.For(baseline).Version;
-        if (scan.Issues.Count > 0 || pending?.UninstallVerified != true || pending.Baseline != baseline
+        if (scan.Issues.Count > 0 || pending?.UninstallVerified != true || !pending.CanContinueWith(baseline)
             || scan.Products.Any(p => !Vc14Catalog.SameVersion(p.Version, version))) return true;
         // Only resume a partially installed pinned baseline after a verified uninstall stage.
         return plan.Any(p => p.Kind is not ("msi" or "bundle") || !Vc14Catalog.SameVersion(p.Version, version)
@@ -59,10 +59,10 @@ public static class RuntimeHighFpsMaintenance
     }
 
     public static Task<OperationResult> RepairAsync(string fingerprint, bool strongMode,
-        IProgress<string>? progress, CancellationToken token, Vc14Baseline baseline = Vc14Baseline.V142)
+        IProgress<string>? progress, CancellationToken token, Vc14Baseline baseline = Vc14Baseline.V144)
     {
         if (strongMode) return Task.FromResult(OperationResult.Fail("强力修复模式已移除，请使用全量修复重新预览确认。"));
-        if (!baseline.IsSupported()) return Task.FromResult(OperationResult.Fail("未知的 14.x 安装基线，未执行修复。"));
+        if (!baseline.IsSupported()) return Task.FromResult(OperationResult.Fail(baseline.UnsupportedMessage()));
         if (Vc14InstallerReadiness.IsSafeMode)
             return Task.FromResult(OperationResult.Fail("全量修复包含安装步骤，请返回正常模式执行；安全模式只使用 14.x 单独卸载入口并先确认 Installer 可用。"));
         return new AlphaService().RepairVcRedistAsync(progress, AlphaRestore.RuntimeRepairMode.FullReinstall, token, strongMode, fingerprint, baseline);

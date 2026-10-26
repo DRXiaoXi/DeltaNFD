@@ -16,7 +16,6 @@ internal static class Vc14InstalledMediaChecks
             var assetsRoot = Path.GetDirectoryName(Path.GetFullPath(sourceRoot).TrimEnd('\\', '/'))!;
             var sourceRoots = new Dictionary<Vc14Baseline, string>
             {
-                [Vc14Baseline.V142] = Path.Combine(assetsRoot, Vc14FileRepairSource.DirectoryNameFor(Vc14Baseline.V142)),
                 [Vc14Baseline.V144] = Path.Combine(assetsRoot, Vc14FileRepairSource.DirectoryNameFor(Vc14Baseline.V144)),
             };
             DeploymentLayoutChecks.CheckVc14Media(assetsRoot);
@@ -35,7 +34,7 @@ internal static class Vc14InstalledMediaChecks
             {
                 var app = Path.Combine(fixture, "安装目录 with spaces " + scenario);
                 var assets = Path.Combine(app, "Assets");
-                foreach (var baseline in new[] { Vc14Baseline.V142, Vc14Baseline.V144 })
+                foreach (var baseline in new[] { Vc14Baseline.V144 })
                 {
                     var sourceMedia = sourceRoots[baseline];
                     var media = Path.Combine(assets, Vc14FileRepairSource.DirectoryNameFor(baseline));
@@ -60,9 +59,9 @@ internal static class Vc14InstalledMediaChecks
                     {
                         var wrong = Path.Combine(assets, file.Path);
                         Directory.CreateDirectory(Path.GetDirectoryName(wrong)!);
-                        File.Copy(Path.Combine(sourceRoots[Vc14Baseline.V142], file.Path), wrong);
+                        File.Copy(Path.Combine(sourceRoots[Vc14Baseline.V144], file.Path), wrong);
                     }
-                    foreach (var baseline in new[] { Vc14Baseline.V142, Vc14Baseline.V144 })
+                    foreach (var baseline in new[] { Vc14Baseline.V144 })
                     {
                         var media = Path.Combine(assets, Vc14FileRepairSource.DirectoryNameFor(baseline));
                         var source = Vc14FileRepairSource.PackagesFor(baseline).SelectMany(p => p.Files)
@@ -120,20 +119,20 @@ internal static class Vc14InstalledMediaChecks
         var checks = 0;
         void Check(bool value, string message) { if (!value) throw new Exception(message); checks++; }
         Check(Path.GetFullPath(BackendEnvironment.AppRoot).TrimEnd('\\') == Path.GetFullPath(app).TrimEnd('\\'), "Cold process resolves app root above Backends/runtime independently of cwd");
-        var expected42 = Path.Combine(app, "Assets", "Vc14FileRepair14.42");
+        var expected42 = Path.Combine(app, "Assets", "Vc14FileRepair14.44");
         var expected44 = Path.Combine(app, "Assets", "Vc14FileRepair14.44");
         Check(Vc14FileRepairSource.InstalledRoot == expected42
             && Vc14FileRepairSource.InstalledRootFor(Vc14Baseline.V144) == expected44,
-            "Production media roots include both fixed baseline child directories");
+            "Production media roots include current 14.44 child directory");
         var preview = Vc14ForceReplace.PreviewCore(Vc14FileRepairSource.InstalledRoot, windows, false, null, CancellationToken.None);
         var preview44 = Vc14ForceReplace.PreviewCore(Vc14FileRepairSource.InstalledRootFor(Vc14Baseline.V144), windows,
             false, null, CancellationToken.None, Vc14Baseline.V144);
         Check(preview.CanRun == (scenario == "valid") && preview44.CanRun == (scenario == "valid"),
-            "Installed media must pass only in the valid layout for both baselines");
+            "Installed media must pass only in the valid layout for the current baseline");
         Check(scenario == "valid"
-                ? preview.SkipCount == 51 && preview44.ReplaceCount == 51 && preview44.DowngradeCount == 0
+                ? preview.SkipCount == 51 && preview44.SkipCount == 51 && preview44.DowngradeCount == 0
                 : preview.Blocker.Contains("载荷无法核验") && preview44.Blocker.Contains("载荷无法核验"),
-            "Complete payload or explicit missing/tampered rejection for both baselines");
+            "Complete payload or explicit missing/tampered rejection for the current baseline");
         var run = await Vc14ForceReplace.RunCoreAsync(preview.Fingerprint, null, CancellationToken.None,
             Vc14FileRepairSource.InstalledRoot, windows, false, null);
         Check(run.Success == (scenario == "valid"), "Execution uses the same installed source, healthy fake root no-op or refused");

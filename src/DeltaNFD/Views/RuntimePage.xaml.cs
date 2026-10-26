@@ -135,14 +135,24 @@ public sealed partial class RuntimePage : Page
             ViewModel.RepairStatusText = "正在核对内置 " + ViewModel.SelectedBaseline.Display() + " 载荷与系统 14.x DLL…";
             var preview = await ViewModel.PreviewForceReplaceAsync(cancellation.Token);
             if (!preview.CanRun) { ViewModel.RecordRepairBlocker(preview.Blocker); return; }
-            var list = string.Join("\n", preview.Items.Where(item => item.Status == "replace").Select(item =>
-                item.Architecture + " " + item.File + "：" + (item.CurrentVersion.Length == 0 ? "版本未知" : item.CurrentVersion)
-                + " → " + item.ExpectedVersion + (item.Downgrade ? "（降级）" : "") + (item.InUse ? "（占用，将安排重启后替换）" : "")));
+            var list = string.Join("\n", preview.Items.Where(item => item.Status is "replace" or "acl").Select(item =>
+                item.Architecture + " " + item.File + "："
+                + (item.Status == "acl"
+                    ? "内容已是 " + item.ExpectedVersion + "，仅修复权限"
+                    : (item.CurrentVersion.Length == 0 ? "版本未知" : item.CurrentVersion) + " → " + item.ExpectedVersion
+                      + (item.Downgrade ? "（降级）" : "") + (item.InUse ? "（占用，将安排重启后替换）" : ""))
+                + (item.AclBroken ? "（普通用户不可读，将修复权限）" : "")
+                + (item.Locked ? "（管理员只读，将临时接管所有权）" : "")));
             var warning = "将绕过 Windows Installer，直接覆盖 %SystemRoot%\\System32 与 SysWOW64 中的 14.x DLL。\n"
                 + "目标版本：" + preview.PayloadVersion + "（" + Vc14BaselineOption.Display(preview.Baseline) + "）\n"
-                + "待替换 " + preview.ReplaceCount + " 个，已匹配 " + preview.SkipCount + " 个。\n\n" + (list.Length == 0 ? "（无）" : list)
+                + "待替换 " + preview.ReplaceCount + " 个，仅修复权限 " + preview.AclRepairCount + " 个，已匹配 "
+                + preview.SkipCount + " 个。\n\n" + (list.Length == 0 ? "（无）" : list)
                 + (preview.DowngradeCount > 0 ? "\n\n注意：其中 " + preview.DowngradeCount + " 个当前版本较新，执行后会降级到目标版本。" : "")
-                + "\n\n执行前自动备份并生成 restore.ps1、README.txt；被占用文件安排到下次启动替换。\n"
+                + (preview.LockedCount > 0 ? "\n\n其中 " + preview.LockedCount + " 个文件属主为 TrustedInstaller / 管理员只读："
+                    + "执行时会先临时接管所有权取得写权限，替换成功后恢复原属主与 ACL。" : "")
+                + (preview.Items.Any(item => item.AclBroken) ? "\n\n普通用户不可读的权限异常也会一并重置为目录继承权限；"
+                    + "被占用文件仍安排到下次启动替换。" : "\n\n被占用文件安排到下次启动替换。")
+                + "\n\n执行前自动备份并生成 inventory.json、acl.json、registry 只读备份、restore.ps1 与 README.txt。\n"
                 + "不会修改 MSI/ARP 安装登记；如需登记一致，请改用“预览并仅修复 14.x”。\n"
                 + "请先关闭游戏、其他应用和运行库防护；共享运行库变更可能影响需要其他版本的软件。";
             var dialog = new ContentDialog

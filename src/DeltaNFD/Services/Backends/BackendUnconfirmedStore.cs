@@ -93,8 +93,17 @@ internal static class BackendUnconfirmedStore
         var path = RecordPath(module);
         if (Directory.Exists(path)) throw new IOException("后端未知记录路径不是文件。");
         if (!File.Exists(path)) return;
-        var evidence = JsonSerializer.Deserialize<Evidence>(File.ReadAllText(path))
-                       ?? throw new InvalidDataException("后端未知记录损坏。");
+        Evidence evidence;
+        try
+        {
+            evidence = JsonSerializer.Deserialize<Evidence>(ReadEvidence(path))
+                       ?? throw new InvalidDataException("记录为空。");
+            if (evidence.Module != module) throw new InvalidDataException("记录模块不符。");
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidDataException)
+        {
+            throw new InvalidDataException("后端操作记录损坏，无法确认原执行者；原文件已保留，请在设置中核对未确认操作。记录：" + path, ex);
+        }
         if (evidence.Pid <= 0 || evidence.StartTicks <= 0 ||
             IsProcessAlive(evidence.Pid, evidence.StartTicks))
             throw new InvalidOperationException("该模块原后端仍在运行或身份无法确认，禁止启动新的执行者；请先人工核对：" + path);

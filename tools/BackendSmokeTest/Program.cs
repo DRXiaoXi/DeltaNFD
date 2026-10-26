@@ -1,5 +1,13 @@
 using DeltaNFD.Services;
 
+if (args is ["--runtime-page-session-checks"] or ["--game-observation-fallback-checks"])
+{
+    try { if (args[0] == "--runtime-page-session-checks") await RuntimePageSessionChecks.RunAsync(); else await GameObservationFallbackChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+
 if (args is ["--dashboard-navigation-health-checks"])
 {
     try { await DashboardNavigationHealthChecks.RunAsync(); }

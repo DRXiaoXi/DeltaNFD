@@ -19,7 +19,7 @@ MANIFEST_URLS = (
     "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9200/DeltaNFD_Files_0.9200.0_x64.json",
     "https://deltaxiaoxi.xin/updates/packages/0.9200/files.json",
 )
-DIRECTORIES = {"RuntimeCppOfficial", "RuntimeHighFps", "Vc14Baseline14.42", "Vc14FileRepair14.42", "Vc14OwnershipOriginals"}
+DIRECTORIES = {"RuntimeCppOfficial", "RuntimeHighFps", "Vc14OwnershipOriginals"}
 
 
 def digest(data):
@@ -115,19 +115,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache-dir", type=Path, help="Verified compressed-object cache (default: _buildcheck/source-assets-cache)")
     parser.add_argument("--manifest", type=Path, help="Optional local copy; the same fixed manifest SHA256 is required")
-    parser.add_argument("--extra-manifest", type=Path, help="Optional immutable 0.9299 inventory for 14.44 inputs")
+    parser.add_argument("--extra-manifest", type=Path, help="Optional immutable 0.9299 inventory for official 14.44 inputs")
     options = parser.parse_args()
     repository = Path(__file__).resolve().parent.parent
     raw = options.manifest.read_bytes() if options.manifest else download(MANIFEST_URLS, 1024 * 1024, MANIFEST_SHA256)
     cache = options.cache_dir or repository / "_buildcheck/source-assets-cache"
     original = prepare(repository, cache, raw)
-    extra_sha = 'c90973ae81b01bd33288ccffe915215238bc960519f420410eae867bb627199d'
-    extra_urls = (
-        "https://deltaxiaoxi.xin/updates/packages/0.9299/files.json",
-        "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9299/DeltaNFD_Files_0.9299.0_x64.json",
-    )
+    extra_sha = "c90973ae81b01bd33288ccffe915215238bc960519f420410eae867bb627199d"
+    extra_urls = ("https://deltaxiaoxi.xin/updates/packages/0.9299/files.json",
+        "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9299/DeltaNFD_Files_0.9299.0_x64.json")
     extra_raw = options.extra_manifest.read_bytes() if options.extra_manifest else download(extra_urls, 2 * 1024 * 1024, extra_sha)
     extra = prepare(repository, cache, extra_raw, extra_sha, "0.9299", {"Vc14Baseline14.44", "Vc14FileRepair14.44"}, False)
-    if extra["verifiedInputs"] != 10:
-        raise ValueError("The Microsoft 14.44 inventory must contain exactly 10 fixed files")
-    print(json.dumps({"original": original, "additional144": extra}))
+    if extra["verifiedInputs"] != 10: raise ValueError("Expected exactly ten fixed official 14.44 inputs")
+    print(json.dumps({"original": original, "current144": extra}))

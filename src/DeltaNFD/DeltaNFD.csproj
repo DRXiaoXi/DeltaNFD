@@ -26,9 +26,9 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 
     <DefaultLanguage>zh-CN</DefaultLanguage>
-    <Version>0.9300</Version>
+    <Version>0.9302</Version>
     <!-- 日志头/程序集读取的显示版本（与关于卡 VersionText 保持一致） -->
-    <InformationalVersion>Beta0.93</InformationalVersion>
+    <InformationalVersion>Beta0.93-RC2</InformationalVersion>
     <RuntimeUiEnabled Condition="'$(RuntimeUiEnabled)' == ''">true</RuntimeUiEnabled>
     <!-- 应用图标（exe / 任务栏 / 托盘共用；托盘经 ExtractIconExW 从 exe 提取） -->
     <ApplicationIcon>Assets\DeltaNFD.ico</ApplicationIcon>
@@ -94,7 +94,6 @@
   <ItemGroup>
     <Content Include="Assets\UpdateConfig.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\installer\DeploymentControl.ps1" Link="Tools\DeploymentControl.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="Assets\Vc14Baseline14.42\*.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\Vc14Baseline14.44\*.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\Vc14OwnershipOriginals\*.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Remove="Assets\RuntimeHighFps\**\*" />
@@ -103,9 +102,8 @@
     <Content Remove="Assets\RuntimeCppOfficial\**\*" />
     <None Remove="Assets\RuntimeCppOfficial\**\*" />
     <OfficialCppPayload Include="Assets\RuntimeCppOfficial\**\*" />
-    <Content Remove="Assets\Vc14FileRepair14.42\**\*" />
-    <None Remove="Assets\Vc14FileRepair14.42\**\*" />
-    <Vc14RepairPayload Include="Assets\Vc14FileRepair14.42\**\*" />
+    <Content Remove="Assets\Vc14Baseline14.42\**\*;Assets\Vc14FileRepair14.42\**\*" />
+    <None Remove="Assets\Vc14Baseline14.42\**\*;Assets\Vc14FileRepair14.42\**\*" />
     <Content Remove="Assets\Vc14FileRepair14.44\**\*" />
     <None Remove="Assets\Vc14FileRepair14.44\**\*" />
     <Vc14RepairPayload144 Include="Assets\Vc14FileRepair14.44\**\*" />
@@ -115,13 +113,11 @@
   <Target Name="CopyHighFpsPayloadToBuild" AfterTargets="Build" Condition="'$(IsDesignTimeBuild)' != 'true'">
     <Copy SourceFiles="@(HighFpsPayload)" DestinationFiles="@(HighFpsPayload->'$(OutDir)Assets\RuntimeHighFps\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(OfficialCppPayload)" DestinationFiles="@(OfficialCppPayload->'$(OutDir)Assets\RuntimeCppOfficial\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(Vc14RepairPayload)" DestinationFiles="@(Vc14RepairPayload->'$(OutDir)Assets\Vc14FileRepair14.42\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(Vc14RepairPayload144)" DestinationFiles="@(Vc14RepairPayload144->'$(OutDir)Assets\Vc14FileRepair14.44\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="CopyHighFpsPayloadToPublish" AfterTargets="Publish">
     <Copy SourceFiles="@(HighFpsPayload)" DestinationFiles="@(HighFpsPayload->'$(PublishDir)Assets\RuntimeHighFps\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(OfficialCppPayload)" DestinationFiles="@(OfficialCppPayload->'$(PublishDir)Assets\RuntimeCppOfficial\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(Vc14RepairPayload)" DestinationFiles="@(Vc14RepairPayload->'$(PublishDir)Assets\Vc14FileRepair14.42\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(Vc14RepairPayload144)" DestinationFiles="@(Vc14RepairPayload144->'$(PublishDir)Assets\Vc14FileRepair14.44\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
 

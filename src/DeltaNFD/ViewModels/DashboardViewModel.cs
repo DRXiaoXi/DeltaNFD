@@ -259,7 +259,7 @@ public partial class DashboardViewModel : ObservableObject
             throw error;
         var(status, scan) = read.Value;
         RuntimeHealthState = scan.HasAbnormal ? DashboardHealthState.Abnormal : scan.HasWarning || status.GuardIssue.Length > 0 || status.IfeoRestorePending || status.Ue4RestorePending || status.Ue4PrereqDenied || status.IfeoManagedCount > 0 && !status.IfeoApplied ? DashboardHealthState.Warning : DashboardHealthState.Normal;
-        RuntimeStatusText = scan.IsMissing ? "缺少 C++ 14.x 运行库，可能导致三角洲无法启动；请进入运行库页安装 14.42 或 14.44" : scan.HasAbnormal ? "14.x 兼容性异常：检测到 14.50、14.51 或 Visual C++ v14 组件，请进入运行库页核对" : scan.HasWarning ? "14.x 版本非 14.42/14.44 或状态待核对，请进入运行库页查看" : status.GuardIssue.Length > 0 ? "防护状态待核对：" + status.GuardIssue : status.IfeoRestorePending || status.Ue4RestorePending ? "旧防护有待恢复记录" : status.IfeoApplied ? $"防护已开启，拦截 {status.ScopeManagedCount}/{status.IfeoTotal} 个安装器" : status.IfeoManagedCount > 0 || status.Ue4PrereqDenied ? "防护部分生效或有残留，可进入防护页核对" : "14.x 未发现版本异常；防护未开启";
+        RuntimeStatusText = scan.IsMissing ? "缺少 C++ 14.x 运行库，可能导致三角洲无法启动；请进入运行库页安装 14.44" : scan.HasAbnormal ? "14.x 兼容性异常：检测到 14.50、14.51 或 Visual C++ v14 组件，请进入运行库页核对" : scan.HasObsolete ? "已安装 14.42，已过时，建议进入运行库页升级到 14.44" : scan.HasWarning ? "14.x 版本非 14.44 或状态待核对，请进入运行库页查看" : status.GuardIssue.Length > 0 ? "防护状态待核对：" + status.GuardIssue : status.IfeoRestorePending || status.Ue4RestorePending ? "旧防护有待恢复记录" : status.IfeoApplied ? $"防护已开启，拦截 {status.ScopeManagedCount}/{status.IfeoTotal} 个安装器" : status.IfeoManagedCount > 0 || status.Ue4PrereqDenied ? "防护部分生效或有残留，可进入防护页核对" : "14.x 未发现版本异常；防护未开启";
     }
 
     [RelayCommand]

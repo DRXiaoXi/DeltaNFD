@@ -3,7 +3,7 @@
     <OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier><SelfContained>true</SelfContained>
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
-    <Version>0.9300</Version><InformationalVersion>Beta0.93</InformationalVersion>
+    <Version>0.9302</Version><InformationalVersion>Beta0.93-RC2</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../DeltaNFD.UpdateCore/DeltaNFD.UpdateCore.csproj" />

@@ -67,7 +67,7 @@ internal static class RuntimeDetectionPreferenceChecks
         Check(RuntimeRepairGuidance.ForResult(OperationResult.Fail("cancelled"), true) == "", "Cancellation does not claim the tool cannot repair");
         Check(RuntimeRepairGuidance.ForResult(new OperationResult { Success = true, IsPartial = true }, false).Length > 0, "Partial results are not treated as complete repair");
         var message = RuntimeRepairGuidance.ForResult(OperationResult.Fail("error 1402, diagnostic path"), false);
-        Check(message.Contains("工具未能解决") && message.Contains("14.42") && message.Contains("14.44") && message.Contains("x64、x86"), "Failure admits limitation and identifies the manual baseline");
+        Check(message.Contains("工具未能解决") && !message.Contains("14.42") && message.Contains("14.44") && message.Contains("x64、x86"), "Failure admits limitation and identifies the manual baseline");
         Check(message.Contains("关闭上方“运行库检测”") && message.Contains("运行库防护"), "Manual guidance includes optional detection and separate guard control");
         Check(RuntimeRepairGuidance.DialogText("error 1402, diagnostic path", message).StartsWith("error 1402, diagnostic path"), "Original failure and diagnostics are retained");
         var diagnostic = OperationResult.Fail("error 1402").WithDiagnostics("C:\\fixture\\logs");

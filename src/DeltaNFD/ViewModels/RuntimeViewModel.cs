@@ -1,31 +1,26 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using DeltaNFD.Services;
+using DeltaNFD.Services.Backends;
 
 namespace DeltaNFD.ViewModels;
 
-/// <summary>运行库防护、14.x 兼容性检测与仅修复 14.x（原全量重装：卸载检测到的 14.x 后安装所选 14.42/14.44 内置基线）。</summary>
+/// <summary>运行库防护、14.x 兼容性检测与仅修复 14.x（原全量重装：卸载检测到的 14.x 后安装14.44 内置基线）。</summary>
 public partial class RuntimeViewModel : ObservableObject
 {
     public Task<RuntimeFileUseScan> ScanFileUseAsync(CancellationToken token, RuntimeFileUseScope scope = RuntimeFileUseScope.Vc14) => _guard.ScanFileUseAsync(token, scope);
     public Task<RuntimeFileUseCloseResult> CloseFileUseAsync(RuntimeFileUseCloseArgs args, CancellationToken token) => _guard.CloseFileUseAsync(args, token);
-    public static RuntimeViewModel Current { get; } = new();
+    // A departed page must retain its old proxy; a new page must never borrow it.
+    public static RuntimeViewModel Current => PageBackendSessions.Manager.Current is { Route: "runtime" } owner
+        ? owner.Service(static () => new RuntimeViewModel())
+        : throw new PageBackendUnavailableException("运行库栏目会话不可用，请重新进入运行库页。");
     private readonly IRuntimeGuardService _guard = ServiceLocator.Guard;
     [ObservableProperty] private bool repairIsBusy;
-    [ObservableProperty] private int baselineIndex;
     [ObservableProperty] private string repairStatusText = "修复前将预览全部 14.x 卸载清单；请先关闭运行库防护。";
-    public Vc14Baseline SelectedBaseline => BaselineIndex == 1 ? Vc14Baseline.V144 : Vc14Baseline.V142;
+    public Vc14Baseline SelectedBaseline => Vc14Baseline.V144;
     public string SelectedBaselineLabel => SelectedBaseline.Label();
     public string SelectedBaselineVersion => SelectedBaseline.FullVersion();
     public string SelectedBaselineDescription => SelectedBaseline.Description();
     public string ContinueInstallLabel => "继续安装 " + SelectedBaseline.Display();
-    partial void OnBaselineIndexChanged(int value)
-    {
-        OnPropertyChanged(nameof(SelectedBaseline));
-        OnPropertyChanged(nameof(SelectedBaselineLabel));
-        OnPropertyChanged(nameof(SelectedBaselineVersion));
-        OnPropertyChanged(nameof(SelectedBaselineDescription));
-        OnPropertyChanged(nameof(ContinueInstallLabel));
-    }
     [ObservableProperty] private string abnormalText = "";
     [ObservableProperty] private string abnormalTitle = "C++ 14.x 运行库异常";
     [ObservableProperty] private string warningText = "";

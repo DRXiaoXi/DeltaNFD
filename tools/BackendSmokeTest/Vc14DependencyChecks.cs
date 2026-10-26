@@ -148,7 +148,7 @@ internal static class Vc14DependencyChecks
             var id = Vc14Reinstall.BaselineBundles[arch];
             var p = product with { Architecture = arch, Name = $"Microsoft Visual C++ 2022 {arch} Minimum Runtime - 14.51.36247" };
             var dependent = provider with { Key = "Microsoft.VS.VC_RuntimeMinimumVSU_" + (arch == "x64" ? "amd64" : "x86") + ",v14", Clients = [id] };
-            var label = $"Microsoft Visual C++ 2015-2022 Redistributable ({arch}) - 14.42.34433";
+            var label = $"Microsoft Visual C++ 2015-2022 Redistributable ({arch}) - {Vc14BaselineInfo.Default.ShortVersion}";
             var incomplete = new Vc14DependencyOwner("LocalMachine:Registry32:ARP", label, "", "", false, false, "DisplayName-only");
             var fixedOwner = Vc14DependencyPolicy.Evaluate(p, [dependent], _ => [incomplete], a => a == arch);
             Check(fixedOwner.Clients.Single() == id && fixedOwner.Evidence.Contains("PinnedOriginalMissingArpFields"),
