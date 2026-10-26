@@ -68,7 +68,7 @@ public sealed partial class RuntimePage : Page
                         ? "将在当前正常模式安装/修复 " + selected.Display() + " 双架构基线；不会执行卸载。失败时保留待安装记录供核对重试。\n\n"
                         : "将在当前环境卸载下列 x86/x64 C++ 14.x。优先使用已核验的微软 Redistributable 原包装，缺少可用原包装的组件才按 MSI 产品码处理；仍保留依赖与结果复检。\n" + list
                         + "\n旧 INF 卸载节会实际调用其中的 MSI 卸载命令；已核对其目标属于 14.x，执行前会备份包装登记及 INF/PNF。"
-                        + (mode == Vc14RepairMode.UninstallOnly ? "\n\n本次仅卸载和复检，保存待安装记录，不安装基线。完成后请手动重启回正常模式，点击“继续安装 " + selected.Display() + "”并重新确认。不会自动重启或续跑；期间其他依赖 C++ 的软件可能无法运行。"
+                        + (mode == Vc14RepairMode.UninstallOnly ? "\n\n本次仅卸载和复检，保存待安装记录，不安装基线。完成后请手动重启回正常模式，在“恢复与续装”中点击“继续安装 " + selected.Display() + "”并重新确认。不会自动重启或续跑；期间其他依赖 C++ 的软件可能无法运行。"
                             : "\n\n随后安装 2015–2022 x64/x86 " + targetVersion + " 原包并复检组件与 DLL；若 DLL 版本未对齐会自动用原包修复。")
                         + "\n卸载完成后、安装前会自动备份并清理旧版工具留下的 v14/2026 残留登记（避免其阻止基线安装），备份会保留。"
                         + (skipped.Length > 0 ? "\n\n以下登记重装阶段不卸载（由残留清理阶段评估）：\n" + skipped : "")

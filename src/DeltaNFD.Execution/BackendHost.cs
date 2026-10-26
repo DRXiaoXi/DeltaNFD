@@ -410,7 +410,10 @@ public static class BackendHost
                     requestCts.CancelAfter(timeout);
                     var context = new BackendCommandContext(invoke.Command, invoke.Args, sessionId, requestId,
                         requestCts.Token, p => writer.SafeWriteProgress(options.Module.Id, sessionId, requestId, p));
-                    inFlight = RunHandlerAsync(handler, context, requestCts);
+                    // A handler may do synchronous native/file work before its first await.
+                    // Keep the sole in-flight request off the pipe loop so stop/ping/status still run.
+                    // Do not pass the cancellation token to Task.Run: RunHandlerAsync owns its disposal.
+                    inFlight = Task.Run(() => RunHandlerAsync(handler, context, requestCts));
                     break;
                 }
 

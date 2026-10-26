@@ -44,6 +44,8 @@ public sealed class CpuFrameEngine : IDisposable
     private bool _gameRunning;
     private sealed record DeltaObservation(bool? Running, DateTimeOffset ObservedUtc, string Error);
     private DeltaObservation? _deltaObservation;
+    private Task? _deltaRead;
+    private int _observationDisposed;
     private int? _gamePid;
     private long _gameStartTicks;
     private string _gameExe = "";
@@ -1015,27 +1017,45 @@ public sealed class CpuFrameEngine : IDisposable
 
     // ---------------- 状态快照 ----------------
 
-    public CpuFrameStatusSnapshot Snapshot()
+    private Task RefreshDeltaObservationAsync()
     {
-        // The existing status heartbeat runs while a long command/tick is busy. Query here so a
-        // power-policy operation cannot stale the independent Delta observation for minutes.
-        // A connected backend already emits this heartbeat. Observing a process must not require
-        // starting the automation loop (which may be blocked by an unresolved restore obligation).
         lock (_observationGate)
         {
+            if (Volatile.Read(ref _observationDisposed) != 0) return Task.CompletedTask;
+            if (_deltaRead is { IsCompleted: false }) return _deltaRead;
             var now = ClockForTests?.Invoke() ?? DateTimeOffset.UtcNow;
             var previous = Volatile.Read(ref _deltaObservation);
-            if (previous is null || now - previous.ObservedUtc >= TickInterval || previous.ObservedUtc > now)
+            if (previous is not null && previous.ObservedUtc <= now && now - previous.ObservedUtc < TickInterval)
+                return Task.CompletedTask;
+            // Coalesce one read from the existing heartbeat. Slow native process lookup must not
+            // hold the pipe loop or spawn overlapping queries; no additional polling timer.
+            return _deltaRead = Task.Run(() =>
             {
                 bool? running;
                 var error = "";
                 try { running = DeltaReaderForTests is { } read ? read() : DeltaForceLocator.IsGameRunning(); }
                 catch (Exception ex) { running = null; error = "三角洲进程查询失败：" + ex.Message; }
-                Volatile.Write(ref _deltaObservation, new(running, now, error));
-            }
+                // Timestamp the start of the read, never label a delayed result as a fresh observation.
+                if (Volatile.Read(ref _observationDisposed) == 0)
+                    Volatile.Write(ref _deltaObservation, new(running, now, error));
+            });
         }
+    }
+
+    public async Task<CpuFrameStatusSnapshot> ReadStatusAsync(CancellationToken token = default)
+    {
+        try { await RefreshDeltaObservationAsync().WaitAsync(TimeSpan.FromSeconds(3), token).ConfigureAwait(false); }
+        catch (TimeoutException) { /* Keep the single native read; report unknown/stale game state. */ }
+        return Snapshot();
+    }
+
+    public CpuFrameStatusSnapshot Snapshot()
+    {
+        _ = RefreshDeltaObservationAsync();
         var version = typeof(CpuFrameEngine).Assembly.GetName().Version ?? new Version(0, 0, 0);
         var delta = Volatile.Read(ref _deltaObservation);
+        var waitingForObservation = Volatile.Read(ref _deltaRead) is { IsCompleted: false }
+            && (delta is null || (ClockForTests?.Invoke() ?? DateTimeOffset.UtcNow) - delta.ObservedUtc > TimeSpan.FromSeconds(10));
         return new CpuFrameStatusSnapshot
         {
             ModuleVersion = $"{version.Major}.{version.Minor}.{Math.Max(version.Build, 0)}",
@@ -1047,7 +1067,7 @@ public sealed class CpuFrameEngine : IDisposable
             GameRunning = _gameRunning,
             DeltaForceRunning = delta?.Running,
             DeltaForceObservedUtc = delta?.ObservedUtc,
-            DeltaForceObservationError = delta?.Error ?? "",
+            DeltaForceObservationError = waitingForObservation ? "三角洲进程查询尚未完成，运行状态待确认；后端连接仍在。" : delta?.Error ?? "",
             GamePid = _gamePid,
             GameStartTimeUtcTicks = _gameStartTicks,
             GameExecutablePath = _gameExe,
@@ -1085,6 +1105,7 @@ public sealed class CpuFrameEngine : IDisposable
 
     public void Dispose()
     {
+        Interlocked.Exchange(ref _observationDisposed, 1);
         try { StopMonitorAsync().GetAwaiter().GetResult(); _gamePower.Sync([]); } catch { }
     }
 }

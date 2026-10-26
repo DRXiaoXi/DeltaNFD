@@ -114,6 +114,12 @@ if (args is ["--frame-close-checks"])
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
+if (args is ["--frame-exit-admission-checks"])
+{
+    try { await FrameExitAdmissionChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
 if (args is ["--frame-close-native-readonly"])
 {
     try { FrameCloseChecks.ReadNative(); }

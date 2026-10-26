@@ -39,8 +39,8 @@ internal static class AceOwnershipChecks
             var result = Read();
             Check(result.Level == AceCoreCheckLevel.Normal, "Two games / two drivers coexist normally");
             Check(result.Games.Count == 2 && result.SysCount == 2, "Count installations and exact core SYS names");
-            Check(result.Associations.All(x => x.Games.Count == 1), "Every core has exact game payload evidence");
-            Check(result.Associations.Single(x => x.Path == a).Games.Single().Contains("三角洲行动"), "Names/suffixes need not match to verify payload");
+            Check(result.Associations.Count == 0, "Count inventory leaves legacy association field empty");
+            Check(result.Files.Any(x => x.Contains("ACE-CORE100.sys")) && result.Games.Any(g => g.Name == "三角洲行动"), "Count inventory exposes file and game lists without per-file pairing");
             Check(result.Games.All(x => x.AceDirectories.Count == 1 && x.InstallDirectory.Length > 0), "Expose confirmed component directories");
             Check(result.Notes.Count == 0, "Complete fixtures have no invented uncertainty");
             Check(before.All(x => File.Exists(x.Key) && x.Value == Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(x.Key)))) &&
@@ -52,30 +52,30 @@ internal static class AceOwnershipChecks
             var unknown = Write(@"shared\ACE-CORE999.sys", "not-in-installed-games");
             result = Read();
             Check(result.Level == AceCoreCheckLevel.NeedsReview && result.SysCount == 3, "More files than games cannot imply abnormality");
-            Check(result.Associations.Single(x => x.Path == unknown).Games.Count == 0, "Unmatched core stays unassigned");
+            Check(result.Associations.Count == 0, "Extra file creates no synthetic ownership mapping");
             Check(!result.Advice.Contains("一键清除"), "No cleanup recommendation from file count");
             File.Delete(unknown);
             candidates.Clear();
             result = Read();
             Check(result.Level == AceCoreCheckLevel.NeedsReview && result.Games.Count == 0, "Missing install metadata does not mean redundant files");
-            Check(result.Associations.All(x => x.Games.Count == 0), "No synthetic one-to-one pairing by order/count");
+            Check(result.Associations.Count == 0, "Missing game metadata creates no synthetic pairing");
             candidates.Add(new("三角洲行动", g1, "WeGame"));
             Write(@"DeltaGame\DeltaForce\Binaries\Win64\AntiCheatExpert\ACE-CORE-v2.sys", "game-two-v2");
             result = Read();
             Check(result.Level == AceCoreCheckLevel.NeedsReview && result.Games.Count == 1, "One game with multiple cores is yellow until manual association, even when hashes match");
             candidates.Add(new("暗区突围：无限", g2, "Steam"));
             result = Read();
-            Check(result.Associations.Any(x => x.Games.Count == 2 && x.Evidence.Contains("不能确认独占")), "Shared identical payload is not falsely attributed exclusively");
+            Check(result.Level == AceCoreCheckLevel.Normal && result.Associations.Count == 0, "Shared identical payload does not alter matching count or imply exclusive ownership");
 
             using (var locked = new FileStream(a, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
             {
                 result = Read();
-                Check(result.Level == AceCoreCheckLevel.NeedsReview && result.SysCount == 2, "Locked driver preserves count and uncertainty");
-                Check(result.Associations.Single(x => x.Path == a).Games.Count == 0, "Locked driver is never matched by name");
+                Check(result.Level == AceCoreCheckLevel.Normal && result.SysCount == 2 && result.Notes.Count == 0, "Locked driver content does not prevent metadata-only count");
+                Check(result.Associations.Count == 0, "No locked driver is opened or paired by name");
             }
             var big = Write(@"shared\ACE-CORE-big.sys", "");
             using (var file = File.OpenWrite(big)) file.SetLength(17 * 1024 * 1024);
-            Check(Read().Level == AceCoreCheckLevel.NeedsReview, "Oversized driver is bounded and pending review");
+            Check(Read().Level == AceCoreCheckLevel.NeedsReview && Read().SysCount == 3, "Large third driver counts as excess without payload size validation");
             File.Delete(big);
             var blocked = AceCoreOwnershipInspection.Read(shared, () => true, (_, _) => throw new Exception("Must not discover"));
             Check(blocked.Level == AceCoreCheckLevel.Blocked && blocked.Files.Count == 0 && blocked.Games.Count == 0, "Game gate precedes all inventory");
@@ -83,12 +83,12 @@ internal static class AceOwnershipChecks
             blocked = AceCoreOwnershipInspection.Read(shared, () => started, (_, _) => { started = true; return candidates; });
             Check(blocked.Level == AceCoreCheckLevel.Blocked && blocked.Associations.Count == 0, "Game starting during scan discards partial inventory");
             result = AceCoreOwnershipInspection.Read(shared, () => false, (notes, _) => { notes.Add("incomplete fixture"); return candidates; });
-            Check(result.Level == AceCoreCheckLevel.NeedsReview && result.Notes.Contains("incomplete fixture"), "Partial metadata is explicit, not an abnormal verdict");
+            Check(result.Level == AceCoreCheckLevel.Normal && result.Notes.Contains("incomplete fixture"), "Incomplete extra-game discovery preserves notes without invalidating complete matching CORE count");
             candidates.Add(new("Non-ACE", Path.Combine(root, "NonAce"), "Epic"));
             Write(@"NonAce\AntiCheatExpert\readme.txt", "empty folder name is insufficient");
             Check(Read().Games.Count == 2, "Folder name alone is insufficient to identify an ACE game");
             var package = JsonSerializer.Deserialize<AceCoreCheckResult>(JsonSerializer.Serialize(Read()))!;
-            Check(package.Games.Count == 2 && package.Associations.Count == 2, "Additive ownership contract roundtrips");
+            Check(package.Games.Count == 2 && package.SysCount == 2 && package.Associations.Count == 0, "Count inventory and empty legacy field roundtrip");
             Check((int)AceCoreCheckLevel.Blocked == 4 && (int)AceCoreCheckLevel.Abnormal == 2, "Old enum values remain compatible");
 
             var steam = Path.Combine(root, "Steam");
@@ -127,7 +127,7 @@ internal static class AceOwnershipChecks
                 Directory.Delete(link);
             }
 
-            Console.WriteLine($"ACE ownership checks passed: {checks}; synthetic games only, no real ACE cleanup or settings writes.");
+            Console.WriteLine($"ACE inventory compatibility checks passed: {checks}; synthetic games only, no real ACE cleanup or settings writes.");
         }
         finally
         {

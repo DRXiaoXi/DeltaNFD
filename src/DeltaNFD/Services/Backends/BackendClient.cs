@@ -18,6 +18,7 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
 {
     private readonly BackendModuleSpec _spec;
     private readonly Process _process;
+    private readonly int _processId;
     private readonly long _processStartTicks;
     private readonly string _processImagePath;
     private FileStream? _imageLock;
@@ -33,6 +34,7 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
     private int _dead;
     private volatile bool _readerEnded;
     private string? _lastCommand;
+    private DateTimeOffset? _lastStatusUtc;
     /// <summary>最近一次带写前意图的写入命令；收尾失败时用它建立正确的恢复证据（而不是被只读轮询覆盖）。</summary>
     private volatile string? _lastMutatingCommand;
 
@@ -66,6 +68,7 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
     {
         _spec = spec;
         _process = process;
+        _processId = process.Id;
         _pipe = pipe;
         _processStartTicks = processStartTicks;
         _processImagePath = processImagePath;
@@ -276,7 +279,12 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
                 }
                 catch (Exception ex) when (ex is IOException or EndOfStreamException or ObjectDisposedException or OperationCanceledException)
                 {
-                    await EndReaderAsync("disconnected");
+                    await EndReaderAsync("disconnected", ex);
+                    return;
+                }
+                catch (BackendContractException ex)
+                {
+                    await EndReaderAsync("protocol", ex);
                     return;
                 }
 
@@ -303,9 +311,9 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
                             return;
                     }
                 }
-                catch (BackendContractException)
+                catch (BackendContractException ex)
                 {
-                    await EndReaderAsync("protocol");
+                    await EndReaderAsync("protocol", ex);
                     return;
                 }
             }
@@ -313,7 +321,7 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
         catch (Exception ex)
         {
             Log.Error("官方后端读取循环异常终止", ex);
-            await EndReaderAsync("disconnected");
+            await EndReaderAsync("disconnected", ex);
         }
     }
 
@@ -370,6 +378,7 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
     private void DispatchStatus(BackendFrame frame)
     {
         var status = BackendMessages.ParseStatus(frame.Payload);
+        _lastStatusUtc = DateTimeOffset.UtcNow;
         if (status.State == BackendMessages.StateStopped)
         {
             if (status.Data is { } data)
@@ -396,7 +405,7 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
     }
 
     /// <summary>读取循环终止：标记连接不可信，把原因如实体现在在途请求与未确认记录上（不折算成功）。</summary>
-    private async Task EndReaderAsync(string reason)
+    private async Task EndReaderAsync(string reason, Exception? failure = null)
     {
         if (Volatile.Read(ref _disposed) != 0) return;
         if (_readerEnded) return;
@@ -415,6 +424,14 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
             // A monitor can mutate processes without an in-flight UI request. Never silently restart it.
             await PromoteUnknownAsync(Guid.NewGuid(), _lastCommand ?? BackendCommands.CpuFrameMonitorStart, reason);
         }
+        // Record what is actually known; EOF may precede process exit, so a missing code stays unknown.
+        var exitCode = "未知（进程尚未确认退出）";
+        try { if (_process.HasExited) exitCode = $"0x{_process.ExitCode:X8}"; } catch { }
+        var diagnostic = $"官方后端连接结束：module={ModuleId}；pid={_processId}；session={_sessionId:D}；"
+            + $"reason={reason}；stopSent={_stopSent}；command={pending?.Command ?? _lastCommand ?? "(无)"}；"
+            + $"lastStatusUtc={_lastStatusUtc?.ToString("O") ?? "(无)"}；exitCode={exitCode}；"
+            + $"exception={failure?.GetType().Name ?? "EOF"}；hresult={(failure is null ? "(无)" : $"0x{failure.HResult:X8}")}。";
+        if (_stopSent) Log.Info(diagnostic); else Log.Warn(diagnostic);
         lock (_statusLock)
         {
             foreach (var channel in _statusSubscribers) channel.Writer.TryComplete();

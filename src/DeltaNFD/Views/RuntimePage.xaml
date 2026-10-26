@@ -37,20 +37,12 @@
                             <TextBlock Text="{x:Bind ViewModel.SelectedBaselineDescription, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                             <StackPanel Orientation="Horizontal" Spacing="12">
                                 <Button Content="预览并仅修复 14.x" Click="Repair14_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" Style="{StaticResource PrimaryButtonStyle}"/>
-                                <Button Content="停止后续步骤" Click="CancelRepair_Click" IsEnabled="{x:Bind ViewModel.RepairIsBusy, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}"/>
                                 <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.RepairIsBusy, Mode=OneWay}"/>
-                            </StackPanel>
-                            <StackPanel Spacing="8">
-                                <Button Content="仅卸载 14.x，稍后在正常模式安装" Tag="uninstall" Click="Repair14_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" Style="{StaticResource DangerButtonStyle}"/>
-                                <Button Content="{x:Bind ViewModel.ContinueInstallLabel, Mode=OneWay}" Tag="install" Click="Repair14_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}"/>
-                                <Button Content="预览并仅清理失效登记" Click="CleanupRegistrations_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" Style="{StaticResource DangerButtonStyle}"/>
-                                <TextBlock Text="运行库已修复但仍有旧版本提醒时，可单独核对并清理失效显示登记；保留已安装组件，每项先备份再处理。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
-                                <Button Content="恢复临时 Installer 设置" Click="RestoreInstaller_Click" Style="{StaticResource SecondaryButtonStyle}"/>
-                                <TextBlock Text="分阶段操作：卸载后回正常模式手动安装。安全模式下可在确认窗口勾选临时启用 Windows Installer；执行后恢复原值，中断时可手动核对恢复。" Style="{StaticResource BodyStyle}" TextWrapping="Wrap"/>
                             </StackPanel>
                             <Button Content="强制替换 14.x DLL（高风险）" Click="ForceReplace14_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" HorizontalAlignment="Left" Style="{StaticResource DangerButtonStyle}"/>
                             <TextBlock Text="绕过 Windows Installer 的较新文件保护，直接用上方所选基线（14.42 或 14.44）的官方文件覆盖 System32/SysWOW64 的 51 个 14.x DLL（x64 26、x86 25），包括把本机其他 14.x 版本强制对齐到所选版本。执行前自动备份并生成 restore.ps1；被占用文件会安排到下次启动替换，可能需要重启。不修改 MSI/ARP 安装登记。仅在关闭游戏、其他应用和运行库防护后使用。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
                             <TextBlock Text="卸载前可选择安全模式引导，确认后重启至 Windows 高级启动，再按引导进入安全模式；也可在当前环境继续。重启后不会自动执行修复。" Style="{StaticResource BodyStyle}" TextWrapping="Wrap"/>
+                            <TextBlock Text="安全模式下仅执行卸载，回正常模式后可在“恢复与续装”中继续安装；停止任务和恢复临时 Installer 设置也在下方独立恢复区域。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                             <TextBlock Text="{x:Bind ViewModel.RepairStatusText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" Style="{StaticResource BodyStyle}"/>
                         </StackPanel>
                     </Border>
@@ -69,7 +61,7 @@
                             </ComboBox>
                             <TextBlock Text="{x:Bind ViewModel.SelectedBaselineDescription, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                             <Button Content="预览全量修复" Click="RepairHighFps_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" HorizontalAlignment="Left" Style="{StaticResource PrimaryButtonStyle}"/>
-                            <TextBlock Text="两个修复入口共用上方进度和“停止后续步骤”；请先关闭游戏、其他应用和运行库防护。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                            <TextBlock Text="两个修复入口共用进度和下方恢复区域的“停止后续步骤”；请先关闭游戏、其他应用和运行库防护。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource CardBorderStyle}">
@@ -101,6 +93,16 @@
                     </Border>
                     <Border Style="{StaticResource CardBorderStyle}">
                         <StackPanel Spacing="10">
+                            <TextBlock Text="修复进度与恢复" Style="{StaticResource H2Style}"/>
+                            <Button Content="停止后续步骤" Click="CancelRepair_Click" IsEnabled="{x:Bind ViewModel.RepairIsBusy, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}"/>
+                            <TextBlock Text="停止后将等待当前安装事务结束，不强制结束安装器。中断后的续装和临时设置恢复可展开下方入口。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                            <Expander Header="恢复与续装" IsExpanded="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                                <StackPanel Spacing="10">
+                                    <Button Content="{x:Bind ViewModel.ContinueInstallLabel, Mode=OneWay}" Tag="install" Click="Repair14_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}"/>
+                                    <Button Content="恢复临时 Installer 设置" Click="RestoreInstaller_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                                    <TextBlock Text="分阶段操作：卸载后回正常模式手动安装。安全模式下可在确认窗口勾选临时启用 Windows Installer；执行后恢复原值，中断时可在此手动核对恢复。" Style="{StaticResource BodyStyle}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Expander>
                             <Expander x:Name="InstalledRegistryDetails" IsExpanded="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                                 <Expander.Header>
                                     <StackPanel Spacing="3">

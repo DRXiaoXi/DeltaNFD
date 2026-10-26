@@ -1068,13 +1068,13 @@ public sealed partial class MainWindow : Window
 
     /// <summary>托盘菜单「退出」：显示收尾进度，安全排空后退出并移除图标。</summary>
     private bool _pluginExitInProgress;
+    private Services.Backends.ExitOperationScope? _committedExitOperations;
     private async void ExitApplication()
     {
-        if (_pluginExitInProgress || _deploymentInProgress || _factoryResetInProgress) return;
+        if (_exitRequested || _pluginExitInProgress || _deploymentInProgress || _factoryResetInProgress) return;
         _pluginExitInProgress = true;
 
-        IDisposable? pluginBlock = null;
-        IDisposable? backendBlock = null;
+        var exitOperations = new Services.Backends.ExitOperationScope();
         Microsoft.UI.Dispatching.DispatcherQueueTimer? exitTimer = null;
 
         try
@@ -1092,18 +1092,16 @@ public sealed partial class MainWindow : Window
             exitTimer.Tick += (_, _) => ExitElapsedText.Text = $"已用时 {(int)elapsed.Elapsed.TotalSeconds} 秒";
             exitTimer.Start();
             Log.Info("用户请求退出：显示收尾进度。");
-            pluginBlock = ServiceLocator.PluginRuntime.BlockNewOperations();
-            backendBlock = Services.Backends.BackendOperationGate.BlockNewOperations();
+            exitOperations.Hold(ServiceLocator.PluginRuntime.BlockNewOperations());
+            exitOperations.Hold(Services.Backends.BackendOperationGate.BlockNewOperations());
+            exitOperations.Hold(ServiceLocator.PauseGameMonitorConnections());
 
             var blocker = await PluginLifecycleGuard.PrepareHandoverAsync(ServiceLocator.Plugins, ServiceLocator.PluginRuntime,
                 "退出", restoreChanges: false, allowAutonomous: false);
             if (blocker.Length > 0)
             {
                 // 优化：排空失败时显式释放阻止，恢复正常操作
-                pluginBlock?.Dispose();
-                backendBlock?.Dispose();
-                pluginBlock = null;
-                backendBlock = null;
+                exitOperations.Release();
 
                 HideExitProgress();
                 RestoreFromTray();
@@ -1124,10 +1122,7 @@ public sealed partial class MainWindow : Window
                 Services.Log.Warn(backendBlocker);
 
                 // 优化：排空失败时显式释放阻止，恢复正常操作
-                pluginBlock?.Dispose();
-                backendBlock?.Dispose();
-                pluginBlock = null;
-                backendBlock = null;
+                exitOperations.Release();
 
                 HideExitProgress();
                 RestoreFromTray();
@@ -1137,6 +1132,8 @@ public sealed partial class MainWindow : Window
                 return;
             }
             // 本次已完成可信排空，ProcessExit 兜底不应再次执行恢复流程。
+            exitOperations.Commit();
+            _committedExitOperations = exitOperations; // Keep admission closed through actual process termination.
             App.ExitAlreadyPrepared = true;
             _exitRequested = true;
             EmergencyPolicyUpdateService.Stop();
@@ -1149,10 +1146,10 @@ public sealed partial class MainWindow : Window
             Log.Error("退出收尾失败，应用保持打开", ex);
 
             // 优化：异常时确保释放阻止
-            pluginBlock?.Dispose();
-            backendBlock?.Dispose();
-            pluginBlock = null;
-            backendBlock = null;
+            _exitRequested = false;
+            App.ExitAlreadyPrepared = false;
+            _committedExitOperations = null;
+            exitOperations.Release();
             HideExitProgress();
             RestoreFromTray();
             try
@@ -1169,9 +1166,8 @@ public sealed partial class MainWindow : Window
             if (!_exitRequested) HideExitProgress();
             _pluginExitInProgress = false;
 
-            // 优化：兜底释放阻止
-            pluginBlock?.Dispose();
-            backendBlock?.Dispose();
+            // Only failed/cancelled exit releases admission; success blocks late callbacks.
+            exitOperations.Dispose();
         }
     }
 

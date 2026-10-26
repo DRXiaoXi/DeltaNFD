@@ -31,6 +31,7 @@ internal sealed class GameProcessMonitor : IDisposable
         _ = _state.ConnectAsync(bootstrapAutomation: true);
     }
     internal Task ReconnectAsync() => _state.ConnectAsync(); // Observation-only; no mutation replay.
+    internal IDisposable PauseConnections() => _state.PauseConnections();
     private void OnTargetChanged(GameTarget target) => Dispatch(() => { IsRunning = false; ProcessId = null; Notify(Tick, false, null); });
     private void OnStatusUpdated(CpuFrameStatusSnapshot snapshot) => _state.Accept(snapshot);
     private void OnConnectionEnded() => _state.Unavailable("CPU/帧格状态连接已中断或超时，请点击“重新确认”；如有未确认执行者，请先核对恢复记录。");

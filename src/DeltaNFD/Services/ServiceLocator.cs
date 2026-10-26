@@ -67,6 +67,8 @@ public static class ServiceLocator
     }
 
     internal static GameProcessMonitor GameMonitor => GameMonitorLazy.Value;
+    internal static IDisposable? PauseGameMonitorConnections() =>
+        GameMonitorLazy.IsValueCreated ? GameMonitorLazy.Value.PauseConnections() : null;
 
     /// <summary>系统优化器（真实实现：进程/内存/电源/游戏提权）。</summary>
     public static ISystemOptimizer SystemOptimizer => SystemOptimizerLazy.Value;

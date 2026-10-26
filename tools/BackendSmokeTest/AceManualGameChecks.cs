@@ -47,7 +47,7 @@ internal static class AceManualGameChecks
             var result = AceCoreOwnershipInspection.Read(shared, () => false, (_, _) => manual);
             Check(result.Games.Count == 1 && result.SysCount == 1 && result.Level == AceCoreCheckLevel.Normal, "manual nested ACE directory reaches normal shared-core inventory");
             Check(result.Games[0].InstallDirectory == game && result.Games[0].Source == "手动添加", "manual source and actual root are exposed");
-            Check(result.Associations.Single().Games.Count == 1 && result.Associations.Single().Evidence.Contains("SHA256"), "manual folder uses exact hash evidence, no synthetic mapping");
+            Check(result.Associations.Count == 0, "manual folder contributes a recognized game count without payload matching");
             Check(before.All(p => File.Exists(p.Key) && p.Value == Digest(p.Key)), "inventory does not change game or shared files");
             var candidates = new List<AceGameCandidate> { new("Launcher game name", game.ToUpperInvariant(), "Steam") };
             AceGameDiscovery.MergeManual(candidates, manual);
@@ -66,8 +66,8 @@ internal static class AceManualGameChecks
             var looseRoots = AceManualGameInspection.ReadRoots([loose], [], () => false);
             result = AceCoreOwnershipInspection.Read(shared, () => false, (_, _) => looseRoots);
             Check(result.Games.Count == 1 && result.Games[0].AceDirectories.Contains(Path.Combine(loose, "Runtime")), "known component names outside AntiCheatExpert folders are recognized");
-            Check(result.Associations.Single(a => a.Path == driver).Games.Count == 1, "loose CORE driver retains exact-hash matching");
-            Check(result.Associations.Single(a => a.Path == hiddenShared).Games.Count == 0, "a loose component at game root cannot silently recurse beyond discovery scope");
+            Check(result.SysCount == 2 && result.Associations.Count == 0, "loose components contribute one game without per-driver matching");
+            Check(!result.Games.Single().AceDirectories.Any(d => d.Contains(@"a\b\c\d\e\f\g")), "manual discovery still cannot silently recurse beyond its directory scope");
             File.Delete(hiddenShared);
             var deep = Path.Combine(root, "DeepGame");
             Write(@"DeepGame\1\2\3\4\5\6\7\AntiCheatExpert\ACE-CORE.sys", "too deep");

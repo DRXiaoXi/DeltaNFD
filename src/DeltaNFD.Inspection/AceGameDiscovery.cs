@@ -36,7 +36,7 @@ internal static class AceGameDiscovery
                     using var installed = key.OpenSubKey(parent);
                     if (installed is null) continue;
                     var names = installed.GetSubKeyNames();
-                    if (names.Length > 2048) notes.Add("安装记录超过读取上限，部分游戏归属待核对。");
+                    if (names.Length > 2048) notes.Add("安装记录超过读取上限，部分游戏数量待核对。");
                     foreach (var name in names.Take(2048))
                     {
                         if (blocked()) throw new OperationCanceledException();
@@ -62,7 +62,7 @@ internal static class AceGameDiscovery
         foreach (var candidate in ReadSteam(steam, notes, blocked)) Add(candidate.Name, candidate.Root, candidate.Source);
         var epic = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Epic", "EpicGamesLauncher", "Data", "Manifests");
         foreach (var candidate in ReadEpic(epic, notes, blocked)) Add(candidate.Name, candidate.Root, candidate.Source);
-        if (candidates.Count >= 1024) notes.Add("游戏安装位置达到读取上限，部分归属待核对。");
+        if (candidates.Count >= 1024) notes.Add("游戏安装位置达到读取上限，部分游戏数量待核对。");
         try
         {
             if (blocked()) throw new OperationCanceledException();
@@ -99,7 +99,7 @@ internal static class AceGameDiscovery
                 var folders = Path.Combine(steamRoot, "steamapps", "libraryfolders.vdf");
                 if (File.Exists(folders))
                     foreach (Match match in Quoted("path").Matches(ReadText(folders))) libraries.Add(Unescape(match.Groups[1].Value));
-                if (libraries.Count > 32) notes.Add("Steam 库超过读取上限，部分归属待核对。");
+                if (libraries.Count > 32) notes.Add("Steam 库超过读取上限，部分游戏数量待核对。");
                 foreach (var library in libraries.Take(32))
                 {
                     if (blocked()) throw new OperationCanceledException();
@@ -109,7 +109,7 @@ internal static class AceGameDiscovery
                     foreach (var manifest in Directory.EnumerateFiles(apps, "appmanifest_*.acf").Take(1025))
                     {
                         if (blocked()) throw new OperationCanceledException();
-                        if (++examined > 1024) { notes.Add("Steam 安装清单超过读取上限，部分归属待核对。"); break; }
+                        if (++examined > 1024) { notes.Add("Steam 安装清单超过读取上限，部分游戏数量待核对。"); break; }
                         try
                         {
                             var text = ReadText(manifest);
@@ -121,12 +121,12 @@ internal static class AceGameDiscovery
                             result.Add(new(Unescape(Quoted("name").Match(text).Groups[1].Value), root, "Steam"));
                         }
                         catch (OperationCanceledException) { throw; }
-                        catch { notes.Add("部分 Steam 游戏清单无法读取，归属待核对。"); }
+                        catch { notes.Add("部分 Steam 游戏清单无法读取，游戏数量待核对。"); }
                     }
                 }
             }
             catch (OperationCanceledException) { throw; }
-            catch { notes.Add("部分 Steam 安装记录无法读取，归属待核对。"); }
+            catch { notes.Add("部分 Steam 安装记录无法读取，游戏数量待核对。"); }
         }
         return result;
     }
@@ -142,7 +142,7 @@ internal static class AceGameDiscovery
                 foreach (var manifest in Directory.EnumerateFiles(manifests, "*.item").Take(513))
                 {
                     if (blocked()) throw new OperationCanceledException();
-                    if (++examined > 512) { notes.Add("Epic 清单超过读取上限，部分归属待核对。"); break; }
+                    if (++examined > 512) { notes.Add("Epic 清单超过读取上限，部分游戏数量待核对。"); break; }
                     try
                     {
                         using var document = JsonDocument.Parse(ReadText(manifest));
@@ -150,11 +150,11 @@ internal static class AceGameDiscovery
                             result.Add(new(document.RootElement.TryGetProperty("DisplayName", out var name) && name.ValueKind == JsonValueKind.String ? name.GetString() ?? "Epic 游戏" : "Epic 游戏", location.GetString() ?? "", "Epic"));
                     }
                     catch (OperationCanceledException) { throw; }
-                    catch { notes.Add("部分 Epic 游戏清单无法读取，归属待核对。"); }
+                    catch { notes.Add("部分 Epic 游戏清单无法读取，游戏数量待核对。"); }
                 }
         }
         catch (OperationCanceledException) { throw; }
-        catch { notes.Add("部分 Epic 安装记录无法读取，归属待核对。"); }
+        catch { notes.Add("部分 Epic 安装记录无法读取，游戏数量待核对。"); }
         return result;
     }
 

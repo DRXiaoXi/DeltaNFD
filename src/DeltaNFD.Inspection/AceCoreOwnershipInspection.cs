@@ -1,20 +1,17 @@
 using System.Diagnostics;
-using System.Security.Cryptography;
 using DeltaNFD.Services;
 
 namespace DeltaNFD.Inspection;
 
-/// <summary>Bounded read-only inventory. Hash associations remain distinct from the user-defined count warning.</summary>
+/// <summary>Bounded metadata-only inventory of ACE games and shared CORE files; no payload hashing.</summary>
 internal static class AceCoreOwnershipInspection
 {
-    private sealed record CoreFile(string Path, long Size, string? Hash);
     private sealed class Budget
     {
         internal int Entries = 20000;
-        internal long HashBytes = 128L * 1024 * 1024;
         internal void Touch()
         {
-            if (--Entries < 0) throw new IOException("达到目录读取上限，部分归属待核对。");
+            if (--Entries < 0) throw new IOException("达到目录读取上限，部分数量待核对。");
         }
     }
 
@@ -35,9 +32,11 @@ internal static class AceCoreOwnershipInspection
         try
         {
             var shared = ReadCoreFiles(root, budget, notes, CheckGame);
+            // A game discovery gap can only increase the number of games, not the CORE count.
+            // Preserve its details without downgrading an already proved CORE <= known-games result.
+            var coreCountIncomplete = notes.Count > 0;
             var candidates = (discover ?? AceGameDiscovery.Read)(notes, CheckGame);
             var games = new List<AceGameInstallation>();
-            var gameFiles = new List<List<CoreFile>>();
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             Stopwatch? manualWatch = null;
             foreach (var candidate in candidates)
@@ -74,68 +73,50 @@ internal static class AceCoreOwnershipInspection
                     }
                     // Registry/launcher records can point at different levels of the same installation.
                     var existing = games.FindIndex(g => g.AceDirectories.Intersect(paths, StringComparer.OrdinalIgnoreCase).Any());
-                    List<CoreFile> ComponentFiles(string path) => ReadCoreFiles(path, budget, notes, CheckGame,
-                        recursive: !candidate.SearchChildren || Path.GetFileName(path).Equals("AntiCheatExpert", StringComparison.OrdinalIgnoreCase));
                     if (existing >= 0)
                     {
                         if (candidate.ManuallyAssociated) games[existing].ManuallyAssociated = true;
                         foreach (var path in paths.Except(games[existing].AceDirectories, StringComparer.OrdinalIgnoreCase))
                         {
                             games[existing].AceDirectories.Add(path);
-                            gameFiles[existing].AddRange(ComponentFiles(path));
                         }
                         continue;
                     }
                     games.Add(new() { Name = candidate.Name, InstallDirectory = directory, Source = candidate.Source,
                         AceDirectories = paths, ManuallyAssociated = candidate.ManuallyAssociated });
-                    gameFiles.Add(paths.SelectMany(ComponentFiles).ToList());
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex) { notes.Add($"安装位置读取不完整（{candidate.Name}）：{ex.Message}"); }
             }
             if (blocked()) return Blocked(); // Do not publish an inventory after the game has started.
-            var associations = shared.Select(file => new AceCoreAssociation
-            {
-                Path = file.Path,
-                Games = file.Hash is null ? [] : games.Where((_, i) => gameFiles[i].Any(f => f.Hash == file.Hash))
-                    .Select(g => $"{g.Name}（{g.InstallDirectory}）").ToList(),
-                Evidence = file.Hash is null ? "文件未能完整读取，归属待核对。" : "",
-            }).Select(a => new AceCoreAssociation
-            {
-                Path = a.Path, Games = a.Games,
-                Evidence = a.Games.Count > 0 ? "与游戏 ACE 目录内驱动副本的 SHA256 完全一致。" +
-                    (a.Games.Count > 1 ? "多款游戏使用相同组件，不能确认独占归属。" : "") :
-                    a.Evidence.Length > 0 ? a.Evidence : "未找到可匹配的游戏内驱动副本；不代表冗余或异常。",
-            }).ToList();
-            var unknown = associations.Count(a => a.Games.Count == 0);
             var manualCount = games.Count(g => g.ManuallyAssociated);
             var excess = shared.Count > games.Count;
-            var level = AceCoreCountPolicy.Evaluate(shared.Count, games.Count, manualCount, notes.Count > 0 || unknown > 0);
+            var level = AceCoreCountPolicy.Evaluate(shared.Count, games.Count, manualCount, coreCountIncomplete);
             var countSummary = $"检测到 {games.Count} 个包含 ACE 组件的游戏安装目录、{shared.Count} 个共享 ACE-CORE 驱动文件；已手动关联 {manualCount} 个游戏。";
             var detail = level == AceCoreCheckLevel.Abnormal
                 ? $"手动关联后 CORE 数量仍偏多（{shared.Count} > {games.Count}），按本工具计数规则判定异常。"
                 : excess ? $"CORE 数量偏多（{shared.Count} > {games.Count}），尚未完成有效手动关联，请先添加/关联 ACE 游戏。"
-                : level == AceCoreCheckLevel.NeedsReview ? $"CORE 数量未超出已识别游戏数（{shared.Count} ≤ {games.Count}）；"
-                    + (unknown > 0 ? $"{unknown} 个文件归属仍待核对，仅作信息提示。" : "部分信息尚未读全，仅作待核对说明。")
-                : shared.Count > 0 ? "数量未超过已识别游戏数，驱动副本已匹配游戏。" : "未发现共享 ACE-CORE 文件，不代表游戏内没有 ACE。";
-            if (level == AceCoreCheckLevel.Abnormal && (notes.Count > 0 || unknown > 0))
-                detail += "部分读取或驱动归属仍待核对，请查看明细。";
+                : level == AceCoreCheckLevel.NeedsReview ? $"当前已读 CORE 数量未超出已识别游戏数（{shared.Count} ≤ {games.Count}）；共享 CORE 目录尚未读全，驱动总数待核对。"
+                : shared.Count > 0 ? "CORE 数量未超过已识别的 ACE 游戏数量，数量核对正常。" : "未发现共享 ACE-CORE 文件，不代表游戏内没有 ACE。";
+            if (level == AceCoreCheckLevel.Abnormal && notes.Count > 0)
+                detail += "部分目录或安装信息仍待核对，请查看明细。";
             return new()
             {
                 Level = level, SysCount = shared.Count,
-                Files = shared.Select(f => $"· {Path.GetRelativePath(root, f.Path)}（{(f.Size < 0 ? "大小待核对" : $"{f.Size / 1048576.0:0.0} MB")}）").ToList(),
-                Games = games, Associations = associations, Notes = notes.Distinct().Take(32).ToList(),
+                Files = shared.Select(path => "· " + Path.GetRelativePath(root, path)).ToList(),
+                Games = games, Notes = notes.Distinct().Take(32).ToList(),
                 ManuallyAssociatedGameCount = manualCount,
                 Summary = countSummary + detail,
-                Advice = excess ? "请确认所有含 ACE 的游戏均已添加/关联，并重新检测。计数提醒不证明多余文件已失效或可删除，读取缺口和哈希归属请查看明细。"
-                    : "存在未匹配文件或读取缺口时请核对游戏目录；如游戏实际报错，可使用对应启动器修复。检测不会自动删除组件。",
+                Advice = excess ? "请确认所有含 ACE 的游戏均已添加/关联，并重新检测。计数提醒不证明多余文件已失效或可删除，目录读取缺口请查看明细。"
+                    : coreCountIncomplete ? "共享 CORE 目录未读全，不能确认驱动总数，请查看读取明细后重试。检测不会自动删除组件。"
+                    : "按已读完整的共享 CORE 文件数与已确认的 ACE 游戏数量核对，不要求驱动内容匹配；其他游戏检索提示保留在明细，不影响本次数量结果。检测不会自动删除组件。",
             };
         }
         catch (OperationCanceledException) { return Blocked(); }
         catch (Exception ex)
         {
             return new() { Level = AceCoreCheckLevel.Failed, SysCount = 0, Files = [],
-                Summary = "ACE 游戏与驱动归属检测未完成。", Advice = "请稍后重试，读取失败不代表组件异常。", Notes = [ex.Message] };
+                Summary = "ACE 游戏与 CORE 数量检测未完成。", Advice = "请稍后重试，读取失败不代表组件异常。", Notes = [ex.Message] };
         }
     }
 
@@ -148,9 +129,9 @@ internal static class AceCoreOwnershipInspection
                 .Any(folder => string.Equals(path, Environment.GetFolderPath(folder).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase));
     }
 
-    private static List<CoreFile> ReadCoreFiles(string root, Budget budget, List<string> notes, Func<bool> blocked, bool recursive = true)
+    private static List<string> ReadCoreFiles(string root, Budget budget, List<string> notes, Func<bool> blocked)
     {
-        var result = new List<CoreFile>();
+        var result = new List<string>();
         try { _ = File.GetAttributes(root); }
         catch (FileNotFoundException) { return result; }
         catch (DirectoryNotFoundException) { return result; }
@@ -173,54 +154,27 @@ internal static class AceCoreOwnershipInspection
                     if ((attributes & FileAttributes.ReparsePoint) != 0) { notes.Add($"跳过链接：{path}"); continue; }
                     if ((attributes & FileAttributes.Directory) != 0)
                     {
-                        if (!recursive) continue;
                         if (item.Depth >= 16) notes.Add($"目录层级超过读取上限：{path}");
                         else pending.Push((path, item.Depth + 1));
                     }
                     else if (Path.GetExtension(path).Equals(".sys", StringComparison.OrdinalIgnoreCase) &&
                         Path.GetFileName(path).StartsWith("ACE-CORE", StringComparison.OrdinalIgnoreCase))
                     {
-                        long size = -1;
-                        string? hash = null;
-                        try
-                        {
-                            var info = new FileInfo(path);
-                            size = info.Length;
-                            var modified = info.LastWriteTimeUtc;
-                            if (size <= 0 || size > 16L * 1024 * 1024 || size > budget.HashBytes) throw new IOException("文件为空或超过驱动读取预算。");
-                            budget.HashBytes -= size;
-                            using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                            using var digest = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-                            var buffer = new byte[65536];
-                            long readTotal = 0;
-                            int read;
-                            while ((read = file.Read(buffer, 0, buffer.Length)) > 0)
-                            {
-                                if (blocked()) throw new OperationCanceledException();
-                                if ((readTotal += read) > size) throw new IOException("读取期间文件发生变化。");
-                                digest.AppendData(buffer, 0, read);
-                            }
-                            info.Refresh();
-                            if (readTotal != size || info.Length != size || info.LastWriteTimeUtc != modified ||
-                                (info.Attributes & FileAttributes.ReparsePoint) != 0 || !AceGameDiscovery.SafeDirectory(item.Path))
-                                throw new IOException("读取期间文件或路径发生变化。");
-                            hash = Convert.ToHexString(digest.GetHashAndReset());
-                        }
-                        catch (OperationCanceledException) { throw; }
-                        catch (Exception ex) { notes.Add($"驱动副本待核对：{path}（{ex.Message}）"); }
-                        result.Add(new(path, size, hash));
+                        if (!AceGameDiscovery.SafeDirectory(item.Path)) throw new IOException("读取期间目录路径发生变化，数量待核对。");
+                        // Enumerating metadata is sufficient for counting; do not open SYS payloads.
+                        result.Add(path);
                     }
                 }
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex) { notes.Add($"组件目录读取不完整：{item.Path}（{ex.Message}）"); }
         }
-        return result.OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase).ToList();
+        return result.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     private static AceCoreCheckResult Blocked() => new()
     {
         Level = AceCoreCheckLevel.Blocked, SysCount = 0, Files = [],
-        Summary = "三角洲正在运行，已暂停 ACE 组件与游戏归属检测。", Advice = "退出游戏后重新检测。",
+        Summary = "三角洲正在运行，已暂停 ACE 游戏与 CORE 数量检测。", Advice = "退出游戏后重新检测。",
     };
 }

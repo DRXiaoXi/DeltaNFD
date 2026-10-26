@@ -19,7 +19,7 @@ public partial class AceViewModel : ObservableObject
     [ObservableProperty] private string pathsText = "";
     [ObservableProperty] private string registryText = "";
     [ObservableProperty] private bool canClean;
-    [ObservableProperty] private string coreCheckText = "正在检测 ACE 游戏与 ACE-CORE 组件归属…";
+    [ObservableProperty] private string coreCheckText = "正在核对 ACE 游戏与 ACE-CORE 数量…";
     [ObservableProperty] private AceCoreCheckLevel coreCheckLevel;
     [ObservableProperty] private bool coreHasExcess;
     [ObservableProperty] private string coreCheckSummary = "";
@@ -28,7 +28,7 @@ public partial class AceViewModel : ObservableObject
     {
         AceCoreCheckLevel.Abnormal => "ACE-CORE 数量异常：手动关联后仍偏多",
         AceCoreCheckLevel.Failed => "ACE-CORE 检测未完成",
-        AceCoreCheckLevel.NeedsReview when !CoreHasExcess => "ACE-CORE 归属信息提示（数量未超限）",
+        AceCoreCheckLevel.NeedsReview when !CoreHasExcess => "ACE-CORE 数量待核对（信息未读全）",
         _ => "ACE-CORE 需要核对",
     };
     partial void OnCoreCheckLevelChanged(AceCoreCheckLevel value)
@@ -245,7 +245,7 @@ public partial class AceViewModel : ObservableObject
                 : "存在阻止进程，无法清理。";
             CanClean = scan.CanClean && scan.AnythingFound;
 
-            // 进页读取 ACE 游戏安装位置与驱动归属，不按文件数量判断异常。
+            // 进页读取 ACE 游戏安装位置与 CORE 数量，沿用手动关联前后黄红计数规则。
             await CheckCoreFilesAsync();
         }
         catch (Exception ex)
@@ -338,9 +338,6 @@ public partial class AceViewModel : ObservableObject
                 text.AppendLine($"  安装目录：{game.InstallDirectory}");
                 foreach (var directory in game.AceDirectories) text.AppendLine($"  ACE 目录：{directory}");
             }
-            if (result.Associations.Count > 0) text.AppendLine("\n驱动匹配：");
-            foreach (var association in result.Associations)
-                text.AppendLine($"· {association.Path}\n  {(association.Games.Count > 0 ? string.Join("；", association.Games) : "归属待核对")}\n  {association.Evidence}");
             foreach (var note in result.Notes) text.AppendLine("· " + note);
 
             text.Append("👉 " + result.Advice);

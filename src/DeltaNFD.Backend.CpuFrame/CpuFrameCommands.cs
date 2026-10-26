@@ -103,11 +103,11 @@ internal static class CpuFrameCommands
         }
     }
 
-    private static Task<BackendResult> StatusAsync(BackendCommandContext context)
+    private static async Task<BackendResult> StatusAsync(BackendCommandContext context)
     {
-        var snapshot = Engine.Snapshot();
-        return Task.FromResult(BackendResult.Ok(context.Command,
-            $"监控{(snapshot.MonitorRunning ? "运行中" : "已停止")}；游戏{(snapshot.GameRunning ? "运行中" : "未运行")}。", snapshot));
+        var snapshot = await Engine.ReadStatusAsync(context.CancellationToken);
+        return BackendResult.Ok(context.Command,
+            $"监控{(snapshot.MonitorRunning ? "运行中" : "已停止")}；游戏{(snapshot.GameRunning ? "运行中" : "未运行")}。", snapshot);
     }
 
     private static async Task<BackendResult> MonitorStartAsync(BackendCommandContext context)

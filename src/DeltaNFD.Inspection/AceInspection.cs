@@ -150,7 +150,7 @@ public sealed class AceInspection
         // C:\Program Files\AntiCheatExpert 下全部 *.sys，是纯粹"碰"ACE 的操作，必须先拦。
         if (_deltaRunning())
         {
-            Log.Info("ACE 检测：跳过 ACE-CORE 游戏归属检测（三角洲进程运行中）");
+            Log.Info("ACE 检测：跳过 ACE 游戏与 CORE 数量检测（三角洲进程运行中）");
             return BlockedCore();
         }
 

@@ -128,10 +128,10 @@ public sealed class AceVirtualizationCheckResult
 }
 public enum AceCoreCheckLevel
 {
-    /// <summary>未安装 / 未找到 ACE-CORE 文件（无需处理）。</summary>
+    /// <summary>未找到共享 ACE-CORE 文件；不代表游戏内未安装 ACE。</summary>
     None,
 
-    /// <summary>已匹配游戏的 ACE-CORE 文件；多款游戏可以正常共存。</summary>
+    /// <summary>共享 CORE 数量读取完整且未超过已确认游戏数；其他游戏检索缺口不影响此结论，不要求内容匹配。</summary>
     Normal,
 
     /// <summary>已有效手动关联游戏，且共享 CORE 文件数仍超过去重游戏数；属于工具计数策略，不证明文件可删除。</summary>
@@ -143,7 +143,7 @@ public enum AceCoreCheckLevel
     /// <summary>三角洲进程运行中，已跳过检测（未读取 ACE 目录），不能据此判定 ACE 状态。</summary>
     Blocked,
 
-    /// <summary>待核对：数量偏多时黄色；数量未超限时仅作信息提示。归属/扫描缺口仍保留。</summary>
+    /// <summary>待核对：数量偏多时黄色；共享 CORE 数量未读全时仅作信息提示。其他游戏检索提示保留在明细。</summary>
     NeedsReview,
 }
 
@@ -164,7 +164,7 @@ public sealed class AceCoreAssociation
     public string Evidence { get; init; } = "";
 }
 
-/// <summary>ACE 游戏与 ACE-CORE 文件归属检测结果（纯只读）。</summary>
+/// <summary>ACE 游戏与 ACE-CORE 数量检测结果（纯只读）。</summary>
 public sealed class AceCoreCheckResult
 {
     public required AceCoreCheckLevel Level { get; init; }
@@ -172,13 +172,14 @@ public sealed class AceCoreCheckResult
     /// <summary>检测到的 ACE-CORE 系列 sys 文件数量。</summary>
     public required int SysCount { get; init; }
 
-    /// <summary>明细（相对路径 + 大小）。</summary>
+    /// <summary>文件明细（相对路径，不读取文件内容）。</summary>
     public required List<string> Files { get; init; }
 
     public required string Summary { get; init; }
 
     public required string Advice { get; init; }
     public List<AceGameInstallation> Games { get; init; } = [];
+    /// <summary>兼容旧合同的可选字段；当前数量检测不建立逐文件归属，返回空列表。</summary>
     public List<AceCoreAssociation> Associations { get; init; } = [];
     public List<string> Notes { get; init; } = [];
     public int ManuallyAssociatedGameCount { get; init; }
@@ -207,8 +208,8 @@ public interface IAceService
     Task<OperationResult> CleanCoreFilesAsync(IProgress<string>? progress = null);
 
     /// <summary>
-    /// ACE 游戏与驱动归属检测（纯只读）：统计 %ProgramFiles%\AntiCheatExpert 下
-    /// 文件名含 ACE-CORE 的 .sys 文件并核对游戏归属；数量偏多时按是否有效手动关联显示黄/红提醒。
+    /// ACE 游戏与驱动数量检测（纯只读）：统计 %ProgramFiles%\AntiCheatExpert 下
+    /// ACE-CORE*.sys 文件并与已识别的 ACE 游戏数量核对；数量偏多时按是否有效手动关联显示黄/红提醒。
     /// </summary>
     Task<AceCoreCheckResult> CheckCoreFilesAsync();
 

@@ -5,7 +5,7 @@
                 <ui:PageHeader Title="ACE 相关"/>
                 <TextBlock Text="AntiCheatExpert 反作弊组件管理，等效官方卸载程序" Style="{StaticResource PageSubtitleStyle}"/>
             </StackPanel>
-            <!-- ACE 游戏与组件归属检测 -->
+            <!-- ACE 游戏与组件数量检测 -->
             <Grid RowSpacing="12" ColumnSpacing="12" ui:AdaptiveColumns.Enabled="True" ui:AdaptiveColumns.Threshold="900" ui:AdaptiveColumns.LeftWeight="1" ui:AdaptiveColumns.RightWeight="1">
                 <Border Style="{StaticResource FeatureCardBorderStyle}" ui:AdaptiveColumns.WideRow="0" ui:AdaptiveColumns.WideColumn="0" ui:AdaptiveColumns.WideSpan="1">
                     <StackPanel Spacing="10">
@@ -19,7 +19,7 @@
                             </Grid.RowDefinitions>
                             <StackPanel Spacing="4" Grid.Row="0">
                                 <TextBlock Text="ACE 游戏与 ACE-CORE 检测" Style="{StaticResource SectionTitleStyle}"/>
-                                <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="读取自动识别与手动关联的 ACE 游戏，并核对驱动副本。CORE 数量超过去重后的游戏数时：未有效手动关联显示黄色；有效手动关联后仍过多显示红色。读取缺口及未匹配文件保留核对明细。"/>
+                                <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="按自动识别与手动关联的 ACE 游戏数量核对 CORE 文件数，不读取驱动内容。数量未超过游戏数且读取完整时显示正常；CORE 偏多时，未有效手动关联显示黄色，有效手动关联后仍过多显示红色。目录未读全时保留待核对说明。"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Grid.Row="1">
                                 <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.CoreCheckBusy, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}"/>
@@ -138,7 +138,7 @@
             <!-- 说明 -->
             <Border Style="{StaticResource CardBorderStyle}" Padding="20,14">
                 <StackPanel Spacing="6">
-                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="· 三角洲进程运行时，本页的组件扫描与 ACE-CORE 游戏归属检测会整体暂停：完全不读取 ACE 服务、目录与注册表项，避免在反作弊运行期间触碰其组件。游戏退出后自动恢复，也可手动点「重新扫描」。"/>
+                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="· 三角洲进程运行时，本页的组件扫描与 ACE 游戏与 CORE 数量检测会整体暂停：完全不读取 ACE 服务、目录与注册表项，避免在反作弊运行期间触碰其组件。游戏退出后自动恢复，也可手动点「重新扫描」。"/>
                     <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="· sguard64.exe（反作弊守卫）或游戏本体运行时，本功能会拒绝执行——请先完全退出游戏（含后台 sguard64 进程）。"/>
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="·「一键清除 ACE」会将被占用的文件登记为重启后删除；「仅清理 ACE-CORE SYS」会保留被占用的文件并显示原因，供退出游戏后重试。"/>
                     <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="· 清理后请先通过游戏启动器执行普通修复，补齐 ACE 组件，再启动游戏。"/>

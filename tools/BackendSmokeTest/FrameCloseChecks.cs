@@ -73,19 +73,19 @@ internal static class FrameCloseChecks
             engine.TickForTests = async _ => { Interlocked.Increment(ref tickCount); entered.TrySetResult(); await release.Task; };
             await engine.StartMonitorAsync();
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            var first = engine.Snapshot();
+            var first = await engine.ReadStatusAsync();
             Check(first.DeltaForceRunning == false && first.DeltaForceObservedUtc == clock,
                 "busy tick does not block the independent Delta observation");
             engine.Snapshot();
             Check(deltaReads == 1, "repeated snapshots within the heartbeat do not duplicate process queries");
             clock = clock.AddSeconds(12);
-            var next = engine.Snapshot();
+            var next = await engine.ReadStatusAsync();
             Check(next.DeltaForceObservedUtc == clock && next.DeltaForceRunning == false && deltaReads == 2,
                 "status heartbeat stays fresh beyond the former ten-second stale limit");
             clock = clock.AddSeconds(2); engine.DeltaReaderForTests = () => throw new IOException("fixture read denied");
-            Check(engine.Snapshot().DeltaForceRunning is null, "actual observation failure remains unknown");
+            Check((await engine.ReadStatusAsync()).DeltaForceRunning is null, "actual observation failure remains unknown");
             clock = clock.AddSeconds(2); engine.DeltaReaderForTests = () => false;
-            Check(engine.Snapshot().DeltaForceRunning == false, "same heartbeat recovers without a second monitor");
+            Check((await engine.ReadStatusAsync()).DeltaForceRunning == false, "same heartbeat recovers without a second monitor");
             var restored = false;
             var stop = engine.SerializeAutomationAsync(() => { restored = true; return Task.FromResult(true); }, stopMonitor: true);
             Check(!restored && !stop.IsCompleted, "stop waits for the submitted tick instead of racing its policy writes");
@@ -94,7 +94,7 @@ internal static class FrameCloseChecks
             Check(restored && tickCount == 1 && !engine.Snapshot().MonitorRunning,
                 "stop cancels future ticks and performs the restore after the held tick drains");
             clock = clock.AddSeconds(2);
-            Check(engine.Snapshot() is { MonitorRunning: false, DeltaForceRunning: false } stopped
+            Check(await engine.ReadStatusAsync() is { MonitorRunning: false, DeltaForceRunning: false } stopped
                 && stopped.DeltaForceObservedUtc == clock, "stopped automation retains fresh read-only observation");
             var commandEntered = Signal(); var commandRelease = Signal();
             var command = engine.SerializeAutomationAsync(async () => { commandEntered.SetResult(); await commandRelease.Task; return true; });
@@ -104,6 +104,35 @@ internal static class FrameCloseChecks
             Check(!secondStarted, "two user mutations share the same serialization as maintenance");
             commandRelease.SetResult(); await Task.WhenAll(command, second).WaitAsync(TimeSpan.FromSeconds(5));
             Check(secondStarted && api.Writes.Count == 0, "queued command drains without any fixture system write");
+
+            // A slow independent process lookup must not hold the status/pipe thread or fan out.
+            clock = clock.AddSeconds(2);
+            var lookupEntered = Signal();
+            using var lookupRelease = new ManualResetEventSlim();
+            var lookups = 0;
+            engine.DeltaReaderForTests = () =>
+            {
+                Interlocked.Increment(ref lookups); lookupEntered.TrySetResult();
+                lookupRelease.Wait(); return false;
+            };
+            try
+            {
+                var snapshotRead = Task.Run(engine.Snapshot);
+                await lookupEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+                await snapshotRead.WaitAsync(TimeSpan.FromSeconds(1));
+                Check(true, "slow native lookup does not block snapshot production");
+                for (var i = 0; i < 20; i++) engine.Snapshot();
+                Check(lookups == 1, "heartbeats coalesce exactly one pending native lookup");
+                clock = clock.AddSeconds(11);
+                var stale = engine.Snapshot();
+                Check(GameObservationState.ReadDelta(stale, clock) is null && stale.DeltaForceObservationError.Contains("连接仍在"),
+                    "slow lookup makes game status unknown while transport remains live");
+            }
+            finally { lookupRelease.Set(); }
+            await engine.ReadStatusAsync();
+            var fresh = await engine.ReadStatusAsync();
+            Check(fresh.DeltaForceRunning == false && fresh.DeltaForceObservedUtc == clock,
+                "completed old lookup is not mislabeled fresh; next heartbeat refresh recovers");
 
             Console.WriteLine($"Frame close checks: {_count} passed; real engine scheduling with held fake ticks, simulated native power API only. No host policies/process attributes changed.");
         }

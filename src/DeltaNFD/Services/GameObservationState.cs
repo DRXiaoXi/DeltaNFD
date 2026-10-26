@@ -9,6 +9,8 @@ internal sealed class GameObservationState : IDisposable
     private readonly Func<DateTimeOffset> _clock;
     private readonly CancellationTokenSource _cts = new();
     private readonly object _stateGate = new();
+    private int _connectionPauses;
+    private int _connectionGeneration;
     private int _connecting, _disposed;
     internal GameObservationState(Func<CancellationToken, Task> observe, Func<CancellationToken, Task> automate,
         Func<bool> blocked, Func<DateTimeOffset>? clock = null)
@@ -64,16 +66,28 @@ internal sealed class GameObservationState : IDisposable
     // it must never replay a failed/unknown mutation or erase the retained recovery evidence.
     internal async Task ConnectAsync(bool bootstrapAutomation = false)
     {
-        if (Volatile.Read(ref _disposed) != 0 || Interlocked.CompareExchange(ref _connecting, 1, 0) != 0) return;
+        if (Volatile.Read(ref _disposed) != 0 || Volatile.Read(ref _connectionPauses) != 0
+            || Interlocked.CompareExchange(ref _connecting, 1, 0) != 0) return;
+        CancellationTokenSource? connection = null;
+        var generation = 0;
         try
         {
+            lock (_stateGate)
+            {
+                if (_disposed != 0 || _connectionPauses != 0) return;
+                connection = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+                generation = _connectionGeneration;
+            }
+            var token = connection.Token;
             if (_blocked()) { Unavailable("脱机或恢复流程中，请先完成核对；未启动普通游戏观测。"); return; }
             Failure = "正在重新确认三角洲运行状态。"; Notify();
-            await _observe(_cts.Token).ConfigureAwait(false);
-            if (bootstrapAutomation && !_cts.IsCancellationRequested && !_blocked())
+            await _observe(token).ConfigureAwait(false);
+            if (bootstrapAutomation && !token.IsCancellationRequested
+                && generation == Volatile.Read(ref _connectionGeneration)
+                && Volatile.Read(ref _connectionPauses) == 0 && !_blocked())
             {
-                try { await _automate(_cts.Token).ConfigureAwait(false); }
-                catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
+                try { await _automate(token).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { }
                 catch (Exception ex)
                 {
                     AutomationFailure = ex.Message;
@@ -81,9 +95,33 @@ internal sealed class GameObservationState : IDisposable
                 }
             }
         }
-        catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested || connection?.IsCancellationRequested == true) { }
         catch (Exception ex) { Unavailable("游戏状态连接失败：" + ex.Message); Log.Warn(Failure); }
-        finally { Interlocked.Exchange(ref _connecting, 0); if (Volatile.Read(ref _disposed) == 0) Notify(); }
+        finally
+        {
+            connection?.Dispose();
+            Interlocked.Exchange(ref _connecting, 0);
+            if (Volatile.Read(ref _disposed) == 0) Notify();
+        }
+    }
+
+    internal IDisposable PauseConnections()
+    {
+        // Revoke a delayed bootstrap, not an already submitted IPC request. Its cancellation could
+        // create an unknown operation; the existing handover instead drains that request safely.
+        lock (_stateGate) { _connectionPauses++; _connectionGeneration++; }
+        return new ConnectionPause(this);
+    }
+    private sealed class ConnectionPause(GameObservationState owner) : IDisposable
+    {
+        private GameObservationState? _owner = owner;
+        public void Dispose()
+        {
+            var state = Interlocked.Exchange(ref _owner, null);
+            if (state is null) return;
+            lock (state._stateGate) state._connectionPauses--;
+            // Resuming only permits a future explicit connection; never replay an automatic write.
+        }
     }
     private void Notify()
     {
