@@ -41,8 +41,8 @@ internal sealed class ExitOperationScope : IDisposable
         }
         // Release every admission even if an unrelated component's lease throws.
         List<Exception>? failures = null;
-        foreach (var lease in leases.Reverse())
-            try { lease.Dispose(); } catch (Exception ex) { (failures ??= []).Add(ex); }
+        for (var i = leases.Length - 1; i >= 0; i--)
+            try { leases[i].Dispose(); } catch (Exception ex) { (failures ??= []).Add(ex); }
         if (failures is not null) throw new AggregateException("退出准入释放失败。", failures);
     }
 
