@@ -14,7 +14,7 @@ internal static class RuntimeHighFpsChecks
         Check(BackendModules.IsAllowed(BackendModules.Runtime, BackendCommands.Vc14Repair), "0.9192 V14 repair lost");
         Check(EmergencyPolicyVerifier.CanBlock(BackendCommands.RuntimeHighFpsRepair), "emergency policy must cover restored repair");
         Check(!RuntimeHighFpsMaintenance.NeedsV14Uninstall(new([], [], []), []), "fresh absent runtime proceeds to installation without unnecessary uninstall");
-        var installed = new Vc14Entry("{A}", "Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.44", Vc14Reinstall.BaselineVersion, "x64", "Minimum", "{U}");
+        var installed = new Vc14Entry("{A}", "Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.42", "14.42.34433", "x64", "Minimum", "{U}");
         Check(RuntimeHighFpsMaintenance.NeedsV14Uninstall(new([installed], [], []), []), "installed CRT needs controlled removal before full repair");
         var residue = new Vc14RemovalPlanItem("{B}", "x86", "wrapper", "14.51", "unknown", "", "", "");
         Check(RuntimeHighFpsMaintenance.NeedsV14Uninstall(new([], [], []), [residue]), "unresolved uninstall registration also needs controlled removal");

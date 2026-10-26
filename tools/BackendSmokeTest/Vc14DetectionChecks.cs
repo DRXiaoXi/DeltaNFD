@@ -20,7 +20,7 @@ internal static class Vc14DetectionChecks
             ("Microsoft Visual C++ 2022", "14.43.35211", Vc14Severity.Warning),
             ("Microsoft Visual C++ 2022", "14.45.35211", Vc14Severity.Warning),
             ("Microsoft Visual C++ 2022", "14.440.35211", Vc14Severity.Warning),
-            ("Microsoft Visual C++ 2022", "14.42.34433.0", Vc14Severity.Warning) })
+            ("Microsoft Visual C++ 2022", "14.42.34433.0", Vc14Severity.Normal) })
             Check(Vc14Catalog.Classify(name, version) == severity, "read-only compatibility classification changed");
         // 横幅放宽（2026-10-15）：红色只由真实 MSI 组件驱动；包装/残留登记最高 Warning；Appx 不进横幅。
         var noProducts = new List<Vc14Entry>();
@@ -89,7 +89,7 @@ internal static class Vc14DetectionChecks
         var emptyScan = new Vc14Scan([], [], []);
         Check(emptyScan.IsMissing && emptyScan.HasAbnormal && !emptyScan.HasWarning, "complete empty scan is red missing");
         Check(emptyScan.AbnormalTitle.Contains("缺少") && emptyScan.GetAbnormalNotices().Single().Detail.Contains("无法启动"), "missing title/action describe launch risk");
-        Check(emptyScan.GetAbnormalNotices().Single().Detail.Contains("14.44"), "missing guidance uses the pinned baseline");
+        Check(emptyScan.GetAbnormalNotices().Single().Detail.Contains("14.42"), "missing guidance uses the pinned baseline");
         var appxOnly = new Vc14Scan([], [appxNotice], []);
         Check(appxOnly.IsMissing && appxOnly.HasAbnormal && !appxOnly.HasWarning, "Appx alone cannot hide missing Win32 runtime");
         var orphanOnly = new Vc14Scan([], [orphanNotice], []);
@@ -190,9 +190,9 @@ internal static class Vc14DetectionChecks
         foreach (var type in new[] { "Vc14Reinstall", "Vc14ReinstallEnvironment", "IVc14ReinstallEnvironment" })
             Check(assembly.GetType("DeltaNFD.Services." + type) is not null, "reinstall implementation missing: " + type);
         // 基线固定：用户 2026-10-15 提供的 14.42.34433 双架构原包哈希。
-        Check(Vc14Reinstall.BaselineVersion == "14.44.35211.0", "baseline version changed");
-        Check(Vc14Reinstall.BaselineHashes["x64"] == "CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B"
-            && Vc14Reinstall.BaselineHashes["x86"] == "0C09F2611660441084CE0DF425C51C11E147E6447963C3690F97E0B25C55ED64", "baseline hashes changed");
+        Check(Vc14Reinstall.BaselineVersion == "14.42.34433.0", "baseline version changed");
+        Check(Vc14Reinstall.BaselineHashes["x64"] == "1821577409C35B2B9505AC833E246376CC68A8262972100444010B57226F0940"
+            && Vc14Reinstall.BaselineHashes["x86"] == "DD1A8BE03398367745A87A5E35BEBDAB00FDAD080CF42AF0C3F20802D08C25D4", "baseline hashes changed");
         // 步骤结果规则：0/3010 成功，3010/1641 需要重启，未知不视为成功。
         var ok = new Vc14StepResult(0); var reboot = new Vc14StepResult(3010); var fail = new Vc14StepResult(1603); var unknown = new Vc14StepResult(0, true);
         Check(ok.Success && !ok.Reboot && reboot.Success && reboot.Reboot && !fail.Success && !unknown.Success, "step result rules changed");

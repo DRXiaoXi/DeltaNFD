@@ -16,8 +16,8 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>0.9302</Version>
-    <InformationalVersion>Beta0.93-RC2</InformationalVersion>
+    <Version>0.9300</Version>
+    <InformationalVersion>Beta0.93</InformationalVersion>
     <WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
 
@@ -41,7 +41,9 @@
   <ItemGroup>
     <Compile Remove="obj\**\*.cs" />
     <EmbeddedResource Include="Execution\AlphaRestore\RuntimeCppOfficial.catalog.json" LogicalName="RuntimeCppOfficial.catalog.json" />
+    <EmbeddedResource Include="Execution\Vc14FileRepair.catalog.json" LogicalName="Vc14FileRepair.catalog.json" />
     <EmbeddedResource Include="Execution\Vc14FileRepair14.44.catalog.json" LogicalName="Vc14FileRepair14.44.catalog.json" />
+    <EmbeddedResource Include="Execution\Vc14ForceReplace.catalog.json" LogicalName="Vc14ForceReplace.catalog.json" />
     <EmbeddedResource Include="Execution\Vc14ForceReplace14.44.catalog.json" LogicalName="Vc14ForceReplace14.44.catalog.json" />
     <EmbeddedResource Include="Execution\Vc14OwnershipOriginals.catalog.json" LogicalName="Vc14OwnershipOriginals.catalog.json" />
   </ItemGroup>

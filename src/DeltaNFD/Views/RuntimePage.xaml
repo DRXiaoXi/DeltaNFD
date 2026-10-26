@@ -3,7 +3,7 @@
         <StackPanel MaxWidth="1440" Padding="28,20,28,32" Spacing="12">
             <StackPanel Spacing="4">
                 <ui:PageHeader Title="运行库"/>
-                <TextBlock Text="C++ 14.x 兼容性检测、V14 单独修复、仅修复 14.x、全量修复与安装器防护；14.x 安装和修复统一使用 14.44；14.42 已过时。" Style="{StaticResource PageSubtitleStyle}" TextWrapping="Wrap"/>
+                <TextBlock Text="C++ 14.x 兼容性检测、V14 单独修复、仅修复 14.x、全量修复与安装器防护；14.x 修复可选择 14.42（默认）或 14.44 基线。" Style="{StaticResource PageSubtitleStyle}" TextWrapping="Wrap"/>
             </StackPanel>
             <InfoBar IsOpen="{x:Bind ViewModel.HasAbnormal, Mode=OneWay}" IsClosable="False" Severity="Error" Title="{x:Bind ViewModel.AbnormalTitle, Mode=OneWay}" Message="{x:Bind ViewModel.AbnormalText, Mode=OneWay}"/>
             <InfoBar IsOpen="{x:Bind ViewModel.HasWarning, Mode=OneWay}" IsClosable="False" Severity="Warning" Title="版本提醒或登记待核对" Message="{x:Bind ViewModel.WarningText, Mode=OneWay}"/>
@@ -12,7 +12,7 @@
                     <TextBlock Text="{x:Bind ViewModel.ManualRepairGuidanceText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" Style="{StaticResource BodyStyle}"/>
                     <Button Content="打开 Windows 已安装的应用" Click="OpenInstalledApps_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}"/>
                     <Button Content="打开所选基线原包文件夹" Click="OpenBaselineFolder_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}"/>
-                    <TextBlock Text="原包：14.44 包含 vc_redist.x64.exe 与 vc_redist.x86.exe，点击打开。此处只打开文件夹，需你手动确认并运行安装器。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <TextBlock Text="原包：14.42/14.44 各含 vc_redist.x64.exe 与 vc_redist.x86.exe，按上方选择打开。此处只打开文件夹，需你手动确认并运行安装器。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                 </StackPanel>
             </InfoBar>
             <!-- 防护模式 -->
@@ -28,16 +28,19 @@
                     <Border Style="{StaticResource CardBorderStyle}">
                         <StackPanel Spacing="10">
                             <TextBlock Text="仅修复 C++ 14.x" Style="{StaticResource SectionTitleStyle}"/>
-                            <TextBlock Text="仅处理 C++ 14.x：卸载检测到的 x86/x64 C++ 14.x 登记（含未知包装，按其登记的卸载命令执行），随后安装工具内置的 2015–2022 双架构原包（14.44.35211）并复检。不会处理 2005–2013、SDK/Debug、ARM64 或 DirectX；修复前请关闭游戏与其他应用，并手动关闭运行库防护。" TextWrapping="Wrap"/>
+                            <TextBlock Text="仅处理 C++ 14.x：卸载检测到的 x86/x64 C++ 14.x 登记（含未知包装，按其登记的卸载命令执行），随后安装工具内置的 2015–2022 双架构原包（默认 14.42.34433，也可选择 14.44.35211）并复检。不会处理 2005–2013、SDK/Debug、ARM64 或 DirectX；修复前请关闭游戏与其他应用，并手动关闭运行库防护。" TextWrapping="Wrap"/>
                             <TextBlock Text="未检测到已安装的 14.x 运行库时显示红色缺失警告；检测失败则保留待核对，不直接判定缺失。实际安装的 14.50、14.51 或 Visual C++ v14 组件仍显示红色兼容性提醒；包装登记与残留条目本身最高黄色，不能证明运行库已安装。Appx 系统组件包由 Windows 管理，不替代 Win32 运行库。14.x 是共享运行库；基线特点见下方说明。卸载完成后、安装基线前会备份并清理旧版工具留下的 v14/2026 残留登记；ARM64、2005–2013、SDK/Debug 与 DirectX 不在此单独修复范围内。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
-                            <TextBlock Text="安装基线：14.44.35211（当前基线）" FontWeight="SemiBold"/>
+                            <ComboBox Header="14.x 安装基线" SelectedIndex="{x:Bind ViewModel.BaselineIndex, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" HorizontalAlignment="Left" MinWidth="260">
+                                <ComboBoxItem Content="14.42.34433（默认）"/>
+                                <ComboBoxItem Content="14.44.35211（兼容性更好）"/>
+                            </ComboBox>
                             <TextBlock Text="{x:Bind ViewModel.SelectedBaselineDescription, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                             <StackPanel Orientation="Horizontal" Spacing="12">
                                 <Button Content="预览并仅修复 14.x" Click="Repair14_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" Style="{StaticResource PrimaryButtonStyle}"/>
                                 <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.RepairIsBusy, Mode=OneWay}"/>
                             </StackPanel>
                             <Button Content="强制替换 14.x DLL（高风险）" Click="ForceReplace14_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" HorizontalAlignment="Left" Style="{StaticResource DangerButtonStyle}"/>
-                            <TextBlock Text="绕过 Windows Installer 的较新文件保护，直接用 14.44 基线的官方文件覆盖 System32/SysWOW64 的 51 个 14.x DLL（x64 26、x86 25），包括把本机其他 14.x 版本强制对齐到目标版本。对照 Vc14RuntimeFix 1.2 补齐：普通用户不可读的权限异常会重置为目录继承权限；属主为 TrustedInstaller / 管理员只读的文件会临时接管所有权，替换成功后恢复原属主与 ACL。执行前自动备份 DLL、原 ACL/属主快照与注册表只读快照，并生成 restore.ps1；被占用文件会安排到下次启动替换，可能需要重启。不修改 MSI/ARP 安装登记。仅在关闭游戏、其他应用和运行库防护后使用。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
+                            <TextBlock Text="绕过 Windows Installer 的较新文件保护，直接用上方所选基线（14.42 或 14.44）的官方文件覆盖 System32/SysWOW64 的 51 个 14.x DLL（x64 26、x86 25），包括把本机其他 14.x 版本强制对齐到所选版本。执行前自动备份并生成 restore.ps1；被占用文件会安排到下次启动替换，可能需要重启。不修改 MSI/ARP 安装登记。仅在关闭游戏、其他应用和运行库防护后使用。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
                             <TextBlock Text="卸载前可选择安全模式引导，确认后重启至 Windows 高级启动，再按引导进入安全模式；也可在当前环境继续。重启后不会自动执行修复。" Style="{StaticResource BodyStyle}" TextWrapping="Wrap"/>
                             <TextBlock Text="安全模式下仅执行卸载，回正常模式后可在“恢复与续装”中继续安装；停止任务和恢复临时 Installer 设置也在下方独立恢复区域。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                             <TextBlock Text="{x:Bind ViewModel.RepairStatusText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" Style="{StaticResource BodyStyle}"/>
@@ -51,8 +54,11 @@
                     <Border Style="{StaticResource CardBorderStyle}">
                         <StackPanel Spacing="10">
                             <TextBlock Text="全量修复" Style="{StaticResource H2Style}"/>
-                            <TextBlock Text="C++ 2005–2013 使用微软原包逐包检测、安装或修复，保留已核验的较新组件；V14 可在普通模式受控卸载，优先使用已核验的微软原包装，复检后安装自带的 2015–2022 双架构原包（14.44）。安全模式可选“仅卸载 V14”，或显式确认“卸载全部 C++（高风险）”；两者都需临时启用 Windows Installer，且 2005–2013、VSTO 等安装步骤必须回正常模式手动继续。另保留 VSTO 与旧 VC/VB 辅助组件，不安装 C++2026。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
-                            <TextBlock Text="安装基线：14.44.35211（当前基线）" FontWeight="SemiBold"/>
+                            <TextBlock Text="C++ 2005–2013 使用微软原包逐包检测、安装或修复，保留已核验的较新组件；V14 可在普通模式受控卸载，优先使用已核验的微软原包装，复检后安装自带的 2015–2022 双架构原包（默认 14.42，也可选择 14.44）。安全模式可选“仅卸载 V14”，或显式确认“卸载全部 C++（高风险）”；两者都需临时启用 Windows Installer，且 2005–2013、VSTO 等安装步骤必须回正常模式手动继续。另保留 VSTO 与旧 VC/VB 辅助组件，不安装 C++2026。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
+                            <ComboBox Header="14.x 阶段安装基线" SelectedIndex="{x:Bind ViewModel.BaselineIndex, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" HorizontalAlignment="Left" MinWidth="260">
+                                <ComboBoxItem Content="14.42.34433（默认）"/>
+                                <ComboBoxItem Content="14.44.35211（兼容性更好）"/>
+                            </ComboBox>
                             <TextBlock Text="{x:Bind ViewModel.SelectedBaselineDescription, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                             <Button Content="预览全量修复" Click="RepairHighFps_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" HorizontalAlignment="Left" Style="{StaticResource PrimaryButtonStyle}"/>
                             <TextBlock Text="两个修复入口共用进度和下方恢复区域的“停止后续步骤”；请先关闭游戏、其他应用和运行库防护。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
@@ -108,7 +114,7 @@
                                     <ScrollViewer MaxHeight="280" HorizontalContentAlignment="Stretch" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                                         <TextBlock Text="{x:Bind ViewModel.InstalledText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" FontFamily="Consolas" FontSize="12"/>
                                     </ScrollViewer>
-                                    <TextBlock Text="14.44.x 已核验组件按绿色处理；14.42.x 已过时，显示黄色提醒；其余已安装的 14.50.x、14.51.x 或 Visual C++ v14 组件红色，其余非 14.44 组件黄色。包装登记与残留最高黄色待核对，修复清理后消除；Appx 系统包只作说明。检测失败保留待核对，安装登记不能证明 DLL 完整性或游戏性能。新版仅内置 14.44 微软官方安装及文件修复原包，不再提供 14.42。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="14.44.x 已核验组件按绿色兼容版本处理，14.42.x 延续原判定；其余已安装的 14.50.x、14.51.x 或 Visual C++ v14 组件红色，其余非 14.42/14.44 组件黄色。包装登记与残留最高黄色待核对，修复清理后消除；Appx 系统包只作说明。检测失败保留待核对，安装登记不能证明 DLL 完整性或游戏性能。修复安装基线可在内置 14.42（默认）与 14.44 之间选择，均来自微软官方原包。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Expander>
                             <Button Content="刷新防护状态" Click="RefreshGuard_Click" IsEnabled="{x:Bind ViewModel.GuardCleanupEnabled, Mode=OneWay}" HorizontalAlignment="Left" Style="{StaticResource SecondaryButtonStyle}"/>

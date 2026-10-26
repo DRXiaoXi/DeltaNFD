@@ -23,8 +23,8 @@ public interface IVc14ReinstallEnvironment
     IReadOnlyList<Vc14RemovalPlanItem> Plan(Vc14Scan scan) => Vc14Reinstall.BuildRemovalPlan(scan);
     OperationResult Cleanup(Vc14Scan scan, IProgress<string>? progress, CancellationToken token) => Vc14ResidueCleanup.Run(scan, this, progress, token);
     IReadOnlyList<Vc14ResidueItem> Residues(Vc14Scan scan) => Vc14ResidueCleanup.Survey(scan);
-    /// <summary>本次操作要安装的 14.x 基线；旧测试/兼容实现默认 14.44。</summary>
-    Vc14Baseline Baseline => Vc14Baseline.V144;
+    /// <summary>本次操作要安装的 14.x 基线；旧测试/兼容实现默认 14.42。</summary>
+    Vc14Baseline Baseline => Vc14Baseline.V142;
     OperationResult CleanupRegistrations(Vc14Scan scan, IReadOnlyList<Vc14ResidueItem> confirmed, IProgress<string>? progress, CancellationToken token)
         => Vc14ResidueCleanup.Run(scan, this, progress, token, Vc14ResidueCleanup.Fingerprint(confirmed));
     Vc14Continuation? PendingInstall() => null;
@@ -45,15 +45,15 @@ public interface IVc14ReinstallEnvironment
 
 /// <summary>
 /// 全新 14.x 全量重装：按用户 2026-10-15 授权，卸载所有检测到的 x86/x64 C++ 14.x 登记
-/// （含未知包装，按其登记的卸载命令执行），再安装所选内置 2015–2022 14.44 基线并复检。
+/// （含未知包装，按其登记的卸载命令执行），再安装所选内置 2015–2022 14.42/14.44 基线并复检。
 /// 颜色规则是项目游戏兼容性策略；重装不代表已验证帧率改善。
 /// </summary>
 public static partial class Vc14Reinstall
 {
-    /// <summary>默认基线（14.44）；兼容旧调用与既有固定检查。</summary>
-    public const string BaselineVersion = "14.44.35211.0";
+    /// <summary>默认基线（14.42）；兼容旧调用与既有固定检查。</summary>
+    public const string BaselineVersion = "14.42.34433.0";
     internal static IReadOnlyDictionary<string, string> BaselineHashes => Vc14BaselineInfo.Default.ExeHashes;
-    // 默认 14.44 基线 Burn 包装码；已登记时安装阶段改用原包 /repair 补回组件。
+    // 默认 14.42 基线 Burn 包装码；已登记时安装阶段改用原包 /repair 补回组件。
     internal static IReadOnlyDictionary<string, string> BaselineBundles => Vc14BaselineInfo.Default.BundleIds;
 
     /// <summary>枚举全部 14.x 登记（MSI 产品、Burn 包装、仅登记卸载命令的未知条目），生成卸载计划。</summary>
@@ -184,7 +184,7 @@ public static partial class Vc14Reinstall
         return PreferVerifiedBundles(plan);
     }
 
-    internal static string Fingerprint(IReadOnlyList<Vc14RemovalPlanItem> plan) => Fingerprint(plan, Vc14Baseline.V144);
+    internal static string Fingerprint(IReadOnlyList<Vc14RemovalPlanItem> plan) => Fingerprint(plan, Vc14Baseline.V142);
 
     internal static string Fingerprint(IReadOnlyList<Vc14RemovalPlanItem> plan, Vc14Baseline baseline) => Convert.ToHexString(SHA256.HashData(
         Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
@@ -216,9 +216,9 @@ public static partial class Vc14Reinstall
             if (mode == Vc14RepairMode.InstallOnly)
             {
                 if (pending is null && !scan.IsMissing) blocker ??= "没有待安装记录，请先预览完整重装或执行单独卸载阶段。";
-                if (pending is not null && !pending.CanContinueWith(environment.Baseline))
+                if (pending is not null && pending.Baseline != environment.Baseline)
                     blocker ??= "待安装记录属于 " + pending.Baseline.Label()
-                        + "，当前选择 " + environment.Baseline.Label() + "；旧基线已过时，请先重新预览修复并核对卸载结果。";
+                        + "，当前选择 " + environment.Baseline.Label() + "；请选择同一基线继续安装，或先核对待安装记录。";
                 if (scan.Products.Any(p => !Vc14Catalog.SameVersion(p.Version, info.Version)))
                     blocker ??= "旧 14.x 组件仍在，不能跳过卸载直接安装。请核对或继续卸载阶段。";
             }
@@ -278,14 +278,13 @@ public static partial class Vc14Reinstall
                 preparing();
                 environment.PrepareTemporaryInstaller(temporary.Fingerprint, token);
             }
-            var pendingAtStart = environment.PendingInstall();
-            if (mode != Vc14RepairMode.InstallOnly || pendingAtStart is null || pendingAtStart.Baseline != environment.Baseline)
+            if (mode != Vc14RepairMode.InstallOnly || environment.PendingInstall() is null)
             {
-                var pending = pendingAtStart ?? new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow);
+                var pending = environment.PendingInstall() ?? new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow);
                 // A fresh uninstall stage may legitimately switch the selected baseline; the pending
                 // record must follow the user's current choice, otherwise a later InstallOnly would
                 // demand the old baseline even though that install was already replaced.
-                environment.SavePendingInstall(pending with { UninstallVerified = mode == Vc14RepairMode.InstallOnly && pendingAtStart?.UninstallVerified == true, Baseline = environment.Baseline });
+                environment.SavePendingInstall(pending with { UninstallVerified = false, Baseline = environment.Baseline });
             }
 
             // 阶段一：逐项卸载全部可移除的 14.x 登记（含未知包装）。
@@ -397,7 +396,7 @@ public static partial class Vc14Reinstall
     }
 }
 
-internal sealed class Vc14ReinstallEnvironment(bool allowTemporaryInstaller = false, Vc14Baseline baseline = Vc14Baseline.V144) : IVc14ReinstallEnvironment
+internal sealed class Vc14ReinstallEnvironment(bool allowTemporaryInstaller = false, Vc14Baseline baseline = Vc14Baseline.V142) : IVc14ReinstallEnvironment
 {
     public Vc14Baseline Baseline { get; } = baseline;
     private Vc14BaselineInfo Info => Vc14BaselineInfo.For(Baseline);

@@ -8,7 +8,6 @@ internal sealed class GameProcessMonitor : IDisposable
     private readonly DispatcherQueue? _dispatcher = DispatcherQueue.GetForCurrentThread();
     private readonly Backends.BackendCpuFrameService _service = Backends.BackendCpuFrameService.Instance;
     private readonly GameObservationState _state;
-    private readonly DeltaObservationFallback _fallback;
     private int _disposed;
     internal event Action<bool, int?>? Tick;
     internal event Action<bool?>? DeltaStateChanged;
@@ -19,14 +18,12 @@ internal sealed class GameProcessMonitor : IDisposable
     internal bool? TargetRunning => _state.TargetRunning;
     internal CpuFrameStatusSnapshot? Latest => _state.Latest;
     internal string StatusDetail => _state.Detail;
-    internal string AutomationError => _service.AutomationError.Length > 0 ? _service.AutomationError
-        : _state.AutomationFailure.Length > 0 ? _state.AutomationFailure : _state.HasBackendObservation ? "" : _state.Failure;
+    internal string AutomationError => _service.AutomationError.Length > 0 ? _service.AutomationError : _state.AutomationFailure;
     internal bool IsConnecting => _state.IsConnecting;
 
     internal GameProcessMonitor()
     {
         _state = new(_service.EnsureObservationAsync, _service.EnsureMonitorAsync, () => OfflineModeGuard.BlocksNormalAutomation);
-        _fallback = new(DeltaForceLocator.IsGameRunning, _state.AcceptFallback);
         _state.Changed += OnStateChanged;
         _service.StatusUpdated += OnStatusUpdated;
         _service.ConnectionEnded += OnConnectionEnded;
@@ -40,7 +37,6 @@ internal sealed class GameProcessMonitor : IDisposable
     private void OnConnectionEnded() => _state.Unavailable("CPU/帧格状态连接已中断或超时，请点击“重新确认”；如有未确认执行者，请先核对恢复记录。");
     private void OnStateChanged() => Dispatch(() =>
     {
-        _fallback.SetEnabled(_state.CanUseReadOnlyFallback);
         var running = _state.DeltaRunning;
         Backends.PageBackendSessions.Manager.ObserveDelta(running);
         if (DeltaRunning != running)
@@ -72,7 +68,6 @@ internal sealed class GameProcessMonitor : IDisposable
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _state.Dispose();
-        _fallback.Dispose();
         _state.Changed -= OnStateChanged;
         _service.StatusUpdated -= OnStatusUpdated;
         _service.ConnectionEnded -= OnConnectionEnded;

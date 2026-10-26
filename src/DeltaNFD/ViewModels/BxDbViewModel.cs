@@ -100,31 +100,21 @@ public partial class BxItemVm : ObservableObject
 
     private int _actualGearIndex = -1;
 
-    /// <summary>回填选项时的控件通知不是用户输入。</summary>
-    internal bool IsUpdatingState { get; private set; }
-
     /// <summary>回填档位信息（选项与当前档位）。存在未应用的档位意图时保留用户所选档位。</summary>
     public void SetGears(BxGearInfo info)
     {
-        var previousUpdate = IsUpdatingState;
-        IsUpdatingState = true;
-        try
+        var keepSelection = HasUserIntent && SelectedGearIndex >= 0 && SelectedGearIndex != info.CurrentIndex;
+        GearOptions.Clear();
+        foreach (var opt in info.Options)
         {
-            // 在清空 ItemsSource 前保存值，避免 SelectionChanged 回填 -1 或选项重排改变意图。
-            var selectedValue = HasUserIntent ? GearOptions.ElementAtOrDefault(SelectedGearIndex)?.Value : null;
-            var preservedIndex = selectedValue is null ? -1 : info.Options.FindIndex(o => o.Value == selectedValue);
-            GearOptions.Clear();
-            foreach (var opt in info.Options) GearOptions.Add(opt);
-
-            _actualGearIndex = info.CurrentIndex;
-            SelectedGearIndex = preservedIndex >= 0 ? preservedIndex : info.CurrentIndex;
-            HasUserIntent = preservedIndex >= 0 && SelectedGearIndex != ActualGearIndex;
-            RefreshStateText(ActualState);
-            OnPropertyChanged(nameof(HasGears));
-            OnPropertyChanged(nameof(ShowToggle));
-            OnPropertyChanged(nameof(PendingChange));
+            GearOptions.Add(opt);
         }
-        finally { IsUpdatingState = previousUpdate; }
+
+        _actualGearIndex = info.CurrentIndex;
+        SelectedGearIndex = keepSelection ? SelectedGearIndex : info.CurrentIndex;
+        RefreshStateText(BxState.Unknown);
+        OnPropertyChanged(nameof(HasGears));
+        OnPropertyChanged(nameof(ShowToggle));
     }
 
     partial void OnSelectedGearIndexChanged(int value) => OnPropertyChanged(nameof(PendingChange));
@@ -620,11 +610,7 @@ public partial class BxDbViewModel : ObservableObject
     private void Fill(BxItemVm row, BxState state)
     {
         row.SetActual(row.UnavailableReason is null ? state : BxState.NotApplicable);
-        if (row.HasGears)
-        {
-            if (row.SelectedGearIndex == row.ActualGearIndex) row.HasUserIntent = false;
-        }
-        else if (!row.HasUserIntent || row.ActualState is BxState.On or BxState.Off && row.IsOn == row.ActualOn)
+        if (!row.HasUserIntent || row.IsOn == row.ActualOn)
         {
             // 无未应用意图（或意图恰好与系统状态一致）：跟随系统真实状态
             row.IsOn = row.ActualOn;
@@ -664,10 +650,7 @@ public partial class BxDbViewModel : ObservableObject
             row.IsOn = old.IsOn;
             if (row.HasGears && old.SelectedGearIndex >= 0)
             {
-                var value = old.GearOptions.ElementAtOrDefault(old.SelectedGearIndex)?.Value;
-                var index = value is null ? -1 : row.GearOptions.ToList().FindIndex(option => option.Value == value);
-                if (index >= 0) row.SelectedGearIndex = index;
-                else row.HasUserIntent = false;
+                row.SelectedGearIndex = old.SelectedGearIndex;
             }
         }
     }
@@ -707,12 +690,13 @@ public partial class BxDbViewModel : ObservableObject
     }
 
     /// <summary>多档位条目档位切换：仅记录用户意图（页面 SelectionChanged 调用）。</summary>
-    public void GearChanged(BxItemVm row, int selectedIndex)
+    public void GearChanged(BxItemVm row)
     {
-        if (!row.CanEdit || !row.HasGears || selectedIndex < 0 || selectedIndex >= row.GearOptions.Count) return;
-        row.SelectedGearIndex = selectedIndex;
-        row.HasUserIntent = selectedIndex != row.ActualGearIndex;
-        if (row.HasUserIntent) ClearOtherHagsIntents(row);
+        if (row.SelectedGearIndex != row.ActualGearIndex)
+        {
+            row.HasUserIntent = true;
+            ClearOtherHagsIntents(row);
+        }
 
         row.RefreshStateText(BxState.Unknown);
         RefreshPendingFlags();

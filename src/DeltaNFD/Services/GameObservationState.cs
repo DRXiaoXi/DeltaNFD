@@ -12,7 +12,6 @@ internal sealed class GameObservationState : IDisposable
     private int _connectionPauses;
     private int _connectionGeneration;
     private int _connecting, _disposed;
-    private (bool? Running, DateTimeOffset At)? _fallback;
     internal GameObservationState(Func<CancellationToken, Task> observe, Func<CancellationToken, Task> automate,
         Func<bool> blocked, Func<DateTimeOffset>? clock = null)
     { _observe = observe; _automate = automate; _blocked = blocked; _clock = clock ?? (() => DateTimeOffset.UtcNow); }
@@ -22,22 +21,7 @@ internal sealed class GameObservationState : IDisposable
     internal string Failure { get; private set; } = "正在连接只读游戏状态观测。";
     internal string AutomationFailure { get; private set; } = "";
     internal bool IsConnecting => Volatile.Read(ref _connecting) != 0;
-    internal bool HasBackendObservation => ReadDelta(Latest, _clock()) is not null;
-    internal bool CanUseReadOnlyFallback => _disposed == 0 && _connectionPauses == 0 && !IsConnecting && !_blocked() && !HasBackendObservation;
-    internal bool? DeltaRunning => _blocked() ? null : ReadDelta(Latest, _clock())
-        ?? (_fallback is { } sample && sample.At <= _clock().AddSeconds(2)
-            && _clock() - sample.At <= TimeSpan.FromSeconds(10) ? sample.Running : null);
-
-    // Only the Delta page restriction uses this observation. Never manufacture a backend/automation snapshot.
-    internal void AcceptFallback(bool? running, DateTimeOffset at)
-    {
-        lock (_stateGate)
-        {
-            if (!CanUseReadOnlyFallback) return;
-            _fallback = (running, at);
-            Notify();
-        }
-    }
+    internal bool? DeltaRunning => _blocked() ? null : ReadDelta(Latest, _clock());
     internal bool? TargetRunning
     {
         get
@@ -67,7 +51,6 @@ internal sealed class GameObservationState : IDisposable
         {
             if (Volatile.Read(ref _disposed) != 0 || Latest is { } previous && snapshot.UpdatedUtc < previous.UpdatedUtc) return;
             Latest = snapshot;
-            _fallback = null;
             Failure = "";
             if (snapshot.MonitorRunning) AutomationFailure = "";
             Notify();
@@ -76,7 +59,7 @@ internal sealed class GameObservationState : IDisposable
     internal void Unavailable(string reason)
     {
         if (Volatile.Read(ref _disposed) != 0) return;
-        lock (_stateGate) { Latest = null; _fallback = null; Failure = reason; Notify(); }
+        lock (_stateGate) { Latest = null; Failure = reason; Notify(); }
     }
 
     // Bootstrap retains the existing normal automation behavior. Explicit reconnect is observation-only;
@@ -126,7 +109,7 @@ internal sealed class GameObservationState : IDisposable
     {
         // Revoke a delayed bootstrap, not an already submitted IPC request. Its cancellation could
         // create an unknown operation; the existing handover instead drains that request safely.
-        lock (_stateGate) { _connectionPauses++; _connectionGeneration++; _fallback = null; }
+        lock (_stateGate) { _connectionPauses++; _connectionGeneration++; }
         return new ConnectionPause(this);
     }
     private sealed class ConnectionPause(GameObservationState owner) : IDisposable

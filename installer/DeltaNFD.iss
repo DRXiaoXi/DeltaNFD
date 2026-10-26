@@ -1,8 +1,8 @@
 ; 三角帧不掉洲（Delta No FPS Drops / Delta NFD）安装脚本 · Inno Setup 6
 ; 编译：ISCC.exe DeltaNFD.iss
-; 产物：三角帧不掉洲_DeltaNFD_安装包_0.9302_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
+; 产物：三角帧不掉洲_DeltaNFD_安装包_0.9300_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
 ;
-; 当前源码版本：0.9302 / Beta0.93-RC2。内部更新数值保持递增；发布显示为 Beta0.93-RC2。
+; 当前源码版本：0.9300 / Beta0.93。内部更新数值保持递增；发布显示为 Beta0.93。
 ;
 ; 安装/卸载统一安全交接：先封锁新启动，通知主程序完成恢复并退出，再核对所有官方执行者。
 ; 卸载保留备份时，在删除程序前复制并校验完整数据；历史记录仍待核对时保留原目录。
@@ -14,8 +14,8 @@
 #define MyAppShortName "Delta NFD"
 #define MyAppEnglishName "Delta No FPS Drops"
 #define MyAppDisplayName "三角帧不掉洲（Delta NFD）"
-#define MyAppVersion "0.9302"
-#define MyAppDisplayVersion "Beta0.93-RC2"
+#define MyAppVersion "0.9300"
+#define MyAppDisplayVersion "Beta0.93"
 #define MyAppExeName "DeltaNFD.exe"
 ; 登录任务名（与 AppControlService / FrameService 创建的一致）
 #define AutoStartTaskName "DeltaNFD_AutoStart"
@@ -76,8 +76,6 @@ Name: "chinese"; MessagesFile: "ChineseSimplified.isl"
 Type: files; Name: "{app}\DeltaOptimizer.*"
 ; Remove the retired product-owned repair payload and shortcut on upgrade.
 Type: filesandordirs; Name: "{app}\Assets\DotNetRepair"
-Type: filesandordirs; Name: "{app}\Assets\Vc14Baseline14.42"
-Type: filesandordirs; Name: "{app}\Assets\Vc14FileRepair14.42"
 Type: files; Name: "{group}\.NET 环境修复.lnk"
 
 [CustomMessages]
@@ -90,7 +88,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "DeploymentControl.ps1"; Flags: dontcopy
-Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "Assets\Vc14Baseline14.42\*,Assets\Vc14FileRepair14.42\*,Assets\DotNetRepair\*,Assets\VCRedistRepair\*,Assets\VCRedistRepair_unpacked\*,Assets\DirectXRepair\*,Assets\VCRedist2015-2022-*.exe,Assets\VCRedistRepair.exe"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "Assets\DotNetRepair\*,Assets\VCRedistRepair\*,Assets\VCRedistRepair_unpacked\*,Assets\DirectXRepair\*,Assets\VCRedist2015-2022-*.exe,Assets\VCRedistRepair.exe"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppShortcutName}"; Filename: "{app}\{#MyAppExeName}"

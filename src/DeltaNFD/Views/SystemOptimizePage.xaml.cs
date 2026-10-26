@@ -137,8 +137,7 @@ public sealed partial class SystemOptimizePage : Page
     /// <summary>扩展优化库开关拨动：仅记录意图，应用由「应用更改」统一执行。</summary>
     private async void BxToggle_Toggled(object sender, RoutedEventArgs e)
     {
-        if (_suppressBxToggle || sender is not ToggleSwitch toggle || toggle.DataContext is not BxItemVm row ||
-            !toggle.IsLoaded || !ViewModel.Bx.Items.Contains(row) || row.IsUpdatingState || toggle.IsOn == row.IsOn)
+        if (_suppressBxToggle || sender is not ToggleSwitch toggle || toggle.DataContext is not BxItemVm row)
         {
             return;
         }
@@ -166,14 +165,13 @@ public sealed partial class SystemOptimizePage : Page
     /// <summary>多档位条目：切换档位仅记录意图，应用由「应用更改」统一执行。</summary>
     private void GearSelection_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (sender is not ComboBox combo || combo.DataContext is not BxItemVm row ||
-            !combo.IsLoaded || !ViewModel.Bx.Items.Contains(row) || row.IsUpdatingState || combo.SelectedIndex == row.SelectedGearIndex)
+        if (sender is not ComboBox combo || combo.DataContext is not BxItemVm row)
         {
             return;
         }
 
         // 仅在用户实际改变选择且与系统真实状态不同时标记待应用
-        ViewModel.Bx.GearChanged(row, combo.SelectedIndex);
+        ViewModel.Bx.GearChanged(row);
     }
 
     private void BxDetailsButton_Click(object sender, RoutedEventArgs e)

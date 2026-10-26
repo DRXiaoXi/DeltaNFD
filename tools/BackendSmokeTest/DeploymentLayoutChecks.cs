@@ -203,10 +203,8 @@ internal static class DeploymentLayoutChecks
 
     internal static void CheckVc14Media(string layoutAssets)
     {
-        Check(!Directory.Exists(Path.Combine(layoutAssets, "Vc14Baseline14.42"))
-            && !Directory.Exists(Path.Combine(layoutAssets, "Vc14FileRepair14.42")), "Retired 14.42 EXE/MSI/CAB must not ship");
         // Validate the same nested roots used by the production runtime repair entry points.
-        foreach (var baseline in new[] { DeltaNFD.Services.Vc14Baseline.V144 })
+        foreach (var baseline in new[] { DeltaNFD.Services.Vc14Baseline.V142, DeltaNFD.Services.Vc14Baseline.V144 })
         {
             var directory = DeltaNFD.Services.Vc14FileRepairSource.DirectoryNameFor(baseline);
             var vc14Media = Path.Combine(layoutAssets, directory);

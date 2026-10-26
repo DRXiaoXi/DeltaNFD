@@ -27,28 +27,20 @@ public sealed record Vc14Scan(IReadOnlyList<Vc14Entry> Products, IReadOnlyList<V
     public string AbnormalTitle => IsMissing ? "缺少 C++ 14.x 运行库" : "14.x 兼容性异常：已安装 14.50、14.51 或 Visual C++ v14 组件";
     public bool HasAbnormal => IsMissing || Notices.Any(n => n.Severity == Vc14Severity.Abnormal);
     public bool HasWarning => Issues.Count > 0 || Notices.Any(n => n.Severity == Vc14Severity.Warning);
-    public bool HasObsolete => Products.Any(p => Vc14BaselineOption.IsObsoleteVersion(p.Version));
     public IEnumerable<Vc14Notice> GetAbnormalNotices()
     {
         if (IsMissing) yield return new("未检测到已安装的 C++ 14.x 运行库", "未安装", "x64/x86", Vc14Severity.Abnormal,
-            "缺少运行库可能导致三角洲无法启动。请手动关闭运行库防护后，在下方预览并安装 14.44 双架构原包，也可使用全量修复。卸载列表残留和 Appx 系统组件包不能替代该运行库。");
+            "缺少运行库可能导致三角洲无法启动。请手动关闭运行库防护后，在下方预览并安装 14.42 或 14.44 双架构原包，也可使用全量修复。卸载列表残留和 Appx 系统组件包不能替代该运行库。");
         foreach (var notice in Notices.Where(n => n.Severity == Vc14Severity.Abnormal)) yield return notice;
     }
 }
 public enum Vc14RepairMode { Full, UninstallOnly, InstallOnly, RegistrationCleanup }
-/// <summary>工具内置的 2015–2022 14.x 原包基线；当前仅支持 14.44；14.42 枚举值保留用于识别旧记录。</summary>
+/// <summary>工具内置的 2015–2022 14.x 原包基线；默认 14.42，用户可显式选择较新的 14.44。</summary>
 public enum Vc14Baseline { V142 = 0, V144 = 1 }
 public static class Vc14BaselineOption
 {
-    public const Vc14Baseline Default = Vc14Baseline.V144;
-    public static bool IsSupported(this Vc14Baseline baseline) => baseline == Vc14Baseline.V144;
-    public static bool IsObsoleteVersion(string? version) => Version.TryParse(version, out var value) && value is { Major: 14, Minor: 42 };
-    public static string UnsupportedMessage(this Vc14Baseline baseline) => baseline == Vc14Baseline.V142
-        ? "14.42 已过时，新版不再提供其安装包。请重新预览并使用 14.44。" : "未知的 14.x 安装基线。";
-    /// <summary>旧 14.42 已完成卸载的记录可经新的预览确认改装 14.44；不自动启动安装。</summary>
-    public static bool CanContinueWith(this Vc14Continuation pending, Vc14Baseline target) => target.IsSupported()
-        && (pending.Baseline == target || pending.Baseline == Vc14Baseline.V142 && pending.UninstallVerified);
-
+    public const Vc14Baseline Default = Vc14Baseline.V142;
+    public static bool IsSupported(this Vc14Baseline baseline) => baseline is Vc14Baseline.V142 or Vc14Baseline.V144;
     public static string ShortVersion(this Vc14Baseline baseline) => baseline switch
     {
         Vc14Baseline.V142 => "14.42.34433",
@@ -64,14 +56,14 @@ public static class Vc14BaselineOption
     };
     public static string Label(this Vc14Baseline baseline) => baseline switch
     {
-        Vc14Baseline.V142 => "14.42（已过时）",
-        Vc14Baseline.V144 => "14.44（当前基线）",
+        Vc14Baseline.V142 => "14.42（默认）",
+        Vc14Baseline.V144 => "14.44（兼容性更好）",
         _ => throw new ArgumentOutOfRangeException(nameof(baseline)),
     };
     public static string Description(this Vc14Baseline baseline) => baseline switch
     {
-        Vc14Baseline.V142 => "14.42 已过时，新版不再提供其安装包，请使用 14.44。",
-        Vc14Baseline.V144 => "当前安装基线；与 14.42 性能几乎无异，兼容性更好。",
+        Vc14Baseline.V142 => "性能最好，对新应用兼容性不佳。",
+        Vc14Baseline.V144 => "与 14.42 性能几乎无异，兼容性更好。",
         _ => throw new ArgumentOutOfRangeException(nameof(baseline)),
     };
 }
@@ -80,7 +72,7 @@ public sealed class Vc14RepairArgs
     public string Fingerprint { get; set; } = "";
     public Vc14RepairMode Mode { get; set; }
     public bool AllowTemporaryInstaller { get; set; }
-    public Vc14Baseline Baseline { get; set; } = Vc14Baseline.V144;
+    public Vc14Baseline Baseline { get; set; } = Vc14Baseline.V142;
 }
 public sealed record SafeInstallerPreparation(bool Required, bool CanEnable, string Fingerprint, string Detail);
 public sealed record Vc14BundleChild(Vc14Entry Product, string DependencyFingerprint, string DependencyArgument);
@@ -105,5 +97,5 @@ public sealed record Vc14RemovalPlanItem(
 public sealed record Vc14ReinstallPreview(Vc14Scan Scan, IReadOnlyList<Vc14RemovalPlanItem> RemovalPlan, string Fingerprint, bool CanRepair, string Blocker)
 {
     public SafeInstallerPreparation? TemporaryInstaller { get; init; }
-    public Vc14Baseline Baseline { get; init; } = Vc14Baseline.V144;
+    public Vc14Baseline Baseline { get; init; } = Vc14Baseline.V142;
 }

@@ -68,12 +68,13 @@ $required = @(
     "Backends/DeltaNFD.Backend.SystemMaintenance.exe",
     "Backends/DeltaNFD.Backend.CpuFrame.exe",
     "Backends/DeltaNFD.Backend.Procman.exe",
+    
     "Backends/DeltaNFD.FileUpdater.exe",
     "Backends/DeltaNFD.UpdateCore.dll",
     "Tools/DeploymentControl.ps1",
     "Assets/UpdateConfig.json",
-    "Assets/Vc14Baseline14.44/vc_redist.x64.exe",
-    "Assets/Vc14Baseline14.44/vc_redist.x86.exe",
+    "Assets/Vc14Baseline14.42/vc_redist.x64.exe",
+    "Assets/Vc14Baseline14.42/vc_redist.x86.exe",
     "Assets/RuntimeHighFps/Installer.cmd",
     "Assets/RuntimeHighFps/payload_manifest_sha256.csv",
     "Assets/TweakDb/RegistryTweaks.json"
@@ -100,13 +101,11 @@ foreach ($entry in $highFpsRows) {
     if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $entry.sha256) { throw ('High-FPS payload hash mismatch: ' + $entry.relative_path) }
 }
 
-foreach ($retired in @('Assets/Vc14Baseline14.42', 'Assets/Vc14FileRepair14.42', 'Assets/DotNetRepair', 'Assets/VCRedistRepair', 'Assets/DirectXRepair', 'Assets/VCRedist2015-2022-x64.exe', 'Assets/VCRedist2015-2022-x86.exe', 'Assets/VCRedistRepair.exe')) {
+foreach ($retired in @('Assets/DotNetRepair', 'Assets/VCRedistRepair', 'Assets/DirectXRepair', 'Assets/VCRedist2015-2022-x64.exe', 'Assets/VCRedist2015-2022-x86.exe', 'Assets/VCRedistRepair.exe')) {
     if (Test-Path -LiteralPath (Join-Path $out $retired)) { throw ('Retired repair payload found: ' + $retired) }
 }
 $officialCatalog = Get-Content -LiteralPath (Join-Path $repo 'src/DeltaNFD.Execution/Execution/AlphaRestore/RuntimeCppOfficial.catalog.json') -Raw | ConvertFrom-Json
-$fileRepairCatalogs = @(
-    @{ Version = '14.44'; Directory = 'Assets/Vc14FileRepair14.44'; Catalog = 'src/DeltaNFD.Execution/Execution/Vc14FileRepair14.44.catalog.json' }
-)
+$fileRepairCatalog = Get-Content -LiteralPath (Join-Path $repo 'src/DeltaNFD.Execution/Execution/Vc14FileRepair.catalog.json') -Raw | ConvertFrom-Json
 $ownershipCatalog = @(Get-Content -LiteralPath (Join-Path $repo 'src/DeltaNFD.Execution/Execution/Vc14OwnershipOriginals.catalog.json') -Raw | ConvertFrom-Json)
 if ($ownershipCatalog.Count -ne 1) { throw 'Expected the pinned historical ownership original' }
 foreach ($entry in $ownershipCatalog) {
@@ -115,15 +114,12 @@ foreach ($entry in $ownershipCatalog) {
         throw ('Historical ownership original missing/hash mismatch; run tools/prepare-vc14-ownership.ps1: ' + $entry.File)
     }
 }
-foreach ($catalogInfo in $fileRepairCatalogs) {
-    $fileRepairCatalog = Get-Content -LiteralPath (Join-Path $repo $catalogInfo.Catalog) -Raw | ConvertFrom-Json
-    if ($fileRepairCatalog.Count -ne 4) { throw ('Expected four pinned ' + $catalogInfo.Version + ' MSI/CAB packages') }
-    foreach ($package in $fileRepairCatalog) {
-        foreach ($source in $package.Files) {
-            $path = Join-Path $out ($catalogInfo.Directory + '/' + $source.Path)
-            if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -ne $source.Bytes -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $source.Sha256) {
-                throw ($catalogInfo.Version + ' forced-file source hash mismatch: ' + $source.Path)
-            }
+if ($fileRepairCatalog.Count -ne 4) { throw 'Expected four pinned 14.42 MSI/CAB packages' }
+foreach ($package in $fileRepairCatalog) {
+    foreach ($source in $package.Files) {
+        $path = Join-Path $out ('Assets/Vc14FileRepair14.42/' + $source.Path)
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -ne $source.Bytes -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $source.Sha256) {
+            throw ('14.42 forced-file source hash mismatch: ' + $source.Path)
         }
     }
 }

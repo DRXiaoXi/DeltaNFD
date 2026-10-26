@@ -79,43 +79,6 @@ internal static class FrameBackgroundChecks
         Check(!File.ReadAllText(settingsPath).Contains("FrameBackgroundSuppressionEnabled"), "新设置不写回旧抑制开关");
         foreach (var command in new[] { BackendCommands.ProcmanResponsivenessConfig, BackendCommands.ProcmanResponsivenessEvents })
             Check(!BackendModules.IsAllowed(BackendModules.Procman, command), "后端不再准入退休命令：" + command);
-        // Use the actual persisted frame switches and actual 30-second pressure window, including
-        // a corrupt CPU/frame record. That module must not silently disable the separate memory engine.
-        var cpuRecord = Path.Combine(root, "official-backend-unconfirmed", "cpuframe.json");
-        Directory.CreateDirectory(Path.GetDirectoryName(cpuRecord)!);
-        File.WriteAllBytes(cpuRecord, new byte[128]);
-        AppSettingsStore.Update(s => { s.FrameModeActive = true; s.FrameAutomaticMemoryEnabled = true; });
-        foreach (var mode in new[] { ProcmanMemoryModes.Normal, ProcmanMemoryModes.DeltaStable, ProcmanMemoryModes.Aggressive })
-        {
-            var trims = 0; uint pressure = 90; now = DateTime.UtcNow;
-            using var available = new ProcmanEngine(Path.Combine(root, mode, "changes.json"))
-            {
-                BackgroundLoopDisabledForTests = true, ClockForTests = () => now,
-                ForegroundForTests = () => 20202, MemoryPressureForTests = () => pressure,
-                MemoryIdentitiesForTests = () => [target], MemoryReadForTests = _ => 1,
-                BackgroundExcludedForTests = _ => false, MemorySystemProcessForTests = _ => false,
-                MemoryPolicyForTests = () => new([]),
-                SampleForTests = () => throw new Exception("Memory operation must not sample CPU."),
-                MemoryTrimForTests = (_, guard) => { if (guard()) trims++; return new(target.Pid, "fixture", "completed", "simulated"); },
-                MemoryGlobalTrimForTests = guard => { if (guard()) trims++; return new([], "simulated global request"); }
-            };
-            Check(available.SaveBackgroundConfig(new() { MemoryMode = mode, MemoryCooldownSeconds = 60 }).Success
-                && available.BackgroundStatus().AutomaticMemoryActive, mode + ": both real frame switches activate memory independently.");
-            available.AutomaticMemoryOnceForTests();
-            now = now.AddSeconds(29); available.AutomaticMemoryOnceForTests();
-            Check(trims == 0, mode + ": brief pressure does not trim.");
-            now = now.AddSeconds(1); available.AutomaticMemoryOnceForTests();
-            Check(trims == 1, mode + ": sustained 30-second pressure reaches the trim dispatcher.");
-            now = now.AddSeconds(30); available.AutomaticMemoryOnceForTests();
-            Check(trims == 1, mode + ": configured interval is respected.");
-            pressure = 50; now = now.AddSeconds(30); available.AutomaticMemoryOnceForTests();
-            Check(trims == 1, mode + ": low pressure does not trigger more cleaning.");
-            AppSettingsStore.Update(s => s.FrameAutomaticMemoryEnabled = false);
-            pressure = 95; now = now.AddMinutes(2); available.AutomaticMemoryOnceForTests();
-            Check(trims == 1 && !available.BackgroundStatus().AutomaticMemoryActive, mode + ": disabling the persisted option prevents writes.");
-            AppSettingsStore.Update(s => s.FrameAutomaticMemoryEnabled = true);
-        }
-        Check(File.ReadAllBytes(cpuRecord).All(b => b == 0), "Memory checks never discard corrupt CPU/frame recovery evidence.");
         Check(BackendModules.RequiresWriteIntent(BackendModules.Procman, BackendCommands.ProcmanFrameBackgroundSync), "帧格同步仍保留写前证据");
         Console.WriteLine($"Frame background retirement checks: {count} passed. Frame states and memory writes simulated; no user processes modified.");
     }

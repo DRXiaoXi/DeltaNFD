@@ -35,7 +35,7 @@ public sealed partial class RuntimePage
         try
         {
             var selected = ViewModel.SelectedBaseline;
-            var directory = "Vc14Baseline14.44";
+            var directory = selected == Vc14Baseline.V144 ? "Vc14Baseline14.44" : "Vc14Baseline14.42";
             var path = Path.Combine(AppContext.BaseDirectory, "Assets", directory);
             if (!File.Exists(Path.Combine(path, "vc_redist.x64.exe")) || !File.Exists(Path.Combine(path, "vc_redist.x86.exe")))
                 throw new IOException("当前程序目录缺少完整的 " + selected.Display() + " 双架构原包，请使用完整安装包恢复文件后重试。");

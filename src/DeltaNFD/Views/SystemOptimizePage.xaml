@@ -77,7 +77,6 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -85,23 +84,19 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Spacing="3" VerticalAlignment="Center">
-                                        <Grid ColumnSpacing="8">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
                                             <TextBlock Text="{x:Bind DisplayName}" FontWeight="SemiBold" FontSize="14" TextWrapping="Wrap"/>
-                                            <ProgressRing Grid.Column="1" Width="18" Height="18" IsActive="{x:Bind IsBusy, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}" VerticalAlignment="Center"/>
-                                        </Grid>
+                                            <ProgressRing Width="18" Height="18" IsActive="{x:Bind IsBusy, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}" VerticalAlignment="Center"/>
+                                        </StackPanel>
                                         <TextBlock Text="{x:Bind Description}" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
                                     </StackPanel>
                                     <Button Grid.Column="1" Content="{x:Bind DetailsButtonText, Mode=OneWay}" Visibility="{x:Bind HasDetails}" FontSize="11" Padding="10,4" VerticalAlignment="Center" Click="BxDetailsButton_Click" Style="{StaticResource SecondaryButtonStyle}"/>
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                        <ComboBox MinWidth="150" VerticalAlignment="Center" IsEnabled="{x:Bind CanEdit, Mode=OneWay}" Visibility="{x:Bind HasGears, Mode=OneWay}" ItemsSource="{x:Bind GearOptions}" DisplayMemberPath="Label" SelectedIndex="{x:Bind SelectedGearIndex, Mode=OneWay}" SelectionChanged="GearSelection_Changed"/>
+                                        <TextBlock Text="{x:Bind StateText, Mode=OneWay}" FontSize="12" Opacity="0.85" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                        <ComboBox MinWidth="150" VerticalAlignment="Center" IsEnabled="{x:Bind CanEdit, Mode=OneWay}" Visibility="{x:Bind HasGears, Mode=OneWay}" ItemsSource="{x:Bind GearOptions}" DisplayMemberPath="Label" SelectedIndex="{x:Bind SelectedGearIndex, Mode=TwoWay}" SelectionChanged="GearSelection_Changed"/>
                                         <ToggleSwitch VerticalAlignment="Center" IsEnabled="{x:Bind CanEdit, Mode=OneWay}" Visibility="{x:Bind ShowToggle, Mode=OneWay}" IsOn="{x:Bind IsOn, Mode=OneWay}" Toggled="BxToggle_Toggled" OnContent="" OffContent="" MinWidth="0" Margin="0" HorizontalAlignment="Right"/>
                                     </StackPanel>
-                                    <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="{x:Bind StateText, Mode=OneWay}" FontSize="12" Opacity="0.85" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,8,0,0"/>
-                                    <ItemsControl Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" ItemsSource="{x:Bind Details}" Visibility="{x:Bind DetailsVisible, Mode=OneWay}" Margin="0,8,0,0">
+                                    <ItemsControl Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" ItemsSource="{x:Bind Details}" Visibility="{x:Bind DetailsVisible, Mode=OneWay}" Margin="0,8,0,0">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="x:String">
                                                 <TextBlock Text="{x:Bind}" Opacity="0.7" TextWrapping="Wrap" Padding="8,1" Style="{StaticResource NoteStyle}"/>

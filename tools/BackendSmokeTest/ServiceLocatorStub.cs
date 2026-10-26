@@ -3,12 +3,6 @@ namespace DeltaNFD.Services;
 // The read-only smoke executable does not compile the WinUI service locator.
 internal static class ServiceLocator
 {
-    // Actual view-model tests supply an isolated guard. Other checks cannot start runtime writes through this stub.
-    internal static Func<IRuntimeGuardService> RuntimeGuardFactory { get; set; } =
-        () => throw new InvalidOperationException("Runtime view-model guard fixture is not configured.");
-    private static readonly Lazy<IRuntimeGuardService> GuardLazy = new(() => RuntimeGuardFactory());
-    internal static IRuntimeGuardService Guard => Backends.PageBackendSessions.Service(
-        GuardLazy, () => RuntimeGuardFactory(), "runtime");
     internal static IPowerService Power { get; } = new PowerService();
     internal static GameTargetService GameTarget => GameTargetService.Default;
     internal static OfflineFrameStub Frame { get; } = new();
