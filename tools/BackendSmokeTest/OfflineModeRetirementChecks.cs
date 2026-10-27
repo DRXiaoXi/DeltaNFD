@@ -77,7 +77,11 @@ internal static class OfflineModeRetirementChecks
                 for (var retry = 0; ; retry++)
                 {
                     try { Directory.Delete(target, true); break; }
-                    catch (IOException) when (retry < 10) { await Task.Delay(100); }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        if (retry >= 20) throw new IOException("自有隔离测试目录清理失败，目录保留：" + target, ex);
+                        await Task.Delay(100);
+                    }
                 }
         }
     }
