@@ -1,5 +1,19 @@
 using DeltaNFD.Services;
 
+if (args is ["--vc14-installed-file-checks", var installedFileAssets])
+{
+    try { await Vc14InstalledFileChecks.RunAsync(installedFileAssets); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--game-observation-fallback-checks"])
+{
+    try { await GameObservationFallbackChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args is ["--dashboard-navigation-health-checks"])
 {
     try { await DashboardNavigationHealthChecks.RunAsync(); }
@@ -142,6 +156,13 @@ if (args is ["--procman-ace-protection-checks"])
 }
 
 if (args.Contains("--page-busy-status-fixture")) { Environment.ExitCode = await PageBusyStatusChecks.RunChildAsync(args); return; }
+
+if (args is ["--runtime-page-session-checks"])
+{
+    try { await RuntimePageSessionChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
 
 if (args is ["--page-backend-checks"] or ["--startup-inspection-readonly-checks"])
 {

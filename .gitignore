@@ -56,6 +56,7 @@ installer/Output/
 _buildcheck/
 /artifacts/
 /research/
+/_analysis/
 
 # ---------- 内部交接文档（仅本地保留，不随仓库分发） ----------
 HANDOFF.md

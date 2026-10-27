@@ -41,6 +41,7 @@ public static class Vc14BaselineOption
 {
     public const Vc14Baseline Default = Vc14Baseline.V142;
     public static bool IsSupported(this Vc14Baseline baseline) => baseline is Vc14Baseline.V142 or Vc14Baseline.V144;
+    public static string UnsupportedMessage(this Vc14Baseline baseline) => "未知的 14.x 基线，请重新选择 14.42 或 14.44 并预览。";
     public static string ShortVersion(this Vc14Baseline baseline) => baseline switch
     {
         Vc14Baseline.V142 => "14.42.34433",

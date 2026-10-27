@@ -22,6 +22,37 @@ internal static class GamePowerThrottlingChecks
             if (!power.Sync([]) || ProcmanCapabilities.ReadEcoQos(child.Id).Value != before.Value || power.PendingCount != 0)
                 throw new Exception("测试子进程原值恢复失败：" + power.Status);
             Console.WriteLine($"真实 Windows 接口检查通过：仅自建测试子进程，{before.Value} → {after.Value} → {before.Value}。");
+            // 使用产品真正的 NativeApi/NativeHandle，仅给读取结果附加模拟的系统自动状态位。
+            // 写入、身份核对、回读与恢复都走实际 Windows 接口，目标始终是本测试创建的子进程。
+            var nativeType = typeof(GamePowerThrottling).GetNestedType("NativeApi", System.Reflection.BindingFlags.NonPublic)!;
+            var native = (IGamePowerApi)Activator.CreateInstance(nativeType, nonPublic: true)!;
+            using var nativeHandle = native.Open(identity);
+            var original = nativeHandle.Read();
+            var cases = new[] { (new GamePowerState(0, 0), 4u), (new GamePowerState(0, 0), 1u),
+                (new GamePowerState(0, 0), 5u), (new GamePowerState(4, 4), 1u), (new GamePowerState(5, 5), 0u) };
+            var nativeChecks = 0;
+            try
+            {
+                foreach (var (initial, automatic) in cases)
+                {
+                    nativeHandle.Write(initial);
+                    var injected = new AutomaticReadApi(native, automatic);
+                    var actual = new GamePowerThrottling(Path.Combine(dir, $"auto-{nativeChecks}.json"),
+                        new ProcessPropertyGate(Path.Combine(dir, "owners.json")), injected);
+                    if (!actual.Sync([identity]) || actual.AppliedCount != 1)
+                        throw new Exception("真实写入处理自动状态位失败：" + actual.Status);
+                    nativeChecks++;
+                    var active = nativeHandle.Read();
+                    if ((active.Control & 1) == 0 || (active.State & 1) != 0 || !actual.Sync([identity]))
+                        throw new Exception("真实回读未确认关闭执行速度节能：" + actual.Status);
+                    nativeChecks++;
+                    if (!actual.Sync([]) || actual.PendingCount != 0 || nativeHandle.Read() != initial)
+                        throw new Exception("真实恢复显式策略失败：" + actual.Status);
+                    nativeChecks++;
+                }
+            }
+            finally { nativeHandle.Write(original); }
+            Console.WriteLine($"真实 Windows 接口 + 模拟系统自动位：{nativeChecks} 项通过，应用及恢复均为产品实际实现，仅操作测试子进程。");
         }
         finally
         {
@@ -33,11 +64,28 @@ internal static class GamePowerThrottlingChecks
         }
     }
 
+    private sealed class AutomaticReadApi(IGamePowerApi native, uint automatic) : IGamePowerApi
+    {
+        public string IdentityState(ProcmanProcessIdentity identity) => native.IdentityState(identity);
+        public IGamePowerHandle Open(ProcmanProcessIdentity identity) => new Handle(native.Open(identity), automatic);
+        private sealed class Handle(IGamePowerHandle native, uint automatic) : IGamePowerHandle
+        {
+            public GamePowerState Read()
+            {
+                var state = native.Read();
+                return new(state.Control, state.State | (automatic & ~state.Control));
+            }
+            public void Write(GamePowerState state) => native.Write(state);
+            public void Dispose() => native.Dispose();
+        }
+    }
+
     private sealed class FakeApi : IGamePowerApi
     {
         internal GamePowerState State = new(4, 4);
         internal string Identity = "same";
-        internal bool RejectWrite, RejectOpen;
+        internal bool RejectWrite, RejectOpen, ValidateWriteMasks;
+        internal uint AutomaticState;
         internal int Writes;
         public string IdentityState(ProcmanProcessIdentity identity) => Identity;
         public IGamePowerHandle Open(ProcmanProcessIdentity identity)
@@ -47,9 +95,14 @@ internal static class GamePowerThrottlingChecks
         }
         private sealed class Handle(FakeApi api) : IGamePowerHandle
         {
-            public GamePowerState Read() => api.State;
+            public GamePowerState Read() => new(api.State.Control, api.State.State | (api.AutomaticState & ~api.State.Control));
             public void Write(GamePowerState state)
-            { if (api.RejectWrite) throw new IOException("denied"); api.State = state; api.Writes++; }
+            {
+                if (api.RejectWrite) throw new IOException("denied");
+                if (api.ValidateWriteMasks && (state.State & ~state.Control) != 0)
+                    throw new System.ComponentModel.Win32Exception(87);
+                api.State = state; api.Writes++;
+            }
             public void Dispose() { }
         }
     }
@@ -103,6 +156,27 @@ internal static class GamePowerThrottlingChecks
             Check(!power.Sync([identity]) && power.PendingCount == 1, "写入失败保留写前原值");
             api.RejectWrite = false;
             Check(power.Sync([]) && power.PendingCount == 0, "未生效的原值记录可以正确收尾");
+            // 系统管理的状态位不是可直接回写的显式控制位：真实 Windows 拒绝 StateMask 超出 ControlMask。
+            api.ValidateWriteMasks = true;
+            foreach (var original in new[] { new GamePowerState(0, 4), new(0, 1), new(0, 5), new(4, 5) })
+            {
+                api.State = new(original.Control, original.State & original.Control);
+                api.AutomaticState = original.State & ~original.Control;
+                power = New();
+                Check(power.Sync([identity]) && power.AppliedCount == 1, $"系统自动位 {original} 不得被回写为非法参数：" + power.Status);
+                Check((api.State.State & ~api.State.Control) == 0 && (api.State.Control & 1) != 0 && (api.State.State & 1) == 0,
+                    "写入掩码合法且明确关闭执行速度节能");
+                var originalSnapshot = System.Text.Json.JsonSerializer.Deserialize<List<GamePowerThrottling.Backup>>(File.ReadAllText(path))!;
+                Check(originalSnapshot.Single().Original == original, "写前备份保留完整读取原值，不改写恢复证据");
+                var once = api.Writes;
+                Check(power.Sync([identity]) && api.Writes == once, "其他自动位变化不引起每 tick 重复写入");
+                Check(power.Sync([]) && power.PendingCount == 0 && api.State.Control == original.Control
+                    && api.State.State == (original.State & original.Control), "恢复显式原策略，自动位交还系统");
+                Check(new GamePowerState(original.Control, original.State & original.Control).SameExecution(original),
+                    "系统自动决定执行位时，不把有效状态变化误报成恢复失败");
+            }
+            api.AutomaticState = 0;
+            api.ValidateWriteMasks = false;
             File.WriteAllText(path, "broken json");
             power = New();
             writes = api.Writes;

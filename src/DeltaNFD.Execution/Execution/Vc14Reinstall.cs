@@ -455,18 +455,8 @@ internal sealed class Vc14ReinstallEnvironment(bool allowTemporaryInstaller = fa
     public void VerifyInstalled(string arch)
     {
         if (arch is not ("x64" or "x86")) throw new IOException("DLL校验架构无效。");
-        {
-            var system = Environment.GetFolderPath(arch == "x64" ? Environment.SpecialFolder.System : Environment.SpecialFolder.SystemX86);
-            var expected = Version.Parse(Info.Version);
-            foreach (var dll in arch == "x64" ? new[] { "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll" } : new[] { "msvcp140.dll", "vcruntime140.dll" })
-            {
-                var file = Path.Combine(system, dll);
-                var version = FileVersionInfo.GetVersionInfo(file);
-                if (version.FileVersion is null) throw new IOException("DLL版本无法读取：" + file);
-                if (version.FileMajorPart != expected.Major || version.FileMinorPart != expected.Minor || version.FileBuildPart != expected.Build)
-                    throw new Vc14DllVersionMismatch(arch, dll, version.FileVersion, Info.Version);
-            }
-        }
+        var system = Environment.GetFolderPath(arch == "x64" ? Environment.SpecialFolder.System : Environment.SpecialFolder.SystemX86);
+        Vc14InstalledFileVerifier.Verify(Baseline, arch, system);
     }
     internal static string DefaultBaselinePath(string arch) => Vc14BaselineInfo.Default.Exe(arch);
 

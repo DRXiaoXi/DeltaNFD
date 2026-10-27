@@ -440,6 +440,33 @@
                             </StackPanel>
                         </Border>
                     </Grid>
+                    <TextBlock Text="协助开发者" AutomationProperties.HeadingLevel="Level3" TextWrapping="Wrap" Style="{StaticResource H3Style}"/>
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Style="{StaticResource CardBorderStyle}" Padding="12">
+                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}" StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                    <Ellipse.Fill>
+                                        <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/assistant-developer-kynovter.jpg" Stretch="UniformToFill"/>
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <TextBlock Text="Kynovter" TextWrapping="Wrap" VerticalAlignment="Center" Style="{StaticResource H2Style}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="1" Style="{StaticResource CardBorderStyle}" Padding="12">
+                            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}" StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
+                                    <Ellipse.Fill>
+                                        <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/assistant-developer-sunnis.jpg" Stretch="UniformToFill"/>
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <TextBlock Text="Sunnis" TextWrapping="Wrap" VerticalAlignment="Center" Style="{StaticResource H2Style}"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
                     <Expander Header="Bug排雷员" HorizontalAlignment="Stretch" IsExpanded="False" AutomationProperties.HeadingLevel="Level3">
                         <Border Style="{StaticResource CardBorderStyle}" Padding="12" Margin="0,4,0,0">
                             <StackPanel Spacing="8">

@@ -32,6 +32,7 @@ public sealed partial class RuntimePage
 
     private async void OpenBaselineFolder_Click(object sender, RoutedEventArgs e)
     {
+        if (!ViewModel.CanUseBaselineActions) return;
         try
         {
             var selected = ViewModel.SelectedBaseline;

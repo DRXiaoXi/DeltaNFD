@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using DeltaNFD.Services;
+using DeltaNFD.Services.Backends;
 
 namespace DeltaNFD.ViewModels;
 
@@ -8,23 +9,56 @@ public partial class RuntimeViewModel : ObservableObject
 {
     public Task<RuntimeFileUseScan> ScanFileUseAsync(CancellationToken token, RuntimeFileUseScope scope = RuntimeFileUseScope.Vc14) => _guard.ScanFileUseAsync(token, scope);
     public Task<RuntimeFileUseCloseResult> CloseFileUseAsync(RuntimeFileUseCloseArgs args, CancellationToken token) => _guard.CloseFileUseAsync(args, token);
-    public static RuntimeViewModel Current { get; } = new();
+    // Each entered page owns its view model; late callbacks retain their departed lease.
+    public static RuntimeViewModel Current => PageBackendSessions.Manager.Current is { Route: "runtime" } owner
+        ? owner.Service(static () => new RuntimeViewModel())
+        : throw new PageBackendUnavailableException("运行库栏目会话不可用，请重新进入运行库页。");
     private readonly IRuntimeGuardService _guard = ServiceLocator.Guard;
     [ObservableProperty] private bool repairIsBusy;
     [ObservableProperty] private int baselineIndex;
+    [ObservableProperty] private bool baselineDriverChecking = true;
+    [ObservableProperty] private bool hide144Baseline;
+    [ObservableProperty] private string baselineDriverNotice = "正在检查显卡驱动版本…";
     [ObservableProperty] private string repairStatusText = "修复前将预览全部 14.x 卸载清单；请先关闭运行库防护。";
-    public Vc14Baseline SelectedBaseline => BaselineIndex == 1 ? Vc14Baseline.V144 : Vc14Baseline.V142;
+    public Vc14Baseline SelectedBaseline => BaselineIndex == 1 && !Hide144Baseline ? Vc14Baseline.V144 : Vc14Baseline.V142;
+    public bool CanUseBaselineActions => !BaselineDriverChecking && GuardCleanupEnabled;
     public string SelectedBaselineLabel => SelectedBaseline.Label();
     public string SelectedBaselineVersion => SelectedBaseline.FullVersion();
     public string SelectedBaselineDescription => SelectedBaseline.Description();
     public string ContinueInstallLabel => "继续安装 " + SelectedBaseline.Display();
     partial void OnBaselineIndexChanged(int value)
     {
+        if (value != 0 && (value != 1 || Hide144Baseline)) BaselineIndex = 0;
         OnPropertyChanged(nameof(SelectedBaseline));
         OnPropertyChanged(nameof(SelectedBaselineLabel));
         OnPropertyChanged(nameof(SelectedBaselineVersion));
         OnPropertyChanged(nameof(SelectedBaselineDescription));
         OnPropertyChanged(nameof(ContinueInstallLabel));
+    }
+    partial void OnBaselineDriverCheckingChanged(bool value) => OnPropertyChanged(nameof(CanUseBaselineActions));
+    partial void OnHide144BaselineChanged(bool value)
+    {
+        if (value && BaselineIndex != 0) BaselineIndex = 0;
+        OnPropertyChanged(nameof(SelectedBaseline));
+        OnPropertyChanged(nameof(SelectedBaselineLabel));
+        OnPropertyChanged(nameof(SelectedBaselineVersion));
+        OnPropertyChanged(nameof(SelectedBaselineDescription));
+        OnPropertyChanged(nameof(ContinueInstallLabel));
+    }
+
+    public void BeginBaselineDriverCheck()
+    {
+        BaselineDriverChecking = true;
+        BaselineDriverNotice = "正在检查显卡驱动版本…";
+    }
+
+    public void CompleteBaselineDriverCheck(bool confirmed596, bool driverUnknown)
+    {
+        Hide144Baseline = confirmed596;
+        BaselineDriverNotice = confirmed596
+            ? "已检测到 NVIDIA 596 系列驱动，14.44 基线已隐藏；当前使用 14.42 默认基线。"
+            : driverUnknown ? "无法完整读取显卡驱动；如使用 NVIDIA 596 系列驱动，请勿选择 14.44。" : "";
+        BaselineDriverChecking = false;
     }
     [ObservableProperty] private string abnormalText = "";
     [ObservableProperty] private string abnormalTitle = "C++ 14.x 运行库异常";
@@ -76,6 +110,7 @@ public partial class RuntimeViewModel : ObservableObject
         OnPropertyChanged(nameof(GuardToggleEnabled));
         OnPropertyChanged(nameof(GuardModeEnabled));
         OnPropertyChanged(nameof(GuardCleanupEnabled));
+        OnPropertyChanged(nameof(CanUseBaselineActions));
     }
     public Task<Vc14ReinstallPreview> PreviewRepairAsync(Vc14RepairMode mode = Vc14RepairMode.Full, bool allowTemporaryInstaller = false)
         => _guard.Preview14RepairAsync(mode, allowTemporaryInstaller, SelectedBaseline);
@@ -118,6 +153,7 @@ public partial class RuntimeViewModel : ObservableObject
         OnPropertyChanged(nameof(GuardToggleEnabled));
         OnPropertyChanged(nameof(GuardModeEnabled));
         OnPropertyChanged(nameof(GuardCleanupEnabled));
+        OnPropertyChanged(nameof(CanUseBaselineActions));
         OnPropertyChanged(nameof(GuardToggleText));
     }
 

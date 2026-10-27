@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text.Json;
 using DeltaNFD.Backends;
 using DeltaNFD.Services;
@@ -58,7 +60,7 @@ internal static class Vc14ForceReplaceChecks
             // 4) 假系统根 + 模拟较新 34438：预览要求全部降级替换。
             var downgradeRoot = CreateFakeRoot(extracted);
             fixtures.Add(downgradeRoot);
-            string FakeNewer(string path) => "14.42.34438.0";
+            string FakeNewer(string path) => "14.44.35218.0";
             var preview = Vc14ForceReplace.PreviewCore(root, downgradeRoot, enforceHostChecks: false, versionReader: FakeNewer, CancellationToken.None);
             Check(preview.CanRun && preview.ReplaceCount == 51 && preview.SkipCount == 0 && preview.DowngradeCount == 51,
                 "34438 fake targets require all 51 forced downgrades");
@@ -226,6 +228,137 @@ internal static class Vc14ForceReplaceChecks
             catch (InvalidOperationException ex)
             { Check(ex.Message.Contains("系统 DLL"), "wrong restoration is refused before starting any backend"); }
 
+            // 13) ACL / TrustedInstaller 能力（对照外部 Vc14RuntimeFix 1.2；全部在假根和隔离数据根内）。
+            var aclRoot = CreateAclFakeRoot(extracted);
+            fixtures.Add(aclRoot);
+            var aclHealthy = Vc14ForceReplace.PreviewCore(root, aclRoot, enforceHostChecks: false, versionReader: null,
+                CancellationToken.None, Vc14Baseline.V142, inspectAcl: true);
+            Check(aclHealthy.CanRun && aclHealthy.SkipCount == 51 && aclHealthy.AclRepairCount == 0
+                && aclHealthy.LockedCount == 0, "system-like fake ACL root is a no-op");
+
+            // 13a) 仅权限被改坏（内容已匹配）：预览为 acl，执行只重置权限且不改字节。
+            var aclOnlyFile = Vc14ForceReplace.TargetPath(aclRoot, "x64", "msvcp140.dll");
+            var aclOnlyHash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(aclOnlyFile)));
+            SetFakeAcl(aclOnlyFile, usersRead: false, adminsWrite: true, grantCurrentUser: true);
+            var aclOnlyPreview = Vc14ForceReplace.PreviewCore(root, aclRoot, false, null, CancellationToken.None,
+                Vc14Baseline.V142, inspectAcl: true);
+            var aclOnlyItem = aclOnlyPreview.Items.Single(i => i.Architecture == "x64" && i.File == "msvcp140.dll");
+            Check(aclOnlyPreview.CanRun && aclOnlyItem.Status == "acl" && aclOnlyItem.AclBroken && !aclOnlyItem.InUse
+                && aclOnlyPreview.AclRepairCount == 1, "broken users-read ACL is classified as acl repair, not in-use");
+            var aclPreviewRoundTrip = JsonSerializer.Deserialize<Vc14ForceReplacePreview>(
+                JsonSerializer.Serialize(aclOnlyPreview))!;
+            Check(aclPreviewRoundTrip.AclRepairCount == 1 && aclPreviewRoundTrip.SkipCount == 50
+                && aclPreviewRoundTrip.Items.Single(i => i.File == "msvcp140.dll" && i.Architecture == "x64").AclBroken,
+                "preview contract round-trips AclRepairCount and AclBroken over JSON");
+            var aclOnlyRun = await Vc14ForceReplace.RunCoreAsync(aclOnlyPreview.Fingerprint, null, CancellationToken.None,
+                root, aclRoot, false, null, null, Vc14Baseline.V142, inspectAcl: true);
+            Check(aclOnlyRun.Success && aclOnlyRun.Message.Contains("仅修复权限 1")
+                && Vc14ForceReplaceAcl.Inspect(aclOnlyFile).UsersCanRead, "acl-only item is repaired without replacement");
+            Check(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(aclOnlyFile))) == aclOnlyHash,
+                "acl-only repair keeps DLL bytes unchanged");
+            Check(File.Exists(Path.Combine(aclOnlyRun.DiagnosticsDirectory, "acl.json"))
+                && File.Exists(Path.Combine(aclOnlyRun.DiagnosticsDirectory, "inventory.json")),
+                "ACL snapshot and inventory are written before permission repair");
+            Check(Directory.Exists(Path.Combine(aclOnlyRun.DiagnosticsDirectory, "registry"))
+                && Directory.GetFiles(Path.Combine(aclOnlyRun.DiagnosticsDirectory, "registry"), "*.reg").Length > 0,
+                "read-only registry snapshot is exported");
+            using (var aclJson = JsonDocument.Parse(File.ReadAllText(Path.Combine(aclOnlyRun.DiagnosticsDirectory, "acl.json"))))
+            {
+                var aclItems = aclJson.RootElement.GetProperty("items").EnumerateArray().ToList();
+                Check(aclItems.Count == 1 && aclItems[0].GetProperty("sddl").GetString()!.Length > 0
+                    && aclItems[0].GetProperty("ownerSid").GetString()!.Length > 0, "acl.json records owner SID and SDDL");
+            }
+            using (var inventory = JsonDocument.Parse(File.ReadAllText(Path.Combine(aclOnlyRun.DiagnosticsDirectory, "inventory.json"))))
+            {
+                Check(inventory.RootElement.GetProperty("schema").GetInt32() == 2
+                    && inventory.RootElement.GetProperty("aclSnapshotFile").GetString() == "acl.json"
+                    && inventory.RootElement.GetProperty("registryExports").GetArrayLength() == 4,
+                    "inventory schema 2 records ACL snapshot and registry exports");
+            }
+
+            // 13b) 管理员只读（TrustedInstaller 风格）且版本不符：临时接管后替换，并恢复原 ACL/属主。
+            var lockedFile = Vc14ForceReplace.TargetPath(aclRoot, "x64", "vcruntime140.dll");
+            var lockedOwner = Vc14ForceReplaceAcl.Inspect(lockedFile).OwnerSid;
+            SetFakeAcl(lockedFile, usersRead: true, adminsWrite: false, grantCurrentUser: false);
+            string LockedNewer(string path) => path.Equals(lockedFile, StringComparison.OrdinalIgnoreCase)
+                ? "14.44.35218.0" : ReadVersion(path) ?? "";
+            var lockedPreview = Vc14ForceReplace.PreviewCore(root, aclRoot, false, LockedNewer, CancellationToken.None,
+                Vc14Baseline.V142, inspectAcl: true);
+            var lockedItem = lockedPreview.Items.Single(i => i.Architecture == "x64" && i.File == "vcruntime140.dll");
+            Check(lockedPreview.CanRun && lockedItem.Status == "replace" && lockedItem.Locked
+                && lockedPreview.LockedCount == 1, "administrator read-only ACE requires ownership takeover");
+            var lockedRun = await Vc14ForceReplace.RunCoreAsync(lockedPreview.Fingerprint, null, CancellationToken.None,
+                root, aclRoot, false, LockedNewer, null, Vc14Baseline.V142, inspectAcl: true);
+            var lockedAcl = Vc14ForceReplaceAcl.Inspect(lockedFile);
+            Check(lockedRun.Success && lockedRun.Message.Contains("已替换 1"), "locked item is replaced in place");
+            Check(lockedAcl.UsersCanRead && !lockedAcl.AdminsCanWrite
+                && lockedAcl.OwnerSid.Equals(lockedOwner, StringComparison.OrdinalIgnoreCase),
+                "original owner and administrator read-only ACL are restored after takeover");
+            Check(ReadVersion(lockedFile) == Vc14ForceReplace.ExpectedVersion, "locked item ends at the target version");
+
+            // 13c) 权限被改坏 + 版本不符：替换后重置为目录继承权限。
+            var brokenReplaceFile = Vc14ForceReplace.TargetPath(aclRoot, "x86", "vcruntime140.dll");
+            SetFakeAcl(brokenReplaceFile, usersRead: false, adminsWrite: true, grantCurrentUser: true);
+            string BrokenNewer(string path) => path.Equals(brokenReplaceFile, StringComparison.OrdinalIgnoreCase)
+                ? "14.44.35211.0" : ReadVersion(path) ?? "";
+            var brokenPreview = Vc14ForceReplace.PreviewCore(root, aclRoot, false, BrokenNewer, CancellationToken.None,
+                Vc14Baseline.V142, inspectAcl: true);
+            var brokenItem = brokenPreview.Items.Single(i => i.Architecture == "x86" && i.File == "vcruntime140.dll");
+            Check(brokenPreview.CanRun && brokenItem.Status == "replace" && brokenItem.AclBroken,
+                "broken users-read ACL with version mismatch is a replace+repair item");
+            var brokenRun = await Vc14ForceReplace.RunCoreAsync(brokenPreview.Fingerprint, null, CancellationToken.None,
+                root, aclRoot, false, BrokenNewer, null, Vc14Baseline.V142, inspectAcl: true);
+            Check(brokenRun.Success && Vc14ForceReplaceAcl.Inspect(brokenReplaceFile).UsersCanRead,
+                "replace+broken ACL item is replaced and permissions reset to inherited");
+            Check(ReadVersion(brokenReplaceFile) == Vc14ForceReplace.ExpectedVersion,
+                "replace+broken ACL item ends at the target version");
+
+            // 13e) 宽检测：Everyone 可读不误报；DENY Read 必须判为不可读并修复。
+            var aclDetectFile = Vc14ForceReplace.TargetPath(aclRoot, "x86", "msvcp140.dll");
+            SetEveryoneReadAcl(aclDetectFile);
+            var everyoneAcl = Vc14ForceReplaceAcl.Inspect(aclDetectFile);
+            Check(everyoneAcl.UsersCanRead && everyoneAcl.AdminsCanWrite,
+                "Everyone/Authenticated-Users style read access counts as users-readable");
+            AddDenyUsersRead(aclDetectFile);
+            var deniedAcl = Vc14ForceReplaceAcl.Inspect(aclDetectFile);
+            Check(!deniedAcl.UsersCanRead, "deny read data on Users overrides broad read access");
+            var denyPreview = Vc14ForceReplace.PreviewCore(root, aclRoot, false, null, CancellationToken.None,
+                Vc14Baseline.V142, inspectAcl: true);
+            var denyItem = denyPreview.Items.Single(i => i.Architecture == "x86" && i.File == "msvcp140.dll");
+            Check(denyPreview.CanRun && denyItem.Status == "acl" && denyItem.AclBroken,
+                "deny-read file is classified as an acl repair, not a healthy/ok file");
+            var denyRun = await Vc14ForceReplace.RunCoreAsync(denyPreview.Fingerprint, null, CancellationToken.None,
+                root, aclRoot, false, null, null, Vc14Baseline.V142, inspectAcl: true);
+            Check(denyRun.Success && Vc14ForceReplaceAcl.Inspect(aclDetectFile).UsersCanRead,
+                "deny-read ACL is repaired by resetting to inherited permissions");
+
+            // 13d) 替换后验证失败时，回滚必须同时恢复字节与原 ACL/属主。
+            var aclRollbackRoot = CreateAclFakeRoot(extracted);
+            fixtures.Add(aclRollbackRoot);
+            var aclRollbackFile = Vc14ForceReplace.TargetPath(aclRollbackRoot, "x64", "mfc140.dll");
+            var aclRollbackOwner = Vc14ForceReplaceAcl.Inspect(aclRollbackFile).OwnerSid;
+            var aclRollbackBefore = File.ReadAllBytes(aclRollbackFile);
+            SetFakeAcl(aclRollbackFile, usersRead: true, adminsWrite: false, grantCurrentUser: false);
+            string RollbackNewer(string path) => path.Equals(aclRollbackFile, StringComparison.OrdinalIgnoreCase)
+                ? "14.44.35220.0" : ReadVersion(path) ?? "";
+            var aclRollbackPreview = Vc14ForceReplace.PreviewCore(root, aclRollbackRoot, false, RollbackNewer,
+                CancellationToken.None, Vc14Baseline.V142, inspectAcl: true);
+            Check(aclRollbackPreview.CanRun && aclRollbackPreview.LockedCount == 1,
+                "ACL rollback fixture previews the locked item");
+            var aclRollbackRun = await Vc14ForceReplace.RunCoreAsync(aclRollbackPreview.Fingerprint, null, CancellationToken.None,
+                root, aclRollbackRoot, false, RollbackNewer, path =>
+                {
+                    if (path.Equals(aclRollbackFile, StringComparison.OrdinalIgnoreCase))
+                        throw new IOException("fixture post-write failure");
+                }, Vc14Baseline.V142, inspectAcl: true);
+            var aclRollbackAfter = Vc14ForceReplaceAcl.Inspect(aclRollbackFile);
+            Check(!aclRollbackRun.Success && !aclRollbackRun.IsPartial && !aclRollbackRun.OutcomeUnknown,
+                "ACL rollback fixture completes a confirmed rollback");
+            Check(File.ReadAllBytes(aclRollbackFile).SequenceEqual(aclRollbackBefore)
+                && aclRollbackAfter.UsersCanRead && !aclRollbackAfter.AdminsCanWrite
+                && aclRollbackAfter.OwnerSid.Equals(aclRollbackOwner, StringComparison.OrdinalIgnoreCase),
+                "rollback restores both bytes and the original ACL/owner");
+
             Check(ReadVersion(systemDll) == realBefore && (!File.Exists(systemDll) || new FileInfo(systemDll).Length == realLength),
                 "real System32 msvcp140.dll untouched by fake-root tests");
             Console.WriteLine("Vc14 force-replace checks passed: " + count + " checks.");
@@ -239,6 +372,7 @@ internal static class Vc14ForceReplaceChecks
             {
                 var full = Path.GetFullPath(fixture);
                 if (!full.StartsWith(Path.GetFullPath(Path.GetTempPath()), StringComparison.OrdinalIgnoreCase)) continue;
+                TryMakeTreeWritable(full);
                 TryDelete(full);
             }
             TryDelete(isolatedFull);
@@ -256,6 +390,116 @@ internal static class Vc14ForceReplaceChecks
             File.Copy(pair.Value, target);
         }
         return root;
+    }
+
+    /// <summary>建立带 System32/SysWOW64 风格继承 ACL 的假根：SYSTEM/Administrators 完全控制、Users 读取。</summary>
+    private static string CreateAclFakeRoot(IReadOnlyDictionary<string, string> payload)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "DeltaNFD-force-aclroot-" + Guid.NewGuid().ToString("N"));
+        foreach (var architecture in new[] { "x64", "x86" })
+        {
+            var directory = architecture == "x64" ? Path.Combine(root, "System32") : Path.Combine(root, "SysWOW64");
+            Directory.CreateDirectory(directory);
+            var security = new DirectorySecurity();
+            security.SetAccessRuleProtection(true, false);
+            var inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+            security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+                FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+                FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+                FileSystemRights.ReadAndExecute, inherit, PropagationFlags.None, AccessControlType.Allow));
+            // 夹具进程是普通用户；假根目录必须允许它创建/替换文件（真实 System32 由管理员承接）。
+            if (WindowsIdentity.GetCurrent().User is { } harnessUser)
+                security.AddAccessRule(new FileSystemAccessRule(harnessUser, FileSystemRights.FullControl, inherit,
+                    PropagationFlags.None, AccessControlType.Allow));
+            new DirectoryInfo(directory).SetAccessControl(security);
+        }
+        foreach (var pair in payload)
+        {
+            var parts = pair.Key.Split('|');
+            var target = Vc14ForceReplace.TargetPath(root, parts[0], parts[1]);
+            File.Copy(pair.Value, target);
+        }
+        return root;
+    }
+
+    /// <summary>给单个假 DLL 写显式 ACL，模拟权限被改坏或 TrustedInstaller 管理员只读状态。</summary>
+    private static void SetFakeAcl(string path, bool usersRead, bool adminsWrite, bool grantCurrentUser)
+    {
+        var security = new FileSecurity();
+        security.SetAccessRuleProtection(true, false);
+        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+            FileSystemRights.FullControl, AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+            adminsWrite ? FileSystemRights.FullControl : FileSystemRights.ReadAndExecute, AccessControlType.Allow));
+        if (usersRead)
+            security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
+                FileSystemRights.ReadAndExecute, AccessControlType.Allow));
+        if (grantCurrentUser && WindowsIdentity.GetCurrent().User is { } user)
+            security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.FullControl, AccessControlType.Allow));
+        new FileInfo(path).SetAccessControl(security);
+    }
+
+    private static readonly SecurityIdentifier TestUsersSid = new(WellKnownSidType.BuiltinUsersSid, null);
+    private static readonly SecurityIdentifier TestAdminsSid = new(WellKnownSidType.BuiltinAdministratorsSid, null);
+    private static readonly SecurityIdentifier TestSystemSid = new(WellKnownSidType.LocalSystemSid, null);
+
+    /// <summary>显式 ACL：SYSTEM/Administrators 完全控制、Everyone 读取、当前用户完全控制（只读测试夹具）。</summary>
+    private static void SetEveryoneReadAcl(string path)
+    {
+        var security = new FileSecurity();
+        security.SetAccessRuleProtection(true, false);
+        security.AddAccessRule(new FileSystemAccessRule(TestSystemSid, FileSystemRights.FullControl, AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(TestAdminsSid, FileSystemRights.FullControl, AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier("S-1-1-0"),
+            FileSystemRights.ReadAndExecute, AccessControlType.Allow));
+        if (WindowsIdentity.GetCurrent().User is { } user)
+            security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.FullControl, AccessControlType.Allow));
+        new FileInfo(path).SetAccessControl(security);
+    }
+
+    private static void AddDenyUsersRead(string path)
+    {
+        var info = new FileInfo(path);
+        var security = info.GetAccessControl(AccessControlSections.Access);
+        security.AddAccessRule(new FileSystemAccessRule(TestUsersSid, FileSystemRights.ReadData, AccessControlType.Deny));
+        info.SetAccessControl(security);
+    }
+
+    /// <summary>测试清理前把假根权限恢复为当前用户可删除，避免 ACL 夹具残留。</summary>
+    private static void TryMakeTreeWritable(string root)
+    {
+        try
+        {
+            if (!Directory.Exists(root)) return;
+            var user = WindowsIdentity.GetCurrent().User;
+            if (user is null) return;
+            foreach (var path in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories).Prepend(root))
+            {
+                try
+                {
+                    if (Directory.Exists(path))
+                    {
+                        var info = new DirectoryInfo(path);
+                        var security = info.GetAccessControl(AccessControlSections.Access);
+                        security.SetAccessRuleProtection(false, false);
+                        security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.FullControl, AccessControlType.Allow));
+                        info.SetAccessControl(security);
+                    }
+                    else
+                    {
+                        var info = new FileInfo(path);
+                        var security = info.GetAccessControl(AccessControlSections.Access);
+                        security.SetAccessRuleProtection(false, false);
+                        security.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.FullControl, AccessControlType.Allow));
+                        info.SetAccessControl(security);
+                    }
+                }
+                catch (Exception) { }
+            }
+        }
+        catch (Exception) { }
     }
 
     private static string? CreateFakeRootFromSystem()

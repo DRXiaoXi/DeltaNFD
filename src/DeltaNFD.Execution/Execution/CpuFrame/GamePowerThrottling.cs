@@ -7,10 +7,13 @@ namespace DeltaNFD.Execution.CpuFrame;
 
 internal readonly record struct GamePowerState(uint Control, uint State)
 {
-    internal GamePowerState Disable() => new(Control | 1u, State & ~1u);
+    // 查询可包含系统自动决定的有效状态；SetProcessInformation 只接受受 ControlMask 控制的状态位。
+    internal GamePowerState ForWrite() => new(Control, State & Control);
+    internal GamePowerState Disable() => new GamePowerState(Control | 1u, State & ~1u).ForWrite();
     internal GamePowerState Restore(GamePowerState original) =>
-        new((Control & ~1u) | (original.Control & 1u), (State & ~1u) | (original.State & 1u));
-    internal bool SameExecution(GamePowerState other) => ((Control ^ other.Control) & 1u) == 0 && ((State ^ other.State) & 1u) == 0;
+        new GamePowerState((Control & ~1u) | (original.Control & 1u), (State & ~1u) | (original.State & 1u)).ForWrite();
+    internal bool SameExecution(GamePowerState other) => ((Control ^ other.Control) & 1u) == 0
+        && ((Control & 1u) == 0 || ((State ^ other.State) & 1u) == 0);
 }
 
 internal interface IGamePowerHandle : IDisposable
@@ -129,7 +132,7 @@ internal sealed class GamePowerThrottling
                     }
                     lease.Game(false);
                     var desired = current.Disable();
-                    if (current != desired) handle.Write(desired);
+                    if (!current.SameExecution(desired)) handle.Write(desired);
                     if (!handle.Read().SameExecution(desired)) throw new IOException("生效回读不符");
                     AppliedCount++;
                 }
@@ -147,8 +150,14 @@ internal sealed class GamePowerThrottling
         public IGamePowerHandle Open(ProcmanProcessIdentity identity)
         {
             var handle = OpenProcess(0x1200, false, identity.Pid);
-            if (handle.IsInvalid || !ProcmanIdentity.Matches(handle, identity))
-            { handle.Dispose(); throw new IOException("进程已退出、身份变化或权限不足，未写入"); }
+            if (handle.IsInvalid)
+            {
+                var error = Marshal.GetLastWin32Error();
+                handle.Dispose();
+                throw NativeError("打开游戏节能句柄", error);
+            }
+            if (!ProcmanIdentity.Matches(handle, identity))
+            { handle.Dispose(); throw new IOException("进程已退出或身份变化，未写入"); }
             return new NativeHandle(handle);
         }
     }
@@ -157,16 +166,21 @@ internal sealed class GamePowerThrottling
         public GamePowerState Read()
         {
             var value = new PowerState { Version = 1 };
-            if (!GetProcessInformation(handle, 4, ref value, 12)) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            if (!GetProcessInformation(handle, 4, ref value, Marshal.SizeOf<PowerState>()))
+                throw NativeError("读取游戏节能状态", Marshal.GetLastWin32Error());
             return new(value.Control, value.State);
         }
         public void Write(GamePowerState state)
         {
-            var value = new PowerState { Version = 1, Control = state.Control, State = state.State };
-            if (!SetProcessInformation(handle, 4, ref value, 12)) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            var writable = state.ForWrite();
+            var value = new PowerState { Version = 1, Control = writable.Control, State = writable.State };
+            if (!SetProcessInformation(handle, 4, ref value, Marshal.SizeOf<PowerState>()))
+                throw NativeError($"写入游戏节能状态（ControlMask=0x{value.Control:X}，StateMask=0x{value.State:X}）", Marshal.GetLastWin32Error());
         }
         public void Dispose() => handle.Dispose();
     }
+    private static System.ComponentModel.Win32Exception NativeError(string stage, int code) =>
+        new(code, $"{stage}失败（Win32 {code}）：{new System.ComponentModel.Win32Exception(code).Message}");
     [StructLayout(LayoutKind.Sequential)] private struct PowerState { public uint Version, Control, State; }
     [DllImport("kernel32.dll", SetLastError = true)] private static extern SafeProcessHandle OpenProcess(uint access, bool inherit, int pid);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetProcessInformation(SafeProcessHandle handle, int kind, ref PowerState state, int size);

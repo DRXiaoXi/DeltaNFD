@@ -74,7 +74,7 @@ internal static class DeploymentLayoutChecks
                 Check(Directory.GetFiles(backendsRoot, runtime, SearchOption.AllDirectories).Length == 1,
                     "五后端及助手共用唯一的 " + runtime);
 
-        Console.WriteLine($"Deployment layout checks passed ({_passed} assertions): frontend + 7 backends present, offline helper absent as expected, " +
+        Console.WriteLine($"Deployment layout checks passed ({_passed} assertions): frontend + 6 backends present, offline helper absent as expected, " +
             (commonRuntime ? "backends and helper share one runtime; " : "legacy per-component runtime; ") + "assets copied and hash-verified, " +
             "WinUI pri/xbf present, backends run with DOTNET_ROOT/PATH cleared. Isolated publish dir only; no installer, no live install.");
     }

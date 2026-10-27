@@ -104,7 +104,7 @@ internal static class Vc14FileRepairSource
     }
 }
 
-/// <summary>One ordinary repair, then one forced-file repair for a proven version mismatch.</summary>
+/// <summary>One ordinary repair, then one MSI file repair for a proven version mismatch or missing baseline file.</summary>
 internal static class Vc14FileRecovery
 {
     internal static async Task<Vc14StepResult> RunAsync(IVc14ReinstallEnvironment environment,
@@ -133,7 +133,13 @@ internal static class Vc14FileRecovery
                 if (ex.Architecture != arch) throw new IOException("DLL校验架构不一致，未强制重装。", ex);
                 environment.Trace("dll-force-repair-intent", new { arch, Error = ex.Message });
             }
-            // Do not treat an unreadable/missing DLL or an unknown MSI scan as permission to force.
+            catch (Vc14DllMissing ex)
+            {
+                if (ex.Architecture != arch || !Vc14InstalledFileVerifier.IsBaselineFile(environment.Baseline, arch, ex.File))
+                    throw new IOException("缺失 DLL 不属于当前架构的官方基线，未强制重装。", ex);
+                environment.Trace("dll-missing-file-repair-intent", new { arch, ex.File, Error = ex.Message });
+            }
+            // Unreadable files, unknown paths and unknown MSI scans still cannot authorize file reinstallation.
             var scan = environment.Scan();
             if (scan.Issues.Count != 0 || scan.Products.Count != 4 || Vc14Catalog.Families.Any(f =>
                 scan.Products.Count(p => p.Architecture == f.Arch && p.Role == f.Role
@@ -141,7 +147,7 @@ internal static class Vc14FileRecovery
                 return new(null, Detail: info.Label + " 双架构组件身份未确认，未执行强制文件重装。", PostcheckPassed: false);
             if (environment.Blocker() is { } changed) return new(null, Detail: changed, PostcheckPassed: false);
             token.ThrowIfCancellationRequested();
-            progress?.Report(arch + "：普通修复后DLL仍未对齐，回退到忽略文件版本的原始MSI重装…");
+            progress?.Report(arch + "：普通修复后DLL仍缺失或版本未对齐，回退到忽略文件版本的原始MSI重装…");
             var forced = await environment.ForceFileRepairAsync(arch, progress, token);
             environment.Trace("dll-force-repair-result", new { arch, Result = forced });
             if (!forced.Success || forced.Reboot) return forced;

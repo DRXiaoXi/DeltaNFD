@@ -18,6 +18,21 @@ internal static class Vc14FileRepairChecks
         Check((await Run(fixedFiles)).Success && fixedFiles.Calls.SequenceEqual(["ordinary:x64", "force:x64"]), "wrong version after ordinary repair falls back exactly once");
         var both = new Fake { Bad = ["x64", "x86"] };
         Check((await Run(both)).Success && both.Calls.SequenceEqual(["ordinary:x64", "force:x64", "ordinary:x86", "force:x86"]), "only affected architectures use the fallback");
+        var missing = new Fake { Missing = true };
+        Check((await Run(missing)).Success && missing.Calls.SequenceEqual(["ordinary:x64", "force:x64"]), "confirmed missing baseline DLL uses one ordinary and one MSI file repair");
+        var missingBoth = new Fake { Missing = true, Bad = ["x64", "x86"] };
+        Check((await Run(missingBoth)).Success && missingBoth.Calls.SequenceEqual(["ordinary:x64", "force:x64", "ordinary:x86", "force:x86"]), "missing files repair only their affected architectures");
+        var ordinaryMissing = new Fake { Missing = true, OrdinaryFixes = true };
+        Check((await Run(ordinaryMissing)).Success && ordinaryMissing.Calls.SequenceEqual(["ordinary:x64"]), "ordinary repair of missing files avoids an unnecessary MSI fallback");
+        var missingStill = new Fake { Missing = true, ForceFixes = false };
+        Check(!(await Run(missingStill)).Success && missingStill.Calls.Count == 2, "successful MSI exit cannot hide a file still missing");
+        foreach (var invalidMissing in new[] { new Fake { Missing = true, MissingFile = "outside-baseline.dll" }, new Fake { Missing = true, MissingArchitecture = "x86" } })
+        {
+            try { await Run(invalidMissing); throw new Exception("must reject unknown missing identity"); }
+            catch (IOException) { Check(invalidMissing.Calls.SequenceEqual(["ordinary:x64"]), "unknown file or architecture cannot authorize fallback"); }
+        }
+        foreach (var unavailable in new[] { new Fake { Missing = true, ScanIssue = true }, new Fake { Missing = true, ChangedMsi = true } })
+            Check(!(await Run(unavailable)).Success && unavailable.Calls.SequenceEqual(["ordinary:x64"]), "missing files do not bypass MSI identity verification");
         foreach (var result in new[] { new Vc14StepResult(1603), new Vc14StepResult(3010), new Vc14StepResult(1641), new Vc14StepResult(0, true) })
         {
             var failed = new Fake { Ordinary = result, Bad = ["x64", "x86"] };
@@ -95,7 +110,8 @@ internal static class Vc14FileRepairChecks
     {
         public HashSet<string> Bad = ["x64"];
         public List<string> Calls = [];
-        public bool OrdinaryFixes, ScanIssue, ChangedMsi, Blocked, UnreadableAfterRepair;
+        public bool OrdinaryFixes, ScanIssue, ChangedMsi, Blocked, UnreadableAfterRepair, Missing;
+        public string MissingFile = "concrt140.dll", MissingArchitecture = "";
         public bool ForceFixes = true;
         public bool IsSafeMode { get; set; }
         public Action? AfterOrdinary;
@@ -108,6 +124,7 @@ internal static class Vc14FileRepairChecks
         public void VerifyInstalled(string arch)
         {
             if (UnreadableAfterRepair && Calls.Count > 0) throw new IOException("file unreadable");
+            if (Bad.Contains(arch) && Missing) throw new Vc14DllMissing(MissingArchitecture.Length > 0 ? MissingArchitecture : arch, MissingFile, @"C:\isolated\" + MissingFile);
             if (Bad.Contains(arch)) throw new Vc14DllVersionMismatch(arch, "vcruntime140.dll", "14.51.36247");
         }
         public string DiagnosticsDirectory { get; } = Path.Combine(Path.GetTempPath(), "DeltaNFD-force-log-fixture-" + Guid.NewGuid().ToString("N"));
