@@ -85,7 +85,7 @@ public static class ServiceLocator
     /// <summary>系统精简优化：Hyper-V/VBS / 内存压缩 / 分页合并 / 预读取 / 游戏微调（真实后端，需管理员）。</summary>
     public static ISystemTweakService SystemTweaks => Backends.PageBackendSessions.Service(SystemTweaksLazy, () => new Backends.BackendSystemTweakService(), "system", "ace");
 
-    /// <summary>帧格：游戏运行期间的自动化帧数保障（一键帧格模式 / 三角洲启动时重启 DWM）。</summary>
+    /// <summary>帧格：游戏运行期间的自动化帧数保障（一键帧格模式 / DWM 高占用持续守护）。</summary>
     public static IFrameService Frame => FrameLazy.Value;
 
     /// <summary>游戏进程优化：自动提权 / 真实进程扫描与清理 / 内存整理。</summary>

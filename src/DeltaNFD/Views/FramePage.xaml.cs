@@ -116,8 +116,8 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
     /// <summary>「笔记本不适用」角标可见性（仅机箱形态确认为笔记本时为 true；无法确定不显示）。</summary>
     public bool LaptopExcludedBadgeVisible => FrameSrv.IsLaptopChassis;
 
-    public string DwmStatusText => !FrameSrv.DwmRestartOnGameStart ? "未启用"
-        : FrameSrv.IsGameRunning ? "已选择 · 目标正在运行" : "已启用 · 等待目标启动";
+    public string DwmStatusText => FrameSrv.DwmStatusText;
+    public string TimerStatusText => FrameSrv.TimerStatusText;
     public string ResponseStatusText => FrameFeatureState.Describe(FrameSrv.ResponseBoostEnabled,
         FrameSrv.ResponseBoostTimerEnabled || FrameSrv.GamePowerThrottlingDisabled,
         FrameSrv.FrameModeEnabled);
@@ -170,7 +170,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
     private static readonly string[] FeaturePresentationProperties =
     {
         nameof(DwmStatusText), nameof(ResponseStatusText), nameof(ForegroundStatusText), nameof(PowerSaveStatusText),
-        nameof(TimerSelected), nameof(GamePowerSelected), nameof(GamePowerStatusText),
+        nameof(TimerSelected), nameof(TimerStatusText), nameof(GamePowerSelected), nameof(GamePowerStatusText),
         nameof(ResponsivenessSelected), nameof(PrioritySelected), nameof(NicSelected), nameof(UsbSelected),
         nameof(PcieSelected),
         nameof(SubTogglesEditable), nameof(ForegroundSubTogglesEditable), nameof(PowerSaveSubTogglesEditable),
@@ -210,7 +210,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
         }
 
         if (e.PropertyName is null or "" or nameof(IFrameService.FeaturesEditable) or nameof(IFrameService.FrameModeEnabled)
-            or nameof(IFrameService.IsGameRunning) or nameof(IFrameService.DwmRestartOnGameStart)
+            or nameof(IFrameService.IsGameRunning) or nameof(IFrameService.DwmRestartOnGameStart) or nameof(IFrameService.DwmStatusText) or nameof(IFrameService.TimerStatusText)
             or nameof(IFrameService.ResponseBoostEnabled) or nameof(IFrameService.ResponseBoostTimerEnabled) or nameof(IFrameService.GamePowerThrottlingDisabled) or nameof(IFrameService.GamePowerStatusText) or nameof(IFrameService.GamePowerHasError)
             or nameof(IFrameService.ForegroundBoostEnabled) or nameof(IFrameService.ForegroundResponsivenessEnabled)
             or nameof(IFrameService.ForegroundPriorityEnabled) or nameof(IFrameService.PowerSaveLatencyEnabled)

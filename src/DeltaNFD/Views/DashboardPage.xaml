@@ -54,6 +54,9 @@
         <ScrollViewer HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Top">
             <StackPanel MaxWidth="1200" Padding="24,20,24,28" Spacing="16">
                 <TextBlock Text="主页" Style="{StaticResource PageTitleStyle}"/>
+                <InfoBar x:Name="TimerWarning" IsOpen="True" IsClosable="False" Severity="Informational" Title="正在检测 HPET 与启动计时器选项">
+                    <InfoBar.ActionButton><Button Content="查看并恢复" Click="TimerRecovery_Click"/></InfoBar.ActionButton>
+                </InfoBar>
                 <InfoBar IsOpen="{x:Bind ViewModel.IsLimitedTestBuild}" IsClosable="False" Severity="Informational" Title="更新测试版" Message="运行库功能将在 Alpha0.9194 完整版开放，请到设置中检查更新。"/>
                 <Grid ColumnSpacing="16" RowSpacing="16" x:Name="DashboardTileGrid">
                     <Grid.ColumnDefinitions>

@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>BackendSmokeTest</RootNamespace>
     <!-- 与产品同版本：官方后端客户端（已链接进本测试）按 AppVersion 校验后端版本。 -->
-    <Version>0.9304</Version>
-    <InformationalVersion>Beta0.93-RC2</InformationalVersion>
+    <Version>0.9305</Version>
+    <InformationalVersion>Beta0.93-RC3</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -44,6 +44,7 @@
   -->
   <ItemGroup>
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AdvancedTweakService.cs" />
+    <Compile Include="../../src/DeltaNFD.Execution/Execution/TimerConfigurationRecovery.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceService.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceCoreFileCleanup.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceVirtualizationCheck.cs" />
@@ -64,6 +65,8 @@
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\FrameTweaksService.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\FramePowerLifecycle.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\CpuFrameEngine.cs" />
+    <Compile Include="../../src/DeltaNFD.Execution/Execution/CpuFrame/DwmWatchdog.cs" />
+    <Compile Include="../../src/DeltaNFD.Execution/Execution/CpuFrame/FrameTimerResolution.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\GamePowerThrottling.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\OfflineTaskOwnership.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\AceGameSearchSettings.cs" />
@@ -108,6 +111,7 @@
     <Compile Include="..\..\src\DeltaNFD\Services\CpuFrameStatusState.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\GameObservationState.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\FrameStatusPresentation.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\TimerHealthPresentation.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\AppVersion.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\AdvancedStartupRestart.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\ProcmanRuleProjection.cs" />

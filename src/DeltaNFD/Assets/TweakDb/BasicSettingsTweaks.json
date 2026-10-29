@@ -376,66 +376,7 @@
     ],
     "IconPath": "SquareOpacity"
   },
-  {
-    "Name": "HPETName",
-    "Level": 1,
-    "Arguments": [ "VISIBLETWEAKS", "LEVEL" ],
-    "Type": "DOUBLE",
-    "Tweaks": [
-      {
-        "TweakType": "CHECK",
-        "Path": "HPET",
-        "Key": "",
-        "Values": []
-      },
-      {
-        "TweakType": "BAT",
-        "Path": "cmd64",
-        "Key": "",
-        "Values": [
-          {
-            "ValueTypes": [ "DEFAULT", "ON" ],
-            "Value": "bcdedit /deletevalue disabledynamictick"
-          },
-          {
-            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
-            "Value": "bcdedit /set disabledynamictick yes"
-          }
-        ]
-      },
-      {
-        "TweakType": "BAT",
-        "Path": "cmd64",
-        "Key": "",
-        "Values": [
-          {
-            "ValueTypes": [ "DEFAULT", "ON" ],
-            "Value": "bcdedit /deletevalue useplatformtick"
-          },
-          {
-            "ValueTypes": [ "BEST", "OPTIMAL", "OFF" ],
-            "Value": "bcdedit /set useplatformtick yes"
-          }
-        ]
-      },
-      {
-        "TweakType": "DEVICE",
-        "Path": "ACPI\\PNP0103",
-        "Key": "",
-        "Values": [
-          {
-            "ValueTypes": [ "BEST", "OFF", "OPTIMAL" ],
-            "Value": "Disable"
-          },
-          {
-            "ValueTypes": [ "DEFAULT", "ON" ],
-            "Value": "Enable"
-          }
-        ]
-      }
-    ],
-    "IconPath": "TimerCogOutline"
-  },
+  
   {
     "Name": "GameBar",
     "Description": "GameBarDesc",

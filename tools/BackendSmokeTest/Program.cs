@@ -1,5 +1,31 @@
 using DeltaNFD.Services;
 
+if (args is ["--frame-timer-idle"])
+{
+    await Task.Delay(Timeout.Infinite);
+    return;
+}
+
+if (args is ["--frame-timer-checks"])
+{
+    try { await FrameTimerResolutionChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--dwm-watchdog-checks"])
+{
+    try { await DwmWatchdogChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--timer-recovery-checks", var timerAssets])
+{
+    BackendSmokeTest.TimerRecoveryChecks.Run(timerAssets);
+    return;
+}
+
 if (args is ["--vc14-installed-file-checks", var installedFileAssets])
 {
     try { await Vc14InstalledFileChecks.RunAsync(installedFileAssets); }

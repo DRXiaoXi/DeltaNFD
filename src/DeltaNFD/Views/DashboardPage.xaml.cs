@@ -23,10 +23,32 @@ public sealed partial class DashboardPage : Page
     }
 
     private bool _attached;
+    private int _timerGeneration;
+    private async Task RefreshTimerAsync(bool force = false)
+    {
+        var generation = _timerGeneration;
+        try
+        {
+            var status = await TimerHealthCache.ReadAsync(force);
+            if (!_attached || generation != _timerGeneration) return;
+            var notice = TimerHealthPresentation.Create(status);
+            TimerWarning.IsOpen = notice.IsOpen;
+            TimerWarning.Title = notice.Title;
+            TimerWarning.Message = notice.Message;
+            TimerWarning.Severity = notice.IsError ? InfoBarSeverity.Error : InfoBarSeverity.Warning;
+        }
+        catch (Exception ex)
+        {
+            if (!_attached || generation != _timerGeneration) return;
+            TimerWarning.IsOpen = true; TimerWarning.Title = "计时器检测未完成"; TimerWarning.Message = ex.Message; TimerWarning.Severity = InfoBarSeverity.Warning;
+        }
+    }
+    private void TimerRecovery_Click(object sender, RoutedEventArgs e) => Frame.Navigate(typeof(TimerRecoveryPage));
     private void Page_Loaded(object sender, RoutedEventArgs e)
     {
         if (_attached) return;
-        _attached = true;
+        _attached = true; _timerGeneration++;
+        _ = RefreshTimerAsync();
         ServiceLocator.GameTarget.Changed += OnTargetChanged;
         ViewModel.RefreshTargetDisplay();
         ViewModel.RefreshRuntimeDetectionPreference();
@@ -37,7 +59,7 @@ public sealed partial class DashboardPage : Page
 
     private void Page_Unloaded(object sender, RoutedEventArgs e)
     {
-        _attached = false;
+        _attached = false; _timerGeneration++;
         ServiceLocator.GameTarget.Changed -= OnTargetChanged;
         ViewModel.DetachScanListener();
         ViewModel.DetachHealth();
@@ -51,6 +73,7 @@ public sealed partial class DashboardPage : Page
 
     private async void RefreshHealthButton_Click(object sender, RoutedEventArgs e)
     {
+        await RefreshTimerAsync(true);
         await ViewModel.RefreshHealthAsync();
     }
 

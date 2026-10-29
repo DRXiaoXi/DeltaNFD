@@ -16,7 +16,6 @@ namespace DeltaNFD.Execution.CpuFrame;
 /// </summary>
 public sealed class CpuFrameEngine : IDisposable
 {
-    private const string DwmProcessName = "dwm";
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan PowerGuardInterval = TimeSpan.FromSeconds(30);
 
@@ -53,8 +52,9 @@ public sealed class CpuFrameEngine : IDisposable
     private bool _priorityEnabled;
     private int _priorityAppliedCount;
     private ulong _affinityMask;
-    private bool _timerActive;
-    private bool _dwmHandledForSession;
+    private readonly FrameTimerResolution _timer;
+    private bool _timerActive => _timer.NeedsRelease;
+    private readonly DwmWatchdog _dwm;
     private bool _tempOptimizationApplied;
     private bool _powerLockActive;
     private string _powerLockedGuid = "";
@@ -73,9 +73,11 @@ public sealed class CpuFrameEngine : IDisposable
 
     public CpuFrameEngine() : this(new PowerService(), new FrameTweaksService()) { }
 
-    internal CpuFrameEngine(IPowerService power, FrameTweaksService tweaks)
+    internal CpuFrameEngine(IPowerService power, FrameTweaksService tweaks, IDwmWatchEnvironment? dwmEnvironment = null, IFrameTimerApi? timerApi = null)
     {
         _power = power; _tweaks = tweaks;
+        _dwm = new(dwmEnvironment ?? new NativeDwmWatchEnvironment());
+        _timer = new(timerApi ?? new NativeFrameTimerApi());
         _gamePower = new GamePowerThrottling(Path.Combine(AppDataPaths.Root, "frame-game-power.json"), DeltaNFD.Execution.Procman.ProcessPropertyGate.Default);
         _cpu = new CpuTopologyService(TweakBackupStore.Default, _power);
     }
@@ -89,7 +91,6 @@ public sealed class CpuFrameEngine : IDisposable
             if (_monitorRunning) return OperationResult.Ok("游戏监控已在运行。");
             _cts = new CancellationTokenSource();
             _monitorRunning = true;
-            _dwmHandledForSession = false;
             var token = _cts.Token;
             _loop = Task.Run(() => RunLoopAsync(token));
         }
@@ -116,10 +117,14 @@ public sealed class CpuFrameEngine : IDisposable
             if (loop is not null) { try { await loop; } catch (OperationCanceledException) { } }
             cts.Dispose();
         }
+        _dwm.Pause("游戏监控已停止，DWM 自动守护已停止");
+        var timer = UpdateTimer(false, "监控已停止，本后端计时器请求已释放。");
         var restored = _gamePower.Sync([]);
         _gamePowerIdentityError = "";
         SetAction("游戏监控已停止。");
-        return restored ? OperationResult.Ok("游戏监控已停止，游戏节能原值已恢复。") : OperationResult.Fail(_gamePower.Status);
+        return restored && timer.Success ? OperationResult.Ok("游戏监控已停止，计时器与游戏节能请求已收尾。")
+            : new OperationResult { Success = false, IsPartial = true, OutcomeUnknown = timer.OutcomeUnknown,
+                Message = "监控已停止，但收尾未完成：" + (!timer.Success ? timer.Message : "") + (!restored ? _gamePower.Status : "") };
     }
 
     private async Task RunLoopAsync(CancellationToken token)
@@ -136,6 +141,7 @@ public sealed class CpuFrameEngine : IDisposable
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
             {
+                UpdateTimer(false, "监控读取失败，本后端计时器请求已释放。");
                 SetError("监控 tick 异常：" + ex.Message);
                 Log.Error("CPU/帧格后台监控 tick 异常", ex);
             }
@@ -179,6 +185,8 @@ public sealed class CpuFrameEngine : IDisposable
 
         if (OfflineModeGuard.BlocksNormalAutomation)
         {
+            _dwm.Pause("恢复流程中，DWM 自动守护已暂停");
+            UpdateTimer(false, "恢复流程中，计时器请求已释放。");
             _gamePower.Sync([]);
             if (_monitorRunning) SetAction("脱机模式或恢复流程中：普通帧格自动化已暂停。");
             return;
@@ -211,19 +219,17 @@ public sealed class CpuFrameEngine : IDisposable
         CpuTopologyService.ApplyCpuSchedulingTick();
 
         // ④ 加速系统响应模式：高分辨率计时器（随游戏启停换挡）
-        UpdateTimer(_boostTimer && gameRunning);
+        SyncTimer(settings, identities);
         UpdateGamePower(settings, identities);
 
-        // ⑤ 游戏启动后自动重启 DWM（延迟 5 秒，避免初始化窗口）
-        if (!gameRunning) _dwmHandledForSession = false;
-        if (frameActive && settings.DwmRestartOnGameStart && gameRunning && !_dwmHandledForSession
-            && EmergencyPolicies.BlockReason(DeltaNFD.Backends.BackendCommands.CpuFrameDwmRestart) is null
-            && GetGameUptime(identities) >= TimeSpan.FromSeconds(EmergencyPolicies.DwmDelaySeconds))
-        {
-            var result = RestartDwmCore();
-            _dwmHandledForSession = true;
-            SetAction(result.Success ? "游戏启动：已自动重启 DWM。" : "游戏启动：自动重启 DWM 失败（可手动重试）。");
-        }
+        // ⑤ 复用两秒 tick 持续采样 DWM；不在游戏启动时无条件结束进程。
+        var dwmPolicy = EmergencyPolicies.BlockReason(DeltaNFD.Backends.BackendCommands.CpuFrameDwmRestart);
+        var dwmReady = frameActive && settings.DwmRestartOnGameStart && gameRunning && dwmPolicy is null
+            && GetGameUptime(identities) >= TimeSpan.FromSeconds(EmergencyPolicies.DwmDelaySeconds);
+        _dwm.Tick(dwmReady, $"{generation}:{_gamePid}:{_gameStartTicks}",
+            dwmPolicy ?? (!frameActive ? "帧格未开启，DWM 自动守护已停止" : !settings.DwmRestartOnGameStart ? "未启用 DWM 自动守护"
+                : !gameRunning ? "等待目标游戏启动，DWM 自动守护已暂停" : "等待游戏初始化后开始 DWM 监测"),
+            () => DwmAutomaticAllowed(generation, identities));
 
         // ⑥ 帧格电源锁定与内容守护
         await _powerGate.WaitAsync(token).ConfigureAwait(false);
@@ -469,11 +475,26 @@ public sealed class CpuFrameEngine : IDisposable
     {
         _boostTimer = timer;
         _boostGamePower = gamePower;
-        var gameRunning = RefreshIdentities(GameTargetService.Default.Current.Generation).Count > 0;
-        UpdateTimer(timer && gameRunning);
-        var result = UpdateGamePower(AppSettingsStore.Read(), RefreshIdentities(GameTargetService.Default.Current.Generation));
-        SetAction($"加速响应已更新（计时器={(timer ? "开" : "关")}，游戏禁电源限制={(gamePower ? "开" : "关")}）。");
-        return Task.FromResult(result ? OperationResult.Ok("加速响应选项已更新。") : OperationResult.Fail(_lastError));
+        // Releasing must not depend on being able to enumerate the game.
+        var timerResult = timer ? null : UpdateTimer(false, "计时器选项已关闭，本后端请求已释放。");
+        try
+        {
+            var settings = AppSettingsStore.Read();
+            var games = timer || gamePower ? RefreshIdentities(GameTargetService.Default.Current.Generation) : [];
+            timerResult ??= SyncTimer(settings, games);
+            var powerOk = UpdateGamePower(settings, games);
+            var message = timerResult.Message + (powerOk ? "" : "；" + _lastError);
+            if (timerResult.Success && powerOk) SetAction("加速响应：" + message);
+            else SetError("加速响应未完成：" + message);
+            return Task.FromResult(timerResult.Success && powerOk ? OperationResult.Ok(message) : new OperationResult
+            { Success = false, Message = message, IsPartial = timerResult.IsPartial, OutcomeUnknown = timerResult.OutcomeUnknown });
+        }
+        catch (Exception ex)
+        {
+            var released = UpdateTimer(false, "无法核对游戏状态，本后端计时器请求已释放。");
+            return Task.FromResult(new OperationResult { Success = false, IsPartial = released.IsPartial, OutcomeUnknown = released.OutcomeUnknown,
+                Message = "加速响应状态无法核对：" + ex.Message + "；" + released.Message });
+        }
     }
 
     private bool UpdateGamePower(AppSettings settings, IReadOnlyList<GameProcessIdentity> games)
@@ -495,58 +516,77 @@ public sealed class CpuFrameEngine : IDisposable
     }
 
     /// <summary>设定高分辨率计时器期望，并立即按游戏运行状态更新请求。</summary>
-    public async Task<OperationResult> ApplyTimerAsync(bool enabled)
+    public Task<OperationResult> ApplyTimerAsync(bool enabled)
     {
         _boostTimer = enabled;
-        var identities = RefreshIdentities(GameTargetService.Default.Current.Generation);
-        UpdateTimer(enabled && identities.Count > 0);
-        await Task.CompletedTask;
-        if (!enabled) return OperationResult.Ok("已释放高分辨率计时器请求。");
-        return _timerActive
-            ? OperationResult.Ok("已请求高分辨率系统计时器（0.5ms）。")
-            : OperationResult.Fail("请求高分辨率计时器失败。");
+        if (!enabled) return Task.FromResult(UpdateTimer(false, "本后端计时器请求已释放。"));
+        try { return Task.FromResult(SyncTimer(AppSettingsStore.Read(), RefreshIdentities(GameTargetService.Default.Current.Generation))); }
+        catch (Exception ex)
+        {
+            var released = UpdateTimer(false, "无法核对游戏状态，本后端计时器请求已释放。");
+            return Task.FromResult(new OperationResult { Success = false, IsPartial = released.IsPartial, OutcomeUnknown = released.OutcomeUnknown,
+                Message = "计时器执行条件未知：" + ex.Message + "；" + released.Message });
+        }
     }
 
-    private void UpdateTimer(bool wanted)
-    {        if (wanted && !_timerActive)
+    private OperationResult SyncTimer(AppSettings settings, IReadOnlyList<GameProcessIdentity> games)
+    {
+        var selected = _boostTimer && settings.FrameModeActive && settings.FrameResponseBoostEnabled && settings.FrameResponseBoostTimerEnabled;
+        var wanted = selected && _monitorRunning && _observationDisposed == 0 && games.Count > 0 && !OfflineModeGuard.BlocksNormalAutomation;
+        var reason = !selected ? "帧格或计时器选项未启用，本后端未持有请求。"
+            : !_monitorRunning || _observationDisposed != 0 ? "计时器已配置，等待监控启动；当前未持有请求。"
+            : games.Count == 0 ? "计时器已配置，等待目标游戏启动；当前未持有请求。"
+            : "恢复门禁阻止执行，本后端计时器请求已释放。";
+        return UpdateTimer(wanted, reason, () => TimerStillAllowed(games));
+    }
+
+    private bool TimerStillAllowed(IReadOnlyList<GameProcessIdentity> games)
+    {
+        var settings = AppSettingsStore.Read();
+        if (!Volatile.Read(ref _monitorRunning) || Volatile.Read(ref _observationDisposed) != 0 || !_boostTimer
+            || !settings.FrameModeActive || !settings.FrameResponseBoostEnabled || !settings.FrameResponseBoostTimerEnabled
+            || OfflineModeGuard.BlocksNormalAutomation) return false;
+        foreach (var game in games)
         {
-            var request = ProcessPerf.RequestTimerResolutionHighDetailed();
-            _timerActive = request.Succeeded;
-            if (!_timerActive) SetError("请求高分辨率计时器失败。");
+            try { using var process = Process.GetProcessById(game.Id); if (GameTargetService.Default.Matches(process, game)) return true; }
+            catch (ArgumentException) { }
         }
-        else if (!wanted && _timerActive)
-        {
-            var release = ProcessPerf.ReleaseTimerResolutionDetailed();
-            _timerActive = !release.Succeeded;
-        }
+        return false;
+    }
+
+    private OperationResult UpdateTimer(bool wanted, string idleReason, Func<bool>? stillAllowed = null)
+    {
+        var result = _timer.Update(wanted, idleReason, stillAllowed);
+        if (!result.Success) SetError(result.Message);
+        return result;
     }
 
     // ---------------- DWM ----------------
 
-    public OperationResult RestartDwmAsync() => RestartDwmCore();
+    public Task<OperationResult> RestartDwmAsync(CancellationToken token = default) =>
+        _dwm.RestartNowAsync(() => Volatile.Read(ref _observationDisposed) == 0
+            && !OfflineModeGuard.BlocksNormalAutomation
+            && EmergencyPolicies.BlockReason(DeltaNFD.Backends.BackendCommands.CpuFrameDwmRestart) is null, token);
 
-    private static OperationResult RestartDwmCore()
+    private bool DwmAutomaticAllowed(long generation, IReadOnlyList<GameProcessIdentity> identities)
     {
-        if (EmergencyPolicies.BlockReason(DeltaNFD.Backends.BackendCommands.CpuFrameDwmRestart) is { } emergencyReason)
-            return OperationResult.Fail(emergencyReason);
         try
         {
-            var processes = Process.GetProcessesByName(DwmProcessName);
-            if (processes.Length == 0) return OperationResult.Fail("未找到 DWM 进程。");
-            var killed = 0;
-            foreach (var process in processes)
+            var settings = AppSettingsStore.Read();
+            if (!_monitorRunning || Volatile.Read(ref _observationDisposed) != 0 || OfflineModeGuard.BlocksNormalAutomation
+                || !settings.FrameModeActive || !settings.DwmRestartOnGameStart
+                || GameTargetService.Default.Current.Generation != generation
+                || EmergencyPolicies.BlockReason(DeltaNFD.Backends.BackendCommands.CpuFrameDwmRestart) is not null
+                || GetGameUptime(identities) < TimeSpan.FromSeconds(EmergencyPolicies.DwmDelaySeconds)) return false;
+            using var self = Process.GetCurrentProcess();
+            foreach (var identity in identities)
             {
-                using (process)
-                {
-                    try { process.Kill(); killed++; }
-                    catch { /* 个别实例失败可接受 */ }
-                }
+                using var process = Process.GetProcessById(identity.Id);
+                if (process.SessionId == self.SessionId && GameTargetService.Default.Matches(process, identity)) return true;
             }
-            return killed > 0
-                ? OperationResult.Ok("DWM 已结束，系统会立即自动重启它（屏幕会闪一下，属正常现象）。")
-                : OperationResult.Fail("结束 DWM 失败，请确认以管理员身份运行。");
+            return false;
         }
-        catch (Exception ex) { return OperationResult.Fail($"重启 DWM 失败：{ex.Message}"); }
+        catch { return false; }
     }
 
     private static TimeSpan GetGameUptime(IReadOnlyList<GameProcessIdentity> identities)
@@ -885,8 +925,9 @@ public sealed class CpuFrameEngine : IDisposable
         _boostTimer = false;
         _boostGamePower = false;
         if (!_gamePower.Sync([])) failures.Add(_gamePower.Status);
-        UpdateTimer(false);
-        messages.Add("高分辨率计时器请求已释放");
+        var timer = UpdateTimer(false, "本后端高分辨率计时器请求已释放。");
+        messages.Add(timer.Message);
+        if (!timer.Success || _timerActive) failures.Add("计时器：" + timer.Message);
         _tweaksDesired = false;
         Report("正在还原帧格临时优化…");
         var tweaks = await RevertTweaksCoreAsync().ConfigureAwait(false);
@@ -897,7 +938,8 @@ public sealed class CpuFrameEngine : IDisposable
         messages.Add("电源锁定：" + power.Message);
         if (!power.Success) failures.Add("电源锁定：" + power.Message);
         Report(failures.Count > 0 ? "帧格还原未完成，保留恢复记录。" : "帧格执行状态已还原。");
-        if (failures.Count > 0) return OperationResult.Fail("帧格还原未完成：" + string.Join("；", failures));
+        if (failures.Count > 0) return new OperationResult { Success = false, IsPartial = true, OutcomeUnknown = timer.OutcomeUnknown,
+            Message = "帧格还原未完成：" + string.Join("；", failures) };
         return OperationResult.Ok("帧格执行状态已还原：" + string.Join("；", messages));
     }
 
@@ -986,8 +1028,9 @@ public sealed class CpuFrameEngine : IDisposable
                 break;
             case "timer":
                 _boostTimer = false;
-                UpdateTimer(false);
-                message = "高分辨率计时器已释放。";
+                var timer = UpdateTimer(false, "本后端计时器请求已释放。");
+                ok = timer.Success && !_timerActive;
+                message = timer.Message;
                 break;
             case "tweaks":
             {
@@ -1054,6 +1097,8 @@ public sealed class CpuFrameEngine : IDisposable
         _ = RefreshDeltaObservationAsync();
         var version = typeof(CpuFrameEngine).Assembly.GetName().Version ?? new Version(0, 0, 0);
         var delta = Volatile.Read(ref _deltaObservation);
+        var dwm = _dwm.Status;
+        var timer = _timer.Status;
         var waitingForObservation = Volatile.Read(ref _deltaRead) is { IsCompleted: false }
             && (delta is null || (ClockForTests?.Invoke() ?? DateTimeOffset.UtcNow) - delta.ObservedUtc > TimeSpan.FromSeconds(10));
         return new CpuFrameStatusSnapshot
@@ -1079,12 +1124,14 @@ public sealed class CpuFrameEngine : IDisposable
             AffinityRuleMask = _affinityMask,
             DualCcdSchedulingActive = CpuTopologyService.DualCcdSchedulingActive,
             SingleCcdExcludeActive = CpuTopologyService.SingleCcdExcludeActive,
-            TimerActive = _timerActive,
+            TimerActive = timer.RequestHeld || timer.OwnershipUnknown,
+            Timer = timer,
             GamePowerAppliedCount = _gamePower.AppliedCount,
             GamePowerRestorePending = _gamePower.PendingCount,
             GamePowerHasError = _gamePower.HasError || _gamePowerIdentityError.Length > 0,
             GamePowerStatus = _gamePowerIdentityError.Length > 0 ? _gamePowerIdentityError : _monitorRunning && _boostGamePower && _gamePower.PendingCount == 0 && !_gameRunning ? "已配置 · 等待游戏启动" : _gamePower.Status,
-            DwmRestartedThisSession = _dwmHandledForSession,
+            DwmRestartedThisSession = dwm.RestartedThisGame,
+            Dwm = _monitorRunning ? dwm : dwm with { Monitoring = false },
             TempOptimizationApplied = _tempOptimizationApplied,
             PowerLockActive = _powerLockActive,
             PowerLockedSchemeGuid = _powerLockedGuid,
@@ -1106,6 +1153,12 @@ public sealed class CpuFrameEngine : IDisposable
     public void Dispose()
     {
         Interlocked.Exchange(ref _observationDisposed, 1);
-        try { StopMonitorAsync().GetAwaiter().GetResult(); _gamePower.Sync([]); } catch { }
+        try
+        {
+            var stopped = StopMonitorAsync().GetAwaiter().GetResult();
+            if (!stopped.Success) Log.Warn("CPU/帧格退出收尾未完成：" + stopped.Message);
+            _gamePower.Sync([]);
+        }
+        catch (Exception ex) { Log.Warn("CPU/帧格退出收尾失败：" + ex.Message); }
     }
 }

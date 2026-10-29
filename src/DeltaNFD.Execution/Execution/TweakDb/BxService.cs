@@ -716,6 +716,8 @@ public sealed class BxService : IBxService
 
     public Task<OperationResult> ApplyItemAsync(BxItem item, bool turnOn) => Task.Run(async () =>
     {
+        if (item.Name.Equals("HPETName", StringComparison.OrdinalIgnoreCase))
+            return OperationResult.Fail("旧 HPET 优化已移除。请从主页进入计时器恢复页，未执行启动配置或设备修改。");
         if (turnOn && item.Name.Equals("HPETName", StringComparison.OrdinalIgnoreCase) &&
             BxCatalog.GetCpuRestrictionReason(item, _cpuVendor()) is { } cpuReason)
         {
@@ -2153,6 +2155,12 @@ public sealed class BxService : IBxService
         }
         foreach (var e in entries.Where(e => !MouseSettingsMaintenance.IsMouseBackup(e)))
         {
+            if ((e.Kind == "Bcd" && e.KeyPath is "disabledynamictick" or "useplatformtick")
+                || (e.Kind == "Device" && DeltaNFD.Inspection.TimerConfigurationInspection.IsHpetDevice(e.KeyPath)))
+            {
+                errors.Add("旧 HPET 备份已保留，请从主页进入计时器恢复页；不会写回旧优化值。");
+                continue;
+            }
             try
             {
                 switch (e.Kind)

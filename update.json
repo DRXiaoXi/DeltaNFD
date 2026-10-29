@@ -1,28 +1,28 @@
 {
   "schemaVersion": 1,
-  "version": "0.9304",
-  "displayVersion": "Beta0.93-RC2",
+  "version": "0.9305",
+  "displayVersion": "Beta0.93-RC3",
   "channel": "beta",
   "mandatory": false,
   "minimumSupportedVersion": "",
-  "publishedAtUtc": "2026-10-27T13:38:42Z",
-  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9304",
-  "notes": "## Beta0.93-RC2\n\n检测到 NVIDIA 596 系列驱动时，运行库页面隐藏 14.44 可选基线，并使用默认的 14.42 基线；驱动无法确认时会提示玩家自行核对。其他驱动仍可选择两套基线，运行库防护可正常开启。\n\n本版包含此前本地验证的运行库 DLL 完整复检、缺失后的受控恢复、帧格电源限制兼容修复和页面会话修复。运行库及系统操作请先关闭游戏并按页面提示预览确认。\n\n[下载安装包](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9304/DeltaNFD_Setup_0.9304_x64.exe) · [备用下载](https://deltaxiaoxi.xin/updates/packages/0.9304/DeltaNFD_Setup_0.9304_x64.exe) · [源码](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9304/DeltaNFD_Source_0.9304.zip)",
+  "publishedAtUtc": "2026-10-29T07:10:46Z",
+  "releasePageUrl": "https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9305",
+  "notes": "# Beta0.93-RC3\n\n[下载 Windows x64 安装包](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9305/DeltaNFD_Setup_0.9305_x64.exe) · [国内备用下载](https://deltaxiaoxi.xin/updates/packages/0.9305/DeltaNFD_Setup_0.9305_x64.exe) · [源码 ZIP](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9305/DeltaNFD_Source_0.9305.zip)\n\n普通用户下载 EXE 安装包即可，JSON 清单用于自动更新。\n\n- 移除旧“禁用 HPET”优化入口，主页同时检测 HPET 设备与 useplatformtick / disabledynamictick。任一启动覆盖确认开启时红色提示，并提供隐藏恢复页，确认后恢复 Windows 默认；设备恢复需单独勾选，完成后手动重启。\n- 修复帧格定时器的申请、实际状态与释放责任处理，失败、精度未达到及待释放状态明确显示，避免重复申请或误报成功。\n- 帧格 DWM 改为持续观察高 CPU 占用后受控重启，包含复查、冷却和失败暂停，默认关闭。\n- 解除 NVIDIA 596 系列对 14.44 的选择限制；14.42 默认、14.44 可选，修复与强制替换均使用所选基线。\n- 保留此前 51 项 DLL 复检、缺失恢复、页面会话和内存回收等修复。\n\n.NET 8 x64 自包含。默认自建更新服务器、替换变更文件，支持全量安装与受控回退。保留用户设置、日志和恢复记录，不自动重启。\n\n本版不包含卡顿检测、着色器研究或独立预热项目。验证使用隔离测试、只读探针与自有夹具；未进行真实游戏、系统 DLL 替换或 HPET 实机恢复验收。\n\n安装包 297596135 字节，SHA256 `21665edc395c662d898ff69a21af43f554f77d926bb9d376ff2a7e8d06eb7fb0`。\n",
   "installers": [
     {
-      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9304/DeltaNFD_Setup_0.9304_x64.exe",
-      "sizeBytes": 297558459,
-      "sha256": "78c91e871430fbf8a9f0dbb04a958d23be29563960fe4c78a47cac894e487ec2"
+      "url": "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9305/DeltaNFD_Setup_0.9305_x64.exe",
+      "sizeBytes": 297596135,
+      "sha256": "21665edc395c662d898ff69a21af43f554f77d926bb9d376ff2a7e8d06eb7fb0"
     },
     {
-      "url": "https://deltaxiaoxi.xin/updates/packages/0.9304/DeltaNFD_Setup_0.9304_x64.exe",
-      "sizeBytes": 297558459,
-      "sha256": "78c91e871430fbf8a9f0dbb04a958d23be29563960fe4c78a47cac894e487ec2"
+      "url": "https://deltaxiaoxi.xin/updates/packages/0.9305/DeltaNFD_Setup_0.9305_x64.exe",
+      "sizeBytes": 297596135,
+      "sha256": "21665edc395c662d898ff69a21af43f554f77d926bb9d376ff2a7e8d06eb7fb0"
     }
   ],
   "fileUpdate": {
-    "url": "https://deltaxiaoxi.xin/updates/packages/0.9304/files.json",
-    "sizeBytes": 851553,
-    "sha256": "a0c9ff3ecdda96f0d96a58f4229c7582a9b150d700fb35760a8a944cec0b85d9"
+    "url": "https://deltaxiaoxi.xin/updates/packages/0.9305/files.json",
+    "sizeBytes": 852279,
+    "sha256": "e9d0d808ec920a30d4eaf4c6c3f39e424c665f72cec1114601cdad6eceb52136"
   }
 }

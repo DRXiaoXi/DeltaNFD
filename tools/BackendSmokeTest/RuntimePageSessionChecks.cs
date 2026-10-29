@@ -105,17 +105,17 @@ internal static class RuntimePageSessionChecks
                 vm.BeginBaselineDriverCheck();
                 Check(!vm.CanUseBaselineActions && vm.GuardToggleEnabled, "Driver recheck does not disable protection.");
                 vm.CompleteBaselineDriverCheck(true, false);
-                Check(vm.Hide144Baseline && vm.BaselineIndex == 0 && vm.SelectedBaseline == Vc14Baseline.V142,
-                    "Confirmed 596 resets a previously selected 14.44 to 14.42.");
+                Check(!vm.Hide144Baseline && vm.BaselineIndex == 1 && vm.SelectedBaseline == Vc14Baseline.V144,
+                    "Confirmed 596 keeps a previously selected 14.44 available and selected.");
                 vm.BaselineIndex = 1;
-                Check(vm.BaselineIndex == 0 && vm.SelectedBaseline == Vc14Baseline.V142 && vm.ContinueInstallLabel.Contains("14.42"),
-                    "Hidden 14.44 cannot remain selected or be used for continuation.");
+                Check(vm.BaselineIndex == 1 && vm.SelectedBaseline == Vc14Baseline.V144 && vm.ContinueInstallLabel.Contains("14.44"),
+                    "596 users can select 14.44 for continuation.");
                 await vm.PreviewRepairAsync(); await vm.PreviewRepairAsync(Vc14RepairMode.InstallOnly);
                 await vm.PreviewHighFpsAsync(false); await vm.PreviewForceReplaceAsync(default);
                 await vm.RepairAsync("fixture", default); await vm.RepairHighFpsAsync("fixture", false, default);
                 await vm.ForceReplaceAsync("fixture", default);
-                Check(guard.Baselines.Count == 7 && guard.Baselines.All(b => b == Vc14Baseline.V142),
-                    "All actual view-model preview, continuation and execution paths pass 14.42.");
+                Check(guard.Baselines.Count == 7 && guard.Baselines.All(b => b == Vc14Baseline.V144),
+                    "All actual 596 view-model preview, continuation and execution paths pass selected 14.44.");
                 vm.BeginBaselineDriverCheck(); vm.CompleteBaselineDriverCheck(false, true);
                 Check(!vm.Hide144Baseline && vm.BaselineDriverNotice.Contains("无法完整读取") && vm.CanUseBaselineActions,
                     "Unknown driver warns without treating it as a confirmed 596.");

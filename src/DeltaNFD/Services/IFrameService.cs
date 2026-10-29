@@ -23,8 +23,9 @@ public interface IFrameService : INotifyPropertyChanged
     /// <summary>一键帧格模式（只读）= 当前是否处于激活状态（激活状态跨重启保持）。</summary>
     bool FrameModeEnabled { get; }
 
-    /// <summary>帧格功能：检测到三角洲进程启动后自动结束（重启）DWM。</summary>
+    /// <summary>帧格功能：游戏期间持续监测 DWM，高 CPU 持续满足阈值时重启并复查；保留旧设置字段名。</summary>
     bool DwmRestartOnGameStart { get; set; }
+    string DwmStatusText => "等待后端确认 DWM 持续监测状态";
 
     /// <summary>帧格功能：开启一键帧格模式时锁定电源计划（游戏期间防止被其他程序修改），退出时解除。</summary>
     bool PowerPlanLockEnabled { get; set; }
@@ -70,6 +71,7 @@ public interface IFrameService : INotifyPropertyChanged
 
     /// <summary>系统定时器 0.5ms（帧格激活且游戏运行时）。</summary>
     bool ResponseBoostTimerEnabled { get; set; }
+    string TimerStatusText => "等待后端确认计时器请求与实际读数";
     bool GamePowerThrottlingDisabled { get; set; }
     string GamePowerStatusText { get; }
     bool GamePowerHasError { get; }

@@ -1,0 +1,23 @@
+<Page
+    x:Class="DeltaNFD.Views.TimerRecoveryPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer>
+        <StackPanel Spacing="16" Padding="24" MaxWidth="1040" HorizontalAlignment="Stretch">
+            <Button Content="返回主页" Click="Back_Click"/>
+            <TextBlock Text="HPET 与启动计时器恢复" Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap"/>
+            <TextBlock Text="旧版本将两个调试用启动选项作为 HPET 优化，并可能禁用高精度事件计时器设备。此功能已移除。恢复只处理这两个启动选项，以及你明确勾选的已禁用 HPET 设备；不会修改运行库或其他计时器选项。" TextWrapping="Wrap"/>
+            <TextBlock Text="检测分别核对 HPET 设备状态，以及 useplatformtick 和 disabledynamictick 是否开启。任一启动选项开启时显示红色警告；恢复会移除这两项覆盖来关闭选项，交由 Windows 使用默认行为。HPET 设备的启用是独立选择，默认不勾选。" TextWrapping="Wrap"/>
+            <InfoBar x:Name="StatusBar" IsOpen="True" IsClosable="False" Title="正在检测当前配置"/>
+            <TextBlock x:Name="CurrentText" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+            <CheckBox x:Name="RestoreDevices" Content="同时启用检测到的已禁用 HPET 设备（ACPI\PNP0103）"/>
+            <TextBlock Text="如果这些设备是你因其他原因主动禁用，请不要勾选。没有旧备份也可以根据当前配置恢复；操作前会先保存当前状态与执行记录。旧优化备份仍保留，旧值不会通过一键恢复重新写回。" TextWrapping="Wrap"/>
+            <TextBlock Text="请先退出三角洲。恢复后需手动重启电脑；本次启动的计时器行为不会立即改变。工具不会自动重启，恢复中断时可以回此页重新检测和核对。" TextWrapping="Wrap"/>
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button x:Name="RefreshButton" Content="重新检测" Click="Refresh_Click"/>
+                <Button x:Name="RecoverButton" Content="预览并恢复 Windows 默认计时器配置" Style="{StaticResource AccentButtonStyle}" Click="Recover_Click"/>
+            </StackPanel>
+            <TextBlock x:Name="ResultText" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

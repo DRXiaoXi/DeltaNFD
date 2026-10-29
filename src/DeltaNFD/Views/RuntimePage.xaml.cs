@@ -142,7 +142,7 @@ public sealed partial class RuntimePage : Page
             status = new DeltaNFD.Inspection.NvidiaDriverSeriesStatus(false, true);
         }
         if (!_baselinePageLoaded || generation != _baselineReadGeneration) return;
-        var visibility = status.Has596Series ? Visibility.Collapsed : Visibility.Visible;
+        var visibility = Visibility.Visible;
         RepairBaseline144.Visibility = visibility;
         FullBaseline144.Visibility = visibility;
         ViewModel.CompleteBaselineDriverCheck(status.Has596Series, status.DriverUnknown);

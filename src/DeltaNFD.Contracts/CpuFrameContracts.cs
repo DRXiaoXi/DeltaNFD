@@ -76,8 +76,9 @@ public sealed class CpuFrameStatusSnapshot
     /// <summary>双 CCD 调度绑定的游戏 CCD 下标（未生效为 -1）。</summary>
     public int DualCcdGameIndex { get; init; } = -1;
 
-    /// <summary>系统定时器高分辨率是否实际已请求。</summary>
+    /// <summary>兼容字段：本后端仍有或可能有计时器释放责任，不代表实际精度；详见 Timer。</summary>
     public bool TimerActive { get; init; }
+    public TimerResolutionSnapshot Timer { get; init; } = new();
     public int GamePowerAppliedCount { get; init; }
     public int GamePowerRestorePending { get; init; }
     public bool GamePowerHasError { get; init; }
@@ -86,8 +87,10 @@ public sealed class CpuFrameStatusSnapshot
     /// <summary>最近一次内存清理的实际状态文字。</summary>
     public string MemoryCleanStatus { get; init; } = "";
 
-    /// <summary>本轮监控是否已因游戏启动重启过 DWM。</summary>
+    /// <summary>兼容字段：本轮游戏是否曾请求重启 DWM；不代表复查已通过。</summary>
     public bool DwmRestartedThisSession { get; init; }
+
+    public DwmMonitorSnapshot Dwm { get; init; } = new();
 
     /// <summary>帧格临时优化（前台加速/降低省电延迟）是否实际已应用。</summary>
     public bool TempOptimizationApplied { get; init; }
@@ -106,6 +109,40 @@ public sealed class CpuFrameStatusSnapshot
 
     /// <summary>快照生成时间（UTC）。</summary>
     public DateTimeOffset UpdatedUtc { get; init; }
+}
+
+/// <summary>DWM 持续守护的实际状态；CPU 是一个逻辑处理器满载等于 100% 的口径。</summary>
+public sealed record DwmMonitorSnapshot
+{
+    public bool Monitoring { get; init; }
+    public bool CheckingAfterRestart { get; init; }
+    public bool RestartedThisGame { get; init; }
+    public int RestartCount { get; init; }
+    public int? Pid { get; init; }
+    public double? CpuCorePercent { get; init; }
+    public double? WorkingSetMiB { get; init; }
+    public bool HasError { get; init; }
+    public string Message { get; init; } = "未启用";
+    public DateTimeOffset UpdatedUtc { get; init; }
+}
+
+/// <summary>本进程请求归属与系统查询分开；系统读数不代表游戏等待或呈现精度。</summary>
+public sealed record TimerResolutionSnapshot
+{
+    public bool Wanted { get; init; }
+    public bool RequestHeld { get; init; }
+    public bool OwnershipUnknown { get; init; }
+    public bool ReleasePending { get; init; }
+    public bool TargetReached { get; init; }
+    public bool HasError { get; init; }
+    public double RequestedMilliseconds { get; init; } = 0.5;
+    public double? ReturnedActualMilliseconds { get; init; }
+    public double? SystemCurrentMilliseconds { get; init; }
+    public int? RequestNtStatus { get; init; }
+    public int? ReleaseNtStatus { get; init; }
+    public DateTimeOffset SystemObservedUtc { get; init; }
+    public DateTimeOffset UpdatedUtc { get; init; }
+    public string Message { get; init; } = "当前后端未持有计时器请求。";
 }
 
 /// <summary>开关类命令参数（监控 / 优先级 / 计时器）。</summary>

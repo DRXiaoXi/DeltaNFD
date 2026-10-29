@@ -53,12 +53,12 @@ internal static class SystemOptimizePhaseOneChecks
         var hpet = new BxItem { Name = "HPETName" };
         Assert(BxCatalog.GetCpuRestrictionReason(hpet, "GenuineIntel") is not null, "Intel HPET blocked");
         Assert(BxCatalog.GetCpuRestrictionReason(hpet, " genuineintel ") is not null, "Intel vendor case/space normalization");
-        Assert(BxCatalog.GetCpuRestrictionReason(hpet, "AuthenticAMD") is null, "AMD HPET unchanged");
-        Assert(BxCatalog.GetCpuRestrictionReason(hpet, "") is null, "unknown vendor not misidentified as Intel");
+        Assert(BxCatalog.GetCpuRestrictionReason(hpet, "AuthenticAMD") is not null, "retired HPET blocked on AMD");
+        Assert(BxCatalog.GetCpuRestrictionReason(hpet, "") is not null, "retired HPET blocked for unknown vendor");
         Assert(BxCatalog.GetCpuRestrictionReason(hddItem, "GenuineIntel") is null, "other Intel options unchanged");
         var intelService = new BxService(() => throw new InvalidOperationException("must not create a write backend"), () => "GenuineIntel");
         var hpetRefused = intelService.ApplyItemAsync(hpet, true).GetAwaiter().GetResult();
-        Assert(!hpetRefused.Success && hpetRefused.Message.Contains("Intel"), "direct Intel HPET apply refused before writes");
+        Assert(!hpetRefused.Success && hpetRefused.Message.Contains("已移除"), "direct Intel HPET apply refused before writes");
         var restoreValidation = intelService.ApplyItemAsync(hpet, false).GetAwaiter().GetResult();
         Assert(!restoreValidation.Message.Contains("Intel"), "Intel restore not blocked by CPU policy (empty fixture has no operations)");
 

@@ -239,9 +239,8 @@ public static class BxCatalog
 #pragma warning restore CA1416
 
     public static string? GetCpuRestrictionReason(BxItem item, string vendor) =>
-        item.Name.Equals("HPETName", StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(vendor.Trim(), "GenuineIntel", StringComparison.OrdinalIgnoreCase)
-            ? "Intel 平台不开放 HPET 优化；已有设置可通过一键恢复还原" : null;
+        item.Name.Equals("HPETName", StringComparison.OrdinalIgnoreCase)
+            ? "旧 HPET 优化已移除；请从主页进入计时器恢复页。" : null;
 
     public static List<BxItem> SelectCompatibleItems(IEnumerable<BxItem> items, int build) => items
         .Where(i => !string.IsNullOrWhiteSpace(i.Name))
@@ -381,7 +380,7 @@ public static class BxCatalog
                 var items = JsonSerializer.Deserialize<List<BxItem>>(json, JOpts) ?? new();
                 // 先挑选匹配当前 Windows 版本的定义，再按名称去重。
                 var build = Environment.OSVersion.Version.Build;
-                result[section.Id] = SelectCompatibleItems(items, build);
+                result[section.Id] = SelectCompatibleItems(items, build).Where(i => !i.Name.Equals("HPETName", StringComparison.OrdinalIgnoreCase)).ToList();
 
                 // 合并补充操作（special.json：为特殊条目提供本工具自己的等价操作定义）
                 foreach (var item in result[section.Id])
@@ -409,7 +408,7 @@ public static class BxCatalog
 
     /// <summary>读取补充操作定义（special.json：条目名 -> 操作列表）。</summary>
     public static List<BxTweak> GetSpecialOps(string name) =>
-        Specials.TryGetValue(name, out var list) ? list : new();
+        !name.Equals("HPETName", StringComparison.OrdinalIgnoreCase) && Specials.TryGetValue(name, out var list) ? list : new();
 
     private static Dictionary<string, List<BxTweak>> Specials
     {

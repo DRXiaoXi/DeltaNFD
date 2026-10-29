@@ -26,6 +26,7 @@ public static class BackendCommands
     public const string GpuDriverLock = "gpu.driver.lock";
     public const string GpuShaderCacheApply = "gpu.shader-cache.apply";
     public const string SystemShaderRecoveryClean = "system.shader.recovery-clean";
+    public const string SystemTimerRecover = "system.timer.recover";
     public const string GpuReconcile = "gpu.reconcile";
     public const string GpuRecover = "gpu.recover";
 
@@ -366,6 +367,7 @@ public static class BackendModules
                     [BackendCommands.SystemShaderDiagnose] = TwoMinutes,
                     [BackendCommands.SystemShaderClear] = FiveMinutes,
                     [BackendCommands.SystemShaderRecoveryClean] = FiveMinutes,
+                    [BackendCommands.SystemTimerRecover] = FiveMinutes,
                     [BackendCommands.SystemPagefileStatus] = TwoMinutes,
                     [BackendCommands.SystemPagefileSet] = FiveMinutes,
                     [BackendCommands.SystemPagefileRestoreAuto] = FiveMinutes,
@@ -483,7 +485,7 @@ public static class BackendModules
     /// <summary>这些成功的静态优化可在退出后保留，原值备份不是未确认事务。</summary>
     public static bool RetainsStaticBackup(string moduleId, string command) => moduleId == System && command is
         BackendCommands.SystemBxApply or BackendCommands.SystemBxGearApply or BackendCommands.SystemBxServiceGroupApply
-        or BackendCommands.SystemPowerIntelPcores;
+        or BackendCommands.SystemPowerIntelPcores or BackendCommands.SystemTimerRecover;
 
     /// <summary>公开只读集合（只读命令的负向校验用）。</summary>
     public static IReadOnlySet<string> ReadOnly => ReadOnlyCommands;

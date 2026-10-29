@@ -14,6 +14,7 @@ public sealed class AppSettings
 {
     internal AppSettings Copy() => (AppSettings)MemberwiseClone();
     // ---- 帧格 ----
+    /// <summary>游戏期间 DWM 高占用持续守护；保留旧字段名以兼容保存的选择，默认关闭。</summary>
     public bool DwmRestartOnGameStart { get; set; }
     public bool GpuSpoofEnabled { get; set; }
     public string GpuSpoofApplyMode { get; set; } = "Reboot";

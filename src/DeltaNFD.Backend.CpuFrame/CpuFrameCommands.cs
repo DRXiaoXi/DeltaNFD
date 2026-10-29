@@ -170,8 +170,11 @@ internal static class CpuFrameCommands
         return Wrap(context.Command, result);
     }
 
-    private static Task<BackendResult> DwmRestartAsync(BackendCommandContext context)
-        => Task.FromResult(Wrap(context.Command, Engine.RestartDwmAsync()));
+    private static async Task<BackendResult> DwmRestartAsync(BackendCommandContext context)
+    {
+        context.ReportProgress("正在重启当前桌面的 DWM 并复查 CPU；屏幕可能短暂闪烁…", null, "dwm");
+        return Wrap(context.Command, await Engine.RestartDwmAsync(context.CancellationToken));
+    }
 
     private static async Task<BackendResult> PowerLockAsync(BackendCommandContext context)
     {

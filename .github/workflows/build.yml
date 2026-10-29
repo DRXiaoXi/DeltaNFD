@@ -123,6 +123,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Advanced startup consent regression" }
           dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-guard-recovery-scope-checks
           if ($LASTEXITCODE -ne 0) { throw "Protection recovery regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --timer-recovery-checks "$pwd/src/DeltaNFD"
+          if ($LASTEXITCODE -ne 0) { throw "Retired HPET timer recovery regression" }
           dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --game-power-checks
           if ($LASTEXITCODE -ne 0) { throw "Game power throttling recovery regression" }
 
@@ -173,6 +175,12 @@ jobs:
 
       - name: Frame feature state checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-feature-checks
+
+      - name: DWM watchdog checks (fake processes and clock only)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --dwm-watchdog-checks
+
+      - name: Frame timer ownership and shutdown checks (fake native timer only)
+        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-timer-checks
 
       - name: GPU spoof driver-change warning checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --gpu-spoof-watch-checks

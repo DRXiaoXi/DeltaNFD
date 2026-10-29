@@ -65,7 +65,7 @@
                                 <TextBlock x:Name="FrameBackgroundNoteText" FontSize="11" Opacity="0.75" Visibility="Collapsed" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                             </StackPanel>
                         </ContentControl>
-                        <!-- 功能：目标游戏启动时重启 DWM -->
+                        <!-- 功能：游戏期间 DWM 持续监测与异常重启 -->
                         <Grid ColumnSpacing="16" Style="{StaticResource FeatureTileGridStyle}" Margin="0,4" ui:HoverLift.Enabled="True">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -73,12 +73,12 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Spacing="4" VerticalAlignment="Center">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock Text="目标游戏启动时重启 DWM" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                    <TextBlock Text="持续监测并修复 DWM 高占用" FontWeight="SemiBold" TextWrapping="Wrap"/>
                                     <Border Style="{StaticResource ChipBorderStyle}" Background="{ThemeResource ControlFillColorDefaultBrush}">
-                                        <TextBlock Text="DeltaForceClient-Win64-Shipping.exe" Opacity="0.75" Style="{StaticResource NoteStyle}"/>
+                                        <TextBlock Text="当前桌面会话" Opacity="0.75" Style="{StaticResource NoteStyle}"/>
                                     </Border>
                                 </StackPanel>
-                                <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="在部分电脑上启动目标游戏后，DWM（桌面窗口管理器）进程会出现异常高的 CPU 占用。启用后，会在目标游戏进程运行时重启 DWM 以恢复 DWM 正常占用；系统会立即自动拉起新的 DWM，屏幕闪烁一下属正常现象。"/>
+                                <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="开启帧格且目标游戏运行时持续采样 DWM CPU。连续两个至少 3 秒的采样均达到半个逻辑核心负载时，才请求重启当前桌面的 DWM；等待新进程稳定后复查。两次重启至少间隔 60 秒，连续两次未恢复会暂停自动重启。工作集仅供参考，不以 200 MiB 或内存扫描结果单独触发重启。屏幕可能短暂闪烁，全屏应用可能切回桌面。"/>
                                 <TextBlock Text="{x:Bind DwmStatusText, Mode=OneWay}" Opacity="0.75" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" VerticalAlignment="Center" IsOn="{x:Bind FrameSrv.DwmRestartOnGameStart, Mode=TwoWay}" IsEnabled="{x:Bind FrameSrv.FeaturesEditable, Mode=OneWay}" OnContent="" OffContent="" MinWidth="0" Margin="0" HorizontalAlignment="Right"/>
@@ -134,7 +134,8 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Spacing="2" VerticalAlignment="Center">
                                             <TextBlock Text="系统定时器 0.5ms" TextWrapping="Wrap" Style="{StaticResource H3Style}"/>
-                                            <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="帧格激活且游戏运行期间：把系统定时器分辨率请求提升到 0.5ms，帧间隔更稳、输入延迟更低；游戏退出自动释放。配合系统优化·UP推荐的「计时器分辨率常驻」可全局生效。"/>
+                                            <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="帧格激活且目标游戏运行时维持本后端的 0.5ms 请求，并核对系统实际读数；平台未达到或无法读取时明确提示。游戏退出、停止监控或关闭帧格时释放本后端请求。系统读数不等于游戏唤醒时延，不保证固定帧数收益；本功能不修改 HPET、BCD 或全局注册表。"/>
+                                            <TextBlock Text="{x:Bind TimerStatusText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource NoteStyle}" AutomationProperties.LiveSetting="Polite"/>
                                         </StackPanel>
                                         <ToggleSwitch Grid.Column="1" VerticalAlignment="Center" IsOn="{x:Bind TimerSelected, Mode=TwoWay}" IsEnabled="{x:Bind SubTogglesEditable, Mode=OneWay}" OnContent="" OffContent="" MinWidth="0" Margin="0" HorizontalAlignment="Right"/>
                                     </Grid>
@@ -283,7 +284,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Spacing="3" VerticalAlignment="Center">
                             <TextBlock Text="手动重启 DWM" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                            <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="不等游戏启动，立即结束并让系统重启 DWM，临时处理 DWM 占用异常。"/>
+                            <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="手动请求重启当前桌面的 DWM，并等待新进程稳定后复查 CPU；同样遵守 60 秒冷却。未确认新进程或复查仍高占用时会明确提示。"/>
                         </StackPanel>
                         <Button Grid.Column="1" Content="立即重启 DWM" VerticalAlignment="Center" Click="RestartDwmButton_Click" Style="{StaticResource DangerButtonStyle}"/>
                     </Grid>
@@ -293,7 +294,7 @@
             <Grid>
                 <Border Style="{StaticResource CardBorderStyle}" Padding="20,14">
                     <StackPanel Spacing="6">
-                        <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="· 帧格功能在本程序运行期间持续生效，每次游戏会话只自动重启一次 DWM；游戏退出后重新等待下一次启动。"/>
+                        <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="· DWM 自动守护只在帧格开启且目标游戏运行时采样，游戏退出、帧格关闭或工具退出后停止；正常 CPU 不因游戏启动而重启。复用已有监控循环，不新增常驻计时器。"/>
                         <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="· 开启「电源计划锁定」后，一键帧格模式会锁定你选择的计划（默认当前计划，防止被其他程序改成省电方案），并快照该计划的全部设置：游戏期间被改动的计划内容（含 CPU实验室 的「异类调度策略」）会按快照自动还原；退出时自动解除并还原原计划。"/>
                         <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="· 「加速系统响应模式」三项机制全部为运行时行为：不写系统配置、不修改任何电源计划，退出帧格/关闭工具后自动恢复，重启无残留。"/>
                         <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="· 「前台加速响应」与「降低省电延迟」在开启帧格时写入系统调度/省电设置（降低省电延迟含电源计划的 USB 选择性暂停与 PCI Express 链接状态电源管理 ASPM），退出帧格时自动还原为开启前的原值；原值备份独立保存，重启后退出帧格仍能完整还原。"/>

@@ -983,7 +983,7 @@ public sealed partial class MainWindow : Window
     private static bool HasBackgroundWorkToPreserve(AppSettings settings)
     {
         var frameActive = settings.FrameModeActive || ServiceLocator.Frame.FrameModeActive;
-        var frameMonitoringActive = frameActive || settings.DwmRestartOnGameStart;
+        var frameMonitoringActive = frameActive; // DWM 仅选择但未激活帧格，不构成正在运行的后台工作。
         var cpuSchedulingActive =
             (settings.GameAffinityRuleEnabled && settings.GameAffinityRuleMask != 0)
             || settings.SingleCcdExcludeCpu0Enabled

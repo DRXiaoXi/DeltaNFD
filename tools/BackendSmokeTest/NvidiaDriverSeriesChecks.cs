@@ -35,7 +35,7 @@ internal static class NvidiaDriverSeriesChecks
         Check(NvidiaDriverSeriesInspection.Evaluate([new("NVIDIA in misleading name", amd, "32.0.15.9649")], true)
             == new NvidiaDriverSeriesStatus(false, false), "explicit non-NVIDIA vendor takes precedence");
         Check(NvidiaDriverSeriesInspection.Evaluate([Sample("32.0.16.2101"), Sample("32.0.15.9649")], true)
-            == new NvidiaDriverSeriesStatus(true, false), "any matching NVIDIA adapter hides 14.44");
+            == new NvidiaDriverSeriesStatus(true, false), "any matching NVIDIA adapter is identified without selecting a runtime baseline");
         Check(NvidiaDriverSeriesInspection.Evaluate([Sample("32.0.15.9649"), Sample(null)], false)
             == new NvidiaDriverSeriesStatus(true, false), "confirmed match survives incomplete enumeration");
         Check(NvidiaDriverSeriesInspection.Evaluate([Sample("32.0.16.2101"), Sample(null)], true)

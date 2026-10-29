@@ -55,6 +55,7 @@ public sealed class FrameService : IFrameService
     private bool _responseBoostTimer = true;
     private bool _gamePowerThrottlingDisabled;
     private string _gamePowerStatusText = "";
+    private CpuFrameStatusSnapshot? _lastTimerSnapshot;
     public string GamePowerStatusText => _gamePowerStatusText;
     public bool GamePowerHasError { get; private set; }
     private bool _memoryCleanEnabled;
@@ -138,10 +139,13 @@ public sealed class FrameService : IFrameService
     {
         void Apply()
         {
+            if (_lastTimerSnapshot is null || snapshot.UpdatedUtc >= _lastTimerSnapshot.UpdatedUtc) _lastTimerSnapshot = snapshot;
             _gamePowerStatusText = snapshot.GamePowerStatus;
             GamePowerHasError = snapshot.GamePowerHasError;
             OnPropertyChanged(nameof(GamePowerHasError));
             OnPropertyChanged(nameof(GamePowerStatusText));
+            OnPropertyChanged(nameof(DwmStatusText));
+            OnPropertyChanged(nameof(TimerStatusText));
             _memoryCleanStatusText = string.IsNullOrEmpty(snapshot.MemoryCleanStatus) ? _memoryCleanStatusText : snapshot.MemoryCleanStatus;
             if (snapshot.GameRunning != _isGameRunning)
             {
@@ -214,6 +218,28 @@ public sealed class FrameService : IFrameService
             SaveSettings();
             UpdateStatus();
             OnPropertyChanged();
+            OnPropertyChanged(nameof(DwmStatusText));
+        }
+    }
+
+    public string DwmStatusText
+    {
+        get
+        {
+            if (!_dwmRestartOnGameStart || !_frameModeActive)
+                return FrameStatusPresentation.Dwm(_dwmRestartOnGameStart, _frameModeActive, null, DateTimeOffset.UtcNow, "");
+            var observation = ServiceLocator.GameMonitor;
+            return FrameStatusPresentation.Dwm(true, true, observation.Latest, DateTimeOffset.UtcNow, observation.AutomationError);
+        }
+    }
+
+    public string TimerStatusText
+    {
+        get
+        {
+            var observation = ServiceLocator.GameMonitor;
+            return FrameStatusPresentation.Timer(_responseBoostEnabled && _responseBoostTimer, _frameModeActive,
+                observation.Latest ?? _lastTimerSnapshot, DateTimeOffset.UtcNow, observation.AutomationError);
         }
     }
 
@@ -578,6 +604,7 @@ public sealed class FrameService : IFrameService
             SaveSettings();
             OnPropertyChanged();
             OnPropertyChanged(nameof(FrameModeEnabled));
+            OnPropertyChanged(nameof(DwmStatusText));
             OnPropertyChanged(nameof(FeaturesEditable));
             RefreshDualCcdArmState();
         }
@@ -1080,8 +1107,9 @@ public sealed class FrameService : IFrameService
     private void UpdateStatus() => StatusText = DescribeStatus();
     private void OnObservationStateChanged()
     {
-        if (_dispatcher is null || _dispatcher.HasThreadAccess) UpdateStatus();
-        else _dispatcher.TryEnqueue(UpdateStatus);
+        void Update() { UpdateStatus(); OnPropertyChanged(nameof(DwmStatusText)); OnPropertyChanged(nameof(TimerStatusText)); }
+        if (_dispatcher is null || _dispatcher.HasThreadAccess) Update();
+        else _dispatcher.TryEnqueue(Update);
     }
 
     private string DescribeStatus()

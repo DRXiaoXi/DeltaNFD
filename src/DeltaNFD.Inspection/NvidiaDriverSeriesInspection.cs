@@ -3,7 +3,7 @@ using System.Management;
 
 namespace DeltaNFD.Inspection;
 
-/// <summary>A confirmed 596-series adapter hides the 14.44 runtime baseline.</summary>
+/// <summary>Read-only driver-series information; does not restrict the runtime baseline.</summary>
 public readonly record struct NvidiaDriverSeriesStatus(bool Has596Series, bool DriverUnknown);
 
 internal readonly record struct DisplayDriverSample(string? Name, string? DeviceId, string? Version);

@@ -54,10 +54,10 @@ public partial class RuntimeViewModel : ObservableObject
 
     public void CompleteBaselineDriverCheck(bool confirmed596, bool driverUnknown)
     {
-        Hide144Baseline = confirmed596;
+        Hide144Baseline = false;
         BaselineDriverNotice = confirmed596
-            ? "已检测到 NVIDIA 596 系列驱动，14.44 基线已隐藏；当前使用 14.42 默认基线。"
-            : driverUnknown ? "无法完整读取显卡驱动；如使用 NVIDIA 596 系列驱动，请勿选择 14.44。" : "";
+            ? "已检测到 NVIDIA 596 系列驱动；14.42 和 14.44 均可自行选择。"
+            : driverUnknown ? "无法完整读取显卡驱动；不影响选择 14.42 或 14.44 基线。" : "";
         BaselineDriverChecking = false;
     }
     [ObservableProperty] private string abnormalText = "";

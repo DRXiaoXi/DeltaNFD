@@ -21,6 +21,7 @@ public sealed partial class MainWindow
         {
             if (_optimizationPreloadStarted) return;
             _optimizationPreloadStarted = true;
+            _ = TimerHealthCache.ReadAsync();
             _ = OptimizationScan.RunIfNotScannedAsync();
         };
         ServiceLocator.GameMonitor.DeltaStateChanged += OnDeltaPageState;
@@ -35,7 +36,7 @@ public sealed partial class MainWindow
             PageBackendSessions.Manager.Navigate("");
         };
     }
-    private static string PageRoute(Type? page) => page == typeof(SystemOptimizePage) ? "system"
+    private static string PageRoute(Type? page) => page == typeof(SystemOptimizePage) || page == typeof(TimerRecoveryPage) ? "system"
         : page == typeof(GpuSpoofPage) ? "spoof" : page == typeof(ShaderPage) || page == typeof(ShaderRecoveryPage) ? "shader"
         : page == typeof(AcePage) ? "ace" : page == typeof(RuntimePage) ? "runtime"
         : page == typeof(NvSettingsPage) ? "nvsettings" : "";

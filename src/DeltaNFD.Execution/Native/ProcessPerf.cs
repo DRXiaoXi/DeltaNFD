@@ -18,7 +18,7 @@ public static class ProcessPerf
 
     private const uint DesiredHalfMillisecond100ns = 5000;
 
-    /// <summary>把系统定时器分辨率请求提升到 0.5ms（对本进程生效；结合「计时器分辨率常驻」优化可全局生效）。</summary>
+    /// <summary>本进程申请 0.5ms；调用成功不保证实际达到目标，也不证明游戏端等待精度。</summary>
     public static bool TimerRequestHighResolution() => RequestTimerResolutionHighDetailed().Succeeded;
 
     public static TimerResolutionRequestResult RequestTimerResolutionHighDetailed()
@@ -55,7 +55,7 @@ public static class ProcessPerf
     {
         try
         {
-            if (NtQueryTimerResolution(out _, out _, out var current100ns) != 0)
+            if (NtQueryTimerResolution(out _, out _, out var current100ns) < 0 || current100ns == 0)
             {
                 return null;
             }

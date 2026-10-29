@@ -58,6 +58,7 @@ internal static class SystemCommands
                     : Wrap(c.Command, result);
             },
 
+            [BackendCommands.SystemTimerRecover] = async c => Wrap(c.Command, await TimerConfigurationRecovery.RunAsync(c.ArgsAs<TimerRecoveryArgs>(), c.CancellationToken)),
             [BackendCommands.SystemShaderStatus] = ShaderStatusAsync,
             [BackendCommands.SystemShaderDiagnose] = ShaderDiagnoseAsync,
             [BackendCommands.SystemShaderClear] = ShaderClearAsync,
