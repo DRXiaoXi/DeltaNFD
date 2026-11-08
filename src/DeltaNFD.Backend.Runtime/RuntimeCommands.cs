@@ -20,6 +20,8 @@ internal static class RuntimeCommands
             [BackendCommands.RuntimeFileUseClose] = FileUseCloseAsync,
             [BackendCommands.RuntimeHighFpsPreview] = HighFpsPreviewAsync,
             [BackendCommands.RuntimeHighFpsRepair] = HighFpsRepairAsync,
+            [BackendCommands.RuntimeNonCppPreview] = NonCppPreviewAsync,
+            [BackendCommands.RuntimeNonCppRepair] = NonCppRepairAsync,
             [BackendCommands.RuntimeSafeUninstallPreview] = SafeUninstallPreviewAsync,
             [BackendCommands.RuntimeSafeUninstall] = SafeUninstallAsync,
             [BackendCommands.Vc14Scan] = VcScanAsync,
@@ -43,7 +45,8 @@ internal static class RuntimeCommands
     {
         context.ReportProgress("正在核对运行库安装事务、防护与当前组件状态…", null, "reconcile");
         var scope = context.ArgsAs<RecoverArgs>().Scope;
-        var snapshot = scope == RuntimeLegacyInstallationReview.Scope ? await RuntimeLegacyInstallationReview.InspectAsync() : await BuildSnapshotAsync();
+        var snapshot = scope is RuntimeLegacyInstallationReview.Scope or RuntimeLegacyInstallationReview.RestartScope
+            ? await RuntimeLegacyInstallationReview.InspectAsync() : await BuildSnapshotAsync();
         return BackendResult.Ok("runtime.reconcile", snapshot.Summary, snapshot);
     }
 
@@ -52,11 +55,25 @@ internal static class RuntimeCommands
     {
         var args = context.ArgsAs<RecoverArgs>();
         var scope = (args.Scope ?? "").Trim().ToLowerInvariant();
-        if (scope == RuntimeLegacyInstallationReview.Scope)
+        if (scope is RuntimeLegacyInstallationReview.Scope or RuntimeLegacyInstallationReview.RestartScope)
         {
             context.ReportProgress("正在确认旧安装事务结束并归档核对记录…", null, "recover");
-            var reviewed = await RuntimeLegacyInstallationReview.ReviewAsync();
+            var reviewed = scope == RuntimeLegacyInstallationReview.RestartScope
+                ? await RuntimeLegacyInstallationReview.PrepareRestartCheckpointAsync()
+                : await RuntimeLegacyInstallationReview.ReviewAsync();
             return BackendResult.Ok("runtime.recover", reviewed.Message, reviewed);
+        }
+        if (scope == "non-cpp")
+        {
+            var restored = await NonCppRuntimeMaintenance.RestoreAsync(
+                context.Progress("non-cpp-restore"), context.CancellationToken);
+            var verified = restored.Success && !NonCppRuntimeMaintenance.HasPendingRecovery && !NonCppRuntimeMaintenance.HasBackup;
+            return BackendResult.Ok(BackendCommands.RuntimeRecover, restored.Message, new RecoverOutcome
+            {
+                Scope = scope, Success = verified, Verified = verified, Message = restored.Message,
+                VerifiedSnapshot = new ReconcileSnapshot { Module = BackendModules.Runtime, Complete = verified,
+                    Summary = restored.Message, RecoveryScopes = [new() { Id = scope, Available = NonCppRuntimeMaintenance.HasBackup, Description = "恢复非 C++ 运行库修复前文件（不撤销 COM 登记）" }] },
+            });
         }
         if (scope == "safe-installer")
         {
@@ -80,7 +97,16 @@ internal static class RuntimeCommands
 
     private static async Task<ReconcileSnapshot> BuildSnapshotAsync()
     {
-        return RuntimeGuardRecoveryReport.Build(await new RuntimeGuardService().GetStatusAsync());
+        var guard = RuntimeGuardRecoveryReport.Build(await new RuntimeGuardService().GetStatusAsync());
+        var pending = NonCppRuntimeMaintenance.HasPendingRecovery;
+        return new ReconcileSnapshot
+        {
+            Module = guard.Module, Complete = guard.Complete && !pending,
+            Summary = guard.Summary + (pending ? "\n非 C++ 修复未完成，需核对文件恢复记录。" : ""),
+            Items = guard.Items,
+            RecoveryScopes = guard.RecoveryScopes.Append(new RecoveryScope { Id = "non-cpp",
+                Available = NonCppRuntimeMaintenance.HasBackup, Description = "恢复非 C++ 修复前文件（不撤销 COM 登记）" }).ToArray(),
+        };
     }
 
     private static async Task<BackendResult> StatusAsync(BackendCommandContext context)
@@ -143,7 +169,7 @@ internal static class RuntimeCommands
     private static async Task<BackendResult> HighFpsPreviewAsync(BackendCommandContext context)
     {
         var args = context.ArgsAs<RuntimeHighFpsArgs>();
-        return BackendResult.Ok(BackendCommands.RuntimeHighFpsPreview, "全量修复预览",
+        return BackendResult.Ok(BackendCommands.RuntimeHighFpsPreview, "完整重装 C++ 运行库预览",
             await RuntimeHighFpsMaintenance.PreviewAsync(args.StrongMode, args.Baseline));
     }
 
@@ -151,9 +177,18 @@ internal static class RuntimeCommands
     {
         var args = context.ArgsAs<RuntimeHighFpsArgs>();
         return Wrap(BackendCommands.RuntimeHighFpsRepair, await RuntimeHighFpsMaintenance.RepairAsync(
-            args.Fingerprint, args.StrongMode, new Progress<string>(s => context.ReportProgress(s, null, "high-fps-repair")),
+            args.Fingerprint, args.StrongMode, context.Progress("high-fps-repair"),
             context.CancellationToken, args.Baseline));
     }
+
+    private static async Task<BackendResult> NonCppPreviewAsync(BackendCommandContext context) =>
+        BackendResult.Ok(BackendCommands.RuntimeNonCppPreview, "非 C++ 运行库检测完成",
+            await NonCppRuntimeMaintenance.PreviewAsync(context.CancellationToken));
+
+    private static async Task<BackendResult> NonCppRepairAsync(BackendCommandContext context) =>
+        Wrap(BackendCommands.RuntimeNonCppRepair, await NonCppRuntimeMaintenance.RepairAsync(
+            context.ArgsAs<NonCppRuntimeRepairArgs>().Fingerprint,
+            context.Progress("non-cpp-repair"), context.CancellationToken));
 
     private static async Task<BackendResult> VcPreviewAsync(BackendCommandContext context)
     {
@@ -165,7 +200,7 @@ internal static class RuntimeCommands
     private static async Task<BackendResult> VcRepairAsync(BackendCommandContext context)
     {
         var args = context.ArgsAs<Vc14RepairArgs>();
-        var progress = new Progress<string>(s => context.ReportProgress(s, null, "vc14-repair"));
+        var progress = context.Progress("vc14-repair");
         return Wrap(BackendCommands.Vc14Repair, await Vc14Maintenance.RepairAsync(args.Fingerprint, progress,
             context.CancellationToken, args.Mode, args.AllowTemporaryInstaller, args.Baseline));
     }
@@ -184,7 +219,7 @@ internal static class RuntimeCommands
     private static async Task<BackendResult> VcForceReplaceAsync(BackendCommandContext context)
     {
         var args = context.ArgsAs<Vc14ForceReplaceArgs>();
-        var progress = new Progress<string>(s => context.ReportProgress(s, null, "vc14-force-replace"));
+        var progress = context.Progress("vc14-force-replace");
         return Wrap(BackendCommands.Vc14ForceReplace, await Vc14ForceReplace.RunAsync(
             args.Fingerprint, progress, context.CancellationToken, args.Baseline));
     }
@@ -192,7 +227,7 @@ internal static class RuntimeCommands
     private static async Task<BackendResult> SafeUninstallAsync(BackendCommandContext context)
     {
         var args = context.ArgsAs<RuntimeSafeUninstallArgs>();
-        var progress = new Progress<string>(s => context.ReportProgress(s, null, "safe-uninstall"));
+        var progress = context.Progress("safe-uninstall");
         return Wrap(BackendCommands.RuntimeSafeUninstall, await RuntimeSafeUninstall.RunAsync(
             args.Fingerprint, args.AllowTemporaryInstaller, progress, context.CancellationToken));
     }

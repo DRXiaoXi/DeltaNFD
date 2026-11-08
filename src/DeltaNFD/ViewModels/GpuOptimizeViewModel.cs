@@ -14,30 +14,141 @@ public partial class GpuOptimizeViewModel : ObservableObject
     public string[] ShaderCacheOptions { get; } = ["驱动默认", "5 GB", "10 GB", "无限制"];
     public string[] ThreadOptOptions { get; } = ["自动", "开", "关"];
 
-    [ObservableProperty] private string gpuModel = "检测中…";
-    [ObservableProperty] private string gpuSpecText = "";
-    [ObservableProperty] private string driverVersion = "";
-    [ObservableProperty] private double temperature;
-    [ObservableProperty] private string temperatureText = "--";
-    [ObservableProperty] private double usage;
-    [ObservableProperty] private string usageText = "--";
+    private string gpuModel = "检测中…";
+    public string GpuModel
+    {
+        get => gpuModel;
+        set => SetProperty(ref gpuModel, value);
+    }
 
-    [ObservableProperty] private int lowLatencyIndex = 2;
-    [ObservableProperty] private int powerModeIndex = 2;
-    [ObservableProperty] private int shaderCacheIndex = 2;
-    [ObservableProperty] private int threadOptIndex = 0;
-    [ObservableProperty] private bool verticalSync;
-    [ObservableProperty] private double digitalVibrance = 55;
-    [ObservableProperty] private string vibranceText = "55%";
+    private string gpuSpecText = "";
+    public string GpuSpecText
+    {
+        get => gpuSpecText;
+        set => SetProperty(ref gpuSpecText, value);
+    }
+
+    private string driverVersion = "";
+    public string DriverVersion
+    {
+        get => driverVersion;
+        set => SetProperty(ref driverVersion, value);
+    }
+
+    private double temperature;
+    public double Temperature
+    {
+        get => temperature;
+        set => SetProperty(ref temperature, value);
+    }
+
+    private string temperatureText = "--";
+    public string TemperatureText
+    {
+        get => temperatureText;
+        set => SetProperty(ref temperatureText, value);
+    }
+
+    private double usage;
+    public double Usage
+    {
+        get => usage;
+        set => SetProperty(ref usage, value);
+    }
+
+    private string usageText = "--";
+    public string UsageText
+    {
+        get => usageText;
+        set => SetProperty(ref usageText, value);
+    }
+
+    private int lowLatencyIndex = 2;
+    public int LowLatencyIndex
+    {
+        get => lowLatencyIndex;
+        set => SetProperty(ref lowLatencyIndex, value);
+    }
+
+    private int powerModeIndex = 2;
+    public int PowerModeIndex
+    {
+        get => powerModeIndex;
+        set => SetProperty(ref powerModeIndex, value);
+    }
+
+    private int shaderCacheIndex = 2;
+    public int ShaderCacheIndex
+    {
+        get => shaderCacheIndex;
+        set => SetProperty(ref shaderCacheIndex, value);
+    }
+
+    private int threadOptIndex = 0;
+    public int ThreadOptIndex
+    {
+        get => threadOptIndex;
+        set => SetProperty(ref threadOptIndex, value);
+    }
+
+    private bool verticalSync;
+    public bool VerticalSync
+    {
+        get => verticalSync;
+        set => SetProperty(ref verticalSync, value);
+    }
+
+    private double digitalVibrance = 55;
+    public double DigitalVibrance
+    {
+        get => digitalVibrance;
+        set
+        {
+            if (EqualityComparer<double>.Default.Equals(digitalVibrance, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(DigitalVibrance));
+            digitalVibrance = value;
+            OnDigitalVibranceChanged(value);
+            OnPropertyChanged(nameof(DigitalVibrance));
+        }
+    }
+    partial void OnDigitalVibranceChanged(double value);
+
+    private string vibranceText = "55%";
+    public string VibranceText
+    {
+        get => vibranceText;
+        set => SetProperty(ref vibranceText, value);
+    }
 
     partial void OnDigitalVibranceChanged(double value)
     {
         VibranceText = $"{value:0}%";
     }
 
-    [ObservableProperty] private bool isApplying;
-    [ObservableProperty] private bool isApplyInfoVisible;
-    [ObservableProperty] private string applyResultText = "";
+    private bool isApplying;
+    public bool IsApplying
+    {
+        get => isApplying;
+        set => SetProperty(ref isApplying, value);
+    }
+
+    private bool isApplyInfoVisible;
+    public bool IsApplyInfoVisible
+    {
+        get => isApplyInfoVisible;
+        set => SetProperty(ref isApplyInfoVisible, value);
+    }
+
+    private string applyResultText = "";
+    public string ApplyResultText
+    {
+        get => applyResultText;
+        set => SetProperty(ref applyResultText, value);
+    }
 
     public GpuOptimizeViewModel()
     {

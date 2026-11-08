@@ -33,9 +33,9 @@ internal static class RuntimeGuardRecoveryChecks
             var repo = new DirectoryInfo(AppContext.BaseDirectory);
             while (repo is not null && !File.Exists(Path.Combine(repo.FullName, "src/DeltaNFD/ViewModels/RuntimeViewModel.cs"))) repo = repo.Parent;
             var vmSource = File.ReadAllText(Path.Combine(repo!.FullName, "src/DeltaNFD/ViewModels/RuntimeViewModel.cs"));
-            Check(vmSource.Contains("GuardCleanupEnabled => !GuardIsBusy"),
+            Check(vmSource.Contains("GuardCleanupEnabled => RuntimeOperationsAvailable && !GuardIsBusy && !RepairIsBusy"),
                 "强制清理入口不依赖已开启、残留判断或读取状态成功");
-            Check(vmSource.Contains("(enable && !_guardStateKnown)"), "状态未知仍允许关闭重试，但禁止未知状态启用");
+            Check(vmSource.Contains("(enable && (!_guardStateKnown || !RuntimeOperationsAvailable))"), "状态未知仍允许关闭重试，但禁止未知状态启用");
 
             Check(f.Guard.Enable(null).Success && f.Registry.Values.Count == 11 &&
                   f.Registry.Values.Values.All(v => v.Debugger == RuntimeGuardProtection.Debugger && v.Owner!.StartsWith(RuntimeGuardProtection.OwnerPrefix)),

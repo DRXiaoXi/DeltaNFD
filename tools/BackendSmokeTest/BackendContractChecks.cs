@@ -343,12 +343,12 @@ internal static class BackendContractChecks
         Check(BackendModules.IsAllowed(BackendModules.CpuFrame, BackendCommands.CpuFrameMonitorStart),
             "cpuframe.monitor.start 在白名单内");
         Check(BackendModules.IsAllowed(BackendModules.CpuFrame, BackendCommands.CpuFrameReconcile), "cpuframe.reconcile 在白名单内");
-        Check(BackendModules.IsAllowed(BackendModules.CpuFrame, BackendCommands.CpuFrameBoostApply), "cpuframe.boost.apply 在白名单内");
+        Check(BackendModules.IsAllowed(BackendModules.CpuFrame, BackendCommands.CpuFrameGamePowerApply), "cpuframe.gamepower.apply 在白名单内");
         Check(BackendModules.IsAllowed(BackendModules.CpuFrame, BackendCommands.CpuFrameTopology), "cpuframe.topology 在白名单内");
         Check(BackendModules.IsAllowed(BackendModules.CpuFrame, BackendCommands.CpuFrameAffinityCheck), "cpuframe.affinity.check 在白名单内");
         Check(BackendModules.IsAllowed(BackendModules.CpuFrame, BackendCommands.CpuFrameMemoryLimitDetect), "cpuframe.memorylimit.detect 在白名单内");
         Check(BackendModules.IsReadOnly(BackendModules.CpuFrame, BackendCommands.CpuFrameTopology), "cpuframe.topology 为只读");
-        Check(BackendModules.IsMutating(BackendModules.CpuFrame, BackendCommands.CpuFrameBoostApply), "cpuframe.boost.apply 视为写入");
+        Check(BackendModules.IsMutating(BackendModules.CpuFrame, BackendCommands.CpuFrameGamePowerApply), "cpuframe.gamepower.apply 视为写入");
         Check(!BackendModules.RequiresWriteIntent(BackendModules.CpuFrame, BackendCommands.CpuFrameRecover),
             "cpuframe.recover 不登记新执行意图");
         Check(BackendModules.RecoverCommand(BackendModules.CpuFrame) == BackendCommands.CpuFrameRecover, "cpuframe 恢复命令已登记");

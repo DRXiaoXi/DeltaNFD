@@ -163,6 +163,14 @@ public sealed partial class SystemOptimizePage : Page
         }
     }
 
+    private async void RestoreSecurityItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: BxItemVm row } || !ViewModel.Bx.Items.Contains(row)
+            || !row.ShowSecurityRestore || !row.CanEdit) return;
+        await ViewModel.Bx.ToggleAsync(row, false);
+        ViewModel.Bx.StatusText = row.DisplayName + "：已准备恢复本项原值，请点击应用更改；其他条目不受此按钮影响。";
+    }
+
     /// <summary>多档位条目：切换档位仅记录意图，应用由「应用更改」统一执行。</summary>
     private void GearSelection_Changed(object sender, SelectionChangedEventArgs e)
     {
@@ -458,11 +466,12 @@ public sealed partial class SystemOptimizePage : Page
     private async Task ShowDefenderRestoreDialogAsync(DefenderPostApplyResult result)
     {
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine("本轮优化已完成。");
+        sb.AppendLine(result.CleanupSucceeded ? "本轮操作已结束。" : "本轮操作已结束，安全收尾仍待核对。");
         sb.AppendLine();
+        if (result.Message.Length > 0) { sb.AppendLine(result.Message); sb.AppendLine(); }
         if (result.DefenderLeftOff)
         {
-            sb.Append("按本批的「Windows Defender」条目，Defender 将保持关闭；需要恢复系统防护时，可随时用「一键恢复」还原。");
+            sb.Append("按本批的「Windows Defender」条目，Defender 将保持关闭；可点击该条目的「恢复此项」，再应用更改以恢复原值。");
         }
         else
         {

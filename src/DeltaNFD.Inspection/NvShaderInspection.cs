@@ -93,6 +93,8 @@ public static class NvShaderInspection
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int VoidFn();
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate int DriverVersionFn(out uint version, IntPtr branch);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int SessionFn(IntPtr session);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int CreateSessionFn(ref IntPtr session);
@@ -115,6 +117,7 @@ public static class NvShaderInspection
     [DllImport("kernel32.dll", CharSet = CharSet.Ansi, SetLastError = true)]
     private static extern IntPtr GetProcAddress(IntPtr module, string procName);
     private static VoidFn? _initialize;
+    private static DriverVersionFn? _driverVersion;
     private static CreateSessionFn? _createSession;
     private static SessionFn? _destroySession;
     private static SessionFn? _loadSettings;
@@ -135,6 +138,20 @@ public static class NvShaderInspection
                 EnsureInitialized();
                 return _available;
             }
+        }
+    }
+
+    /// <summary>只读当前已加载 NVIDIA 驱动；不从磁盘残留或伪装名称推断版本。</summary>
+    public static uint? ReadDriverVersion()
+    {
+        lock (Gate)
+        {
+            EnsureInitialized();
+            if (!_available || _driverVersion is null) return null;
+            var branch = Marshal.AllocHGlobal(64); // NvAPI_ShortString (ANSI)
+            try { return _driverVersion(out var version, branch) == StatusOk && version > 0 ? version : null; }
+            catch { return null; }
+            finally { Marshal.FreeHGlobal(branch); }
         }
     }
 
@@ -174,6 +191,7 @@ public static class NvShaderInspection
             }
 
             _initialize = Resolve<VoidFn>(IdNvApiInitialize, 0);
+            _driverVersion = Resolve<DriverVersionFn>(0x2926AAAD, 0); // NvAPI_SYS_GetDriverAndBranchVersion
             _createSession = Resolve<CreateSessionFn>(IdDrsCreateSession, 0);
             _destroySession = Resolve<SessionFn>(IdDrsDestroySession, 0);
             _loadSettings = Resolve<SessionFn>(IdDrsLoadSettings, 0);

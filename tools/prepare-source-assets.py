@@ -1,4 +1,4 @@
-"""Prepare fixed Beta0.92 build inputs without running an installer.
+"""Prepare fixed RC3 source and dependency inputs without running an installer.
 
 Only missing binary inputs are restored; source-controlled files are never replaced.
 The immutable file manifest, transfer objects and decoded files are all hashed.
@@ -116,6 +116,7 @@ if __name__ == "__main__":
     parser.add_argument("--cache-dir", type=Path, help="Verified compressed-object cache (default: _buildcheck/source-assets-cache)")
     parser.add_argument("--manifest", type=Path, help="Optional local copy; the same fixed manifest SHA256 is required")
     parser.add_argument("--extra-manifest", type=Path, help="Optional immutable 0.9299 inventory for official 14.44 inputs")
+    parser.add_argument("--current-manifest", type=Path, help="Optional immutable0.9315 inventory for DirectX inputs")
     options = parser.parse_args()
     repository = Path(__file__).resolve().parent.parent
     raw = options.manifest.read_bytes() if options.manifest else download(MANIFEST_URLS, 1024 * 1024, MANIFEST_SHA256)
@@ -127,4 +128,9 @@ if __name__ == "__main__":
     extra_raw = options.extra_manifest.read_bytes() if options.extra_manifest else download(extra_urls, 2 * 1024 * 1024, extra_sha)
     extra = prepare(repository, cache, extra_raw, extra_sha, "0.9299", {"Vc14Baseline14.44", "Vc14FileRepair14.44"}, False)
     if extra["verifiedInputs"] != 10: raise ValueError("Expected exactly ten fixed official 14.44 inputs")
-    print(json.dumps({"original": original, "current144": extra}))
+    current_sha = "42b69a509db4db6ec51d346fb4efbc4459e09c5e19e354a297914e6960eb023e"
+    current_urls = ("https://deltaxiaoxi.xin/updates/packages/0.9315/files.json",)
+    current_raw = options.current_manifest.read_bytes() if options.current_manifest else download(current_urls, 2 * 1024 * 1024, current_sha)
+    current = prepare(repository, cache, current_raw, current_sha, "0.9315", {"DirectXRepair"}, False)
+    if current["verifiedInputs"] != 182: raise ValueError("Expected182 fixed non-C++ DLL inputs")
+    print(json.dumps({"original": original, "current144": extra, "nonCpp": current}))

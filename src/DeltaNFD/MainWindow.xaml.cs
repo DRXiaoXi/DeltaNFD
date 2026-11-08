@@ -84,6 +84,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         InitializePageBackendNavigation();
+        InitializeGameVersionWatch();
         RuntimeNavigationItem.Visibility = ReleaseFeatures.RuntimeUiEnabled ? Visibility.Visible : Visibility.Collapsed;
         Services.Backends.BackendAttention.Changed += OnBackendAttention;
         Closed += (_, _) => Services.Backends.BackendAttention.Changed -= OnBackendAttention;
@@ -136,9 +137,11 @@ public sealed partial class MainWindow : Window
         if (App.PendingFileFallback is not null) NavigateByTag("settings");
         else NavView.SelectedItem = NavView.MenuItems[0];
 
-        // 背景图：启动应用一次，并监听设置页的实时变更
+        // 背景图：启动应用一次，并监听设置页的实时变更；隐藏到托盘时释放位图
         ApplyBackgroundImage();
         BackgroundManager.Changed += ApplyBackgroundImage;
+        AppWindow.Changed += AppWindow_BackgroundChanged;
+        Closed += (_, _) => { BackgroundManager.Changed -= ApplyBackgroundImage; AppWindow.Changed -= AppWindow_BackgroundChanged; };
 
         // 发现新版本时在「设置」导航项上挂提示徽标（服务可能在后台线程触发）
         ServiceLocator.Update.AvailabilityChanged += OnUpdateAvailabilityChanged;
@@ -284,6 +287,7 @@ public sealed partial class MainWindow : Window
         {
             StartupGameDirectoryCheckCompleted = true;
         }
+        _ = CheckGameVersionsAsync(force: true);
         if (retiredRecovery.Success) _ = Services.Backends.BackendProcmanService.Instance.ActivateSavedRulesAsync();
 
         // 启动时主页可能在目录提示之前已创建；路径设置完成后立即使用真实游戏目录重扫。
@@ -307,7 +311,8 @@ public sealed partial class MainWindow : Window
 
             var qr = new Image
             {
-                Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "FeedbackGroupQr.png"))),
+                // 显示宽度上限 360，按 2 倍缩放解码，避免整张 1284×2280 原图常驻。
+                Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "FeedbackGroupQr.png"))) { DecodePixelWidth = 720 },
                 MaxWidth = 360, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center,
             };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(qr, "反馈群二维码，群号 1126191382");
@@ -362,7 +367,7 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// 启动时检测 12GB 内存限制（bcdedit removememory）并弹窗警告。
-    /// 机制保留在后端（DetectMemoryLimitAsync/RemoveMemoryLimitAsync），仅把入口从 CPU 实验室移到启动提示。
+    /// 机制保留在后端（DetectMemoryLimitAsync/RemoveMemoryLimitAsync），仅把入口从 调度改善移到启动提示。
     /// 检测/移除失败只提示，不阻塞启动。
     /// </summary>
     private async Task CheckMemoryLimitOnStartupAsync()
@@ -832,12 +837,18 @@ public sealed partial class MainWindow : Window
             var path = BackgroundManager.ResolveCurrent();
             if (path is null)
             {
+                ReleaseBackgroundImage();
+                _backgroundPath = null;
                 BgImage.Visibility = Visibility.Collapsed;
                 BgDim.Visibility = Visibility.Collapsed;
                 return;
             }
 
-            BgImage.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(path));
+            // 设置变更（含同名替换自定义图）一律重新解码；窗口隐藏（托盘 / 静默启动）时推迟到恢复显示。
+            ReleaseBackgroundImage();
+            if (path != _backgroundPath) _backgroundNaturalWidth = 0;
+            _backgroundPath = path;
+            if (AppWindow.IsVisible) LoadBackgroundBitmap(path, BackgroundDecodeWidth());
             BgImage.Visibility = Visibility.Visible;
 
             var alpha = (byte)Math.Round(255 * BackgroundManager.DimOpacity);
@@ -847,9 +858,58 @@ public sealed partial class MainWindow : Window
         catch
         {
             // 背景加载失败不影响主功能（保持 Mica）
+            ReleaseBackgroundImage();
             BgImage.Visibility = Visibility.Collapsed;
             BgDim.Visibility = Visibility.Collapsed;
         }
+    }
+
+    private string? _backgroundPath;
+    private int _backgroundDecodeWidth;
+    private int _backgroundNaturalWidth;
+
+    /// <summary>按窗口物理像素宽度解码（320 档位，上限 2560）；UniformToFill 时按 16:10 换算高度需求。</summary>
+    private int BackgroundDecodeWidth()
+    {
+        var size = AppWindow.Size;
+        var needed = Math.Max(size.Width, (int)Math.Ceiling(size.Height * 1.6));
+        var width = Math.Clamp((needed + 319) / 320 * 320, 960, 2560);
+        return _backgroundNaturalWidth > 0 ? Math.Min(width, _backgroundNaturalWidth) : width;
+    }
+
+    private void LoadBackgroundBitmap(string path, int decodeWidth)
+    {
+        if (BgImage.Source is not null && decodeWidth <= _backgroundDecodeWidth) return;
+        var bitmap = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage { DecodePixelWidth = decodeWidth };
+        bitmap.ImageOpened += (_, _) =>
+        {
+            // 记录原始宽度，之后不再放大解码。
+            if (ReferenceEquals(BgImage.Source, bitmap) && bitmap.PixelWidth > 0) _backgroundNaturalWidth = bitmap.PixelWidth;
+        };
+        bitmap.UriSource = new Uri(path);
+        BgImage.Source = bitmap;
+        _backgroundDecodeWidth = decodeWidth;
+    }
+
+    private void ReleaseBackgroundImage()
+    {
+        BgImage.Source = null;
+        _backgroundDecodeWidth = 0;
+    }
+
+    /// <summary>窗口隐藏时释放背景位图，显示或变大时按新宽度重新解码。只影响外观。</summary>
+    private void AppWindow_BackgroundChanged(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowChangedEventArgs args)
+    {
+        if (!args.DidVisibilityChange && !args.DidSizeChange) return;
+        if (!sender.IsVisible)
+        {
+            if (args.DidVisibilityChange) ReleaseBackgroundImage();
+            return;
+        }
+        // 只在背景图模式下按上次解析的路径重载，不在拖动缩放时反复读取设置。
+        if (BgImage.Visibility != Visibility.Visible || _backgroundPath is null) return;
+        try { LoadBackgroundBitmap(_backgroundPath, BackgroundDecodeWidth()); }
+        catch { ReleaseBackgroundImage(); }
     }
 
     private async void AppWindow_Closing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
@@ -1222,6 +1282,7 @@ public sealed partial class MainWindow : Window
     /// <summary>按导航 tag 跳转页面（主页等处的「去处理」快速跳转按钮用），并同步导航栏选中项。</summary>
     public void NavigateByTag(string tag)
     {
+        if (!CanEnterPendulumPage(tag)) return;
         if (tag == "runtime" && !ReleaseFeatures.RuntimeUiEnabled) tag = "settings";
         if (!CanEnterGamePage(tag)) { UpdatePageAvailability(); return; }
         var target = EnumerateNavItems().FirstOrDefault(i => i.Tag?.ToString() == tag);
@@ -1253,6 +1314,11 @@ public sealed partial class MainWindow : Window
         {
             return;
         }
+        if (!CanEnterPendulumPage(item.Tag?.ToString() ?? ""))
+        {
+            sender.SelectedItem = _lastAcceptedNavItem ?? sender.MenuItems[0];
+            return;
+        }
         if (!CanEnterGamePage(item.Tag?.ToString() ?? ""))
         {
             NavView.SelectedItem = NavView.MenuItems[0];
@@ -1261,7 +1327,7 @@ public sealed partial class MainWindow : Window
         if (item.Tag?.ToString() == "runtime" && !ReleaseFeatures.RuntimeUiEnabled)
         { NavigateByTag("settings"); return; }
 
-        if (ServiceLocator.GameTarget.IsCustom && item.Tag?.ToString() is "shader" or "ace")
+        if (ServiceLocator.GameTarget.IsCustom && item.Tag?.ToString() is "shader" or "ace" or "gamemods")
         {
             NavView.SelectedItem = NavView.MenuItems[0];
             return;
@@ -1273,6 +1339,7 @@ public sealed partial class MainWindow : Window
             if (_suppressPluginNavSelection) return;
             Services.Log.Info($"导航 → 插件入口 {pluginId}");
             ContentFrame.Navigate(typeof(PluginEntryPage), pluginId);
+            _lastAcceptedNavItem = item;
             ContentFrame.BackStack.Clear();
             UpdateGpuWarningVisibility();
             return;
@@ -1283,7 +1350,9 @@ public sealed partial class MainWindow : Window
             "system" => typeof(SystemOptimizePage),
             "spoof" => typeof(GpuSpoofPage),
             "nvsettings" => typeof(NvSettingsPage),
+            "gamemods" => typeof(GameModificationsPage),
             "frame" => typeof(FramePage),
+            "clock" => typeof(OptimalClockPage),
             "shader" => typeof(ShaderPage),
             "ace" => typeof(AcePage),
             "runtime" => typeof(RuntimePage),
@@ -1301,5 +1370,28 @@ public sealed partial class MainWindow : Window
             ContentFrame.BackStack.Clear();
         }
         UpdateGpuWarningVisibility();
+        _lastAcceptedNavItem = item;
+    }
+
+    private NavigationViewItem? _lastAcceptedNavItem;
+    private bool _pendulumUnsupportedDialogOpen;
+    private bool CanEnterPendulumPage(string tag)
+    {
+        if (tag == "clock" && !ReleaseFeaturePolicy.PendulumEnabled) return false;
+        if (tag != "clock" || DeltaNFD.Inspection.PendulumGlobalInspection.Supported) return true;
+        _ = ShowPendulumUnsupportedAsync();
+        return false;
+    }
+    private async Task ShowPendulumUnsupportedAsync()
+    {
+        if (_pendulumUnsupportedDialogOpen) return;
+        _pendulumUnsupportedDialogOpen = true;
+        try
+        {
+            await new ContentDialog { XamlRoot = ContentFrame.XamlRoot, Title = "钟摆计划暂不可用",
+                Content = "钟摆计划需要 Windows 10 1809 或更新系统；Win10 提供实验兼容检测。", CloseButtonText = "知道了" }.ShowAsync();
+        }
+        catch (Exception ex) { Services.Log.Warn("钟摆计划系统提示未显示：" + ex.Message); }
+        finally { _pendulumUnsupportedDialogOpen = false; }
     }
 }

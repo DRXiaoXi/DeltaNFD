@@ -46,8 +46,8 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Text="背景图片模式" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                            <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="开启：显示背景图（自定义或内置）；关闭：使用系统 Mica 云母背景。开启背景图片模式期间，界面主题锁定为深色（背景图按深色调设计），浅色/深色选择暂不可用。"/>
+                            <TextBlock Text="背景图片模式" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="开启：显示背景图（自定义或内置）；关闭：使用系统 Mica 云母背景。开启背景图片模式期间，界面主题锁定为深色（背景图按深色调设计），浅色/深色选择暂不可用。"/>
+                            <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="开启时显示背景图并锁定深色主题；关闭时使用系统 Mica 背景。"/>
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1" IsOn="{x:Bind ViewModel.BackgroundImageEnabled, Mode=TwoWay}" OnContent="" OffContent="" MinWidth="0" Margin="0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </Grid>
@@ -165,8 +165,8 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Text="运行日志" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                            <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="记录启动环境、页面导航与全部系统操作的执行结果与异常（%APPDATA%\Delta NFD\logs）。在其他电脑上出问题时，把对应时间的日志文件发回来即可定位。每次启动一个文件，自动保留 14 天。"/>
+                            <TextBlock Text="运行日志" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="记录启动环境、页面导航与全部系统操作的执行结果与异常（%APPDATA%\Delta NFD\logs）。在其他电脑上出问题时，把对应时间的日志文件发回来即可定位。每次启动一个文件，自动保留 14 天。"/>
+                            <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="日志保存在 %APPDATA%\Delta NFD\logs，自动保留 14 天。"/>
                         </StackPanel>
                         <Button Grid.Column="1" Content="打开日志文件夹" Click="OpenLogFolderButton_Click" VerticalAlignment="Center" Style="{StaticResource SecondaryButtonStyle}"/>
                     </Grid>
@@ -189,9 +189,9 @@
             </Border>
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="恢复出厂设置" Style="{StaticResource H2Style}"/>
-                    <TextBlock Text="用于清理新旧配置冲突：备份当前配置，停止并恢复工具的临时修改，将外观、游戏目录、自动功能、进程规则和后台参数重置为默认值。完成后关闭并重新打开工具。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
-                    <TextBlock Text="系统优化的原值备份、日志和插件文件保留；已应用的系统优化不会在此重置，仍可在对应页面按备份还原。未完成的操作必须先核对，不能靠清空记录跳过恢复。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <TextBlock Text="恢复出厂设置" Style="{StaticResource H2Style}" ui:HelpTip.Text="用于清理新旧配置冲突：备份当前配置，停止并恢复工具的临时修改，将外观、游戏目录、自动功能、进程规则和后台参数重置为默认值。完成后关闭并重新打开工具。&#10;&#10;系统优化的原值备份、日志和插件文件保留；已应用的系统优化不会在此重置，仍可在对应页面按备份还原。未完成的操作必须先核对，不能靠清空记录跳过恢复。"/>
+                    <TextBlock Text="备份当前配置后把工具设置重置为默认值，完成后需重新打开工具。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <TextBlock Text="已应用的系统优化不会被重置，未完成的操作必须先核对。" Style="{StaticResource WarningTextStyle}" TextWrapping="Wrap"/>
                     <Button x:Name="FactoryResetButton" Content="一键恢复出厂设置" Click="FactoryReset_Click" HorizontalAlignment="Left" Style="{StaticResource DangerButtonStyle}"/>
                     <TextBlock x:Name="FactoryResetStatusText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite"/>
                 </StackPanel>
@@ -207,9 +207,23 @@
             <!-- 三角洲目录识别（支持多安装） -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="三角洲安装目录" Style="{StaticResource H2Style}"/>
-                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="登记本机所有三角洲安装目录；着色器清理、ACE 清理、运行库防护、全屏优化等功能会对每个登记目录同时生效。未登记的目录仍会被 WeGame 注册表和常见路径自动识别。"/>
-                    <ListView x:Name="GameRootsList" MaxHeight="220" SelectionMode="None"/>
+                    <TextBlock Text="三角洲安装目录" Style="{StaticResource H2Style}" ui:HelpTip.Text="登记本机所有三角洲安装目录；着色器清理、ACE 清理、运行库防护、全屏优化等功能会对每个登记目录同时生效。未登记的目录仍会被 WeGame 注册表和常见路径自动识别。"/>
+                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="登记的每个目录都会被着色器、ACE、运行库防护等功能同时处理。"/>
+                    <ListView x:Name="GameRootsList" MaxHeight="220" SelectionMode="None" HorizontalContentAlignment="Stretch">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnSpacing="12" Margin="0,4">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="{Binding Path}" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                                        <TextBlock Text="{Binding Source}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="移除手动记录" IsEnabled="{Binding CanRemove}" Tag="{Binding Path}" Click="RemoveGameRoot_Click" Style="{StaticResource SecondaryButtonStyle}" VerticalAlignment="Center"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <TextBlock Text="移除或清空只取消手动登记，不删除游戏文件。自动识别的目录仍会显示并使用。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -225,35 +239,24 @@
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button x:Name="FullScanGameFoldersButton" Content="全盘搜索" Click="FullScanGameFoldersButton_Click" Style="{StaticResource SecondaryButtonStyle}"/>
                         <Button x:Name="ScopedScanGameFoldersButton" Content="指定目录搜索" Click="ScopedScanGameFoldersButton_Click" Style="{StaticResource SecondaryButtonStyle}"/>
-                        <Button x:Name="ClearGamePathButton" Content="清除旧手动指定" Click="ClearGamePathButton_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                        <Button x:Name="ClearGamePathButton" Content="清空手动登记" Click="ClearGamePathButton_Click" Style="{StaticResource SecondaryButtonStyle}"/>
                     </StackPanel>
-                    <TextBlock x:Name="GamePathStatusText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="GamePathStatusText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite"/>
                 </StackPanel>
             </Border>
             <!-- 三角帧本体设置 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="三角帧本体设置" Style="{StaticResource H2Style}"/>
-                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="针对游戏主程序（DeltaForceClient-Win64-Shipping.exe）的兼容性调整，直接写入用户级注册表，无需重启电脑，下次启动游戏生效。"/>
-                    <Grid ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Text="禁用全屏优化" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                            <TextBlock Text="禁用游戏的全屏优化（Fullscreen Optimizations），可降低全屏模式下的输入延迟与帧生成波动。开启后写入注册表兼容性标记，关闭时恢复原值。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
-                        </StackPanel>
-                        <ToggleSwitch x:Name="FsoDisableToggle" Grid.Column="1" Toggled="FsoDisableToggle_Toggled" OnContent="" OffContent="" MinWidth="0" Margin="0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                    </Grid>
-                    <TextBlock x:Name="FsoStatusText" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Opacity="0.8"/>
+                    <TextBlock Text="游戏改动" Style="{StaticResource H2Style}"/>
+                    <TextBlock Text="全屏优化与洲洲时刻录制组件已统一放入「游戏改动」。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <Button Content="打开游戏改动" Click="GameModifications_Click" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Left"/>
                 </StackPanel>
             </Border>
             <!-- 软件更新 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="软件更新" Style="{StaticResource H2Style}"/>
-                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="默认从自建服务器下载并替换变化文件，失败时自动回退全量更新；也可直接选择全量更新。更新前会安全退出主程序和后端，设置、备份与日志都会保留。"/>
+                    <TextBlock Text="软件更新" Style="{StaticResource H2Style}" ui:HelpTip.Text="默认从自建服务器下载并替换变化文件，失败时自动回退全量更新；也可直接选择全量更新。更新前会安全退出主程序和后端，设置、备份与日志都会保留。&#10;&#10;说明：只有通过安装包安装的版本才支持自动更新；开发构建或手动解压运行会提示手动下载。下载失败的安装包不会被安装，可在下载文件夹里查看或重试。"/>
+                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="默认只替换变化的文件，失败时自动改为全量更新；设置与备份都会保留。"/>
                     <TextBlock Text="Alpha0.9193 为更新测试版，未开放运行库；更新至 Alpha0.9194 后获得完整功能。" Visibility="{x:Bind LimitedUpdateTestVisibility}" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
                     <Grid ColumnSpacing="16">
                         <Grid.ColumnDefinitions>
@@ -315,25 +318,25 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Text="接收紧急算法策略" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                            <TextBlock Text="已安装版本启动时及每 15 分钟检查一次，沿用上方更新通道。仅应用签名验证通过的参数、内置方案和故障功能停用策略，无需重装；新算法代码仍需安装更新。关闭后立即使用内置算法。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                            <TextBlock Text="接收紧急算法策略" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="已安装版本启动时及每 15 分钟检查一次，沿用上方更新通道。仅应用签名验证通过的参数、内置方案和故障功能停用策略，无需重装；新算法代码仍需安装更新。关闭后立即使用内置算法。"/>
+                            <TextBlock Text="只应用签名通过的参数和停用策略；关闭后使用内置算法。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1" IsOn="{x:Bind Update.EmergencyPolicyEnabled, Mode=TwoWay}" AutomationProperties.Name="接收紧急算法策略" OnContent="" OffContent="" MinWidth="0" Margin="0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </Grid>
                     <TextBlock Text="{x:Bind Update.EmergencyPolicyStatus, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                     <InfoBar IsOpen="{x:Bind Update.InfoBarOpen, Mode=OneWay}" Severity="{x:Bind Update.Severity, Mode=OneWay}" Title="更新" Message="{x:Bind Update.StatusText, Mode=OneWay}" IsClosable="False"/>
                     <!-- 有新版本时的详情与操作 -->
-                    <StackPanel Spacing="10" Visibility="{x:Bind Update.UpdateAvailable, Mode=OneWay}">
+                    <StackPanel x:Name="UpdateAvailablePanel" x:Load="{x:Bind Update.UpdateAvailable, Mode=OneWay}" Spacing="10">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <TextBlock Text="新版本" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"/>
                             <Border Style="{StaticResource ChipBorderStyle}" Background="{StaticResource AppAccentChipBrush}">
                                 <TextBlock Text="{x:Bind Update.AvailableVersionText, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}" TextWrapping="Wrap" Style="{StaticResource BadgeTextStyle}"/>
                             </Border>
-                            <Border Style="{StaticResource ChipBorderStyle}" Background="#33E5484D" Visibility="{x:Bind Update.Mandatory, Mode=OneWay}">
-                                <TextBlock Text="必须更新" Foreground="#FFE5484D" TextWrapping="Wrap" Style="{StaticResource BadgeTextStyle}"/>
+                            <Border Style="{StaticResource ChipBorderStyle}" Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}" Visibility="{x:Bind Update.Mandatory, Mode=OneWay}">
+                                <TextBlock Text="必须更新" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" Style="{StaticResource BadgeTextStyle}"/>
                             </Border>
                         </StackPanel>
-                        <Expander Header="更新说明" HorizontalAlignment="Stretch" Visibility="{x:Bind Update.DetailsVisible, Mode=OneWay}">
+                        <Expander x:Name="UpdateNotesExpander" x:Load="{x:Bind Update.DetailsVisible, Mode=OneWay}" Header="更新说明" HorizontalAlignment="Stretch">
                             <TextBlock Text="{x:Bind Update.Notes, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource BodyStyle}" Margin="0,4,0,0"/>
                         </Expander>
                         <StackPanel Orientation="Horizontal" Spacing="10">
@@ -342,7 +345,7 @@
                         </StackPanel>
                     </StackPanel>
                     <!-- 下载进度 -->
-                    <StackPanel Spacing="6" Visibility="{x:Bind Update.ShowProgress, Mode=OneWay}">
+                    <StackPanel x:Name="UpdateProgressPanel" x:Load="{x:Bind Update.ShowProgress, Mode=OneWay}" Spacing="6">
                         <ProgressBar Maximum="100" Value="{x:Bind Update.ProgressPercent, Mode=OneWay}"/>
                         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind Update.ProgressText, Mode=OneWay}" Style="{StaticResource NoteStyle}" VerticalAlignment="Center"/>
@@ -355,21 +358,20 @@
                         <HyperlinkButton Content="打开发布页面" Padding="4,0" VerticalAlignment="Center" Click="OpenUpdateReleasePage_Click"/>
                         <Button Content="打开下载文件夹" Click="OpenUpdateDownloadFolder_Click" Style="{StaticResource SecondaryButtonStyle}"/>
                     </StackPanel>
-                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Opacity="0.7" Text="{x:Bind Update.SourceHint}"/>
-                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Opacity="0.7" Text="说明：只有通过安装包安装的版本才支持自动更新；开发构建或手动解压运行会提示手动下载。下载失败的安装包不会被安装，可在下载文件夹里查看或重试。"/>
+                    <TextBlock Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" Text="{x:Bind Update.SourceHint}"/>
                 </StackPanel>
             </Border>
             <!-- 关于 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="关于" Style="{StaticResource H2Style}"/>
+                    <TextBlock Text="关于" Style="{StaticResource H2Style}" ui:HelpTip.Text="本版本采用 GNU GPL 第 3 版（GPL-3.0-only），允许商业使用与收费分发；分发本程序或受 GPL 覆盖的修改版时，须保留版权和许可证声明，并按 GPLv3 提供完整对应源代码。完整条款见安装目录 DELTA-NFD-LICENSE.txt；第三方资源保留各自授权。"/>
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <Border Width="48" Height="48" CornerRadius="12">
                             <Image x:Name="AboutLogoImage" Source="ms-appx:///Assets/DeltaNFD.png" Stretch="Uniform"/>
                         </Border>
                         <StackPanel Spacing="2" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal" Spacing="10">
-                                <TextBlock Text="三角帧不掉洲" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <TextBlock Text="三角帧不掉洲" Style="{StaticResource H2Style}"/>
                                 <Border Style="{StaticResource ChipBorderStyle}" Background="{StaticResource AppAccentChipBrush}">
                                     <TextBlock Text="{x:Bind ViewModel.VersionText}" Foreground="{StaticResource AppAccentBrush}" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
                                 </Border>
@@ -382,9 +384,9 @@
                         <TextBlock Text="作者：逐梦之子-晓夕" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"/>
                         <HyperlinkButton NavigateUri="https://space.bilibili.com/630440925" Content="B 站主页 @逐梦之子-晓夕" Padding="4,0" VerticalAlignment="Center"/>
                     </StackPanel>
-                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="本工具的大部分优化功能已真实生效（详见 README），关闭 Defender/更新禁用等高危项会降低系统安全性，使用时请自行权衡并遵守游戏用户协议。"/>
-                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="本版本采用 GNU GPL 第 3 版（GPL-3.0-only），允许商业使用与收费分发；分发本程序或受 GPL 覆盖的修改版时，须保留版权和许可证声明，并按 GPLv3 提供完整对应源代码。完整条款见安装目录 DELTA-NFD-LICENSE.txt；第三方资源保留各自授权。"/>
-                    <TextBlock Opacity="0.5" TextWrapping="Wrap" Text="显卡驱动级设置（低延迟 / 数字振动等）尚未实现，当前为演示数据。" Style="{StaticResource NoteStyle}"/>
+                    <TextBlock Style="{StaticResource WarningTextStyle}" TextWrapping="Wrap" Text="关闭 Defender、禁用更新等高危项会降低系统安全性，请自行权衡并遵守游戏用户协议。"/>
+                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="本软件采用 GPL-3.0-only 许可，完整条款见安装目录 DELTA-NFD-LICENSE.txt。"/>
+                    <TextBlock TextWrapping="Wrap" Text="显卡驱动级设置（低延迟 / 数字振动等）尚未实现，当前为演示数据。" Style="{StaticResource CaptionStyle}"/>
                 </StackPanel>
             </Border>
             <!-- 致谢名单 -->
@@ -404,7 +406,11 @@
                             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                 <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}" StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
                                     <Ellipse.Fill>
-                                        <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/token-provider.jpg" Stretch="UniformToFill"/>
+                                        <ImageBrush Stretch="UniformToFill">
+                                            <ImageBrush.ImageSource>
+                                                <BitmapImage UriSource="ms-appx:///Assets/Acknowledgements/token-provider.jpg" DecodePixelWidth="120"/>
+                                            </ImageBrush.ImageSource>
+                                        </ImageBrush>
                                     </Ellipse.Fill>
                                 </Ellipse>
                                 <StackPanel Spacing="3" VerticalAlignment="Center">
@@ -417,7 +423,11 @@
                             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                 <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}" StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
                                     <Ellipse.Fill>
-                                        <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/lead-tester.jpg" Stretch="UniformToFill"/>
+                                        <ImageBrush Stretch="UniformToFill">
+                                            <ImageBrush.ImageSource>
+                                                <BitmapImage UriSource="ms-appx:///Assets/Acknowledgements/lead-tester.jpg" DecodePixelWidth="120"/>
+                                            </ImageBrush.ImageSource>
+                                        </ImageBrush>
                                     </Ellipse.Fill>
                                 </Ellipse>
                                 <StackPanel Spacing="3" VerticalAlignment="Center">
@@ -430,7 +440,11 @@
                             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                 <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}" StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
                                     <Ellipse.Fill>
-                                        <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/shangguan-cash-support.jpg" Stretch="UniformToFill"/>
+                                        <ImageBrush Stretch="UniformToFill">
+                                            <ImageBrush.ImageSource>
+                                                <BitmapImage UriSource="ms-appx:///Assets/Acknowledgements/shangguan-cash-support.jpg" DecodePixelWidth="120"/>
+                                            </ImageBrush.ImageSource>
+                                        </ImageBrush>
                                     </Ellipse.Fill>
                                 </Ellipse>
                                 <StackPanel Spacing="3" VerticalAlignment="Center">
@@ -450,7 +464,11 @@
                             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                 <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}" StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
                                     <Ellipse.Fill>
-                                        <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/assistant-developer-kynovter.jpg" Stretch="UniformToFill"/>
+                                        <ImageBrush Stretch="UniformToFill">
+                                            <ImageBrush.ImageSource>
+                                                <BitmapImage UriSource="ms-appx:///Assets/Acknowledgements/assistant-developer-kynovter.jpg" DecodePixelWidth="120"/>
+                                            </ImageBrush.ImageSource>
+                                        </ImageBrush>
                                     </Ellipse.Fill>
                                 </Ellipse>
                                 <TextBlock Text="Kynovter" TextWrapping="Wrap" VerticalAlignment="Center" Style="{StaticResource H2Style}"/>
@@ -460,7 +478,11 @@
                             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                 <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}" StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
                                     <Ellipse.Fill>
-                                        <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/assistant-developer-sunnis.jpg" Stretch="UniformToFill"/>
+                                        <ImageBrush Stretch="UniformToFill">
+                                            <ImageBrush.ImageSource>
+                                                <BitmapImage UriSource="ms-appx:///Assets/Acknowledgements/assistant-developer-sunnis.jpg" DecodePixelWidth="120"/>
+                                            </ImageBrush.ImageSource>
+                                        </ImageBrush>
                                     </Ellipse.Fill>
                                 </Ellipse>
                                 <TextBlock Text="Sunnis" TextWrapping="Wrap" VerticalAlignment="Center" Style="{StaticResource H2Style}"/>
@@ -474,7 +496,11 @@
                                     <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                         <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}" StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
                                             <Ellipse.Fill>
-                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-muduo.jpg" Stretch="UniformToFill"/>
+                                                <ImageBrush Stretch="UniformToFill">
+                                                    <ImageBrush.ImageSource>
+                                                        <BitmapImage UriSource="ms-appx:///Assets/Acknowledgements/bug-hunter-muduo.jpg" DecodePixelWidth="120"/>
+                                                    </ImageBrush.ImageSource>
+                                                </ImageBrush>
                                             </Ellipse.Fill>
                                         </Ellipse>
                                         <TextBlock Text="目夺" TextWrapping="Wrap" VerticalAlignment="Center" Style="{StaticResource H2Style}"/>
@@ -484,7 +510,11 @@
                                     <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                         <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}" StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
                                             <Ellipse.Fill>
-                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-jiemei-wangming.jpg" Stretch="UniformToFill"/>
+                                                <ImageBrush Stretch="UniformToFill">
+                                                    <ImageBrush.ImageSource>
+                                                        <BitmapImage UriSource="ms-appx:///Assets/Acknowledgements/bug-hunter-jiemei-wangming.jpg" DecodePixelWidth="120"/>
+                                                    </ImageBrush.ImageSource>
+                                                </ImageBrush>
                                             </Ellipse.Fill>
                                         </Ellipse>
                                         <TextBlock Text="九妹亡命天涯" TextWrapping="Wrap" VerticalAlignment="Center" Style="{StaticResource H2Style}"/>
@@ -494,7 +524,11 @@
                                     <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                         <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}" StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
                                             <Ellipse.Fill>
-                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-zi.jpg" Stretch="UniformToFill"/>
+                                                <ImageBrush Stretch="UniformToFill">
+                                                    <ImageBrush.ImageSource>
+                                                        <BitmapImage UriSource="ms-appx:///Assets/Acknowledgements/bug-hunter-zi.jpg" DecodePixelWidth="120"/>
+                                                    </ImageBrush.ImageSource>
+                                                </ImageBrush>
                                             </Ellipse.Fill>
                                         </Ellipse>
                                         <TextBlock Text="梓" TextWrapping="Wrap" VerticalAlignment="Center" Style="{StaticResource H2Style}"/>
@@ -504,7 +538,11 @@
                                     <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                         <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}" StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
                                             <Ellipse.Fill>
-                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-wujiyan.jpg" Stretch="UniformToFill"/>
+                                                <ImageBrush Stretch="UniformToFill">
+                                                    <ImageBrush.ImageSource>
+                                                        <BitmapImage UriSource="ms-appx:///Assets/Acknowledgements/bug-hunter-wujiyan.jpg" DecodePixelWidth="120"/>
+                                                    </ImageBrush.ImageSource>
+                                                </ImageBrush>
                                             </Ellipse.Fill>
                                         </Ellipse>
                                         <TextBlock Text="无机盐" TextWrapping="Wrap" VerticalAlignment="Center" Style="{StaticResource H2Style}"/>
@@ -514,7 +552,11 @@
                                     <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                         <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}" StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
                                             <Ellipse.Fill>
-                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-putaojiu-tusi.jpg" Stretch="UniformToFill"/>
+                                                <ImageBrush Stretch="UniformToFill">
+                                                    <ImageBrush.ImageSource>
+                                                        <BitmapImage UriSource="ms-appx:///Assets/Acknowledgements/bug-hunter-putaojiu-tusi.jpg" DecodePixelWidth="120"/>
+                                                    </ImageBrush.ImageSource>
+                                                </ImageBrush>
                                             </Ellipse.Fill>
                                         </Ellipse>
                                         <TextBlock Text="葡萄酒吐司" TextWrapping="Wrap" VerticalAlignment="Center" Style="{StaticResource H2Style}"/>
@@ -524,7 +566,11 @@
                                     <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                         <Ellipse Width="60" Height="60" Stroke="{StaticResource AppAccentBrush}" StrokeThickness="1" AutomationProperties.AccessibilityView="Raw">
                                             <Ellipse.Fill>
-                                                <ImageBrush ImageSource="ms-appx:///Assets/Acknowledgements/bug-hunter-anonymous-yanzhu.png" Stretch="UniformToFill"/>
+                                                <ImageBrush Stretch="UniformToFill">
+                                                    <ImageBrush.ImageSource>
+                                                        <BitmapImage UriSource="ms-appx:///Assets/Acknowledgements/bug-hunter-anonymous-yanzhu.png" DecodePixelWidth="120"/>
+                                                    </ImageBrush.ImageSource>
+                                                </ImageBrush>
                                             </Ellipse.Fill>
                                         </Ellipse>
                                         <TextBlock Text="无数不留姓名的彦祖" TextWrapping="Wrap" VerticalAlignment="Center" Style="{StaticResource H2Style}"/>

@@ -8,21 +8,160 @@ namespace DeltaNFD.ViewModels;
 /// <summary>ACE 清理（安全与隐私清理向）的页面状态。</summary>
 public partial class AceViewModel : ObservableObject
 {
-    private readonly IAceService _ace = ServiceLocator.Ace;
-    private readonly ISystemTweakService _tweaks = ServiceLocator.SystemTweaks;
+    private readonly IAceService _ace;
+    private ISystemTweakService Tweaks => ServiceLocator.SystemTweaks;
 
-    [ObservableProperty] private bool isBusy;
-    [ObservableProperty] private bool isCleaning;
-    [ObservableProperty] private string scanSummary = "正在扫描 ACE 组件…";
-    [ObservableProperty] private string blockingText = "";
-    [ObservableProperty] private string servicesText = "";
-    [ObservableProperty] private string pathsText = "";
-    [ObservableProperty] private string registryText = "";
-    [ObservableProperty] private bool canClean;
-    [ObservableProperty] private string coreCheckText = "正在核对 ACE 游戏与 ACE-CORE 数量…";
-    [ObservableProperty] private AceCoreCheckLevel coreCheckLevel;
-    [ObservableProperty] private bool coreHasExcess;
-    [ObservableProperty] private string coreCheckSummary = "";
+    private bool isBusy;
+    public bool IsBusy
+    {
+        get => isBusy;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(isBusy, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(IsBusy));
+            isBusy = value;
+            OnIsBusyChanged(value);
+            OnPropertyChanged(nameof(IsBusy));
+        }
+    }
+    partial void OnIsBusyChanged(bool value);
+
+    private bool isCleaning;
+    public bool IsCleaning
+    {
+        get => isCleaning;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(isCleaning, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(IsCleaning));
+            isCleaning = value;
+            OnIsCleaningChanged(value);
+            OnPropertyChanged(nameof(IsCleaning));
+        }
+    }
+    partial void OnIsCleaningChanged(bool value);
+
+    private string scanSummary = "正在扫描 ACE 组件…";
+    public string ScanSummary
+    {
+        get => scanSummary;
+        set => SetProperty(ref scanSummary, value);
+    }
+
+    private string blockingText = "";
+    public string BlockingText
+    {
+        get => blockingText;
+        set => SetProperty(ref blockingText, value);
+    }
+
+    private string servicesText = "";
+    public string ServicesText
+    {
+        get => servicesText;
+        set => SetProperty(ref servicesText, value);
+    }
+
+    private string pathsText = "";
+    public string PathsText
+    {
+        get => pathsText;
+        set => SetProperty(ref pathsText, value);
+    }
+
+    private string registryText = "";
+    public string RegistryText
+    {
+        get => registryText;
+        set => SetProperty(ref registryText, value);
+    }
+
+    private bool canClean;
+    public bool CanClean
+    {
+        get => canClean;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(canClean, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(CanClean));
+            canClean = value;
+            OnCanCleanChanged(value);
+            OnPropertyChanged(nameof(CanClean));
+        }
+    }
+    partial void OnCanCleanChanged(bool value);
+
+    private string coreCheckText = "正在核对 ACE 游戏与 ACE-CORE 数量…";
+    public string CoreCheckText
+    {
+        get => coreCheckText;
+        set => SetProperty(ref coreCheckText, value);
+    }
+
+    private AceCoreCheckLevel coreCheckLevel;
+    public AceCoreCheckLevel CoreCheckLevel
+    {
+        get => coreCheckLevel;
+        set
+        {
+            if (EqualityComparer<AceCoreCheckLevel>.Default.Equals(coreCheckLevel, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(CoreCheckLevel));
+            coreCheckLevel = value;
+            OnCoreCheckLevelChanged(value);
+            OnPropertyChanged(nameof(CoreCheckLevel));
+        }
+    }
+    partial void OnCoreCheckLevelChanged(AceCoreCheckLevel value);
+
+    private bool coreHasExcess;
+    public bool CoreHasExcess
+    {
+        get => coreHasExcess;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(coreHasExcess, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(CoreHasExcess));
+            coreHasExcess = value;
+            OnCoreHasExcessChanged(value);
+            OnPropertyChanged(nameof(CoreHasExcess));
+        }
+    }
+    partial void OnCoreHasExcessChanged(bool value);
+
+    private string coreCheckSummary = "";
+    private int _coreCheckSequence;
+    private string _coreCheckStatusText = "";
+    public string CoreCheckStatusText
+    {
+        get => _coreCheckStatusText;
+        set => SetProperty(ref _coreCheckStatusText, value);
+    }
+    public string CoreCheckSummary
+    {
+        get => coreCheckSummary;
+        set => SetProperty(ref coreCheckSummary, value);
+    }
+
     public bool CoreNeedsAttention => CoreCheckLevel is AceCoreCheckLevel.NeedsReview or AceCoreCheckLevel.Abnormal or AceCoreCheckLevel.Failed;
     public string CoreAlertTitle => CoreCheckLevel switch
     {
@@ -37,34 +176,185 @@ public partial class AceViewModel : ObservableObject
         OnPropertyChanged(nameof(CoreAlertTitle));
     }
     partial void OnCoreHasExcessChanged(bool value) => OnPropertyChanged(nameof(CoreAlertTitle));
-    [ObservableProperty] private bool coreCheckBusy;
-    [ObservableProperty] private string coreCleanupResultText = "";
-    [ObservableProperty] private bool hasBlockers;
-    [ObservableProperty] private bool cleanupNeedsReview;
-    [ObservableProperty] private string cleanupReviewMessage = "";
+    private bool coreCheckBusy;
+    public bool CoreCheckBusy
+    {
+        get => coreCheckBusy;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(coreCheckBusy, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(CoreCheckBusy));
+            coreCheckBusy = value;
+            OnCoreCheckBusyChanged(value);
+            OnPropertyChanged(nameof(CoreCheckBusy));
+        }
+    }
+    partial void OnCoreCheckBusyChanged(bool value);
+
+    private string coreCleanupResultText = "";
+    public string CoreCleanupResultText
+    {
+        get => coreCleanupResultText;
+        set => SetProperty(ref coreCleanupResultText, value);
+    }
+
+    private bool hasBlockers;
+    public bool HasBlockers
+    {
+        get => hasBlockers;
+        set => SetProperty(ref hasBlockers, value);
+    }
+
+    private bool cleanupNeedsReview;
+    public bool CleanupNeedsReview
+    {
+        get => cleanupNeedsReview;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(cleanupNeedsReview, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(CleanupNeedsReview));
+            cleanupNeedsReview = value;
+            OnCleanupNeedsReviewChanged(value);
+            OnPropertyChanged(nameof(CleanupNeedsReview));
+        }
+    }
+    partial void OnCleanupNeedsReviewChanged(bool value);
+
+    private string cleanupReviewMessage = "";
+    public string CleanupReviewMessage
+    {
+        get => cleanupReviewMessage;
+        set => SetProperty(ref cleanupReviewMessage, value);
+    }
 
     // ---- 虚拟化环境检测 ----
-    [ObservableProperty] private string virtSummaryText = "尚未检测。点「检测虚拟化环境」检查本机是否符合 ACE 反作弊的虚拟化要求。";
-    [ObservableProperty] private string hardwareCheckText = "";
-    [ObservableProperty] private string systemCheckText = "";
-    [ObservableProperty] private bool virtCheckBusy;
+    private string virtSummaryText = "尚未检测。点「检测虚拟化环境」检查本机是否符合 ACE 反作弊的虚拟化要求。";
+    public string VirtSummaryText
+    {
+        get => virtSummaryText;
+        set => SetProperty(ref virtSummaryText, value);
+    }
+
+    private string hardwareCheckText = "";
+    public string HardwareCheckText
+    {
+        get => hardwareCheckText;
+        set => SetProperty(ref hardwareCheckText, value);
+    }
+
+    private string systemCheckText = "";
+    public string SystemCheckText
+    {
+        get => systemCheckText;
+        set => SetProperty(ref systemCheckText, value);
+    }
+
+    private bool virtCheckBusy;
+    public bool VirtCheckBusy
+    {
+        get => virtCheckBusy;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(virtCheckBusy, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(VirtCheckBusy));
+            virtCheckBusy = value;
+            OnVirtCheckBusyChanged(value);
+            OnPropertyChanged(nameof(VirtCheckBusy));
+        }
+    }
+    partial void OnVirtCheckBusyChanged(bool value);
 
     /// <summary>是否存在可一键修复的系统层冲突项（Hyper-V / VBS / HVCI 等）。</summary>
-    [ObservableProperty] private bool hasFixableConflict;
-    [ObservableProperty] private bool virtFixBusy;
-    [ObservableProperty] private string virtFixText = "";
+    private bool hasFixableConflict;
+    public bool HasFixableConflict
+    {
+        get => hasFixableConflict;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(hasFixableConflict, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(HasFixableConflict));
+            hasFixableConflict = value;
+            OnHasFixableConflictChanged(value);
+            OnPropertyChanged(nameof(HasFixableConflict));
+        }
+    }
+    partial void OnHasFixableConflictChanged(bool value);
+
+    private bool virtFixBusy;
+    public bool VirtFixBusy
+    {
+        get => virtFixBusy;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(virtFixBusy, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(VirtFixBusy));
+            virtFixBusy = value;
+            OnVirtFixBusyChanged(value);
+            OnPropertyChanged(nameof(VirtFixBusy));
+        }
+    }
+    partial void OnVirtFixBusyChanged(bool value);
+
+    private string virtFixText = "";
+    public string VirtFixText
+    {
+        get => virtFixText;
+        set => SetProperty(ref virtFixText, value);
+    }
 
     /// <summary>三角洲进程运行中 → 已暂停 ACE 检测（不读取任何 ACE 信息）。</summary>
-    [ObservableProperty] private bool detectionPaused;
+    private bool detectionPaused;
+    public bool DetectionPaused
+    {
+        get => detectionPaused;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(detectionPaused, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(DetectionPaused));
+            detectionPaused = value;
+            OnDetectionPausedChanged(value);
+            OnPropertyChanged(nameof(DetectionPaused));
+        }
+    }
+    partial void OnDetectionPausedChanged(bool value);
 
     /// <summary>暂停原因提示（仅在 <see cref="DetectionPaused"/> 为 true 时有意义）。</summary>
-    [ObservableProperty] private string detectionPauseText = "";
+    private string detectionPauseText = "";
+    public string DetectionPauseText
+    {
+        get => detectionPauseText;
+        set => SetProperty(ref detectionPauseText, value);
+    }
 
     private const string PausedNotice =
         "三角洲进程正在运行——已按需求暂停 ACE 组件检测，未读取任何 ACE 服务 / 目录 / 注册表项。" +
         "请完全退出游戏后点「重新扫描」。";
 
-    public bool CleanRefreshEnabled => !IsBusy && !IsCleaning && !ManualRootsBusy;
+    public bool CleanRefreshEnabled => !IsBusy && !IsCleaning && !ManualRootsBusy && !CoreCheckBusy;
 
     partial void OnIsBusyChanged(bool value)
     {
@@ -79,11 +369,19 @@ public partial class AceViewModel : ObservableObject
 
     public string CoreCleanButtonText => IsCleaning ? "清理中…" : "仅清理 ACE-CORE SYS";
 
-    public bool CanRefresh => !IsBusy && !IsCleaning && !ManualRootsBusy;
+    public bool CanRefresh => !IsBusy && !IsCleaning && !ManualRootsBusy && !CoreCheckBusy;
 
     public string CleanButtonText => IsCleaning ? "清理中…" : "一键清除 ACE";
 
-    public string CoreCheckButtonText => CoreCheckBusy ? "检测中…" : "开始检测";
+    public string CoreCheckButtonText => CoreCheckBusy ? "检测中…" : "检测游戏与 CORE";
+    private CancellationTokenSource? _coreCheckCancellation;
+    public bool CanCancelCoreCheck => CoreCheckBusy && _coreCheckCancellation is { IsCancellationRequested: false };
+    public void CancelCoreCheck()
+    {
+        _coreCheckCancellation?.Cancel();
+        if (CoreCheckBusy) CoreCheckStatusText = "正在停止检测，请等待当前目录读取结束…";
+        OnPropertyChanged(nameof(CanCancelCoreCheck));
+    }
 
     public bool CanCheckCore => !CoreCheckBusy && !DetectionPaused && !IsCleaning && !IsBusy && !ManualRootsBusy;
 
@@ -115,6 +413,9 @@ public partial class AceViewModel : ObservableObject
 
     partial void OnCoreCheckBusyChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanCancelCoreCheck));
+        OnPropertyChanged(nameof(CleanRefreshEnabled));
+        OnPropertyChanged(nameof(CanRefresh));
         OnPropertyChanged(nameof(CoreCheckButtonText));
         OnPropertyChanged(nameof(CanCheckCore));
         OnPropertyChanged(nameof(CleanEnabled));
@@ -137,7 +438,11 @@ public partial class AceViewModel : ObservableObject
         gameProcess.PropertyChanged += OnGameProcessChanged;
     }
 
-    public void DetachGameState() => ServiceLocator.GameProcess.PropertyChanged -= OnGameProcessChanged;
+    public void DetachGameState()
+    {
+        CancelCoreCheck();
+        ServiceLocator.GameProcess.PropertyChanged -= OnGameProcessChanged;
+    }
 
     private async void OnGameProcessChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -181,7 +486,7 @@ public partial class AceViewModel : ObservableObject
 
     public async Task LoadAsync()
     {
-        if (IsBusy || IsCleaning || ManualRootsBusy)
+        if (IsBusy || IsCleaning || ManualRootsBusy || CoreCheckBusy)
         {
             return;
         }
@@ -299,17 +604,35 @@ public partial class AceViewModel : ObservableObject
     }
 
     /// <summary>共用手动关联计数策略，检测颜色不授予清理权限。</summary>
-    public async Task CheckCoreFilesAsync()
+    public async Task CheckCoreFilesAsync(bool fullDisk = false, CancellationToken cancellationToken = default)
     {
         if (CoreCheckBusy)
         {
             return;
         }
 
+        using var checkCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _coreCheckCancellation = fullDisk ? checkCancellation : null;
         CoreCheckBusy = true;
+        var sequence = ++_coreCheckSequence;
+        CoreCheckStatusText = fullDisk ? $"第 {sequence} 次检测：正在复查已识别的三角洲和手动添加的游戏目录…"
+            : $"正在检测 ACE 游戏与组件（第 {sequence} 次，快速检查）…";
+        if (fullDisk)
+        {
+            CoreHasExcess = false;
+            CoreCheckLevel = AceCoreCheckLevel.NeedsReview;
+            CoreCheckSummary = "全盘检测正在进行，本次结果尚未完成。";
+            CoreCheckText = "";
+        }
         try
         {
-            var result = await _ace.CheckCoreFilesAsync();
+            var progress = new Progress<string>(message =>
+            {
+                if (CoreCheckBusy && _coreCheckSequence == sequence && !checkCancellation.IsCancellationRequested)
+                    CoreCheckStatusText = message;
+            });
+            var result = fullDisk ? await _ace.CheckAllDisksAsync(progress, checkCancellation.Token)
+                : await _ace.CheckCoreFilesAsync();
             CoreCheckSummary = result.Summary;
             CoreHasExcess = result.HasExcessCoreFiles;
             CoreCheckLevel = result.Level;
@@ -319,6 +642,7 @@ public partial class AceViewModel : ObservableObject
                 // 三角洲在扫描/检测期间启动也会走到这里——保持"已暂停"一致。
                 DetectionPaused = true;
                 DetectionPauseText = PausedNotice;
+                CoreCheckStatusText = "检测已暂停：" + result.Summary;
                 CoreCheckText = "⏸ " + result.Summary + "\n👉 " + result.Advice;
                 return;
             }
@@ -342,6 +666,18 @@ public partial class AceViewModel : ObservableObject
 
             text.Append("👉 " + result.Advice);
             CoreCheckText = text.ToString();
+            CoreCheckStatusText = result.DiskScan is { } disk
+                ? result.Summary + $" 耗时 {disk.ElapsedMilliseconds / 1000.0:0.0} 秒。"
+                : result.Level == AceCoreCheckLevel.Failed
+                ? $"第 {sequence} 次检测未完成，请查看下方原因。"
+                : $"第 {sequence} 次快速检查已完成：识别到 {result.Games.Count} 个 ACE 游戏目录，{result.SysCount} 个共享 ACE-CORE 文件。默认检查软件已识别的三角洲；其他 ACE 游戏请手动添加。";
+        }
+        catch (OperationCanceledException)
+        {
+            CoreCheckLevel = AceCoreCheckLevel.NeedsReview;
+            CoreCheckSummary = CoreCheckStatusText = "已取消全盘检测，本次结果不完整。";
+            CoreCheckText = CoreCheckSummary;
+            CoreHasExcess = false;
         }
         catch (Exception ex)
         {
@@ -349,10 +685,12 @@ public partial class AceViewModel : ObservableObject
             CoreCheckSummary = "检测未完成：" + ex.Message;
             CoreCheckLevel = AceCoreCheckLevel.Failed;
             CoreCheckText = "检测未完成：" + ex.Message;
+            CoreCheckStatusText = "检测未完成：" + ex.Message;
         }
         finally
         {
             CoreCheckBusy = false;
+            _coreCheckCancellation = null;
         }
     }
 
@@ -432,7 +770,7 @@ public partial class AceViewModel : ObservableObject
                 await CheckVirtualizationAsync();
                 return OperationResult.Skip(VirtFixText);
             }
-            var result = await _tweaks.DisableAsync(SystemTweak.HyperVAndVbs);
+            var result = await Tweaks.DisableAsync(SystemTweak.HyperVAndVbs);
             VirtFixText = (result.Success ? "✓ " : "⛔ ") + result.Message
                           + (result.RequiresReboot ? "\n请先重启电脑，重启后再点「检测虚拟化环境」复核。" : "");
             // 修复完自动复核（状态刷新依赖重启，未重启时部分项仍会显示原状）。

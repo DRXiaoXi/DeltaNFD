@@ -9,6 +9,7 @@ namespace DeltaNFD.Views;
 public sealed partial class ProcessPage
 {
     private bool _backgroundBusy;
+    private bool _timerIgnoreBusy;
     private bool _backgroundConfigLoaded;
     private readonly HashSet<string> _backgroundExcludedPaths = new(StringComparer.OrdinalIgnoreCase);
 
@@ -34,9 +35,11 @@ public sealed partial class ProcessPage
             { ProcmanMemoryModes.Aggressive => 1, ProcmanMemoryModes.DeltaStable => 2, _ => 0 };
         }
         UpdateMemoryModeDescription();
-        MemoryBatchPolicyText.Text = $"普通模式每次最多 {status.Config.MemoryBatchLimit} 个后台进程；激进模式直接全局回收，稳洲模式跳过系统、三角洲、ACE 保护及有规则的进程，均不使用该数量上限。";
-        MemoryCooldownPolicyText.Text = $"已设最短间隔 {status.Config.MemoryCooldownSeconds / 60d:0.#} 分钟，可设为 1–1440 分钟；当前策略间隔 {status.EffectiveMemoryCooldownSeconds / 60d:0.#} 分钟。"
-            + "自动批次和同一进程重复回收共用；全局模式也使用该间隔。持续高压检查仍需满足，不因回涨或无效回收追加退避。修改后点击保存生效。";
+        MemoryBatchPolicyText.Text = "可设置范围：1–256 个进程。";
+        MemoryCooldownPolicyText.Text = "可设置范围：1–1440 分钟。";
+        Controls.HelpTip.SetText(MemoryParametersTitle,
+            $"自动回收需内存持续高压至少 30 秒，并满足清理间隔。当前策略间隔 {status.EffectiveMemoryCooldownSeconds / 60d:0.#} 分钟。"
+            + "自动批次与同一进程重复回收共用该间隔；紧急策略可能提高最短间隔。普通模式使用单次数量上限，激进和稳洲模式不使用。修改后点击保存生效。");
         AutomaticMemoryStatusText.Text = status.AutomaticMemoryActive ? $"自动回收已启用，模式：{(status.Config.MemoryMode switch { ProcmanMemoryModes.Aggressive => "激进回收", ProcmanMemoryModes.DeltaStable => "稳洲回收", _ => "普通回收" })}。" : status.Config.AutomaticMemoryEnabled
             ? "自动回收等待帧格同步，请在帧格页核对状态。" : "自动回收已随帧格停用。";
         if (status.Note.Length > 0) AutomaticMemoryStatusText.Text = "自动回收暂停：" + status.Note;
@@ -101,7 +104,7 @@ public sealed partial class ProcessPage
             return true;
         }
         catch (Exception ex) { BackgroundConfigNoteText.Text = "后台设置保存未完成：" + ex.Message; return false; }
-        finally { _backgroundBusy = false; BackgroundSettingsPanel.IsEnabled = true; UpdateSelectedExclusion(); }
+        finally { _backgroundBusy = false; BackgroundSettingsPanel.IsEnabled = true; UpdateSelectedExclusion(); UpdateSelectedTimerIgnoreList(); }
     }
 
     private Task<bool> AddExclusionAsync(string path) => SaveBackgroundAsync(c => c with
@@ -135,14 +138,14 @@ public sealed partial class ProcessPage
     private void MemoryMode_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateMemoryModeDescription();
     private void UpdateMemoryModeDescription()
     {
-        if (MemoryModeDescriptionText is null || MemoryBatchLimitBox is null) return;
+        if (MemoryModeHelpTitle is null || MemoryBatchLimitBox is null) return;
         MemoryBatchLimitBox.IsEnabled = MemoryModeCombo.SelectedIndex == 0;
-        MemoryModeDescriptionText.Text = MemoryModeCombo.SelectedIndex switch
+        Controls.HelpTip.SetText(MemoryModeHelpTitle, MemoryModeCombo.SelectedIndex switch
         {
             1 => "激进：不统计进程，直接回收全局工作集和低优先级待备缓存，忽略逐进程保护和排除名单，可能影响 ACE、游戏、前台和系统。保留其他待备缓存，不强制写回修改页列表；需要管理员权限，仍可能出现换页或卡顿。",
             2 => "稳洲：跳过三角洲主进程、系统进程、ACE 保护进程和有规则的进程（含停用规则）；其余进程包含前台和工具自身，不使用普通排除名单或数量上限。不清空全局待备缓存、不强制写回修改页列表；不可访问或冷却中的目标跳过。",
             _ => "普通：沿用后台进程保护和排除名单，不检测 CPU 占用，不设工作集大小门槛；按工作集排序，使用单次数量设置。",
-        };
+        });
     }
 
     public void ShowBackgroundSettings() => ProcessTabs.SelectedItem = BackgroundTab;
@@ -156,6 +159,39 @@ public sealed partial class ProcessPage
             ? c.ExcludedExecutablePaths.Where(p => !p.Equals(path, StringComparison.OrdinalIgnoreCase)).ToList()
             : c.ExcludedExecutablePaths.Append(path).ToList() });
         ShowResult(saved, BackgroundConfigNoteText.Text);
+    }
+
+    /// <summary>把选中进程的映像名加入/移出「定时器精度请求忽略列表」，然后让后端立即评估（2 秒 tick 内施加/恢复）。</summary>
+    private async void TimerIgnoreList_Click(object sender, RoutedEventArgs e)
+    {
+        if (_timerIgnoreBusy) return;
+        if (_selected is not { } row || string.IsNullOrWhiteSpace(row.ExecutablePath))
+        {
+            ShowResult(false, "请先选择路径可确认的进程。");
+            return;
+        }
+        var name = Path.GetFileName(row.ExecutablePath);
+        if (name.Length == 0) { ShowResult(false, "无法确认该进程的映像名。"); return; }
+        var list = (AppSettingsStore.Read().TimerIgnoreExtraProcesses ?? new List<string>()).ToList();
+        var inList = list.Any(n => n.Equals(name, StringComparison.OrdinalIgnoreCase));
+        if (inList) list.RemoveAll(n => n.Equals(name, StringComparison.OrdinalIgnoreCase));
+        else list.Add(name);
+        _timerIgnoreBusy = true;
+        try
+        {
+            AppSettingsStore.Update(s => s.TimerIgnoreExtraProcesses = list);
+            UpdateSelectedTimerIgnoreList();
+            var synced = await BackendProcmanService.Instance.SyncFrameBackgroundAsync();
+            var backend = BackendProcmanService.Instance;
+            var state = backend.LatestStatus?.TimerIgnoreList;
+            var confirmed = backend.HasCurrentStatus && state is not null
+                && BackendProcmanService.IsFresh(state.UpdatedUtc) && !state.HasError && !state.RestorePending && state.Supported;
+            ShowResult(synced.Success && confirmed,
+                (inList ? "移出配置已保存：" : "加入配置已保存：") + name + "\n" + TimerIgnoreBackendText()
+                + (synced.Success ? "" : "\n后端同步未完成：" + synced.Message));
+        }
+        catch (Exception ex) { ShowResult(false, "忽略列表操作未完成：" + ex.Message); }
+        finally { _timerIgnoreBusy = false; UpdateSelectedTimerIgnoreList(); }
     }
 
     private async void AddExclusion_Click(object sender, RoutedEventArgs e) => await AddExclusionAsync(BackgroundExcludePathBox.Text);

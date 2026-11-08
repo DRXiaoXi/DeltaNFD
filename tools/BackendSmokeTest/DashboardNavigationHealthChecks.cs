@@ -45,10 +45,13 @@ internal static class DashboardNavigationHealthChecks
             Check(vm.ShaderStatusText == "shader new" && vm.AceStatusText == "ace new", "reentry finishes with new results");
 
             var old = Pending(); var current = Pending();
+            vm.ShaderActionAllowed = false;
             vm.Probe = area => area == "shader" ? old.Task : Task.FromResult("stale must not continue");
             var abandoned = vm.RefreshHealthAsync();
             Check(vm.IsHealthScanning, "fixture suspends submitted read");
+            vm.ShaderActionAllowed = true;
             vm.DetachHealth();
+            Check(!vm.ShaderActionAllowed, "leave restores benign ASD warning action suppression with checkpoint");
             Check(!vm.IsHealthScanning && vm.ShaderStatusText == "shader new", "leave clears busy and restores previous checkpoint");
             vm.Probe = area => area == "shader" ? current.Task : Task.FromResult(area + " newest");
             vm.AttachHealth(); var readCount = vm.Reads.Count;
@@ -87,6 +90,7 @@ internal static class DashboardNavigationHealthChecks
             await startup.RefreshHealthAsync(); Check(startup.Reads.Count == 3, "startup completion starts scan while already loaded"); startup.DetachHealth();
 
             var failed = New(); failed.Probe = _ => throw new IOException("fixture probe failure"); failed.AttachHealth();
+            Check(failed.ShaderActionAllowed, "read failure keeps actionable state instead of benign ASD suppression");
             Check(failed.Reads.Count == 3 && failed.ShaderHealthState == DashboardHealthState.Failed && failed.RuntimeHealthState == DashboardHealthState.Failed,
                 "read errors produce explicit failures without leaving other components gray");
             Check(!failed.IsHealthScanning && failed.CanRefreshHealth && failed.LastHealthCheckText.StartsWith("最近检测"), "errors release refresh and record detection time");

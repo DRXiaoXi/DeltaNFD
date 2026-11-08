@@ -14,14 +14,14 @@ internal static class RuntimeHighFpsChecks
         Check(BackendModules.IsAllowed(BackendModules.Runtime, BackendCommands.Vc14Repair), "0.9192 V14 repair lost");
         Check(EmergencyPolicyVerifier.CanBlock(BackendCommands.RuntimeHighFpsRepair), "emergency policy must cover restored repair");
         Check(!RuntimeHighFpsMaintenance.NeedsV14Uninstall(new([], [], []), []), "fresh absent runtime proceeds to installation without unnecessary uninstall");
-        var installed = new Vc14Entry("{A}", "Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.42", "14.42.34433", "x64", "Minimum", "{U}");
+        var installed = new Vc14Entry("{A}", "Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.44", "14.44.35211", "x64", "Minimum", "{U}");
         Check(RuntimeHighFpsMaintenance.NeedsV14Uninstall(new([installed], [], []), []), "installed CRT needs controlled removal before full repair");
         var residue = new Vc14RemovalPlanItem("{B}", "x86", "wrapper", "14.51", "unknown", "", "", "");
         Check(RuntimeHighFpsMaintenance.NeedsV14Uninstall(new([], [], []), [residue]), "unresolved uninstall registration also needs controlled removal");
         var phaseWire = System.Text.Json.JsonSerializer.Deserialize<RuntimeHighFpsPreview>(System.Text.Json.JsonSerializer.Serialize(
             new RuntimeHighFpsPreview(true, "", "confirmed", false, []) { HasUninstallSteps = true }))!;
         Check(phaseWire.HasUninstallSteps && phaseWire.CanRepair, "normal-mode uninstall is allowed by backend protocol");
-        var verifiedCheckpoint = new Vc14Continuation(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow) { UninstallVerified = true };
+        var verifiedCheckpoint = new Vc14Continuation(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow) { UninstallVerified = true, Baseline = Vc14Baseline.V144 };
         var baselinePlan = new Vc14RemovalPlanItem("{A}", "x64", installed.Name, installed.Version, "msi", "", "", "");
         Check(!RuntimeHighFpsMaintenance.NeedsV14Uninstall(new([installed], [], []), [baselinePlan], verifiedCheckpoint), "partially installed pinned baseline resumes after verified uninstall");
         Check(RuntimeHighFpsMaintenance.NeedsV14Uninstall(new([installed], [], []), [baselinePlan], verifiedCheckpoint with { UninstallVerified = false }), "checkpoint intent alone cannot prove uninstall completion");
@@ -48,7 +48,7 @@ internal static class RuntimeHighFpsChecks
                 new RuntimeRepairDiagnostics(root)).RunAsync(null, default);
             var normal = new Fake { HasLegacy = true };
             Check((await Run(normal)).Success, "normal flow should complete");
-            Check(normal.Calls.SequenceEqual(new[] { "verify" }.Concat(Enumerable.Repeat("overwrite", 10)).Concat(new[] { "aio", "v14-remove", "baseline-x64", "baseline-x86", "file-recovery", "postcheck" })), "old C++ and auxiliary steps precede contiguous V14 removal/install and file recovery");
+            Check(normal.Calls.SequenceEqual(new[] { "verify" }.Concat(Enumerable.Repeat("overwrite", 10)).Concat(new[] { "v14-remove", "baseline-x64", "baseline-x86", "file-recovery", "postcheck" })), "C++-only reinstall never executes auxiliary AIO");
             var removed = await RuntimeHighFpsMaintenance.PreviewAsync(true);
             Check(!removed.CanRepair && removed.Blocker.Contains("已移除") && !removed.StrongMode, "retired strong preview rejected before OS queries");
             var removedRepair = await RuntimeHighFpsMaintenance.RepairAsync("fixture", true, null, default);
@@ -57,20 +57,20 @@ internal static class RuntimeHighFpsChecks
             Check(!removedInternal.Success && removedInternal.Message.Contains("已移除"), "internal strong entry rejected without system repair");
             foreach (var failure in new[] { new RuntimeStepResult(1603), new RuntimeStepResult(3010), new RuntimeStepResult(null, OutcomeUnknown: true) })
             {
-                var stop = new Fake { AioResult = failure };
+                var stop = new Fake { OverwriteResult = failure };
                 var result = await Run(stop);
-                Check(!result.Success && !stop.Calls.Contains("baseline-x64") && !stop.Calls.Contains("v14-remove"), "AIO failure/reboot/unknown must stop before V14 removal");
+                Check(!result.Success && !stop.Calls.Contains("baseline-x64") && !stop.Calls.Contains("v14-remove"), "C++ failure/reboot/unknown must stop before V14 removal");
                 Check(result.RequiresReboot == failure.RequiresReboot && result.OutcomeUnknown == failure.OutcomeUnknown, "failure state lost");
             }
             var normalCppFailure = new Fake { OverwriteResult = new(1603) };
             Check(!(await Run(normalCppFailure)).Success && normalCppFailure.Calls.Count(c => c == "overwrite") == 1
                 && !normalCppFailure.Calls.Contains("aio") && !normalCppFailure.Calls.Contains("v14-remove"), "old C++ failure preserves existing V14");
             var v14Failure = new Fake { V14Result = new(1638) };
-            Check(!(await Run(v14Failure)).Success && v14Failure.Calls.Contains("aio") && !v14Failure.Calls.Contains("baseline-x64"), "V14 removal failure stops baseline after older components");
+            Check(!(await Run(v14Failure)).Success && !v14Failure.Calls.Contains("aio") && !v14Failure.Calls.Contains("baseline-x64"), "V14 removal failure stops baseline after older components");
             var baselineFailure = new Fake { BaselineResult = new(1638) };
             Check(!(await Run(baselineFailure)).Success && !baselineFailure.Calls.Contains("baseline-x86"), "baseline conflict must stop");
             var invalidResults = new Fake { BrokenAioResults = true };
-            Check(!(await Run(invalidResults)).Success && !invalidResults.Calls.Contains("baseline-x64") && !invalidResults.Calls.Contains("v14-remove"), "missing AIO results preserve V14");
+            Check((await Run(invalidResults)).Success && !invalidResults.Calls.Contains("aio"), "retired AIO results never affect C++-only reinstall");
             var badFiles = new Fake { FailPostcheck = true };
             Check(!(await Run(badFiles)).Success, "exit zero cannot replace DLL verification");
             foreach (var recoveryFailure in new[] { new RuntimeStepResult(1603), new RuntimeStepResult(3010), new RuntimeStepResult(null, OutcomeUnknown: true) })
@@ -83,8 +83,8 @@ internal static class RuntimeHighFpsChecks
                     "full repair preserves file recovery reboot/unknown state");
             }
             var conflict = new Fake { DependencyConflict = true, HasLegacy = true };
-            Check((await Run(conflict)).Success && conflict.Calls.Contains("overwrite") && conflict.Calls.Contains("aio")
-                && conflict.Calls.Contains("v14-remove") && !conflict.Calls.Contains("uninstall"), "legacy C++ must use install/repair without old uninstall preflight");
+            Check((await Run(conflict)).Success && conflict.Calls.Contains("overwrite") && !conflict.Calls.Contains("aio")
+                && conflict.Calls.Contains("v14-remove") && !conflict.Calls.Contains("uninstall"), "C++ steps use the independently tested controlled reinstall adapter, not legacy shared uninstall or AIO");
 
             if (assets is not null)
             {

@@ -72,8 +72,6 @@ $required = @(
     "Backends/DeltaNFD.UpdateCore.dll",
     "Tools/DeploymentControl.ps1",
     "Assets/UpdateConfig.json",
-    "Assets/Vc14Baseline14.42/vc_redist.x64.exe",
-    "Assets/Vc14Baseline14.42/vc_redist.x86.exe",
     "Assets/Vc14Baseline14.44/vc_redist.x64.exe",
     "Assets/Vc14Baseline14.44/vc_redist.x86.exe",
     "Assets/RuntimeHighFps/Installer.cmd",
@@ -102,12 +100,11 @@ foreach ($entry in $highFpsRows) {
     if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $entry.sha256) { throw ('High-FPS payload hash mismatch: ' + $entry.relative_path) }
 }
 
-foreach ($retired in @('Assets/DotNetRepair', 'Assets/VCRedistRepair', 'Assets/DirectXRepair', 'Assets/VCRedist2015-2022-x64.exe', 'Assets/VCRedist2015-2022-x86.exe', 'Assets/VCRedistRepair.exe')) {
+foreach ($retired in @('Assets/DotNetRepair', 'Assets/VCRedistRepair', 'Assets/Vc14Baseline14.42', 'Assets/Vc14FileRepair14.42', 'Assets/VCRedist2015-2022-x64.exe', 'Assets/VCRedist2015-2022-x86.exe', 'Assets/VCRedistRepair.exe')) {
     if (Test-Path -LiteralPath (Join-Path $out $retired)) { throw ('Retired repair payload found: ' + $retired) }
 }
 $officialCatalog = Get-Content -LiteralPath (Join-Path $repo 'src/DeltaNFD.Execution/Execution/AlphaRestore/RuntimeCppOfficial.catalog.json') -Raw | ConvertFrom-Json
 $fileRepairCatalogs = @(
-    @{ Version = '14.42'; Directory = 'Assets/Vc14FileRepair14.42'; Catalog = 'src/DeltaNFD.Execution/Execution/Vc14FileRepair.catalog.json' },
     @{ Version = '14.44'; Directory = 'Assets/Vc14FileRepair14.44'; Catalog = 'src/DeltaNFD.Execution/Execution/Vc14FileRepair14.44.catalog.json' }
 )
 $ownershipCatalog = @(Get-Content -LiteralPath (Join-Path $repo 'src/DeltaNFD.Execution/Execution/Vc14OwnershipOriginals.catalog.json') -Raw | ConvertFrom-Json)
@@ -128,6 +125,13 @@ foreach ($catalogInfo in $fileRepairCatalogs) {
                 throw ($catalogInfo.Version + ' forced-file source hash mismatch: ' + $source.Path)
             }
         }
+    }
+}
+$directXCatalog = Get-Content -LiteralPath (Join-Path $repo 'src/DeltaNFD.Execution/Execution/NonCppRuntime.catalog.json') -Raw | ConvertFrom-Json
+foreach ($entry in @($directXCatalog.Files | Where-Object { -not $_.OsManaged })) {
+    $path = Join-Path $out ('Assets/DirectXRepair/' + $entry.RelativePath)
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -ne $entry.Length -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $entry.Sha256) {
+        throw ('DirectX source missing/hash mismatch: ' + $entry.RelativePath)
     }
 }
 if ($officialCatalog.Count -ne 10) { throw 'Expected ten Microsoft C++ originals' }

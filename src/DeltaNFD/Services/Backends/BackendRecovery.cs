@@ -18,7 +18,8 @@ internal static class BackendRecovery
     internal static bool IsRuntimeInstallation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.Runtime
         && review.Command is BackendCommands.RuntimeRepair or BackendCommands.RuntimeCompatibilityRepair
             or BackendCommands.RuntimeRedistUninstall or BackendCommands.RuntimeRedistUninstallAll or BackendCommands.Vc14Repair or BackendCommands.Vc14LegacyClean
-            or BackendCommands.RuntimeHighFpsRepair;
+            or BackendCommands.RuntimeHighFpsRepair or BackendCommands.RuntimeSafeUninstall;
+    internal static bool IsRuntimeInstallationScope(string scope) => scope is "repair-review" or "repair-restart-checkpoint";
     private static bool CanRestoreCpuRecord(string command) => BackendModules.IsReadOnly(BackendModules.CpuFrame, command)
         || command is BackendCommands.CpuFrameMonitorStart or BackendCommands.CpuFrameMonitorStop
         or BackendCommands.CpuFramePriorityApply or BackendCommands.CpuFrameAffinityApply
@@ -26,8 +27,9 @@ internal static class BackendRecovery
         or BackendCommands.CpuFrameSingleCcdApply or BackendCommands.CpuFrameSingleCcdRevert
         or BackendCommands.CpuFrameRestore or BackendCommands.CpuFrameRecover
         or BackendCommands.CpuFramePowerLock or BackendCommands.CpuFramePowerUnlock
-        or BackendCommands.CpuFrameTimerApply or BackendCommands.CpuFrameTimerRestore
-        or BackendCommands.CpuFrameTweaksApply or BackendCommands.CpuFrameTweaksRevert or BackendCommands.CpuFrameBoostApply;
+        or BackendCommands.CpuFrameTweaksApply or BackendCommands.CpuFrameTweaksRevert or BackendCommands.CpuFrameGamePowerApply
+        // Historical records remain recoverable; these retired commands are not execution entries.
+        or "cpuframe.boost.apply" or "cpuframe.timer.apply" or "cpuframe.timer.restore";
 
     internal static IReadOnlyList<RecoveryScope> RecoveryChoices(BackendUnconfirmedStore.Review review, ReconcileSnapshot? snapshot)
     {
@@ -37,7 +39,8 @@ internal static class BackendRecovery
         if (module == BackendModules.Procman && review.Command == BackendCommands.ProcmanMemoryTrim) return [];
         if (snapshot is null || !snapshot.Complete || snapshot.Module != module) return [];
         if (module == BackendModules.Runtime)
-            return snapshot.RecoveryScopes.Where(s => s.Available && s.Id == (IsRuntimeInstallation(review) ? "repair-review" : "guard")).ToArray();
+            return snapshot.RecoveryScopes.Where(s => s.Available && (IsRuntimeInstallation(review)
+                ? IsRuntimeInstallationScope(s.Id) : s.Id == "guard")).ToArray();
         if (module == BackendModules.CpuFrame)
             return CanRestoreCpuRecord(review.Command) && snapshot.RecoveryScopes.Any(s => s.Available)
                 ? [new RecoveryScope { Id = "all", Description = "完整恢复 CPU/帧格状态并复核", Available = true }] : [];
@@ -74,7 +77,7 @@ internal static class BackendRecovery
             throw new InvalidOperationException("记录已变化或原后端、子进程尚未确认退出，请重新核对。");
         if (review.Module == BackendModules.CpuFrame && (scope != "all" || !CanRestoreCpuRecord(review.Command)))
             throw new InvalidOperationException("该 CPU/帧格记录需要对应的可信完整恢复路径。单个子范围、不可回滚操作或缺少命令的旧记录不能自动解除阻塞，请人工核对。");
-        if (review.Module == BackendModules.Runtime && scope != (IsRuntimeInstallation(review) ? "repair-review" : "guard"))
+        if (review.Module == BackendModules.Runtime && !(IsRuntimeInstallation(review) ? IsRuntimeInstallationScope(scope) : scope == "guard"))
             throw new InvalidOperationException("运行库安装记录必须核对事务结束；防护记录必须按备份恢复，不能混用解除路径。");
         var command = BackendModules.RecoverCommand(review.Module)
                       ?? throw new InvalidOperationException($"模块 {review.Module} 没有可信备份恢复路径。");
@@ -90,7 +93,8 @@ internal static class BackendRecovery
             if (!await caller.ResetAsync()) throw new InvalidOperationException("恢复后端未确认安全停止或收尾失败，原始证据保留。");
         }
 
-        var verified = outcome.Success && outcome.Verified && outcome.Scope == scope
+        var checkpoint = review.Module == BackendModules.Runtime && scope == "repair-restart-checkpoint";
+        var verified = !checkpoint && outcome.Success && outcome.Verified && outcome.Scope == scope
             && outcome.VerifiedSnapshot is { Complete: true } snapshot && snapshot.Module == review.Module
             && (review.Module != BackendModules.CpuFrame || !snapshot.RecoveryScopes.Any(s => s.Available));
         if (verified)
@@ -106,7 +110,7 @@ internal static class BackendRecovery
         return new RecoverOutcome
         {
             Scope = outcome.Scope, Success = outcome.Success, Verified = verified,
-            Message = outcome.Message + (verified ? "" : "\n恢复结果或完整状态未通过复核，旧记录仍保留。"),
+            Message = outcome.Message + (verified || checkpoint ? "" : "\n恢复结果或完整状态未通过复核，旧记录仍保留。"),
             VerifiedSnapshot = outcome.VerifiedSnapshot,
         };
     }

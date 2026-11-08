@@ -30,6 +30,7 @@ public sealed class GpuSpoofReloadArgs
 public sealed class NvDriverApplyArgs
 {
     public List<Services.NvSettingChangeDto> Changes { get; set; } = [];
+    public bool RebarWarningAccepted { get; set; }
 }
 
 public sealed class NvDriverRestoreArgs

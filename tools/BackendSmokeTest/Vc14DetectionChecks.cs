@@ -8,21 +8,21 @@ internal static class Vc14DetectionChecks
         int count = 0;
         void Check(bool value, string name) { if (!value) throw new Exception(name); count++; }
         foreach (var (name, version, severity) in new[] {
-            ("Microsoft Visual C++ 2022", "14.51.36247.0", Vc14Severity.Abnormal),
-            ("Microsoft Visual C++ 2022", "14.50.35719.0", Vc14Severity.Abnormal),
-            ("Microsoft Visual C++ 2022", "14.50.0", Vc14Severity.Abnormal),
+            ("Microsoft Visual C++ 2022", "14.51.36247.0", Vc14Severity.Evaluation),
+            ("Microsoft Visual C++ 2022", "14.50.35719.0", Vc14Severity.Evaluation),
+            ("Microsoft Visual C++ 2022", "14.50.0", Vc14Severity.Evaluation),
             ("Microsoft Visual C++ 2022", "14.500.35719", Vc14Severity.Warning),
             ("Microsoft Visual C++ 2022", "14.49.35719", Vc14Severity.Warning),
-            ("Microsoft Visual C++ v14", "14.42.34433.0", Vc14Severity.Abnormal),
-            ("Microsoft Visual C++ v14", "unknown", Vc14Severity.Abnormal),
+            ("Microsoft Visual C++ v14", "14.42.34433.0", Vc14Severity.Evaluation),
+            ("Microsoft Visual C++ v14", "unknown", Vc14Severity.Evaluation),
             ("Microsoft Visual C++ 2022", "14.44.0", Vc14Severity.Normal),
-            ("Microsoft Visual C++ v14", "14.44.35211.0", Vc14Severity.Normal),
+            ("Microsoft Visual C++ v14", "14.44.35211.0", Vc14Severity.Evaluation),
             ("Microsoft Visual C++ 2022", "14.43.35211", Vc14Severity.Warning),
             ("Microsoft Visual C++ 2022", "14.45.35211", Vc14Severity.Warning),
             ("Microsoft Visual C++ 2022", "14.440.35211", Vc14Severity.Warning),
-            ("Microsoft Visual C++ 2022", "14.42.34433.0", Vc14Severity.Normal) })
+            ("Microsoft Visual C++ 2022", "14.42.34433.0", Vc14Severity.Warning) })
             Check(Vc14Catalog.Classify(name, version) == severity, "read-only compatibility classification changed");
-        // 横幅放宽（2026-10-15）：红色只由真实 MSI 组件驱动；包装/残留登记最高 Warning；Appx 不进横幅。
+        // 回退旧版登记/扫描判定，保留 V14/14.50/14.51 蓝色评估；Appx 不参与。
         var noProducts = new List<Vc14Entry>();
         foreach (var arch in new[] { "x64", "x86" })
         {
@@ -39,22 +39,22 @@ internal static class Vc14DetectionChecks
             var wrapper1444 = $"Microsoft Visual C++ v14 Redistributable ({arch})";
             Check(Vc14Catalog.Classify(wrapper1444, "14.44.35211", false, noProducts) == Vc14Severity.Warning,
                 arch + " unverified 14.44 wrapper is still pending, not green proof");
-            Check(Vc14Catalog.Classify(wrapper1444, "14.44.35211.0", false, products1444) == Vc14Severity.Normal,
-                arch + " verified same-version 14.44 wrapper is green");
+            Check(Vc14Catalog.Classify(wrapper1444, "14.44.35211.0", false, products1444) == Vc14Severity.Evaluation,
+                arch + " verified same-version V14 wrapper is informational");
             Check((scan1444 with { Issues = ["MSI enumeration incomplete"] }).HasWarning,
                 arch + " accepted version cannot hide incomplete scan");
             Check((scan1444 with { Notices = [.. notices1444, new("Microsoft Visual C++ v14", "14.51.36247", arch,
-                    Vc14Catalog.Classify("Microsoft Visual C++ v14", "14.51.36247"), "incompatible fixture")] }).HasAbnormal,
-                arch + " 14.44 cannot hide co-installed abnormal 14.51");
+                    Vc14Catalog.Classify("Microsoft Visual C++ v14", "14.51.36247"), "evaluation fixture")] }).HasEvaluation,
+                arch + " 14.44 does not hide co-installed evaluation 14.51");
             var products1450 = products1444.Select(p => p with { Name = p.Name.Replace("14.44.35211", "14.50.35719"), Version = "14.50.35719" }).ToArray();
             var notices1450 = products1450.Select(p => new Vc14Notice(p.Name, p.Version, p.Architecture,
                 Vc14Catalog.Classify(p.Name, p.Version, true, products1450), "verified 14.50 fixture")).ToArray();
-            Check(notices1450.All(n => n.Severity == Vc14Severity.Abnormal), arch + " verified 14.50 minimum/additional roles are red");
+            Check(notices1450.All(n => n.Severity == Vc14Severity.Evaluation), arch + " verified 14.50 minimum/additional roles are informational");
             var scan1450 = System.Text.Json.JsonSerializer.Deserialize<Vc14Scan>(System.Text.Json.JsonSerializer.Serialize(
                 new Vc14Scan([.. products1444, .. products1450], [.. notices1444, .. notices1450], [])))!;
-            Check(scan1450.HasAbnormal && scan1450.AbnormalTitle.Contains("14.50"), arch + " 14.44 cannot hide co-installed red 14.50 across IPC");
+            Check(scan1450.HasEvaluation && !scan1450.HasAbnormal, arch + " 14.50 evaluation survives IPC without a red warning");
             Check(Vc14Catalog.Classify(wrapper1444, "14.50.35719", false, noProducts) == Vc14Severity.Warning,
-                arch + " unverified 14.50 wrapper remains yellow");
+                arch + " unverified 14.50 wrapper returns to yellow review");
             Check(Vc14Catalog.Classify("Visual C++ Library CRT Desktop Appx Package", "14.50.35719", false, noProducts) == Vc14Severity.Normal,
                 arch + " 14.50 Appx remains informational");
         }
@@ -85,31 +85,31 @@ internal static class Vc14DetectionChecks
         // Missing Win32 CRT is red only after a completed scan. Notices are not proof of presence.
         var baseline = new Vc14Entry("{A}", "Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.42.34433", "14.42.34433", "x64", "Minimum", "{U}");
         var appxNotice = new Vc14Notice("Visual C++ Library CRT Desktop Appx Package", "14.44.35208", "x86", Vc14Severity.Normal, "系统组件包");
-        var orphanNotice = new Vc14Notice("Microsoft Visual C++ 2026 Redistributable (x64)", "14.51.36247.0", "x64", Vc14Severity.Warning, "残留");
+        var orphanNotice = new Vc14Notice("Microsoft Visual C++ 2026 Redistributable (x64)", "14.51.36247.0", "x64", Vc14Severity.Warning, "残留待核对");
         var emptyScan = new Vc14Scan([], [], []);
         Check(emptyScan.IsMissing && emptyScan.HasAbnormal && !emptyScan.HasWarning, "complete empty scan is red missing");
         Check(emptyScan.AbnormalTitle.Contains("缺少") && emptyScan.GetAbnormalNotices().Single().Detail.Contains("无法启动"), "missing title/action describe launch risk");
-        Check(emptyScan.GetAbnormalNotices().Single().Detail.Contains("14.42"), "missing guidance uses the pinned baseline");
+        Check(emptyScan.GetAbnormalNotices().Single().Detail.Contains("14.44") && !emptyScan.GetAbnormalNotices().Single().Detail.Contains("14.42"), "missing guidance uses only the current pinned baseline");
         var appxOnly = new Vc14Scan([], [appxNotice], []);
         Check(appxOnly.IsMissing && appxOnly.HasAbnormal && !appxOnly.HasWarning, "Appx alone cannot hide missing Win32 runtime");
         var orphanOnly = new Vc14Scan([], [orphanNotice], []);
-        Check(orphanOnly.IsMissing && orphanOnly.HasAbnormal && orphanOnly.HasWarning, "orphan only has missing red and separate residue yellow");
+        Check(orphanOnly.IsMissing && orphanOnly.HasAbnormal && orphanOnly.HasWarning, "completed empty scan stays missing red with separate orphan yellow");
         var uncertain = new Vc14Scan([], [], ["读取失败"]);
-        Check(!uncertain.IsMissing && !uncertain.HasAbnormal && uncertain.HasWarning && !uncertain.GetAbnormalNotices().Any(), "failed scan stays unknown not missing red");
+        Check(!uncertain.IsMissing && !uncertain.HasAbnormal && uncertain.HasWarning && !uncertain.GetAbnormalNotices().Any(), "failed scan returns to yellow unknown, not confirmed missing");
         var uncertainOrphan = new Vc14Scan([], [orphanNotice], ["MSI 缓存身份未核对"]);
         Check(!uncertainOrphan.IsMissing && !uncertainOrphan.HasAbnormal && uncertainOrphan.HasWarning, "unverified identity cannot prove absence");
         var healthy = new Vc14Scan([baseline], [appxNotice], []);
         Check(!healthy.IsMissing && !healthy.HasAbnormal && !healthy.HasWarning, "Appx is harmless when verified CRT exists");
         var orphanWithBaseline = new Vc14Scan([baseline], [orphanNotice], []);
-        Check(!orphanWithBaseline.IsMissing && !orphanWithBaseline.HasAbnormal && orphanWithBaseline.HasWarning, "orphan itself remains yellow only");
+        Check(!orphanWithBaseline.IsMissing && !orphanWithBaseline.HasAbnormal && orphanWithBaseline.HasWarning, "unverified registration returns to yellow with installed baseline");
         foreach (var arch in new[] { "x64", "x86" })
         {
             var available = new Vc14Scan([baseline with { Architecture = arch }], [], []);
             Check(!available.IsMissing && !available.HasAbnormal, "one verified architecture is presence, no new partial-architecture rule: " + arch);
         }
         var incompatible = new Vc14Scan([baseline with { Version = "14.51.36247" }],
-            [new("Microsoft Visual C++ v14", "14.51.36247", "x64", Vc14Severity.Abnormal, "兼容性提醒")], []);
-        Check(!incompatible.IsMissing && incompatible.HasAbnormal && incompatible.AbnormalTitle.Contains("兼容性"), "existing incompatible version retains original red reason");
+            [new("Microsoft Visual C++ v14", "14.51.36247", "x64", Vc14Severity.Evaluation, "待长期评估")], []);
+        Check(!incompatible.IsMissing && !incompatible.HasAbnormal && incompatible.HasEvaluation, "verified evaluated version no longer reports a compatibility error");
         var json = System.Text.Json.JsonSerializer.Serialize(emptyScan);
         var received = System.Text.Json.JsonSerializer.Deserialize<Vc14Scan>(json)!;
         Check(received.IsMissing && received.HasAbnormal && received.GetAbnormalNotices().Single().Severity == Vc14Severity.Abnormal, "backend JSON roundtrip preserves missing diagnosis");
@@ -189,10 +189,10 @@ internal static class Vc14DetectionChecks
             Check(assembly.GetType("DeltaNFD.Services." + type) is null, "old scoped repair implementation still compiled: " + type);
         foreach (var type in new[] { "Vc14Reinstall", "Vc14ReinstallEnvironment", "IVc14ReinstallEnvironment" })
             Check(assembly.GetType("DeltaNFD.Services." + type) is not null, "reinstall implementation missing: " + type);
-        // 基线固定：用户 2026-10-15 提供的 14.42.34433 双架构原包哈希。
-        Check(Vc14Reinstall.BaselineVersion == "14.42.34433.0", "baseline version changed");
-        Check(Vc14Reinstall.BaselineHashes["x64"] == "1821577409C35B2B9505AC833E246376CC68A8262972100444010B57226F0940"
-            && Vc14Reinstall.BaselineHashes["x86"] == "DD1A8BE03398367745A87A5E35BEBDAB00FDAD080CF42AF0C3F20802D08C25D4", "baseline hashes changed");
+        // 当前唯一 14.44.35211 双架构原包哈希。
+        Check(Vc14Reinstall.BaselineVersion == "14.44.35211.0", "baseline version changed");
+        Check(Vc14Reinstall.BaselineHashes["x64"] == "CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B"
+            && Vc14Reinstall.BaselineHashes["x86"] == "0C09F2611660441084CE0DF425C51C11E147E6447963C3690F97E0B25C55ED64", "baseline hashes changed");
         // 步骤结果规则：0/3010 成功，3010/1641 需要重启，未知不视为成功。
         var ok = new Vc14StepResult(0); var reboot = new Vc14StepResult(3010); var fail = new Vc14StepResult(1603); var unknown = new Vc14StepResult(0, true);
         Check(ok.Success && !ok.Reboot && reboot.Success && reboot.Reboot && !fail.Success && !unknown.Success, "step result rules changed");

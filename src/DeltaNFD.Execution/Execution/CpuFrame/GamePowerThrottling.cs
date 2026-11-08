@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using DeltaNFD.Native;
 using System.Text.Json;
 using DeltaNFD.Execution.Procman;
 using Microsoft.Win32.SafeHandles;
@@ -165,24 +166,17 @@ internal sealed class GamePowerThrottling
     {
         public GamePowerState Read()
         {
-            var value = new PowerState { Version = 1 };
-            if (!GetProcessInformation(handle, 4, ref value, Marshal.SizeOf<PowerState>()))
-                throw NativeError("读取游戏节能状态", Marshal.GetLastWin32Error());
-            return new(value.Control, value.State);
+            var value = ProcessPowerThrottling.Read(handle);
+            return new(value.ControlMask, value.StateMask);
         }
         public void Write(GamePowerState state)
         {
             var writable = state.ForWrite();
-            var value = new PowerState { Version = 1, Control = writable.Control, State = writable.State };
-            if (!SetProcessInformation(handle, 4, ref value, Marshal.SizeOf<PowerState>()))
-                throw NativeError($"写入游戏节能状态（ControlMask=0x{value.Control:X}，StateMask=0x{value.State:X}）", Marshal.GetLastWin32Error());
+            ProcessPowerThrottling.Write(handle, writable.Control, writable.State);
         }
         public void Dispose() => handle.Dispose();
     }
     private static System.ComponentModel.Win32Exception NativeError(string stage, int code) =>
         new(code, $"{stage}失败（Win32 {code}）：{new System.ComponentModel.Win32Exception(code).Message}");
-    [StructLayout(LayoutKind.Sequential)] private struct PowerState { public uint Version, Control, State; }
     [DllImport("kernel32.dll", SetLastError = true)] private static extern SafeProcessHandle OpenProcess(uint access, bool inherit, int pid);
-    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetProcessInformation(SafeProcessHandle handle, int kind, ref PowerState state, int size);
-    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetProcessInformation(SafeProcessHandle handle, int kind, ref PowerState state, int size);
 }

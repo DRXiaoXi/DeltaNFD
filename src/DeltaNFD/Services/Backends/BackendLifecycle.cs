@@ -76,6 +76,12 @@ internal static class BackendLifecycle
                 Report("正在还原进程管理设置…");
                 var result = await client.InvokeAsync(BackendCommands.ProcmanRestoreAll, new { }, null, CancellationToken.None);
                 if (result.Status != BackendResultStatuses.Ok) Log.Warn("进程管理还原未完成，后续停止保留证据：" + result.Message);
+                else
+                {
+                    // 全部还原在 CCD 调度未撤销时会失败；成功即代表单/双 CCD 已不在生效。
+                    CpuFrameStatusState.DualCcdSchedulingActive = false;
+                    CpuFrameStatusState.SingleCcdExcludeActive = false;
+                }
             }
             catch (Exception ex) { Log.Warn("进程管理交接还原失败：" + ex.Message); }
         }

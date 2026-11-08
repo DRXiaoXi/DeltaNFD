@@ -157,6 +157,14 @@ public sealed class AceInspection
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "AntiCheatExpert");
         return AceCoreOwnershipInspection.Read(root, _deltaRunning);
     });
+
+    // Compatibility entry: automatic disk discovery is temporarily disabled.
+    public Task<AceCoreCheckResult> CheckAllDisksAsync(IProgress<string>? progress, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        progress?.Report("复查软件已识别的三角洲和手动添加的 ACE 游戏目录，不进行全盘扫描。");
+        return CheckCoreFilesAsync();
+    }
     private static bool IsProcessRunning(string name)
     {
         var processes = Process.GetProcessesByName(name);

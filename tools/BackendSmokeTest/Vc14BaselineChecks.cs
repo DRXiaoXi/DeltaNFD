@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using DeltaNFD.Services;
 
-/// <summary>14.42/14.44 双基线：元数据、两套媒体、文件修复源、强制替换与用户选择传递。</summary>
+/// <summary>仅 14.44 安装：部署、固定媒体、文件替换及历史记录兼容。</summary>
 internal static class Vc14BaselineChecks
 {
     internal static async Task RunAsync(string assetsRoot)
@@ -23,18 +23,14 @@ internal static class Vc14BaselineChecks
         var media44 = Path.Combine(root, "Vc14FileRepair14.44");
         var baseline42 = Path.Combine(root, "Vc14Baseline14.42");
         var baseline44 = Path.Combine(root, "Vc14Baseline14.44");
-        Check(Directory.Exists(media42) && Directory.Exists(media44), "both deployed file-repair media directories exist");
-        Check(File.Exists(Path.Combine(baseline42, "vc_redist.x64.exe"))
-            && File.Exists(Path.Combine(baseline44, "vc_redist.x64.exe")), "both baseline installers are deployed");
+        Check(!Directory.Exists(media42) && Directory.Exists(media44), "only 144 file-repair media deployed");
+        Check(!Directory.Exists(baseline42) && File.Exists(Path.Combine(baseline44, "vc_redist.x64.exe")), "retired 142 installer not deployed");
 
         // 1) 元数据与展示。
-        Check(Vc14BaselineOption.Default == Vc14Baseline.V142 && Vc14Baseline.V142.Display() == "14.42"
-            && Vc14Baseline.V142.Label() == "14.42（默认）" && Vc14Baseline.V142.FullVersion() == "14.42.34433.0"
-            && Vc14Baseline.V144.Display() == "14.44" && Vc14Baseline.V144.Label() == "14.44（兼容性更好）"
-            && Vc14Baseline.V144.FullVersion() == "14.44.35211.0", "baseline display/version metadata");
-        Check(Vc14Baseline.V142.IsSupported() && Vc14Baseline.V144.IsSupported() && !((Vc14Baseline)9).IsSupported(),
-            "only 14.42/14.44 are supported");
-        Check(Vc14BaselineInfo.All.Count == 2 && Vc14BaselineInfo.Default.Id == Vc14Baseline.V142
+        Check(Vc14BaselineOption.Default == Vc14Baseline.V144 && Vc14Baseline.V142.FullVersion() == "14.42.34433.0"
+            && Vc14Baseline.V144.FullVersion() == "14.44.35211.0", "current and historical version metadata");
+        Check(!Vc14Baseline.V142.IsSupported() && Vc14Baseline.V144.IsSupported() && !((Vc14Baseline)9).IsSupported(), "only 144 supported");
+        Check(Vc14BaselineInfo.All.Count == 2 && Vc14BaselineInfo.Default.Id == Vc14Baseline.V144
             && Vc14BaselineInfo.V144.Version == "14.44.35211.0"
             && Vc14BaselineInfo.V144.ShortVersion == "14.44.35211"
             && Vc14BaselineInfo.V144.BaselineDirectory == "Vc14Baseline14.44"
@@ -59,7 +55,7 @@ internal static class Vc14BaselineChecks
             "14.44 official installers match pinned SHA256");
 
         // 2) 两套 MSI/CAB 都能独立核验，不能串用。
-        Check(Vc14FileRepairSource.DirectoryName == "Vc14FileRepair14.42"
+        Check(Vc14FileRepairSource.DirectoryName == "Vc14FileRepair14.44"
             && Vc14FileRepairSource.DirectoryNameFor(Vc14Baseline.V144) == "Vc14FileRepair14.44",
             "file-repair directory follows the selected baseline");
         Check(Vc14FileRepairSource.Packages.Count == 4 && Vc14FileRepairSource.PackagesFor(Vc14Baseline.V144).Count == 4
@@ -67,9 +63,7 @@ internal static class Vc14BaselineChecks
             "both embedded MSI/CAB catalogs contain four 14.x packages");
         foreach (var arch in new[] { "x64", "x86" })
         {
-            Check(Vc14FileRepairSource.Verify(media42, arch, Vc14Baseline.V142).Count == 2
-                && Vc14FileRepairSource.Verify(media44, arch, Vc14Baseline.V144).Count == 2,
-                "each baseline verifies its own official MSI/CAB bytes: " + arch);
+            Check(Vc14FileRepairSource.Verify(media44, arch, Vc14Baseline.V144).Count == 2, "144 official MSI/CAB verified: " + arch);
         }
         Reject(() => Vc14FileRepairSource.Verify(media44, "x64", Vc14Baseline.V142), "14.44 media is not accepted as 14.42");
         Reject(() => Vc14FileRepairSource.Verify(media42, "x86", Vc14Baseline.V144), "14.42 media is not accepted as 14.44");
@@ -80,15 +74,15 @@ internal static class Vc14BaselineChecks
             "{36F68A90-239C-34DF-B58C-64B30153CE35}");
         var provider144 = new Vc14DependencyProvider("LocalMachine:Registry64", "Microsoft.VS.VC_RuntimeMinimumVSU_amd64,v14",
             product144.Code, "fixture", [Vc14BaselineInfo.V144.BundleIds["x64"]]);
-        var approval144 = Vc14DependencyPolicy.Evaluate(product144, [provider144], _ => [], _ => true);
+        var approval144 = Vc14DependencyPolicy.Evaluate(product144, [provider144], _ => [], (_, _) => true);
         Check(approval144.Argument == "IGNOREDEPENDENCIES=" + Vc14BaselineInfo.V144.BundleIds["x64"]
             && approval144.Clients.SequenceEqual([Vc14BaselineInfo.V144.BundleIds["x64"]])
             && approval144.Evidence.Contains(Vc14BaselineInfo.V144.ExeHashes["x64"]),
             "14.44 pinned baseline reference is approved with its own source hash");
         Reject(() => Vc14DependencyPolicy.Evaluate(product144,
-            [provider144 with { Clients = [Vc14BaselineInfo.V144.BundleIds["x86"]] }], _ => [], _ => true),
+            [provider144 with { Clients = [Vc14BaselineInfo.V144.BundleIds["x86"]] }], _ => [], (_, _) => true),
             "14.44 x86 baseline cannot satisfy an x64 product reference");
-        Reject(() => Vc14DependencyPolicy.Evaluate(product144, [provider144], _ => [], _ => false),
+        Reject(() => Vc14DependencyPolicy.Evaluate(product144, [provider144], _ => [], (_, _) => false),
             "14.44 baseline reference cannot bypass a failed pinned-source verification");
 
         // 3) 强制替换载荷：两套固定清单、解包版本和目标运行。
@@ -104,20 +98,16 @@ internal static class Vc14BaselineChecks
             AppDataPaths.ConfigureIsolatedDataRoot(isolated, testId);
             var set42 = Vc14ForceReplace.PayloadSet(Vc14Baseline.V142);
             var set44 = Vc14ForceReplace.PayloadSet(Vc14Baseline.V144);
-            Check(set42.Files.Count == 51 && set42.Files.Count(p => p.Architecture == "x64") == 26
-                && set42.Files.Count(p => p.Architecture == "x86") == 25, "14.42 force payload is 26 x64 + 25 x86");
+            Check(set42.Files.Count == 51, "historical 142 catalog retained for evidence only");
             Check(set44.Files.Count == 51 && set44.Files.Count(p => p.Architecture == "x64") == 26
                 && set44.Files.Count(p => p.Architecture == "x86") == 25, "14.44 force payload is 26 x64 + 25 x86");
             Check(set42.Fingerprint.Length == 64 && set44.Fingerprint.Length == 64
-                && set42.Fingerprint != set44.Fingerprint && Vc14ForceReplace.PayloadFingerprint == set42.Fingerprint,
-                "force payload fingerprints identify the baselines and keep the default 14.42");
-            Check(set44.ExpectedVersion == "14.44.35211.0" && Vc14ForceReplace.ExpectedVersion == "14.42.34433.0",
-                "force target version follows the selected baseline");
+                && set42.Fingerprint != set44.Fingerprint && Vc14ForceReplace.PayloadFingerprint == set44.Fingerprint, "default force fingerprint is 144");
+            Check(set44.ExpectedVersion == "14.44.35211.0" && Vc14ForceReplace.ExpectedVersion == "14.44.35211.0", "force target fixed 144");
 
-            var extracted42 = Vc14ForceReplace.ExtractPayload(media42, extracted42Root, CancellationToken.None, Vc14Baseline.V142);
+            Reject(() => Vc14ForceReplace.ExtractPayload(media42, extracted42Root, CancellationToken.None, Vc14Baseline.V142), "retired media unavailable");
             var extracted44 = Vc14ForceReplace.ExtractPayload(media44, extracted44Root, CancellationToken.None, Vc14Baseline.V144);
-            Check(extracted42.Count == 51 && extracted44.Count == 51, "both baselines extract all 51 official DLLs");
-            Check(extracted42.Values.All(p => ReadVersion(p) == "14.42.34433.0"), "14.42 payload files report 14.42.34433.0");
+            Check(extracted44.Count == 51, "144 extracts all 51 official DLLs");
             Check(extracted44.Values.All(p => ReadVersion(p) == "14.44.35211.0"), "14.44 payload files report 14.44.35211.0");
             Check(extracted44.All(pair => Hash(pair.Value).Equals(set44.Files.Single(p => pair.Key == p.Architecture + "|" + p.File).Sha256,
                 StringComparison.OrdinalIgnoreCase)), "14.44 payload hashes match the pinned catalog");
@@ -130,17 +120,19 @@ internal static class Vc14BaselineChecks
             }
             catch (IOException) { count++; }
 
-            // 14.42 文件上用 14.44 基线：升级，不标降级。
-            var fakeFrom42 = CreateFakeRoot(extracted42);
+            // Fake old-version files; no 142 installer or DLL is deployed.
+            var fakeFrom42 = CreateFakeRoot(extracted44);
             fixtures.Add(fakeFrom42);
-            var preview44 = Vc14ForceReplace.PreviewCore(media44, fakeFrom42, false, null, CancellationToken.None, Vc14Baseline.V144);
+            foreach (var key in extracted44.Keys) { var parts = key.Split('|'); File.WriteAllBytes(Vc14ForceReplace.TargetPath(fakeFrom42, parts[0], parts[1]), [1, 2, 3]); }
+            string? FixtureVersion(string path) => new FileInfo(path).Length == 3 ? "14.42.34433.0" : ReadVersion(path);
+            var preview44 = Vc14ForceReplace.PreviewCore(media44, fakeFrom42, false, FixtureVersion, CancellationToken.None, Vc14Baseline.V144);
             Check(preview44.CanRun && preview44.Baseline == Vc14Baseline.V144 && preview44.PayloadVersion == "14.44.35211.0"
                 && preview44.ReplaceCount == 51 && preview44.SkipCount == 0 && preview44.DowngradeCount == 0,
                 "14.44 preview upgrades 14.42 files without a downgrade flag");
             var backupRoot = Path.Combine(AppDataPaths.Root, "Vc14ForceReplace");
             var dirsBefore = Directory.Exists(backupRoot) ? Directory.GetDirectories(backupRoot).Length : 0;
             var executed = await Vc14ForceReplace.RunCoreAsync(preview44.Fingerprint, null, CancellationToken.None,
-                media44, fakeFrom42, false, null, null, Vc14Baseline.V144);
+                media44, fakeFrom42, false, FixtureVersion, null, Vc14Baseline.V144);
             Check(executed.Success && !executed.RequiresReboot, "14.44 force replacement succeeds on the fake root");
             Check(Directory.GetDirectories(backupRoot).Length == dirsBefore + 1, "14.44 execution writes one isolated backup");
             Check(extracted44.Keys.All(key =>
@@ -155,13 +147,9 @@ internal static class Vc14BaselineChecks
                     "inventory records the selected baseline and target version");
             }
 
-            // 14.44 文件上用默认 14.42：预览应标记全部降级，证明选择真正改变目标。
             var fakeFrom44 = CreateFakeRoot(extracted44);
             fixtures.Add(fakeFrom44);
-            var preview42 = Vc14ForceReplace.PreviewCore(media42, fakeFrom44, false, null, CancellationToken.None, Vc14Baseline.V142);
-            Check(preview42.CanRun && preview42.Baseline == Vc14Baseline.V142 && preview42.PayloadVersion == "14.42.34433.0"
-                && preview42.ReplaceCount == 51 && preview42.DowngradeCount == 51,
-                "selecting 14.42 against 14.44 files is reported as a full downgrade");
+            Reject(() => Vc14ForceReplace.PreviewCore(media42, fakeFrom44, false, null, CancellationToken.None, Vc14Baseline.V142), "retired force target rejected");
             var noop44 = Vc14ForceReplace.PreviewCore(media44, fakeFrom44, false, null, CancellationToken.None, Vc14Baseline.V144);
             Check(noop44.CanRun && noop44.ReplaceCount == 0 && noop44.SkipCount == 51,
                 "14.44 fake root is a no-op under the 14.44 baseline");
@@ -175,9 +163,7 @@ internal static class Vc14BaselineChecks
             Check(roundTrip is not null && roundTrip.Baseline == Vc14Baseline.V144, "selected pending baseline survives serialization");
             var missing = new Vc14Scan([], [], []);
             var pendingMismatch = Vc14Reinstall.Preview(new FakeEnvironment(Vc14Baseline.V144, legacy), Vc14RepairMode.InstallOnly);
-            Check(!pendingMismatch.CanRepair && pendingMismatch.Blocker.Contains("14.42（默认）")
-                && pendingMismatch.Blocker.Contains("14.44（兼容性更好）") && pendingMismatch.Baseline == Vc14Baseline.V144,
-                "install-only refuses a pending record from the other baseline");
+            Check(!pendingMismatch.CanRepair && pendingMismatch.Blocker.Contains("历史") && pendingMismatch.Baseline == Vc14Baseline.V144, "unverified old pending record cannot migrate");
             var pendingMatch = Vc14Reinstall.Preview(new FakeEnvironment(Vc14Baseline.V144,
                 new Vc14Continuation(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow) { Baseline = Vc14Baseline.V144 }),
                 Vc14RepairMode.InstallOnly);
@@ -208,7 +194,7 @@ internal static class Vc14BaselineChecks
 
             Check(!File.Exists(hostDll) || Hash(hostDll) == hostHashBefore,
                 "host System32 msvcp140.dll bytes are unchanged by this read-only check");
-            Console.WriteLine("VC14 14.42/14.44 baseline checks passed: " + count + " checks.");
+            Console.WriteLine("VC14 144-only baseline checks passed: " + count + " checks; temp targets only.");
         }
         finally
         {

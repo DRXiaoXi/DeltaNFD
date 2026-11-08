@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ClockHostSource Condition="'$(ClockHostSource)' == ''">../../src/DeltaNFD.Execution/Execution/OptimalClock/OptimalClockProbeHost.cs</ClockHostSource>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(ClockHostSource)" Link="OptimalClockProbeHost.cs" />
+    <Compile Include="../../src/DeltaNFD.Execution/Execution/OptimalClock/OptimalClockNative.cs" Link="OptimalClockNative.cs" />
+    <Compile Include="../../src/DeltaNFD.Execution/Execution/OptimalClock/OptimalClockTimerPolicy.cs" Link="OptimalClockTimerPolicy.cs" />
+  </ItemGroup>
+</Project>

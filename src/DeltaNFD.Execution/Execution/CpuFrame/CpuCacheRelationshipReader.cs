@@ -2,7 +2,7 @@ using System.Buffers.Binary;
 
 namespace DeltaNFD.Services;
 
-/// <summary>CPU 实验室的 x64 CACHE_RELATIONSHIP 解析；进程管理保持独立实现。</summary>
+/// <summary>调度改善的 x64 CACHE_RELATIONSHIP 解析；进程管理保持独立实现。</summary>
 internal static class CpuCacheRelationshipReader
 {
     internal static bool TryReadL3(ReadOnlySpan<byte> record, out CpuDomain domain)

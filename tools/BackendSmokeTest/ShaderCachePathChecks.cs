@@ -20,13 +20,14 @@ internal static class ShaderCachePathChecks
             var diagnosis = service.DiagnoseAt(root);
             Require(diagnosis.Level == ShaderDiagLevel.Abnormal && diagnosis.Summary.Contains("0 KB"), "SM5 file actually diagnosed");
             Require(diagnosis.Details.Any(d => d.Contains("SM5\\DXCache")), "chosen path visible");
-            Require(ShaderService.HasProblemDriverCacheSignature(ShaderGpuDetectionState.Nvidia, "617.14", root), "homepage uses SM5 fallback");
+            var inspection = new DeltaNFD.Inspection.ShaderInspection(null, () => new(ShaderGpuDetectionState.Nvidia, "596.36"));
+            Require(inspection.DiagnoseAt(root).Summary == diagnosis.Summary, "homepage uses same SM5 diagnosis");
             var unknown = new ShaderService(null, () => new ShaderDriverReading(ShaderGpuDetectionState.Nvidia, ""));
             Require(unknown.DiagnoseAt(root).Level == ShaderDiagLevel.NotApplicable, "unknown driver still refuses structural conclusion");
             Directory.CreateDirectory(sm6);
             Require(ShaderService.FindDxCachePath(version) == sm6, "SM6 priority when both exist");
             Require(service.DiagnoseAt(root).Level == ShaderDiagLevel.Info, "empty SM6 does not silently select SM5");
-            Require(!ShaderService.HasProblemDriverCacheSignature(ShaderGpuDetectionState.Nvidia, "617.14", root), "homepage and diagnosis select same path");
+            Require(inspection.DiagnoseAt(root).Level == ShaderDiagLevel.Info, "homepage and diagnosis select same path");
             File.WriteAllBytes(Path.Combine(sm6, "fixture.nvph"), []);
             Require(service.DiagnoseAt(root).Details.Any(d => d.Contains("SM6\\DXCache")), "SM6 behavior retained");
             Console.WriteLine("Shader path checks passed: SM5 fallback, SM6 priority, actual diagnosis, homepage consistency, unknown driver.");

@@ -6,6 +6,7 @@ namespace DeltaNFD.Services;
 public static class RuntimeLegacyInstallationReview
 {
     public const string Scope = "repair-review"; // persisted legacy scope, read-only review
+    public const string RestartScope = "repair-restart-checkpoint";
     private static async Task<IReadOnlyList<VcRedistInfo>> ReadRegistrationsAsync()
         => (await new RuntimeGuardService().GetStatusAsync()).InstalledRedists;
     private static ReconcileSnapshot TransactionBasis() => new()
@@ -19,11 +20,12 @@ public static class RuntimeLegacyInstallationReview
     internal static async Task<ReconcileSnapshot> InspectAsync(ReconcileSnapshot guard, RuntimeInstallationReview runner,
         Func<bool> busy, Func<Task<IReadOnlyList<VcRedistInfo>>> scan)
     {
-        var ended = false; string? blocker;
+        var ended = false; var canCheckpoint = false; string? blocker;
         try
         {
             var installerBusy = busy();
             blocker = runner.InspectPending(installerBusy, out ended);
+            canCheckpoint = runner.CanPrepareRestartCheckpoint(installerBusy);
             if (installerBusy) blocker ??= "Windows Installer 事务仍忙，请等待结束后重新核对。";
         }
         catch (Exception ex) { blocker = "安装事务无法确认：" + ex.Message; }
@@ -41,10 +43,18 @@ public static class RuntimeLegacyInstallationReview
             Items = [.. guard.Items, new() { Id = Scope, Kind = "installation-review", State = detail, Detail = installed }],
             RecoveryScopes = [.. guard.RecoveryScopes, new() { Id = Scope, Available = available,
                 Description = "核对安装事务已结束，归档记录并恢复可用（不回滚、不重新安装）",
-                Reason = available ? "" : blocker ?? (scanError.Length > 0 ? scanError : "运行库防护状态尚未完整核对。"), AffectedCount = 1 }],
+                Reason = available ? "" : blocker ?? (scanError.Length > 0 ? scanError : "运行库防护状态尚未完整核对。"), AffectedCount = 1 },
+                new() { Id = RestartScope, Available = canCheckpoint && report is not null && scanError.Length == 0 && guard.Complete,
+                    Description = "建立重启核对点（保留阻塞，不自动重启）", Reason = canCheckpoint ? "" : detail, AffectedCount = 1 }],
         };
     }
     public static Task<RecoverOutcome> ReviewAsync()
+        => RunExclusiveAsync(restartCheckpoint: false);
+
+    public static Task<RecoverOutcome> PrepareRestartCheckpointAsync()
+        => RunExclusiveAsync(restartCheckpoint: true);
+
+    private static Task<RecoverOutcome> RunExclusiveAsync(bool restartCheckpoint)
         => Task.Run(() =>
         {
             RecoverOutcome? outcome = null;
@@ -52,21 +62,33 @@ public static class RuntimeLegacyInstallationReview
             {
                 outcome = ReviewAsync(new RuntimeInstallationReview(AppDataPaths.Root), RuntimeInstallationReview.InstallerBusy,
                     () => ReadRegistrationsAsync(),
-                    () => Task.FromResult(TransactionBasis())).GetAwaiter().GetResult();
+                    () => Task.FromResult(TransactionBasis()), restartCheckpoint).GetAwaiter().GetResult();
                 return new OperationResult { Success = outcome.Success, Message = outcome.Message };
             });
-            return outcome ?? new RecoverOutcome { Scope = Scope, Success = false, Verified = false, Message = gate.Message };
+            return outcome ?? new RecoverOutcome { Scope = restartCheckpoint ? RestartScope : Scope,
+                Success = false, Verified = false, Message = gate.Message };
         });
 
     internal static async Task<RecoverOutcome> ReviewAsync(RuntimeInstallationReview runner, Func<bool> busy,
-        Func<Task<IReadOnlyList<VcRedistInfo>>> scan, Func<Task<ReconcileSnapshot>> guard)
+        Func<Task<IReadOnlyList<VcRedistInfo>>> scan, Func<Task<ReconcileSnapshot>> guard, bool restartCheckpoint = false)
     {
+        var fingerprint = runner.Fingerprint();
+        var scope = restartCheckpoint ? RestartScope : Scope;
         var snapshot = await InspectAsync(await guard(), runner, busy, scan);
-        if (!snapshot.RecoveryScopes.Any(s => s.Id == Scope && s.Available))
-            return new() { Scope = Scope, Success = false, Verified = false, VerifiedSnapshot = snapshot,
+        if (!snapshot.RecoveryScopes.Any(s => s.Id == scope && s.Available))
+            return new() { Scope = scope, Success = false, Verified = false, VerifiedSnapshot = snapshot,
                 Message = "安装事务尚未满足核对条件，记录保留。\n" + snapshot.Summary };
+        if (runner.Fingerprint() != fingerprint)
+            return new() { Scope = scope, Success = false, Verified = false,
+                Message = "安装记录已变化，请重新核对；原始证据保留。", VerifiedSnapshot = snapshot };
+        if (restartCheckpoint)
+        {
+            var message = runner.PrepareRestartCheckpoint(busy(), fingerprint);
+            // A checkpoint is never a verified recovery and must not archive either pending layer.
+            return new() { Scope = scope, Success = true, Verified = false, Message = message, VerifiedSnapshot = snapshot };
+        }
         // 归档前再次确认存活进程和 MSI 事务；CheckPending 只归档已结束的未知记录。
-        var pending = busy() ? "Windows Installer 事务仍忙，尚未解除阻塞。" : runner.CheckPending(false);
+        var pending = busy() ? "Windows Installer 事务仍忙，尚未解除阻塞。" : runner.CheckPending(false, fingerprint);
         if (pending is not null)
             return new() { Scope = Scope, Success = false, Verified = false, VerifiedSnapshot = snapshot, Message = pending };
         var after = await InspectAsync(await guard(), runner, busy, scan);

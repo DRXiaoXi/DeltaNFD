@@ -8,35 +8,107 @@ public partial class SettingsViewModel : ObservableObject
 {
     private readonly IAppControlService _appControl = ServiceLocator.AppControl;
 
-    [ObservableProperty]
     private int selectedThemeIndex;
+    public int SelectedThemeIndex
+    {
+        get => selectedThemeIndex;
+        set
+        {
+            if (EqualityComparer<int>.Default.Equals(selectedThemeIndex, value)) return;
+            OnPropertyChanging(nameof(SelectedThemeIndex));
+            selectedThemeIndex = value;
+            OnSelectedThemeIndexChanged(value);
+            OnPropertyChanged(nameof(SelectedThemeIndex));
+        }
+    }
+    partial void OnSelectedThemeIndexChanged(int value);
 
     /// <summary>背景图片模式（false = Mica 云母背景 + 界面锁定深色主题）。</summary>
-    [ObservableProperty]
     private bool backgroundImageEnabled = true;
+    public bool BackgroundImageEnabled
+    {
+        get => backgroundImageEnabled;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(backgroundImageEnabled, value)) return;
+            OnPropertyChanging(nameof(BackgroundImageEnabled));
+            backgroundImageEnabled = value;
+            OnBackgroundImageEnabledChanged(value);
+            OnPropertyChanged(nameof(BackgroundImageEnabled));
+        }
+    }
+    partial void OnBackgroundImageEnabledChanged(bool value);
 
     /// <summary>明暗主题下拉是否可选：背景图片模式开启时锁定深色，禁止选择。</summary>
     public bool ThemeSelectionEnabled => !BackgroundImageEnabled;
 
-    [ObservableProperty]
     private bool autoStart;
+    public bool AutoStart
+    {
+        get => autoStart;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(autoStart, value)) return;
+            OnPropertyChanging(nameof(AutoStart));
+            autoStart = value;
+            OnAutoStartChanged(value);
+            OnPropertyChanged(nameof(AutoStart));
+        }
+    }
+    partial void OnAutoStartChanged(bool value);
 
-    [ObservableProperty]
     private bool silentStartup;
+    public bool SilentStartup
+    {
+        get => silentStartup;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(silentStartup, value)) return;
+            OnPropertyChanging(nameof(SilentStartup));
+            silentStartup = value;
+            OnSilentStartupChanged(value);
+            OnPropertyChanged(nameof(SilentStartup));
+        }
+    }
+    partial void OnSilentStartupChanged(bool value);
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanChangeAutoStart))]
-    [NotifyPropertyChangedFor(nameof(CanChangeSilentStartup))]
     private bool autoStartBusy = true;
+    public bool AutoStartBusy
+    {
+        get => autoStartBusy;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(autoStartBusy, value)) return;
+            OnPropertyChanging(nameof(AutoStartBusy));
+            OnPropertyChanging(nameof(CanChangeAutoStart));
+            OnPropertyChanging(nameof(CanChangeSilentStartup));
+            autoStartBusy = value;
+            OnPropertyChanged(nameof(AutoStartBusy));
+            OnPropertyChanged(nameof(CanChangeAutoStart));
+            OnPropertyChanged(nameof(CanChangeSilentStartup));
+        }
+    }
 
     public bool CanChangeAutoStart => NormalAutomationSettingsEnabled && !AutoStartBusy;
     public bool CanChangeSilentStartup => CanChangeAutoStart && AutoStart;
 
-    [ObservableProperty]
     private bool minimizeToTray;
+    public bool MinimizeToTray
+    {
+        get => minimizeToTray;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(minimizeToTray, value)) return;
+            OnPropertyChanging(nameof(MinimizeToTray));
+            minimizeToTray = value;
+            OnMinimizeToTrayChanged(value);
+            OnPropertyChanged(nameof(MinimizeToTray));
+        }
+    }
+    partial void OnMinimizeToTrayChanged(bool value);
 
-    [ObservableProperty]
     private string generalStatusText = "";
+    public string GeneralStatusText { get => generalStatusText; set => SetProperty(ref generalStatusText, value); }
 
     public bool NormalAutomationSettingsEnabled => !OfflineModeGuard.BlocksNormalAutomation;
 

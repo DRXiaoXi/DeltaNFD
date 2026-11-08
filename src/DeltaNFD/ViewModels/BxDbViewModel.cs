@@ -14,7 +14,12 @@ public partial class BxSectionChipVm : ObservableObject
     public required BxSection Section { get; init; }
     public string Title => Section.Title;
 
-    [ObservableProperty] private bool isSelected;
+    private bool isSelected;
+    public bool IsSelected
+    {
+        get => isSelected;
+        set => SetProperty(ref isSelected, value);
+    }
 }
 
 /// <summary>
@@ -47,21 +52,94 @@ public partial class BxItemVm : ObservableObject
         Details.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasDetails));
     }
 
-    [ObservableProperty] private bool isOn;
-    [ObservableProperty] private bool isBusy;
-    [ObservableProperty] private string stateText = "";
-    [ObservableProperty] private bool unsupported;
-    [ObservableProperty] private bool detailsVisible;
+    private bool isOn;
+    public bool IsOn
+    {
+        get => isOn;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(isOn, value))
+            {
+                OnPropertyChanging(nameof(IsOn));
+                isOn = value;
+                OnIsOnChanged(value);
+                OnPropertyChanged(nameof(IsOn));
+            }
+        }
+    }
+    partial void OnIsOnChanged(bool value);
+
+    private bool isBusy;
+    public bool IsBusy
+    {
+        get => isBusy;
+        set
+        {
+            if (SetProperty(ref isBusy, value))
+            {
+                OnPropertyChanged(nameof(CanEdit));
+                OnPropertyChanged(nameof(PendingChange));
+            }
+        }
+    }
+
+    private string stateText = "";
+    public string StateText
+    {
+        get => stateText;
+        set => SetProperty(ref stateText, value);
+    }
+
+    private bool unsupported;
+    public bool Unsupported
+    {
+        get => unsupported;
+        set => SetProperty(ref unsupported, value);
+    }
+
+    private bool detailsVisible;
+    public bool DetailsVisible
+    {
+        get => detailsVisible;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(detailsVisible, value))
+            {
+                OnPropertyChanging(nameof(DetailsVisible));
+                detailsVisible = value;
+                OnDetailsVisibleChanged(value);
+                OnPropertyChanged(nameof(DetailsVisible));
+            }
+        }
+    }
+    partial void OnDetailsVisibleChanged(bool value);
 
     public string? UnavailableReason { get; init; }
     public BxState ActualState { get; private set; } = BxState.Unknown;
-    [ObservableProperty] private bool gameReadOnly = true;
+    private bool gameReadOnly = true;
+    public bool GameReadOnly
+    {
+        get => gameReadOnly;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(gameReadOnly, value))
+            {
+                OnPropertyChanging(nameof(GameReadOnly));
+                gameReadOnly = value;
+                OnGameReadOnlyChanged(value);
+                OnPropertyChanged(nameof(GameReadOnly));
+            }
+        }
+    }
+    partial void OnGameReadOnlyChanged(bool value);
     partial void OnGameReadOnlyChanged(bool value) { OnPropertyChanged(nameof(CanEdit)); OnPropertyChanged(nameof(PendingChange)); }
-    public bool CanEdit => !GameReadOnly && !Unsupported &&
+    public bool CanEdit => !IsBusy && !GameReadOnly && !Unsupported &&
         (ActualState is BxState.On or BxState.Off or BxState.Mixed) &&
         !(Id == "debloat/OneDrive" && ActualState == BxState.On);
 
     /// <summary>系统当前的真实状态（Fill 时写入）。IsOn = 用户意图，二者不同即存在待应用更改。</summary>
+    public bool ShowSecurityRestore => Item is not null && DeltaNFD.Inspection.SecurityFeatureInspection.Handles(Item.Name)
+        && ActualState is BxState.On or BxState.Mixed;
     public bool ActualOn { get; private set; }
 
     /// <summary>供 VM 内部回填真实状态。</summary>
@@ -70,6 +148,7 @@ public partial class BxItemVm : ObservableObject
         ActualState = state;
         ActualOn = state == BxState.On;
         OnPropertyChanged(nameof(CanEdit));
+        OnPropertyChanged(nameof(ShowSecurityRestore));
         OnPropertyChanged(nameof(PendingChange));
         RefreshStateText(state);
     }
@@ -78,7 +157,7 @@ public partial class BxItemVm : ObservableObject
     public bool PendingChange => CanEdit && (HasGears
         ? SelectedGearIndex != ActualGearIndex
         : IsOn != ActualOn || HasUserIntent && ActualState == BxState.Mixed &&
-            (DeepTweak == SystemTweak.HardwareGpuScheduling || Item is not null && BxCatalog.IsHagsItem(Item)));
+            (DeepTweak == SystemTweak.HardwareGpuScheduling || Item is not null && (BxCatalog.IsHagsItem(Item) || DeltaNFD.Inspection.SecurityFeatureInspection.Handles(Item.Name))));
 
     /// <summary>用户拨动过开关 / 换过档位但尚未应用——切换子栏目时携带保留，不随状态刷新被重置。</summary>
     public bool HasUserIntent { get; set; }
@@ -96,7 +175,22 @@ public partial class BxItemVm : ObservableObject
     public bool ShowToggle => !HasGears;
 
     /// <summary>当前选中的档位（-1 = 未选择）。</summary>
-    [ObservableProperty] private int selectedGearIndex;
+    private int selectedGearIndex;
+    public int SelectedGearIndex
+    {
+        get => selectedGearIndex;
+        set
+        {
+            if (!EqualityComparer<int>.Default.Equals(selectedGearIndex, value))
+            {
+                OnPropertyChanging(nameof(SelectedGearIndex));
+                selectedGearIndex = value;
+                OnSelectedGearIndexChanged(value);
+                OnPropertyChanged(nameof(SelectedGearIndex));
+            }
+        }
+    }
+    partial void OnSelectedGearIndexChanged(int value);
 
     private int _actualGearIndex = -1;
 
@@ -224,22 +318,86 @@ public partial class BxDbViewModel : ObservableObject
     /// <summary>全部子栏目的条目行（跨栏目统计待应用 / 应用更改时使用）。</summary>
     private IEnumerable<BxItemVm> AllRows => _sectionRows.Values.SelectMany(rows => rows);
 
-    [ObservableProperty] private BxSectionChipVm? selectedSection;
-    [ObservableProperty] private string sectionSubtitle = "";
-    [ObservableProperty] private bool isBusy;
-    [ObservableProperty] private string statusText = "";
-    [ObservableProperty] private string backupSummary = "正在读取备份状态…";
+    private BxSectionChipVm? selectedSection;
+    public BxSectionChipVm? SelectedSection
+    {
+        get => selectedSection;
+        set
+        {
+            if (!EqualityComparer<BxSectionChipVm?>.Default.Equals(selectedSection, value))
+            {
+                OnPropertyChanging(nameof(SelectedSection));
+                selectedSection = value;
+                OnSelectedSectionChanged(value);
+                OnPropertyChanged(nameof(SelectedSection));
+            }
+        }
+    }
+    partial void OnSelectedSectionChanged(BxSectionChipVm? value);
+
+    private string sectionSubtitle = "";
+    public string SectionSubtitle
+    {
+        get => sectionSubtitle;
+        set => SetProperty(ref sectionSubtitle, value);
+    }
+
+    private bool isBusy;
+    public bool IsBusy
+    {
+        get => isBusy;
+        set => SetProperty(ref isBusy, value);
+    }
+
+    private string statusText = "";
+    public string StatusText
+    {
+        get => statusText;
+        set => SetProperty(ref statusText, value);
+    }
+
+    private string backupSummary = "正在读取备份状态…";
+    public string BackupSummary
+    {
+        get => backupSummary;
+        set => SetProperty(ref backupSummary, value);
+    }
 
     // ---------------- 应用过程实时进度 ----------------
 
     /// <summary>批量应用进行中（驱动进度条与按钮状态）。</summary>
-    [ObservableProperty] private bool isApplyingBatch;
+    private bool isApplyingBatch;
+    public bool IsApplyingBatch
+    {
+        get => isApplyingBatch;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(isApplyingBatch, value))
+            {
+                OnPropertyChanging(nameof(IsApplyingBatch));
+                isApplyingBatch = value;
+                OnIsApplyingBatchChanged(value);
+                OnPropertyChanged(nameof(IsApplyingBatch));
+            }
+        }
+    }
+    partial void OnIsApplyingBatchChanged(bool value);
 
     /// <summary>应用进度（0-100）。</summary>
-    [ObservableProperty] private double applyProgress;
+    private double applyProgress;
+    public double ApplyProgress
+    {
+        get => applyProgress;
+        set => SetProperty(ref applyProgress, value);
+    }
 
     /// <summary>应用进度文本（"正在应用 12/128：鼠标加速…"）。</summary>
-    [ObservableProperty] private string applyProgressText = "";
+    private string applyProgressText = "";
+    public string ApplyProgressText
+    {
+        get => applyProgressText;
+        set => SetProperty(ref applyProgressText, value);
+    }
 
     partial void OnIsApplyingBatchChanged(bool value) => OnPropertyChanged(nameof(ApplyChangesEnabled));
 
@@ -724,7 +882,22 @@ public partial class BxDbViewModel : ObservableObject
     public int PendingCount => AllRows.Count(i => i.PendingChange);
 
     public bool ExecutionEnabled => !GameReadOnly;
-    [ObservableProperty] private bool gameReadOnly = true;
+    private bool gameReadOnly = true;
+    public bool GameReadOnly
+    {
+        get => gameReadOnly;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(gameReadOnly, value))
+            {
+                OnPropertyChanging(nameof(GameReadOnly));
+                gameReadOnly = value;
+                OnGameReadOnlyChanged(value);
+                OnPropertyChanged(nameof(GameReadOnly));
+            }
+        }
+    }
+    partial void OnGameReadOnlyChanged(bool value);
     partial void OnGameReadOnlyChanged(bool value)
     {
         foreach (var row in _sectionRows.Values.SelectMany(rows => rows).Concat(Items).Distinct()) row.GameReadOnly = value;
@@ -918,7 +1091,7 @@ public partial class BxDbViewModel : ObservableObject
         try
         {
             preflight = await _defender.PreflightAsync(
-                pending.Select(p => new DefenderBatchItem { Name = p.DisplayName, Ops = DescribeOpsForGuard(p) }).ToList());
+                pending.Select(p => new DefenderBatchItem { Name = p.DisplayName, Ops = DescribeOpsForGuard(p), TurnOn = p.IsOn }).ToList());
         }
         catch (Exception ex)
         {
@@ -943,6 +1116,8 @@ public partial class BxDbViewModel : ObservableObject
         ApplyProgress = 0;
         var appliedOk = 0;
         var appliedFail = 0;
+        var appliedPartial = 0;
+        var partialDetails = new List<string>();
         var appliedSkipped = 0;
         var rebootNeeded = new List<string>();
         Log.Info($"扩展库：应用 {pending.Count} 项（{string.Join("、", pending.Select(p => p.DisplayName))}）");
@@ -984,10 +1159,18 @@ public partial class BxDbViewModel : ObservableObject
                         appliedSkipped++;
                         Log.Info($"扩展库：{row.DisplayName} 安全跳过 —— {result.Message}");
                     }
+                    else if (result.Success && result.IsPartial)
+                    {
+                        appliedPartial++;
+                        partialDetails.Add(row.DisplayName + "：" + result.Message);
+                        if (result.RequiresReboot) rebootNeeded.Add(row.DisplayName);
+                    }
                     else if (result.Success)
                     {
                         appliedOk++;
                         if (result.RequiresReboot) rebootNeeded.Add(row.DisplayName);
+                        if (row.Item is not null && DeltaNFD.Inspection.SecurityFeatureInspection.Handles(row.Item.Name) && !row.IsOn)
+                            row.HasUserIntent = false;
                     }
                     else
                     {
@@ -1010,10 +1193,11 @@ public partial class BxDbViewModel : ObservableObject
             }
 
             ApplyProgress = 100;
-            ApplyProgressText = $"完成：已应用 {appliedOk}，跳过 {appliedSkipped}，失败 {appliedFail}";
+            ApplyProgressText = $"完成：已应用 {appliedOk}，部分完成 {appliedPartial}，跳过 {appliedSkipped}，失败 {appliedFail}";
 
             Log.Info($"扩展库：应用完成，成功 {appliedOk} 项，安全跳过 {appliedSkipped} 项，失败 {appliedFail} 项");
             StatusText = $"已应用 {appliedOk} 项，安全跳过 {appliedSkipped} 项" + (appliedFail > 0 ? $"，失败 {appliedFail} 项（详情见上）。" : "。");
+            if (appliedPartial > 0) StatusText += $" 部分完成 {appliedPartial} 项：" + string.Join("；", partialDetails);
             if (rebootNeeded.Count > 0) StatusText += " 以下配置已保存，需重启后核实生效：" + string.Join("、", rebootNeeded.Distinct()) + "。";
             await UpdateBackupSummaryAsync();
 

@@ -52,8 +52,6 @@ public sealed class CpuFrameEngine : IDisposable
     private bool _priorityEnabled;
     private int _priorityAppliedCount;
     private ulong _affinityMask;
-    private readonly FrameTimerResolution _timer;
-    private bool _timerActive => _timer.NeedsRelease;
     private readonly DwmWatchdog _dwm;
     private bool _tempOptimizationApplied;
     private bool _powerLockActive;
@@ -61,8 +59,7 @@ public sealed class CpuFrameEngine : IDisposable
     private bool _powerLockReady;
     private int _powerGuardCount;
 
-    // 显式由前端命令设定的临时优化/加速响应期望（机箱形态等编排由前端决定）。
-    private bool _boostTimer;
+    // 显式由前端命令设定的临时优化/游戏节能期望（机箱形态等编排由前端决定）。
     private bool _boostGamePower;
     private string _gamePowerIdentityError = "";
     private readonly GamePowerThrottling _gamePower;
@@ -73,11 +70,10 @@ public sealed class CpuFrameEngine : IDisposable
 
     public CpuFrameEngine() : this(new PowerService(), new FrameTweaksService()) { }
 
-    internal CpuFrameEngine(IPowerService power, FrameTweaksService tweaks, IDwmWatchEnvironment? dwmEnvironment = null, IFrameTimerApi? timerApi = null)
+    internal CpuFrameEngine(IPowerService power, FrameTweaksService tweaks, IDwmWatchEnvironment? dwmEnvironment = null)
     {
         _power = power; _tweaks = tweaks;
         _dwm = new(dwmEnvironment ?? new NativeDwmWatchEnvironment());
-        _timer = new(timerApi ?? new NativeFrameTimerApi());
         _gamePower = new GamePowerThrottling(Path.Combine(AppDataPaths.Root, "frame-game-power.json"), DeltaNFD.Execution.Procman.ProcessPropertyGate.Default);
         _cpu = new CpuTopologyService(TweakBackupStore.Default, _power);
     }
@@ -118,13 +114,12 @@ public sealed class CpuFrameEngine : IDisposable
             cts.Dispose();
         }
         _dwm.Pause("游戏监控已停止，DWM 自动守护已停止");
-        var timer = UpdateTimer(false, "监控已停止，本后端计时器请求已释放。");
         var restored = _gamePower.Sync([]);
         _gamePowerIdentityError = "";
         SetAction("游戏监控已停止。");
-        return restored && timer.Success ? OperationResult.Ok("游戏监控已停止，计时器与游戏节能请求已收尾。")
-            : new OperationResult { Success = false, IsPartial = true, OutcomeUnknown = timer.OutcomeUnknown,
-                Message = "监控已停止，但收尾未完成：" + (!timer.Success ? timer.Message : "") + (!restored ? _gamePower.Status : "") };
+        return restored ? OperationResult.Ok("游戏监控已停止，游戏节能请求已收尾。")
+            : new OperationResult { Success = false, IsPartial = true,
+                Message = "监控已停止，但收尾未完成：" + _gamePower.Status };
     }
 
     private async Task RunLoopAsync(CancellationToken token)
@@ -141,7 +136,6 @@ public sealed class CpuFrameEngine : IDisposable
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
             {
-                UpdateTimer(false, "监控读取失败，本后端计时器请求已释放。");
                 SetError("监控 tick 异常：" + ex.Message);
                 Log.Error("CPU/帧格后台监控 tick 异常", ex);
             }
@@ -186,7 +180,6 @@ public sealed class CpuFrameEngine : IDisposable
         if (OfflineModeGuard.BlocksNormalAutomation)
         {
             _dwm.Pause("恢复流程中，DWM 自动守护已暂停");
-            UpdateTimer(false, "恢复流程中，计时器请求已释放。");
             _gamePower.Sync([]);
             if (_monitorRunning) SetAction("脱机模式或恢复流程中：普通帧格自动化已暂停。");
             return;
@@ -200,26 +193,14 @@ public sealed class CpuFrameEngine : IDisposable
         if (_priorityEnabled && gameRunning) ApplyPriorityCore(identities);
         else RestorePriorities();
 
-        // ② 硬亲和性规则（CPU 实验室；仅目标游戏进程，持续保持）
+        // ② 硬亲和性规则（调度改善；仅目标游戏进程，持续保持）
         _affinityMask = settings.GameAffinityRuleEnabled ? settings.GameAffinityRuleMask : 0UL;
         if (_affinityMask != 0) CpuTopologyService.ApplyAffinityRuleTick(_affinityMask);
         else CpuTopologyService.RestoreAffinityRule();
 
-        // ③ 双 CCD / 单 CCD 调度持续维持（互斥：先撤销不再需要的，再应用需要的）
-        var dualWanted = frameActive && settings.DualCcdArmed && settings.DualCcdFrameEnabled;
-        var singleWanted = !dualWanted && settings.SingleCcdExcludeCpu0Enabled;
-        if (!dualWanted && CpuTopologyService.DualCcdSchedulingActive)
-            await _cpu.RevertDualCcdSchedulingAsync().ConfigureAwait(false);
-        if (!singleWanted && CpuTopologyService.SingleCcdExcludeActive)
-            await _cpu.RestoreGameFullCoresAsync().ConfigureAwait(false);
-        if (dualWanted && !CpuTopologyService.DualCcdSchedulingActive)
-            await _cpu.ApplyDualCcdSchedulingAsync(settings.DualCcdGameCcdIndex).ConfigureAwait(false);
-        else if (singleWanted && !CpuTopologyService.SingleCcdExcludeActive)
-            await _cpu.ExcludeCpu0FromGameAsync().ConfigureAwait(false);
-        CpuTopologyService.ApplyCpuSchedulingTick();
+        // ③ 单/双 CCD 调度已迁到进程管理后端；亲和性规则按共享设置自动让位。
 
-        // ④ 加速系统响应模式：高分辨率计时器（随游戏启停换挡）
-        SyncTimer(settings, identities);
+        // ④ 游戏执行速度节能仍随目标游戏启停；计时器已按帧格意图独立维护。
         UpdateGamePower(settings, identities);
 
         // ⑤ 复用两秒 tick 持续采样 DWM；不在游戏启动时无条件结束进程。
@@ -429,34 +410,6 @@ public sealed class CpuFrameEngine : IDisposable
     /// <summary>只读：是否存在待还原的亲和性原值记录。</summary>
     public bool HasAffinityRuleRestorePending() => CpuTopologyService.HasAffinityRuleRestorePending;
 
-    public async Task<OperationResult> ApplyDualCcdAsync(int gameCcdIndex)
-    {
-        var result = await _cpu.ApplyDualCcdSchedulingAsync(gameCcdIndex).ConfigureAwait(false);
-        SetResult("双CCD调度", result);
-        return result;
-    }
-
-    public async Task<OperationResult> RevertDualCcdAsync()
-    {
-        var result = await _cpu.RevertDualCcdSchedulingAsync().ConfigureAwait(false);
-        SetResult("撤销双CCD调度", result);
-        return result;
-    }
-
-    public async Task<OperationResult> ApplySingleCcdAsync()
-    {
-        var result = await _cpu.ExcludeCpu0FromGameAsync().ConfigureAwait(false);
-        SetResult("单CCD排除CPU0", result);
-        return result;
-    }
-
-    public async Task<OperationResult> RevertSingleCcdAsync()
-    {
-        var result = await _cpu.RestoreGameFullCoresAsync().ConfigureAwait(false);
-        SetResult("恢复单CCD", result);
-        return result;
-    }
-
     public Task<CpuTopology> GetTopologyAsync() => _cpu.GetTopologyAsync();
 
     public Task<(bool Detected, int RemovedMb, string RawOutput)> DetectMemoryLimitAsync() => _cpu.DetectMemoryLimitAsync();
@@ -468,38 +421,35 @@ public sealed class CpuFrameEngine : IDisposable
         return result;
     }
 
-    // ---------------- 高分辨率计时器（加速响应） ----------------
+    // ---------------- 游戏进程电源限制（执行速度节能） ----------------
 
-    /// <summary>设定计时器期望，随后随游戏启停维持。</summary>
-    public Task<OperationResult> ApplyBoostAsync(bool timer, bool gamePower = false)
+    /// <summary>设定游戏进程执行速度节能期望；按目标游戏身份生效，关闭时恢复原值。</summary>
+    public Task<OperationResult> ApplyGamePowerAsync(bool enabled)
     {
-        _boostTimer = timer;
-        _boostGamePower = gamePower;
-        // Releasing must not depend on being able to enumerate the game.
-        var timerResult = timer ? null : UpdateTimer(false, "计时器选项已关闭，本后端请求已释放。");
+        _boostGamePower = enabled;
         try
         {
             var settings = AppSettingsStore.Read();
-            var games = timer || gamePower ? RefreshIdentities(GameTargetService.Default.Current.Generation) : [];
-            timerResult ??= SyncTimer(settings, games);
+            var games = enabled ? RefreshIdentities(GameTargetService.Default.Current.Generation) : [];
             var powerOk = UpdateGamePower(settings, games);
-            var message = timerResult.Message + (powerOk ? "" : "；" + _lastError);
-            if (timerResult.Success && powerOk) SetAction("加速响应：" + message);
-            else SetError("加速响应未完成：" + message);
-            return Task.FromResult(timerResult.Success && powerOk ? OperationResult.Ok(message) : new OperationResult
-            { Success = false, Message = message, IsPartial = timerResult.IsPartial, OutcomeUnknown = timerResult.OutcomeUnknown });
+            var message = _gamePowerIdentityError.Length > 0 ? _gamePowerIdentityError : _gamePower.Status;
+            if (powerOk) SetAction("游戏进程电源限制：" + message);
+            else SetError("游戏进程电源限制未完成：" + message);
+            return Task.FromResult(powerOk ? OperationResult.Ok(message)
+                : new OperationResult { Success = false, Message = message });
         }
         catch (Exception ex)
         {
-            var released = UpdateTimer(false, "无法核对游戏状态，本后端计时器请求已释放。");
-            return Task.FromResult(new OperationResult { Success = false, IsPartial = released.IsPartial, OutcomeUnknown = released.OutcomeUnknown,
-                Message = "加速响应状态无法核对：" + ex.Message + "；" + released.Message });
+            var powerRestored = _gamePower.Sync([]);
+            var message = "游戏进程电源限制状态无法核对：" + ex.Message + (powerRestored ? "" : "；" + _gamePower.Status);
+            SetError(message);
+            return Task.FromResult(new OperationResult { Success = false, IsPartial = !powerRestored, Message = message });
         }
     }
 
     private bool UpdateGamePower(AppSettings settings, IReadOnlyList<GameProcessIdentity> games)
     {
-        var wanted = _boostGamePower && settings.FrameModeActive && settings.FrameResponseBoostEnabled
+        var wanted = _boostGamePower && settings.FrameModeActive
             && settings.FrameGamePowerThrottlingDisabled && !OfflineModeGuard.BlocksNormalAutomation;
         var identities = new List<DeltaNFD.Execution.Procman.ProcmanProcessIdentity>();
         foreach (var game in wanted ? games : Array.Empty<GameProcessIdentity>())
@@ -513,52 +463,6 @@ public sealed class CpuFrameEngine : IDisposable
         var ok = _gamePower.Sync(identities) && _gamePowerIdentityError.Length == 0;
         if (!ok) SetError(_gamePowerIdentityError.Length > 0 ? _gamePowerIdentityError : _gamePower.Status);
         return ok;
-    }
-
-    /// <summary>设定高分辨率计时器期望，并立即按游戏运行状态更新请求。</summary>
-    public Task<OperationResult> ApplyTimerAsync(bool enabled)
-    {
-        _boostTimer = enabled;
-        if (!enabled) return Task.FromResult(UpdateTimer(false, "本后端计时器请求已释放。"));
-        try { return Task.FromResult(SyncTimer(AppSettingsStore.Read(), RefreshIdentities(GameTargetService.Default.Current.Generation))); }
-        catch (Exception ex)
-        {
-            var released = UpdateTimer(false, "无法核对游戏状态，本后端计时器请求已释放。");
-            return Task.FromResult(new OperationResult { Success = false, IsPartial = released.IsPartial, OutcomeUnknown = released.OutcomeUnknown,
-                Message = "计时器执行条件未知：" + ex.Message + "；" + released.Message });
-        }
-    }
-
-    private OperationResult SyncTimer(AppSettings settings, IReadOnlyList<GameProcessIdentity> games)
-    {
-        var selected = _boostTimer && settings.FrameModeActive && settings.FrameResponseBoostEnabled && settings.FrameResponseBoostTimerEnabled;
-        var wanted = selected && _monitorRunning && _observationDisposed == 0 && games.Count > 0 && !OfflineModeGuard.BlocksNormalAutomation;
-        var reason = !selected ? "帧格或计时器选项未启用，本后端未持有请求。"
-            : !_monitorRunning || _observationDisposed != 0 ? "计时器已配置，等待监控启动；当前未持有请求。"
-            : games.Count == 0 ? "计时器已配置，等待目标游戏启动；当前未持有请求。"
-            : "恢复门禁阻止执行，本后端计时器请求已释放。";
-        return UpdateTimer(wanted, reason, () => TimerStillAllowed(games));
-    }
-
-    private bool TimerStillAllowed(IReadOnlyList<GameProcessIdentity> games)
-    {
-        var settings = AppSettingsStore.Read();
-        if (!Volatile.Read(ref _monitorRunning) || Volatile.Read(ref _observationDisposed) != 0 || !_boostTimer
-            || !settings.FrameModeActive || !settings.FrameResponseBoostEnabled || !settings.FrameResponseBoostTimerEnabled
-            || OfflineModeGuard.BlocksNormalAutomation) return false;
-        foreach (var game in games)
-        {
-            try { using var process = Process.GetProcessById(game.Id); if (GameTargetService.Default.Matches(process, game)) return true; }
-            catch (ArgumentException) { }
-        }
-        return false;
-    }
-
-    private OperationResult UpdateTimer(bool wanted, string idleReason, Func<bool>? stillAllowed = null)
-    {
-        var result = _timer.Update(wanted, idleReason, stillAllowed);
-        if (!result.Success) SetError(result.Message);
-        return result;
     }
 
     // ---------------- DWM ----------------
@@ -907,27 +811,10 @@ public sealed class CpuFrameEngine : IDisposable
         CpuTopologyService.RestoreAffinityRule();
         if (CpuTopologyService.HasAffinityRuleRestorePending) failures.Add("CPU 亲和性规则仍待还原");
         else messages.Add("CPU 亲和性规则已还原");
-        if (CpuTopologyService.DualCcdSchedulingActive)
-        {
-            Report("正在还原双 CCD 调度及电源策略，可能需要一些时间…");
-            var dual = await _cpu.RevertDualCcdSchedulingAsync().ConfigureAwait(false);
-            messages.Add("双CCD：" + dual.Message);
-            if (!dual.Success || CpuTopologyService.DualCcdSchedulingActive) failures.Add("双 CCD 还原未完成");
-        }
-        if (CpuTopologyService.SingleCcdExcludeActive)
-        {
-            Report("正在还原单 CCD 调度及电源策略…");
-            var single = await _cpu.RestoreGameFullCoresAsync().ConfigureAwait(false);
-            messages.Add("单CCD：" + single.Message);
-            if (!single.Success || CpuTopologyService.SingleCcdExcludeActive) failures.Add("单 CCD 还原未完成");
-        }
-        Report("正在释放计时器并还原游戏节能状态…");
-        _boostTimer = false;
+        Report("正在还原游戏节能状态…");
         _boostGamePower = false;
         if (!_gamePower.Sync([])) failures.Add(_gamePower.Status);
-        var timer = UpdateTimer(false, "本后端高分辨率计时器请求已释放。");
-        messages.Add(timer.Message);
-        if (!timer.Success || _timerActive) failures.Add("计时器：" + timer.Message);
+        else messages.Add("游戏节能已还原");
         _tweaksDesired = false;
         Report("正在还原帧格临时优化…");
         var tweaks = await RevertTweaksCoreAsync().ConfigureAwait(false);
@@ -938,7 +825,7 @@ public sealed class CpuFrameEngine : IDisposable
         messages.Add("电源锁定：" + power.Message);
         if (!power.Success) failures.Add("电源锁定：" + power.Message);
         Report(failures.Count > 0 ? "帧格还原未完成，保留恢复记录。" : "帧格执行状态已还原。");
-        if (failures.Count > 0) return new OperationResult { Success = false, IsPartial = true, OutcomeUnknown = timer.OutcomeUnknown,
+        if (failures.Count > 0) return new OperationResult { Success = false, IsPartial = true,
             Message = "帧格还原未完成：" + string.Join("；", failures) };
         return OperationResult.Ok("帧格执行状态已还原：" + string.Join("；", messages));
     }
@@ -952,9 +839,7 @@ public sealed class CpuFrameEngine : IDisposable
             new() { Id = "monitor", Kind = "cpuframe", State = _monitorRunning ? "运行中" : "已停止", Detail = _lastAction },
             new() { Id = "priority", Kind = "cpuframe", State = _priorityEnabled ? $"已生效（High，{_priorityAppliedCount} 个实例）" : "未生效", HasBackup = _priorityOriginals.Count > 0 },
             new() { Id = "affinity", Kind = "cpuframe", State = _affinityMask != 0 ? $"已生效（0x{_affinityMask:X}）" : "未生效", HasBackup = CpuTopologyService.HasAffinityRuleRestorePending },
-            new() { Id = "ccd", Kind = "cpuframe", State = CpuTopologyService.DualCcdSchedulingActive ? "双CCD已生效" : CpuTopologyService.SingleCcdExcludeActive ? "单CCD已生效" : "未生效" },
             new() { Id = "game-power", Kind = "cpuframe", State = _gamePower.Status, HasBackup = _gamePower.PendingCount > 0 },
-            new() { Id = "timer", Kind = "cpuframe", State = _timerActive ? "高分辨率计时器已请求" : "未请求" },
             new() { Id = "tweaks", Kind = "cpuframe", State = _tempOptimizationApplied ? "临时优化已应用" : "未应用", HasBackup = FrameTweaksService.IsForegroundBoostApplied() || FrameTweaksService.IsPowerSaveLatencyApplied() },
             new() { Id = "power", Kind = "cpuframe", State = _powerLockActive ? $"电源锁定中（{_powerLockedGuid}）" : "未锁定", HasBackup = _tweaks.HasPowerSchemeContentSnapshot || AppSettingsStore.Read().FramePowerRestorePending },
         };
@@ -962,17 +847,14 @@ public sealed class CpuFrameEngine : IDisposable
         {
             Module = "cpuframe",
             Summary = $"监控{(_monitorRunning ? "运行中" : "已停止")}；目标代次 {_targetGeneration}；游戏{(_gameRunning ? "运行中" : "未运行")}；"
-                + $"优先级{(_priorityEnabled ? "开" : "关")}；亲和性{(_affinityMask != 0 ? "开" : "关")}；"
-                + $"CCD{(CpuTopologyService.DualCcdSchedulingActive ? "双" : CpuTopologyService.SingleCcdExcludeActive ? "单" : "无")}。",
+                + $"优先级{(_priorityEnabled ? "开" : "关")}；亲和性{(_affinityMask != 0 ? "开" : "关")}。",
             Complete = true,
             Items = items,
             RecoveryScopes =
             [
                 new RecoveryScope { Id = "priority", Description = "还原自动优先级", Available = _priorityOriginals.Count > 0, Reason = _priorityOriginals.Count > 0 ? "" : "没有待还原的优先级记录。", AffectedCount = _priorityOriginals.Count },
                 new RecoveryScope { Id = "affinity", Description = "解除并还原 CPU 亲和性规则", Available = _affinityMask != 0 || CpuTopologyService.HasAffinityRuleRestorePending, Reason = _affinityMask != 0 ? "" : "没有待还原的亲和性规则。", AffectedCount = _affinityMask != 0 ? 1 : 0 },
-                new RecoveryScope { Id = "ccd", Description = "撤销双/单 CCD 调度", Available = CpuTopologyService.DualCcdSchedulingActive || CpuTopologyService.SingleCcdExcludeActive, Reason = CpuTopologyService.DualCcdSchedulingActive || CpuTopologyService.SingleCcdExcludeActive ? "" : "没有生效中的 CCD 调度。", AffectedCount = 1 },
                 new RecoveryScope { Id = "game-power", Description = "还原游戏执行速度节能", Available = _gamePower.PendingCount > 0, AffectedCount = _gamePower.PendingCount },
-                new RecoveryScope { Id = "timer", Description = "释放高分辨率计时器", Available = _timerActive, Reason = _timerActive ? "" : "计时器未请求。", AffectedCount = _timerActive ? 1 : 0 },
                 new RecoveryScope { Id = "tweaks", Description = "还原帧格临时优化", Available = FrameTweaksService.IsForegroundBoostApplied() || FrameTweaksService.IsPowerSaveLatencyApplied(), Reason = _tempOptimizationApplied ? "" : "没有可还原的临时优化备份。", AffectedCount = _tempOptimizationApplied ? 1 : 0 },
                 new RecoveryScope { Id = "power", Description = "按备份还原帧格电源锁定", Available = _tweaks.HasPowerSchemeContentSnapshot || AppSettingsStore.Read().FramePowerRestorePending, Reason = _tweaks.HasPowerSchemeContentSnapshot || AppSettingsStore.Read().FramePowerRestorePending ? "" : "没有待还原的电源锁定记录。", AffectedCount = 1 },
             ],
@@ -1013,24 +895,10 @@ public sealed class CpuFrameEngine : IDisposable
                 CpuTopologyService.RestoreAffinityRule();
                 message = "CPU 亲和性规则已解除并还原。";
                 break;
-            case "ccd":
-            {
-                var dual = await RevertDualCcdAsync().ConfigureAwait(false);
-                var single = await RevertSingleCcdAsync().ConfigureAwait(false);
-                ok = dual.Success || single.Success;
-                message = "CCD：" + dual.Message + "；" + single.Message;
-                break;
-            }
             case "game-power":
                 _boostGamePower = false;
                 ok = _gamePower.Sync([]);
                 message = _gamePower.Status;
-                break;
-            case "timer":
-                _boostTimer = false;
-                var timer = UpdateTimer(false, "本后端计时器请求已释放。");
-                ok = timer.Success && !_timerActive;
-                message = timer.Message;
                 break;
             case "tweaks":
             {
@@ -1098,7 +966,6 @@ public sealed class CpuFrameEngine : IDisposable
         var version = typeof(CpuFrameEngine).Assembly.GetName().Version ?? new Version(0, 0, 0);
         var delta = Volatile.Read(ref _deltaObservation);
         var dwm = _dwm.Status;
-        var timer = _timer.Status;
         var waitingForObservation = Volatile.Read(ref _deltaRead) is { IsCompleted: false }
             && (delta is null || (ClockForTests?.Invoke() ?? DateTimeOffset.UtcNow) - delta.ObservedUtc > TimeSpan.FromSeconds(10));
         return new CpuFrameStatusSnapshot
@@ -1122,10 +989,6 @@ public sealed class CpuFrameEngine : IDisposable
             PriorityAppliedCount = _priorityAppliedCount,
             AffinityRuleEnabled = _affinityMask != 0,
             AffinityRuleMask = _affinityMask,
-            DualCcdSchedulingActive = CpuTopologyService.DualCcdSchedulingActive,
-            SingleCcdExcludeActive = CpuTopologyService.SingleCcdExcludeActive,
-            TimerActive = timer.RequestHeld || timer.OwnershipUnknown,
-            Timer = timer,
             GamePowerAppliedCount = _gamePower.AppliedCount,
             GamePowerRestorePending = _gamePower.PendingCount,
             GamePowerHasError = _gamePower.HasError || _gamePowerIdentityError.Length > 0,

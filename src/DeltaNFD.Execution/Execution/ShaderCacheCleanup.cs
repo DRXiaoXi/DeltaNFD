@@ -12,17 +12,35 @@ internal sealed record ShaderCacheCleanupOptions(
 /// </summary>
 internal static class ShaderCacheCleanup
 {
+    internal static ShaderCacheCleanupResult CleanMixedRoots(IEnumerable<string> gameRoots, IEnumerable<string> systemRoots,
+        Func<bool> gameRunning, CancellationToken token = default)
+    {
+        var game = gameRoots.ToArray();
+        var system = systemRoots.ToArray();
+        var canonicalSystem = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in system)
+        {
+            try { canonicalSystem.Add(Path.TrimEndingDirectorySeparator(Path.GetFullPath(root))); }
+            catch { /* The shared preflight reports invalid roots before any deletion. */ }
+        }
+        var systemOptions = new ShaderCacheCleanupOptions();
+        return CleanRoots(game.Concat(system), gameRunning, token, options: ShaderCacheCleanupOptions.PsoCache,
+            optionsForRoot: root => canonicalSystem.Contains(root) ? systemOptions : ShaderCacheCleanupOptions.PsoCache);
+    }
+
     internal static ShaderCacheCleanupResult CleanRoots(
         IEnumerable<string> roots,
         Func<bool>? gameRunning,
         CancellationToken token = default,
         IProgress<string>? progress = null,
-        ShaderCacheCleanupOptions? options = null)
+        ShaderCacheCleanupOptions? options = null,
+        Func<string, ShaderCacheCleanupOptions>? optionsForRoot = null)
     {
         options ??= new();
         const int maxSkippedDetails = 200;
         var skipped = new List<string>();
         var validRoots = new List<string>();
+        var rootOptions = new Dictionary<string, ShaderCacheCleanupOptions>(StringComparer.OrdinalIgnoreCase);
         var failures = 0;
         var skippedLinks = 0;
         var deletedFiles = 0;
@@ -125,6 +143,7 @@ internal static class ShaderCacheCleanup
                     failures++;
                     continue;
                 }
+                rootOptions.Add(full, optionsForRoot?.Invoke(full) ?? options);
                 validRoots.Add(full);
             }
             catch (FileNotFoundException) { }
@@ -140,6 +159,7 @@ internal static class ShaderCacheCleanup
         {
             foreach (var root in validRoots)
             {
+                var currentOptions = rootOptions[root];
                 progress?.Report($"正在清理：{root}");
                 var folders = new Stack<string>();
                 folders.Push(root);
@@ -199,7 +219,7 @@ internal static class ShaderCacheCleanup
                                 continue;
                             }
 
-                            if (!DeleteFile(entry)) break;
+                            if (!DeleteFile(entry, currentOptions)) break;
                         }
                         catch (FileNotFoundException) { }
                         catch (DirectoryNotFoundException) { }
@@ -211,14 +231,14 @@ internal static class ShaderCacheCleanup
                         }
                     }
 
-                    visitedFolders.Add(folder);
+                    if (currentOptions.RemoveEmptyDirectories) visitedFolders.Add(folder);
 
                     if (gameStarted || cancelled) break;
                 }
                 if (gameStarted || cancelled) break;
             }
 
-            if (!gameStarted && !cancelled && options.RemoveEmptyDirectories)
+            if (!gameStarted && !cancelled && visitedFolders.Count > 0)
             {
                 // 只删除已遍历过的空子目录，不递归删除，不删除缓存根。
                 foreach (var folder in visitedFolders.AsEnumerable().Reverse())
@@ -269,7 +289,7 @@ internal static class ShaderCacheCleanup
             };
         }
 
-        bool DeleteFile(string path)
+        bool DeleteFile(string path, ShaderCacheCleanupOptions fileOptions)
         {
             for (var attempt = 0; ; attempt++)
             {
@@ -286,7 +306,7 @@ internal static class ShaderCacheCleanup
                     var readOnlyChanged = false;
                     try
                     {
-                        if (options.ClearReadOnlyFiles && (attributes & FileAttributes.ReadOnly) != 0)
+                        if (fileOptions.ClearReadOnlyFiles && (attributes & FileAttributes.ReadOnly) != 0)
                         {
                             File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
                             readOnlyChanged = true;
@@ -307,7 +327,7 @@ internal static class ShaderCacheCleanup
                     }
                 }
                 catch (IOException ex) when ((ex.HResult & 0xffff) is 32 or 33
-                    && attempt < Math.Clamp(options.SharingViolationRetries, 0, 2) && retryWaitMs < 2000)
+                    && attempt < Math.Clamp(fileOptions.SharingViolationRetries, 0, 2) && retryWaitMs < 2000)
                 {
                     // 每文件最多重试两次，全批等待累计最多两秒；取消会立即唤醒。
                     if (ShouldStop()) return false;

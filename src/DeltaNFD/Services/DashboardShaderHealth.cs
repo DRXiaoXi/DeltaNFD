@@ -2,7 +2,7 @@ using DeltaNFD.Services;
 
 namespace DeltaNFD.ViewModels;
 
-internal sealed record DashboardShaderHealthResult(DashboardHealthState State, string Text, bool OpenCacheRecovery);
+internal sealed record DashboardShaderHealthResult(DashboardHealthState State, string Text, bool OpenCacheRecovery, bool ShowAction = true);
 
 /// <summary>合并主页的缓存文件、驱动版本及 NVAPI 缓存大小结论；已确认异常不被局部读取失败覆盖。</summary>
 internal static class DashboardShaderHealth
@@ -55,9 +55,8 @@ internal static class DashboardShaderHealth
         }
         if (diagnosis?.Level is ShaderDiagLevel.Abnormal or ShaderDiagLevel.AbnormalDriverIssue)
             issues.Add(diagnosis.Summary);
-        if (status?.DriverState is ShaderDriverState.TooOld or ShaderDriverState.ProblemSeries)
-            issues.Add(status.DriverState == ShaderDriverState.TooOld
-                ? $"驱动过老（{DisplayVersion(status)}）" : $"问题驱动（{DisplayVersion(status)}）");
+        if (status?.DriverState == ShaderDriverState.TooOld)
+            issues.Add($"驱动过老（{DisplayVersion(status)}）");
         if (incomplete)
             notes.Add(nonDefault ? "部分缓存大小设置未能读取，请同时核对"
                 : "着色器缓存大小检测不完整，无法确认是否为驱动默认" + (cacheError.Length > 0 ? "：" + cacheError : ""));
@@ -74,10 +73,13 @@ internal static class DashboardShaderHealth
         {
             ShaderDiagLevel.Normal => DashboardHealthState.Normal,
             ShaderDiagLevel.Info => DashboardHealthState.Information,
+            ShaderDiagLevel.Warning => DashboardHealthState.Warning,
             _ => DashboardHealthState.NotApplicable,
         };
-        return new(state, diagnosis.Level == ShaderDiagLevel.Normal && status!.IsNvidia && status.DriverVersion.Length > 0
-            ? $"正常（{DisplayVersion(status)}）" : diagnosis.Summary, false);
+        var layoutHint = diagnosis.CacheLayout is ShaderCacheLayout.Legacy or ShaderCacheLayout.Asd;
+        return new(state, diagnosis.Level == ShaderDiagLevel.Normal && status!.IsNvidia && status.DriverVersion.Length > 0 && !layoutHint
+            ? $"正常（{DisplayVersion(status)}）" : diagnosis.Summary, false,
+            !(diagnosis.Level == ShaderDiagLevel.Warning && diagnosis.CacheLayout == ShaderCacheLayout.Legacy));
     }
 
     /// <summary>同时显示 NVIDIA 习惯格式与 Windows 原始格式，避免与设备管理器对照时误判。</summary>

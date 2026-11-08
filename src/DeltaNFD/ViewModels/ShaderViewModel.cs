@@ -10,18 +10,164 @@ public partial class ShaderViewModel : ObservableObject
     private readonly IShaderService _shader = ServiceLocator.Shader;
     private readonly ICleanupService _cleanup = ServiceLocator.Cleanup;
 
-    [ObservableProperty] private bool isBusy;
-    [ObservableProperty] private bool isClearing;
-    [ObservableProperty] private string driverAdvice = "正在体检驱动…";
-    [ObservableProperty] private string cacheText = "正在扫描着色器缓存…";
-    [ObservableProperty] private bool canClear;
-    [ObservableProperty] private string diagText = "正在检测着色器缓存结构…";
-    [ObservableProperty] private bool diagBusy;
-    [ObservableProperty] private string sysCacheText = "系统级着色器缓存（D3DSCache / NVIDIA DXCache+GLCache / AMD DxCache+DxcCache+GLCache / Intel ShaderCache）";
-    [ObservableProperty] private bool isCleaningSystem;
-    [ObservableProperty] private bool shaderCacheNonDefault;
-    [ObservableProperty] private bool shaderCacheCheckFailed;
-    [ObservableProperty] private string shaderCacheAdvice = "";
+    private bool isBusy;
+    public bool IsBusy
+    {
+        get => isBusy;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(isBusy, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(IsBusy));
+            isBusy = value;
+            OnIsBusyChanged(value);
+            OnPropertyChanged(nameof(IsBusy));
+        }
+    }
+    partial void OnIsBusyChanged(bool value);
+
+    private bool isClearing;
+    public bool IsClearing
+    {
+        get => isClearing;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(isClearing, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(IsClearing));
+            isClearing = value;
+            OnIsClearingChanged(value);
+            OnPropertyChanged(nameof(IsClearing));
+        }
+    }
+    partial void OnIsClearingChanged(bool value);
+
+    private string driverAdvice = "正在体检驱动…";
+    public string DriverAdvice
+    {
+        get => driverAdvice;
+        set => SetProperty(ref driverAdvice, value);
+    }
+
+    private string cacheText = "正在扫描着色器缓存…";
+    public string CacheText
+    {
+        get => cacheText;
+        set => SetProperty(ref cacheText, value);
+    }
+
+    private bool canClear;
+    public bool CanClear
+    {
+        get => canClear;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(canClear, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(CanClear));
+            canClear = value;
+            OnCanClearChanged(value);
+            OnPropertyChanged(nameof(CanClear));
+        }
+    }
+    partial void OnCanClearChanged(bool value);
+
+    private string diagText = "正在检测着色器缓存结构…";
+    public string DiagText
+    {
+        get => diagText;
+        set => SetProperty(ref diagText, value);
+    }
+    private ShaderDiagLevel diagLevel = ShaderDiagLevel.NotApplicable;
+    public ShaderDiagLevel DiagLevel { get => diagLevel; set => SetProperty(ref diagLevel, value); }
+
+    private bool diagBusy;
+    public bool DiagBusy
+    {
+        get => diagBusy;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(diagBusy, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(DiagBusy));
+            diagBusy = value;
+            OnDiagBusyChanged(value);
+            OnPropertyChanged(nameof(DiagBusy));
+        }
+    }
+    partial void OnDiagBusyChanged(bool value);
+
+    private string sysCacheText = "系统级着色器缓存（D3DSCache / NVIDIA DXCache+GLCache / AMD DxCache+DxcCache+GLCache / Intel ShaderCache）";
+    public string SysCacheText
+    {
+        get => sysCacheText;
+        set => SetProperty(ref sysCacheText, value);
+    }
+
+    private bool isCleaningSystem;
+    public bool IsCleaningSystem
+    {
+        get => isCleaningSystem;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(isCleaningSystem, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(IsCleaningSystem));
+            isCleaningSystem = value;
+            OnIsCleaningSystemChanged(value);
+            OnPropertyChanged(nameof(IsCleaningSystem));
+        }
+    }
+    partial void OnIsCleaningSystemChanged(bool value);
+
+    private bool shaderCacheNonDefault;
+    public bool ShaderCacheNonDefault
+    {
+        get => shaderCacheNonDefault;
+        set => SetProperty(ref shaderCacheNonDefault, value);
+    }
+
+    private bool shaderCacheCheckFailed;
+    public bool ShaderCacheCheckFailed
+    {
+        get => shaderCacheCheckFailed;
+        set => SetProperty(ref shaderCacheCheckFailed, value);
+    }
+
+    private string shaderCacheAdvice = "";
+    public string ShaderCacheAdvice
+    {
+        get => shaderCacheAdvice;
+        set => SetProperty(ref shaderCacheAdvice, value);
+    }
+
+    private string shaderCacheGlobalText = "等待检测…";
+    public string ShaderCacheGlobalText
+    {
+        get => shaderCacheGlobalText;
+        private set => SetProperty(ref shaderCacheGlobalText, value);
+    }
+    private string shaderCacheGameText = "等待检测…";
+    public string ShaderCacheGameText
+    {
+        get => shaderCacheGameText;
+        private set => SetProperty(ref shaderCacheGameText, value);
+    }
 
 
     public bool ClearEnabled => !IsBusy && !IsClearing && !IsGameRunning && CanClear;
@@ -95,27 +241,46 @@ public partial class ShaderViewModel : ObservableObject
         }
 
         IsBusy = true;
+        ShaderCacheGlobalText = ShaderCacheGameText = "等待检测…";
+        ShaderCacheNonDefault = ShaderCacheCheckFailed = false;
         try
         {
             var status = await _shader.GetStatusAsync();
             DriverAdvice = status.DriverAdvice;
-            ShaderCacheNonDefault = ShaderCacheCheckFailed = false;
             if (status.IsNvidia)
             {
                 try
                 {
                     var env = await ServiceLocator.NvProfile.GetEnvironmentAsync();
+                    ShaderCacheGlobalText = ShaderCacheStatusPresentation.Scope(env.ShaderCache, "全局设置");
+                    ShaderCacheGameText = ShaderCacheStatusPresentation.Scope(env.ShaderCache, "三角洲程序设置");
                     ShaderCacheNonDefault = env.ShaderCache?.HasNonDefault == true;
-                    ShaderCacheCheckFailed = env.ShaderCache?.Complete != true && !ShaderCacheNonDefault;
-                    ShaderCacheAdvice = env.ShaderCache?.Advice ?? "后端未返回缓存大小检测结果，无法确认是否为默认。请更新后端后重新检测。";
+                    var complete = ShaderCacheStatusPresentation.Complete(env.ShaderCache);
+                    ShaderCacheCheckFailed = !complete && !ShaderCacheNonDefault;
+                    ShaderCacheAdvice = env.ShaderCache is null
+                        ? "后端未返回缓存大小检测结果，无法确认是否为默认。请更新后端后重新检测。"
+                        : complete ? env.ShaderCache.Advice
+                        : ShaderCacheNonDefault ? env.ShaderCache.Advice + "\n部分缓存范围未确认，请重新检测。"
+                        : "缓存范围缺失、重复或未读全，无法确认全局及三角洲设置。\n" + env.ShaderCache.Details;
                 }
                 catch (Exception ex)
                 {
                     ShaderCacheCheckFailed = true;
+                    ShaderCacheGlobalText = ShaderCacheGameText = "读取失败，无法确认当前设置。";
                     ShaderCacheAdvice = "无法确认全局及三角洲着色器缓存大小，请重新检测：" + ex.Message;
                 }
             }
-            else ShaderCacheAdvice = "";
+            else if (status.GpuDetectionState == ShaderGpuDetectionState.Unknown)
+            {
+                ShaderCacheCheckFailed = true;
+                ShaderCacheGlobalText = ShaderCacheGameText = "显卡状态未确认，暂无法核对。";
+                ShaderCacheAdvice = "显卡信息未读全，无法确认缓存大小是否适用，请重新检测。";
+            }
+            else
+            {
+                ShaderCacheAdvice = "";
+                ShaderCacheGlobalText = ShaderCacheGameText = "未检测到 NVIDIA 显卡，本项不适用。";
+            }
             IsGameRunning = status.IsGameRunning;
             // 0 字节或舍入为 0.0 MB 的残留也必须允许再次清理。
             CanClear = status.PsoCachePaths.Count > 0 || status.PsoCachePath.Length > 0;
@@ -128,6 +293,16 @@ public partial class ShaderViewModel : ObservableObject
             // 进页自动做一次健康检测
             await DiagnoseAsync();
 
+        }
+        catch (Exception ex)
+        {
+            DriverAdvice = "检测未完成：" + ex.Message;
+            CacheText = "PSOCache 状态未确认，请重新检测。";
+            DiagText = "检测未完成，请重新检测：" + ex.Message;
+            CanClear = false;
+            ShaderCacheCheckFailed = true;
+            ShaderCacheGlobalText = ShaderCacheGameText = "读取失败，无法确认当前设置。";
+            ShaderCacheAdvice = "无法确认当前驱动及缓存状态，请重新检测：" + ex.Message;
         }
         finally
         {
@@ -172,9 +347,11 @@ public partial class ShaderViewModel : ObservableObject
         }
 
         DiagBusy = true;
+        DiagLevel = ShaderDiagLevel.NotApplicable;
         try
         {
             var diag = await _shader.DiagnoseAsync();
+            DiagLevel = diag.Level;
 
             var text = new StringBuilder();
             text.AppendLine(DescribeLevel(diag.Level) + diag.Summary);
@@ -199,7 +376,7 @@ public partial class ShaderViewModel : ObservableObject
     private static string DescribeLevel(ShaderDiagLevel level) => level switch
     {
         ShaderDiagLevel.Normal => "✓ ",
-        ShaderDiagLevel.Abnormal or ShaderDiagLevel.AbnormalDriverIssue => "⚠ ",
+        ShaderDiagLevel.Warning or ShaderDiagLevel.Abnormal or ShaderDiagLevel.AbnormalDriverIssue => "⚠ ",
         ShaderDiagLevel.Info => "ℹ ",
         _ => "— ",
     };

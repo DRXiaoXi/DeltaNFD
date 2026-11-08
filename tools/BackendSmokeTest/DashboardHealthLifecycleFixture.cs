@@ -21,6 +21,7 @@ public partial class DashboardViewModel
     public string AceStatusText { get; set; } = "检测中…";
     public string RuntimeStatusText { get; set; } = "检测中…";
     public bool ShaderCacheNeedsAttention { get; set; }
+    public bool ShaderActionAllowed { get; set; } = true;
     public string LastHealthCheckText { get; set; } = "尚未检测";
     public string HealthSummary => PageBackendSessions.Manager.DeltaRunning != false ? HealthPauseReason
         : DashboardHealthPresentation.Summary(IsHealthScanning, ShaderHealthState, AceHealthState, RuntimeHealthState);
@@ -37,7 +38,7 @@ public partial class DashboardViewModel
         if (!CanApplyHealth(generation)) return;
         switch (area)
         {
-            case "shader": ShaderHealthState = DashboardHealthState.Normal; ShaderStatusText = text; break;
+            case "shader": ShaderActionAllowed = true; ShaderHealthState = DashboardHealthState.Normal; ShaderStatusText = text; break;
             case "ace": AceHealthState = DashboardHealthState.Normal; AceStatusText = text; break;
             case "runtime": RuntimeHealthState = DashboardHealthState.Normal; RuntimeStatusText = text; break;
         }

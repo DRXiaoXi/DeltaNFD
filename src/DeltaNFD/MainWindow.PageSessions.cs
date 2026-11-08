@@ -10,7 +10,7 @@ namespace DeltaNFD;
 
 public sealed partial class MainWindow
 {
-    private static readonly HashSet<string> GameLockedPages = ["spoof", "shader", "ace", "runtime"];
+    private static readonly HashSet<string> GameLockedPages = ["spoof", "shader", "ace", "runtime", "gamemods"];
     private readonly HashSet<PageBackendLease> _pageLeases = [];
     private bool _optimizationPreloadStarted;
     private void InitializePageBackendNavigation()
@@ -39,12 +39,14 @@ public sealed partial class MainWindow
     private static string PageRoute(Type? page) => page == typeof(SystemOptimizePage) || page == typeof(TimerRecoveryPage) ? "system"
         : page == typeof(GpuSpoofPage) ? "spoof" : page == typeof(ShaderPage) || page == typeof(ShaderRecoveryPage) ? "shader"
         : page == typeof(AcePage) ? "ace" : page == typeof(RuntimePage) ? "runtime"
-        : page == typeof(NvSettingsPage) ? "nvsettings" : "";
+        : page == typeof(NvSettingsPage) ? "nvsettings" : page == typeof(GameModificationsPage) ? "gamemods" : "";
     private static bool CanEnterGamePage(string route) => !GameLockedPages.Contains(route)
         || PageBackendSessions.Manager.DeltaRunning == false;
     private void PageFrameNavigating(object sender, NavigatingCancelEventArgs e)
     {
         var route = PageRoute(e.SourcePageType);
+        if (route == "gamemods" && ServiceLocator.GameTarget.IsCustom)
+        { e.Cancel = true; ReportPageOperationResult("游戏改动仅适用于三角洲", GameTargetService.DeltaOnlyMessage); return; }
         if (PageBackendSessionManager.Restricted.Contains(route) && PageBackendSessions.Manager.DeltaRunning == false)
         {
             try { if (DeltaForceLocator.IsGameRunning()) PageBackendSessions.Manager.ObserveDelta(true); }
@@ -90,12 +92,13 @@ public sealed partial class MainWindow
     { PageOperationResult.Title = title; PageOperationResult.Message = message; PageOperationResult.IsOpen = true; });
     private void UpdatePageAvailability()
     {
+        UpdateGameVersionNotice();
         foreach (var lease in _pageLeases) lease.RefreshReviewedExit();
         var running = PageBackendSessions.Manager.DeltaRunning;
         foreach (var item in EnumerateNavItems())
         {
             var tag = item.Tag?.ToString() ?? "";
-            var targetAllowed = !(ServiceLocator.GameTarget.IsCustom && tag is "shader" or "ace");
+            var targetAllowed = !(ServiceLocator.GameTarget.IsCustom && tag is "shader" or "ace" or "gamemods");
             item.IsEnabled = targetAllowed && CanEnterGamePage(tag);
             if (GameLockedPages.Contains(tag) || tag == "system")
             {
@@ -108,7 +111,7 @@ public sealed partial class MainWindow
         GamePageRestriction.IsOpen = running != false;
         GamePageRestriction.Title = running == true ? "三角洲运行期间的功能限制" : "三角洲运行状态待确认";
         GamePageRestriction.Message = running == true
-            ? "显卡伪装、着色器、ACE相关和运行库暂不可用；系统优化仅供查看。完全退出三角洲后恢复。"
+            ? "游戏改动、显卡伪装、着色器、ACE相关和运行库暂不可用；系统优化仅供查看。完全退出三角洲后恢复。"
             : ServiceLocator.GameMonitor.StatusDetail + " 系统优化暂时仅供查看，其他维护栏目确认后开放。";
         GameStateRetryButton.Visibility = running is null ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
         GameStateRetryButton.IsEnabled = !ServiceLocator.GameMonitor.IsConnecting;

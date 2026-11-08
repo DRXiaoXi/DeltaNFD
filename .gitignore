@@ -127,3 +127,8 @@ installer/Backup/
 # ---------- 本地生成的源码归档（不重复提交到仓库） ----------
 /DeltaNFD_Source_*.zip
 /DeltaOptimizer_Source_*.zip
+
+# Verified vendor installer inputs are restored by prepare-source-assets.py.
+src/DeltaNFD/Assets/Vc14Baseline14.42/**
+src/DeltaNFD/Assets/Vc14Baseline14.44/**
+src/DeltaNFD/Assets/Vc14FileRepair14.44/**

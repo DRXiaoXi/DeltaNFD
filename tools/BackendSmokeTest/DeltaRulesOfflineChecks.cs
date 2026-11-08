@@ -58,9 +58,13 @@ internal static class DeltaRulesOfflineChecks
         var views = Path.Combine(Directory.GetCurrentDirectory(), "src", "DeltaNFD", "Views");
         var process = XDocument.Load(Path.Combine(views, "ProcessPage.xaml"));
         var frame = XDocument.Load(Path.Combine(views, "FramePage.xaml"));
+        var lab = XDocument.Load(Path.Combine(views, "LabPage.xaml"));
         XElement Named(XDocument doc, string name) => doc.Descendants().Single(e => (string?)e.Attribute(x + "Name") == name);
-        Check((string?)Named(process, "GameTab").Attribute("Header") == "三角洲规则", "三角洲页签呈现离线规则用途");
-        Check(Named(process, "GameTab").Descendants().Any(e => (string?)e.Attribute(x + "Name") == "GameRulePathBox"), "规则页有独立目标路径入口");
+        // 三角洲规则已从进程管理页签迁到调度改善页。
+        Check(!process.Descendants().Any(e => (string?)e.Attribute(x + "Name") == "GameTab"), "进程管理不再保留三角洲规则页签");
+        Check(lab.Descendants().Any(e => (string?)e.Attribute("Text") == "三角洲规则"), "调度改善呈现三角洲规则区块");
+        Check(Named(lab, "GameRulePathBox").Name.LocalName == "TextBox", "调度改善的三角洲规则有独立目标路径入口");
+        Check(Named(lab, "GameRuleCpuGroupPanel").Name.LocalName == "StackPanel", "三角洲规则 CPU 有独立拓扑选择器");
         Check(Named(process, "RuleCpuGroupPanel").Name.LocalName == "StackPanel", "CPU 规则有独立拓扑选择器");
         foreach (var name in new[] { "ResponsivenessToggle", "AutomaticMemoryToggle" })
         {

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DeltaNFD.Backends;
+using DeltaNFD.Execution.OptimalClock;
 using DeltaNFD.Execution.Procman;
 using DeltaNFD.Services;
 
@@ -16,6 +17,8 @@ internal static class ProcmanCommands
     // 延迟创建：引擎读写 AppDataPaths 数据根，必须在 BackendHost 配置隔离数据根之后再实例化。
     private static readonly Lazy<ProcmanEngine> EngineLazy = new(() => new ProcmanEngine());
     private static ProcmanEngine Engine => EngineLazy.Value;
+    private static readonly Lazy<ProcmanCcdScheduler> CcdLazy = new(() => new ProcmanCcdScheduler());
+    private static ProcmanCcdScheduler Ccd => CcdLazy.Value;
     private static bool _sessionModified;
 
     static ProcmanCommands()
@@ -41,8 +44,7 @@ internal static class ProcmanCommands
     {
         Module = BackendModules.Require(BackendModules.Procman),
         InitialPriorityClass = System.Diagnostics.ProcessPriorityClass.BelowNormal,
-        OnStopping = () => EngineLazy.IsValueCreated && (_sessionModified || Engine.Snapshot().RulesEngineRunning)
-            ? Engine.RestoreAllAsync() : Task.FromResult(OperationResult.Ok("只读会话已停止；遗留日志保持不变。")),
+        OnStopping = StopAsync,
         StatusSource = BuildStatus,
         Handlers = new Dictionary<string, Func<BackendCommandContext, Task<BackendResult>>>(StringComparer.Ordinal)
         {
@@ -75,8 +77,50 @@ internal static class ProcmanCommands
                 return Task.FromResult(result.Success ? BackendResult.Ok(context.Command, result.Message, result) : BackendResult.Failed(context.Command, result.Message));
             },
             [BackendCommands.ProcmanNativeProbe] = NativeProbeAsync,
+            [BackendCommands.ProcmanCcdApply] = CcdApplyAsync,
+            [BackendCommands.ProcmanCcdRevert] = async context => Wrap(context.Command, await Ccd.RevertDualAsync()),
+            [BackendCommands.ProcmanSingleCcdApply] = async context => Wrap(context.Command, await Ccd.ApplySingleAsync()),
+            [BackendCommands.ProcmanSingleCcdRevert] = async context => Wrap(context.Command, await Ccd.RevertSingleAsync()),
+            [BackendCommands.ProcmanClockApply] = context =>
+            {
+                var args = context.ArgsAs<OptimalClockArgs>();
+                return Task.FromResult(Wrap(context.Command, Engine.ApplyOptimalClock(args.Resolution100ns)));
+            },
+            [BackendCommands.ProcmanClockRelease] = context =>
+                Task.FromResult(Wrap(context.Command, Engine.ReleaseOptimalClock())),
+            [BackendCommands.ProcmanClockScan] = async context =>
+            {
+                var args = context.ArgsAs<OptimalClockArgs>();
+                var scanKind = args.ScanMode == OptimalClockScanMode.StableLatency
+                ? OptimalClockScanKind.StableLatency : OptimalClockScanKind.LowestLatency;
+                var result = await Engine.ScanOptimalClockAsync(args.Quick, scanKind, context.CancellationToken, args.CompatibilityOnly);
+                return Wrap(context.Command, result);
+            },
         },
     };
+
+    /// <summary>后端停止：先撤销 CCD 调度，再还原通用控制；任一未完成都如实返回失败并保留证据。</summary>
+    private static async Task<OperationResult> StopAsync()
+    {
+        var ccd = CcdLazy.IsValueCreated || ProcmanCcdScheduler.Active ? await Ccd.RevertAllAsync() : OperationResult.Ok("");
+        var generic = EngineLazy.IsValueCreated && (_sessionModified || Engine.Snapshot().RulesEngineRunning)
+            ? await Engine.RestoreAllAsync() : OperationResult.Ok("只读会话已停止；遗留日志保持不变。");
+        return ccd.Success && generic.Success ? generic
+            : OperationResult.Fail(string.Join("；", new[] { ccd, generic }.Where(r => !r.Success).Select(r => r.Message)));
+    }
+
+    private static async Task<BackendResult> CcdApplyAsync(BackendCommandContext context)
+    {
+        var args = context.ArgsAs<ProcmanCcdArgs>();
+        if (args.GameCcdIndex is < 0 or > 1)
+            return BackendResult.Failed(context.Command, "gameCcdIndex 必须是 0 或 1。");
+        return Wrap(context.Command, await Ccd.ApplyDualAsync(args.GameCcdIndex));
+    }
+
+    private static BackendResult Wrap(string command, OperationResult result) =>
+        result.Success
+            ? BackendResult.Ok(command, result.Message.Length > 0 ? result.Message : "操作已完成。", result)
+            : BackendResult.Failed(command, result.Message.Length > 0 ? result.Message : "操作失败。");
 
     private static BackendStatus? BuildStatus()
     {
@@ -115,7 +159,8 @@ internal static class ProcmanCommands
         var recovered = await Engine.RestoreAllAsync();
         if (!recovered.Success) return BackendResult.Failed(context.Command, "上轮恢复未完成，未启动规则：" + recovered.Message);
         var result = Engine.ActivateBackground();
-        _sessionModified = Engine.Snapshot().RulesEngineRunning;
+        Ccd.ResumeIfWanted();
+        _sessionModified = Engine.Snapshot().RulesEngineRunning || ProcmanCcdScheduler.Active;
         return result.Success ? BackendResult.Ok(context.Command, result.Message) : BackendResult.Failed(context.Command, result.Message);
     }
 
@@ -155,9 +200,14 @@ internal static class ProcmanCommands
     private static ReconcileSnapshot BuildRecoverySnapshot(ProcmanReconcileResult snapshot) => new()
     {
         Module = BackendModules.Procman, Summary = snapshot.Summary,
-        Complete = !snapshot.Entries.Any(e => e.Message.Contains("无法读取") || e.Message.Contains("身份未知")),
-        Items = snapshot.Entries.Select(e => new ReconcileItem { Id = e.Pid + ":" + e.Capability, Kind = "procman", State = e.Status, HasBackup = true, Detail = e.Message }).ToArray(),
-        RecoveryScopes = [new() { Id = "all", Description = "停止规则并按日志恢复全部进程和应用设置", Available = Engine.Snapshot().HeldChangeCount > 0, AffectedCount = Engine.Snapshot().HeldChangeCount }],
+        Complete = !snapshot.Entries.Any(e => e.Message.Contains("无法读取") || e.Message.Contains("身份未知"))
+            && !Engine.Snapshot().FramePriority.HasError,
+        Items = snapshot.Entries.Select(e => new ReconcileItem { Id = e.Pid + ":" + e.Capability, Kind = "procman", State = e.Status, HasBackup = true, Detail = e.Message })
+            .Append(new ReconcileItem { Id = "frame-priority", Kind = "procman", State = Engine.Snapshot().FramePriority.Message,
+                HasBackup = Engine.Snapshot().FramePriority.BackupCount > 0 }).ToArray(),
+        RecoveryScopes = [new() { Id = "all", Description = "停止规则、撤销 CCD 调度并按日志恢复全部进程和应用设置",
+            Available = Engine.Snapshot().HeldChangeCount > 0 || ProcmanCcdScheduler.Active,
+            AffectedCount = Engine.Snapshot().HeldChangeCount + (ProcmanCcdScheduler.Active ? 1 : 0) }],
     };
 
     private static Task<BackendResult> SetAsync(BackendCommandContext context)
@@ -199,20 +249,32 @@ internal static class ProcmanCommands
     private static async Task<BackendResult> RestoreAllAsync(BackendCommandContext context)
     {
         context.ReportProgress("正在还原通用进程控制…", null, "procman.restore-all");
-        var result = await Engine.RestoreAllAsync();
+        var result = await RestoreEverythingAsync();
         return result.Success
             ? BackendResult.Ok(context.Command, result.Message, result)
             : BackendResult.Failed(context.Command, result.Message);
+    }
+
+    /// <summary>完整还原：CCD 调度与通用进程控制（全部还原与恢复流程共用）。</summary>
+    private static async Task<OperationResult> RestoreEverythingAsync()
+    {
+        var ccd = await Ccd.RevertAllAsync();
+        var generic = await Engine.RestoreAllAsync();
+        if (ccd.Success && generic.Success) return OperationResult.Ok(generic.Message + (ProcmanCcdScheduler.Active ? "" : " " + ccd.Message));
+        return OperationResult.Fail(string.Join("；", new[] { ccd, generic }.Where(r => !r.Success).Select(r => r.Message)));
     }
 
     private static async Task<BackendResult> RecoverAsync(BackendCommandContext context)
     {
         var args = context.ArgsAs<ProcmanRecoverArgs>();
         context.ReportProgress("正在按记录还原通用进程控制…", null, "procman.recover");
-        var outcome = await Engine.RecoverAsync(args.Scope ?? "");
+        var ccd = await Ccd.RevertAllAsync();
+        var generic = await Engine.RecoverAsync(args.Scope ?? "");
+        var outcome = ccd.Success ? generic
+            : OperationResult.Fail(string.Join("；", new[] { ccd, generic }.Where(r => !r.Success).Select(r => r.Message)));
         var snapshot = BuildRecoverySnapshot(Engine.Reconcile());
         var result = new RecoverOutcome { Scope = string.IsNullOrEmpty(args.Scope) ? "all" : args.Scope,
-            Success = outcome.Success, Verified = outcome.Success && snapshot.Complete && Engine.Snapshot().HeldChangeCount == 0,
+            Success = outcome.Success, Verified = outcome.Success && snapshot.Complete && Engine.Snapshot().HeldChangeCount == 0 && !ProcmanCcdScheduler.Active,
             Message = outcome.Message, VerifiedSnapshot = snapshot };
         return outcome.Success ? BackendResult.Ok(context.Command, outcome.Message, result)
             : BackendResult.PartialResult(context.Command, outcome.Message, [], result);

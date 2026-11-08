@@ -9,6 +9,42 @@ public sealed partial class ShaderPage : Page
 {
     private readonly DeltaNFD.Services.Backends.PageBackendLease? _pageOwner = DeltaNFD.Services.Backends.PageBackendSessions.Manager.Current;
     public ShaderViewModel ViewModel { get; } = new();
+    public string WarmupLaunchArgument => "-WarmAllPSOWhenLaunch";
+    public Microsoft.UI.Xaml.Media.Brush DiagnosisBrush(ShaderDiagLevel level)
+    {
+        if (new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
+            return new Microsoft.UI.Xaml.Media.SolidColorBrush(new Windows.UI.ViewManagement.UISettings().GetColorValue(Windows.UI.ViewManagement.UIColorType.Foreground));
+        var light = ActualTheme == ElementTheme.Light;
+        var color = level switch
+        {
+            ShaderDiagLevel.Normal => light ? (22, 114, 69) : (112, 218, 157),
+            ShaderDiagLevel.Warning => light ? (138, 91, 0) : (246, 200, 95),
+            ShaderDiagLevel.Abnormal or ShaderDiagLevel.AbnormalDriverIssue => light ? (169, 35, 35) : (255, 146, 146),
+            _ => light ? (82, 96, 107) : (183, 189, 197),
+        };
+        return new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, (byte)color.Item1, (byte)color.Item2, (byte)color.Item3));
+    }
+
+    private async void OpenVersionGuide_Click(object sender, RoutedEventArgs e)
+    {
+        if (App.MainWindow is { } window) await window.ShowGameVersionGuideAsync();
+    }
+
+    private void CopyWarmupArgument_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var content = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            content.SetText(WarmupLaunchArgument);
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(content);
+            Windows.ApplicationModel.DataTransfer.Clipboard.Flush();
+            WarmupCopyStatus.Text = "已复制。请按下方图示粘贴到启动器的「启动命令行」。";
+        }
+        catch
+        {
+            WarmupCopyStatus.Text = "剪贴板暂时不可用，请在上方输入框中选择并复制指令。";
+        }
+    }
 
 
     public ShaderPage()
@@ -34,11 +70,12 @@ public sealed partial class ShaderPage : Page
             XamlRoot = XamlRoot,
             Title = "清除旧着色器文件？",
             Content = "将删除三角洲的 PSOCache 着色器缓存。\n\n"
-                      + "下次进入游戏会重新编译着色器，首局可能出现卡顿 / 掉帧，属正常现象；"
-                      + "如因驱动问题导致着色器缺失 / 异常，建议先更换驱动再清除。",
+                      + ShaderCacheCleanupPolicy.SystemCacheNotice + "\n\n"
+                      + "请先退出三角洲和其他图形应用。删除无法撤销；链接及占用等未完成项目会报告。"
+                      + "清理后请进入游戏完成着色器预热，初次加载可能出现卡顿。",
             PrimaryButtonText = "清除",
             CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Primary,
+            DefaultButton = ContentDialogButton.Close,
         };
 
         if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary)
@@ -67,7 +104,7 @@ public sealed partial class ShaderPage : Page
                 Title = result.IsPartial ? "清理部分完成" : "清理完成",
                 Content = result.Message + "\n\n"
                           + "⚠ 请记得：进入游戏后重新预热着色器——\n"
-                          + "首次进图会重新编译着色器，出现卡顿 / 掉帧属正常现象，多跑两图即恢复。",
+                          + "请等待预热完成；初次加载可能需要重新编译着色器。",
                 CloseButtonText = "知道了",
                 DefaultButton = ContentDialogButton.Primary,
             }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);

@@ -26,6 +26,7 @@ public static class BackendCommands
     public const string GpuDriverLock = "gpu.driver.lock";
     public const string GpuShaderCacheApply = "gpu.shader-cache.apply";
     public const string SystemShaderRecoveryClean = "system.shader.recovery-clean";
+    public const string SystemPendulumGlobalConfigure = "system.pendulum.global.configure";
     public const string SystemTimerRecover = "system.timer.recover";
     public const string GpuReconcile = "gpu.reconcile";
     public const string GpuRecover = "gpu.recover";
@@ -36,6 +37,8 @@ public static class BackendCommands
     public const string RuntimeFileUseClose = "runtime.file-use.close";
     public const string RuntimeHighFpsPreview = "runtime.high-fps.preview";
     public const string RuntimeHighFpsRepair = "runtime.high-fps.repair";
+    public const string RuntimeNonCppPreview = "runtime.non-cpp.preview";
+    public const string RuntimeNonCppRepair = "runtime.non-cpp.repair";
     public const string Vc14Scan = "runtime.vc14.scan";
     public const string Vc14Preview = "runtime.vc14.preview";
     public const string Vc14Repair = "runtime.vc14.repair";
@@ -72,6 +75,7 @@ public static class BackendCommands
     public const string CpuFrameMonitorStop = "cpuframe.monitor.stop";
     public const string CpuFramePriorityApply = "cpuframe.priority.apply";
     public const string CpuFrameAffinityApply = "cpuframe.affinity.apply";
+    // 已迁移到进程管理后端：仅保留旧标识供历史未确认记录核对，不在 CPU/帧格白名单中。
     public const string CpuFrameCcdApply = "cpuframe.ccd.apply";
     public const string CpuFrameCcdRevert = "cpuframe.ccd.revert";
     public const string CpuFrameSingleCcdApply = "cpuframe.single-ccd.apply";
@@ -80,11 +84,9 @@ public static class BackendCommands
     public const string CpuFrameDwmRestart = "cpuframe.dwm.restart";
     public const string CpuFramePowerLock = "cpuframe.power.lock";
     public const string CpuFramePowerUnlock = "cpuframe.power.unlock";
-    public const string CpuFrameTimerApply = "cpuframe.timer.apply";
-    public const string CpuFrameTimerRestore = "cpuframe.timer.restore";
     public const string CpuFrameTweaksApply = "cpuframe.tweaks.apply";
     public const string CpuFrameTweaksRevert = "cpuframe.tweaks.revert";
-    public const string CpuFrameBoostApply = "cpuframe.boost.apply";
+    public const string CpuFrameGamePowerApply = "cpuframe.gamepower.apply";
     public const string CpuFrameMemoryClean = "cpuframe.memory.clean";
     public const string CpuFrameTopology = "cpuframe.topology";
     public const string CpuFrameAffinityCheck = "cpuframe.affinity.check";
@@ -117,6 +119,15 @@ public static class BackendCommands
     public const string ProcmanResponsivenessConfig = "procman.responsiveness.config";
     public const string ProcmanResponsivenessEvents = "procman.responsiveness.events";
     public const string ProcmanNativeProbe = "procman.native.probe";
+    // 单/双 CCD 调度（原 CPU/帧格后端，现由进程管理后端执行）
+    public const string ProcmanCcdApply = "procman.ccd.apply";
+    public const string ProcmanCcdRevert = "procman.ccd.revert";
+    public const string ProcmanSingleCcdApply = "procman.single-ccd.apply";
+    public const string ProcmanSingleCcdRevert = "procman.single-ccd.revert";
+    // 钟摆计划（独立功能，仅 Windows 11）：全局锁定系统最佳计时器分辨率
+    public const string ProcmanClockApply = "procman.clock.apply";
+    public const string ProcmanClockRelease = "procman.clock.release";
+    public const string ProcmanClockScan = "procman.clock.scan";
 
     // ---- 系统维护（模块 system）----
     public const string SystemCleanupScan = "system.cleanup.scan";
@@ -143,6 +154,8 @@ public static class BackendCommands
     public const string SystemShaderStatus = "system.shader.status";
     public const string SystemShaderDiagnose = "system.shader.diagnose";
     public const string SystemShaderClear = "system.shader.clear-cache";
+    public const string SystemGameRecordingStatus = "system.game-recording.status";
+    public const string SystemGameRecordingChange = "system.game-recording.change";
     public const string SystemPagefileStatus = "system.pagefile.status";
     public const string SystemPagefileSet = "system.pagefile.set";
     public const string SystemPagefileRestoreAuto = "system.pagefile.restore-auto";
@@ -172,7 +185,6 @@ public static class BackendCommands
     public const string SystemProcessesKill = "system.processes.kill";
     public const string SystemProcessesTrim = "system.processes.trim";
 
-    // ---- 着色器卡顿检测（模块 shaderstutter；PresentMon 服务只读采集，不写系统）----
 
     public const string ShaderKillerCapabilities = "shaderkiller.capabilities";
     public const string ShaderKillerScan = "shaderkiller.scan";
@@ -262,6 +274,8 @@ public static class BackendModules
                     [BackendCommands.RuntimeFileUseClose] = TwoMinutes,
                     [BackendCommands.RuntimeHighFpsPreview] = TimeSpan.FromMinutes(5),
                     [BackendCommands.RuntimeHighFpsRepair] = TimeSpan.FromMinutes(150),
+                    [BackendCommands.RuntimeNonCppPreview] = FiveMinutes,
+                    [BackendCommands.RuntimeNonCppRepair] = TimeSpan.FromMinutes(30),
                     [BackendCommands.Vc14Scan] = TwoMinutes,
                     [BackendCommands.Vc14Preview] = TwoMinutes,
                     [BackendCommands.Vc14Repair] = TimeSpan.FromMinutes(42),
@@ -287,19 +301,13 @@ public static class BackendModules
                     [BackendCommands.CpuFrameMonitorStop] = TwoMinutes,
                     [BackendCommands.CpuFramePriorityApply] = TwoMinutes,
                     [BackendCommands.CpuFrameAffinityApply] = TwoMinutes,
-                    [BackendCommands.CpuFrameCcdApply] = TwoMinutes,
-                    [BackendCommands.CpuFrameCcdRevert] = TwoMinutes,
-                    [BackendCommands.CpuFrameSingleCcdApply] = TwoMinutes,
-                    [BackendCommands.CpuFrameSingleCcdRevert] = TwoMinutes,
                     [BackendCommands.CpuFrameRestore] = TwoMinutes,
                     [BackendCommands.CpuFrameDwmRestart] = TwoMinutes,
                     [BackendCommands.CpuFramePowerLock] = TwoMinutes,
                     [BackendCommands.CpuFramePowerUnlock] = TwoMinutes,
-                    [BackendCommands.CpuFrameTimerApply] = TwoMinutes,
-                    [BackendCommands.CpuFrameTimerRestore] = TwoMinutes,
                     [BackendCommands.CpuFrameTweaksApply] = FiveMinutes,
                     [BackendCommands.CpuFrameTweaksRevert] = FiveMinutes,
-                    [BackendCommands.CpuFrameBoostApply] = TwoMinutes,
+                    [BackendCommands.CpuFrameGamePowerApply] = TwoMinutes,
                     [BackendCommands.CpuFrameMemoryClean] = TwoMinutes,
                     [BackendCommands.CpuFrameTopology] = TwoMinutes,
                     [BackendCommands.CpuFrameAffinityCheck] = TwoMinutes,
@@ -337,6 +345,13 @@ public static class BackendModules
                     [BackendCommands.ProcmanBackgroundSave] = TwoMinutes,
                     [BackendCommands.ProcmanFrameBackgroundSync] = TwoMinutes,
                     [BackendCommands.ProcmanNativeProbe] = TwoMinutes,
+                    [BackendCommands.ProcmanCcdApply] = TwoMinutes,
+                    [BackendCommands.ProcmanCcdRevert] = TwoMinutes,
+                    [BackendCommands.ProcmanSingleCcdApply] = TwoMinutes,
+                    [BackendCommands.ProcmanSingleCcdRevert] = TwoMinutes,
+                    [BackendCommands.ProcmanClockApply] = TwoMinutes,
+                    [BackendCommands.ProcmanClockRelease] = TwoMinutes,
+                    [BackendCommands.ProcmanClockScan] = FifteenMinutes,
                 }, TwoMinutes),
 
             [System] = Make(System, "系统维护后端", "DeltaNFD.Backend.SystemMaintenance.exe",
@@ -367,7 +382,10 @@ public static class BackendModules
                     [BackendCommands.SystemShaderDiagnose] = TwoMinutes,
                     [BackendCommands.SystemShaderClear] = FiveMinutes,
                     [BackendCommands.SystemShaderRecoveryClean] = FiveMinutes,
+                    [BackendCommands.SystemGameRecordingStatus] = TwoMinutes,
+                    [BackendCommands.SystemGameRecordingChange] = FiveMinutes,
                     [BackendCommands.SystemTimerRecover] = FiveMinutes,
+                    [BackendCommands.SystemPendulumGlobalConfigure] = TwoMinutes,
                     [BackendCommands.SystemPagefileStatus] = TwoMinutes,
                     [BackendCommands.SystemPagefileSet] = FiveMinutes,
                     [BackendCommands.SystemPagefileRestoreAuto] = FiveMinutes,
@@ -433,6 +451,7 @@ public static class BackendModules
         BackendCommands.RuntimeStatus, BackendCommands.RuntimeReconcile, BackendCommands.Vc14Scan, BackendCommands.Vc14Preview,
         BackendCommands.Vc14ForceReplacePreview,
         BackendCommands.RuntimeHighFpsPreview, BackendCommands.RuntimeFileUseScan,
+        BackendCommands.RuntimeNonCppPreview,
                 BackendCommands.CpuFrameStatus, BackendCommands.CpuFrameReconcile,
         BackendCommands.CpuFrameTopology, BackendCommands.CpuFrameAffinityCheck,
         BackendCommands.CpuFrameAffinityPending, BackendCommands.CpuFrameMemoryLimitDetect,
@@ -441,6 +460,7 @@ public static class BackendModules
         BackendCommands.ProcmanDetail, BackendCommands.ProcmanCapability,
         BackendCommands.ProcmanCpuTopology, BackendCommands.ProcmanReconcile,
         BackendCommands.ProcmanNativeProbe,
+        BackendCommands.ProcmanClockScan,
         BackendCommands.ProcmanRulesList,
         BackendCommands.RuntimeSafeUninstallPreview,
         BackendCommands.SystemCleanupScan, BackendCommands.SystemTweaksStatus,
@@ -448,6 +468,7 @@ public static class BackendModules
         BackendCommands.SystemAdvancedStatus, BackendCommands.SystemPowerSchemes,
         BackendCommands.SystemPowerHibernateGet, BackendCommands.SystemPowerHeteroList,
         BackendCommands.SystemShaderStatus, BackendCommands.SystemShaderDiagnose,
+        BackendCommands.SystemGameRecordingStatus,
         BackendCommands.SystemPagefileStatus, BackendCommands.SystemReconcile,
         // T3：扩展优化库/Defender/内存的只读命令
         BackendCommands.SystemBxStatus, BackendCommands.SystemBxGearInfo,
@@ -456,7 +477,6 @@ public static class BackendModules
         BackendCommands.SystemDefenderPreflight, BackendCommands.SystemDefenderProtectionState,
         BackendCommands.SystemMemoryStatus,
         BackendCommands.SystemProcessesScan,
-        // 着色器卡顿检测：只读 PresentMon 服务/写自身会话目录，不修改系统状态。
     };
 
     public static bool IsReadOnly(string moduleId, string command) =>
@@ -485,7 +505,8 @@ public static class BackendModules
     /// <summary>这些成功的静态优化可在退出后保留，原值备份不是未确认事务。</summary>
     public static bool RetainsStaticBackup(string moduleId, string command) => moduleId == System && command is
         BackendCommands.SystemBxApply or BackendCommands.SystemBxGearApply or BackendCommands.SystemBxServiceGroupApply
-        or BackendCommands.SystemPowerIntelPcores or BackendCommands.SystemTimerRecover;
+        or BackendCommands.SystemPowerIntelPcores or BackendCommands.SystemTimerRecover or BackendCommands.SystemPendulumGlobalConfigure
+        or BackendCommands.SystemGameRecordingChange;
 
     /// <summary>公开只读集合（只读命令的负向校验用）。</summary>
     public static IReadOnlySet<string> ReadOnly => ReadOnlyCommands;

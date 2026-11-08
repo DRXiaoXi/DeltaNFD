@@ -8,11 +8,11 @@ internal sealed class RuntimeCppOverwriteEnvironment(RuntimeRepairDiagnostics di
 {
     private static string CppRoot => Path.Combine(BackendEnvironment.AssetsRoot, "RuntimeCppOfficial");
     internal static void VerifyCppPayload(string root, CancellationToken token, bool verifyHashes) => OfficialCppCatalog.VerifyAll(root, token);
-    public Task<RuntimeStepResult> RepairCppAsync(RuntimeRepairStep step, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
+    public Task<RuntimeStepResult> RepairCppAsync(RuntimeRepairStep step, TimeSpan timeout, IProgress<string>? progress, CancellationToken token, string? expectedPlanFingerprint = null)
     {
         var package = OfficialCppCatalog.Packages.Single(p => p.Id == step.Id && p.Exe == step.RelativeFile);
-        return new OfficialCppInstaller(new OfficialCppEnvironment(CppRoot), diagnostics)
-            .RunAsync(package, false, timeout, progress, token);
+        return new CppReinstaller(new CppReinstallEnvironment(CppRoot, diagnostics), diagnostics)
+            .RunAsync(package, timeout, progress, token, expectedPlanFingerprint);
     }
     internal static bool CanRetainRelatedPackage(RuntimeMsiPackage source, RuntimeMsiPackage installed) =>
         Guid.TryParse(source.UpgradeCode, out var family) && Guid.TryParse(installed.UpgradeCode, out var other) && family == other

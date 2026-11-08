@@ -98,9 +98,6 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
     /// <summary>下拉选项填充期间的程序化 SelectionChanged 不写回服务。</summary>
     private bool _suppressPowerTargetSelection;
 
-    /// <summary>加速系统响应模式子开关可用性：帧格未激活 && 总开关已开。</summary>
-    public bool SubTogglesEditable => FrameSrv.FeaturesEditable && FrameSrv.ResponseBoostEnabled;
-
     /// <summary>前台加速响应子开关可用性：帧格未激活 && 总开关已开。</summary>
     public bool ForegroundSubTogglesEditable => FrameSrv.FeaturesEditable && FrameSrv.ForegroundBoostEnabled;
 
@@ -117,18 +114,40 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
     public bool LaptopExcludedBadgeVisible => FrameSrv.IsLaptopChassis;
 
     public string DwmStatusText => FrameSrv.DwmStatusText;
-    public string TimerStatusText => FrameSrv.TimerStatusText;
-    public string ResponseStatusText => FrameFeatureState.Describe(FrameSrv.ResponseBoostEnabled,
-        FrameSrv.ResponseBoostTimerEnabled || FrameSrv.GamePowerThrottlingDisabled,
-        FrameSrv.FrameModeEnabled);
-    public string GamePowerStatusText => FrameSrv.GamePowerHasError ? FrameSrv.GamePowerStatusText : FrameSrv.FrameModeActive && FrameSrv.ResponseBoostEnabled && FrameSrv.GamePowerThrottlingDisabled
-        ? (string.IsNullOrWhiteSpace(FrameSrv.GamePowerStatusText) ? "正在等待后端核对" : FrameSrv.GamePowerStatusText)
-        : FrameFeatureState.Describe(FrameSrv.ResponseBoostEnabled, FrameSrv.GamePowerThrottlingDisabled, FrameSrv.FrameModeEnabled);
+    public string PowerLockHelpText => FrameSrv.PowerPlanLockText
+        + "\n\n亮度相关设置保留用户调整；其他受保护计划内容被改动时会按快照还原。需要保留其他修改时，请先关闭锁定或停用帧格。";
+    public string GamePriorityStatusText => FrameSrv.GamePriorityStatusText;
+    public bool GamePriorityOptionsEditable => FrameSrv.FeaturesEditable && FrameSrv.GameProcessPriorityEnabled;
+    private static readonly FrameCpuPriority[] CpuPriorityChoices = [FrameCpuPriority.RealTime, FrameCpuPriority.High, FrameCpuPriority.AboveNormal, FrameCpuPriority.Normal, FrameCpuPriority.BelowNormal, FrameCpuPriority.Idle];
+    private static readonly FrameIoPriority[] IoPriorityChoices = [FrameIoPriority.High, FrameIoPriority.Normal, FrameIoPriority.Low, FrameIoPriority.VeryLow];
+    private static readonly FrameMemoryPriority[] MemoryPriorityChoices = [FrameMemoryPriority.Normal, FrameMemoryPriority.BelowNormal, FrameMemoryPriority.Medium, FrameMemoryPriority.Low, FrameMemoryPriority.VeryLow];
+    public int GameCpuPriorityIndex => Array.IndexOf(CpuPriorityChoices, FrameSrv.GameCpuPriority);
+    public int GameIoPriorityIndex => Array.IndexOf(IoPriorityChoices, FrameSrv.GameIoPriority);
+    public int GameMemoryPriorityIndex => Array.IndexOf(MemoryPriorityChoices, FrameSrv.GameMemoryPriority);
+    private void GamePrioritySelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded || !GamePriorityOptionsEditable || sender is not ComboBox { IsLoaded: true } box) return;
+        var index = box.SelectedIndex;
+        if (box.Tag as string == "cpu" && index >= 0 && index < CpuPriorityChoices.Length && index != GameCpuPriorityIndex) FrameSrv.GameCpuPriority = CpuPriorityChoices[index];
+        else if (box.Tag as string == "io" && index >= 0 && index < IoPriorityChoices.Length && index != GameIoPriorityIndex) FrameSrv.GameIoPriority = IoPriorityChoices[index];
+        else if (box.Tag as string == "memory" && index >= 0 && index < MemoryPriorityChoices.Length && index != GameMemoryPriorityIndex) FrameSrv.GameMemoryPriority = MemoryPriorityChoices[index];
+    }
+    public string GamePowerStatusText => FrameSrv.GamePowerHasError ? FrameSrv.GamePowerStatusText
+        : FrameSrv.FrameModeActive && FrameSrv.GamePowerThrottlingDisabled
+            ? (string.IsNullOrWhiteSpace(FrameSrv.GamePowerStatusText) ? "正在等待后端核对" : FrameSrv.GamePowerStatusText)
+            : FrameSrv.GamePowerThrottlingDisabled ? "已选择 · 开启一键帧格模式后生效" : "未启用";
     public bool GamePowerSelected
     {
-        get => FrameFeatureState.IsSelected(FrameSrv.ResponseBoostEnabled, FrameSrv.GamePowerThrottlingDisabled);
-        set { if (SubTogglesEditable) FrameSrv.GamePowerThrottlingDisabled = value; }
+        get => FrameSrv.GamePowerThrottlingDisabled;
+        set { if (FrameSrv.FeaturesEditable) FrameSrv.GamePowerThrottlingDisabled = value; }
     }
+    public string GameTimerIgnoreStatusText => FrameSrv.GameTimerIgnoreStatusText;
+    public bool GameTimerIgnoreSelected
+    {
+        get => FrameSrv.GameTimerIgnoreEnabled;
+        set { if (GameTimerIgnoreEditable) FrameSrv.GameTimerIgnoreEnabled = value; }
+    }
+    public bool GameTimerIgnoreEditable => FrameSrv.FeaturesEditable;
     public string ForegroundStatusText => FrameFeatureState.Describe(FrameSrv.ForegroundBoostEnabled,
         FrameSrv.ForegroundResponsivenessEnabled || FrameSrv.ForegroundPriorityEnabled, FrameSrv.FrameModeEnabled);
     public string PowerSaveStatusText => FrameFeatureState.Describe(FrameSrv.PowerSaveLatencyEnabled,
@@ -136,11 +155,6 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
         FrameSrv.FrameModeEnabled);
 
     // 绑定回写可能由界面刷新触发；父功能关闭或帧格激活时不覆盖保存的子选项。
-    public bool TimerSelected
-    {
-        get => FrameFeatureState.IsSelected(FrameSrv.ResponseBoostEnabled, FrameSrv.ResponseBoostTimerEnabled);
-        set { if (SubTogglesEditable) FrameSrv.ResponseBoostTimerEnabled = value; }
-    }
     public bool ResponsivenessSelected
     {
         get => FrameFeatureState.IsSelected(FrameSrv.ForegroundBoostEnabled, FrameSrv.ForegroundResponsivenessEnabled);
@@ -169,11 +183,13 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
 
     private static readonly string[] FeaturePresentationProperties =
     {
-        nameof(DwmStatusText), nameof(ResponseStatusText), nameof(ForegroundStatusText), nameof(PowerSaveStatusText),
-        nameof(TimerSelected), nameof(TimerStatusText), nameof(GamePowerSelected), nameof(GamePowerStatusText),
+        nameof(DwmStatusText), nameof(PowerLockHelpText), nameof(ForegroundStatusText), nameof(PowerSaveStatusText),
+        nameof(GamePowerSelected), nameof(GamePowerStatusText),
+        nameof(GameTimerIgnoreSelected), nameof(GameTimerIgnoreStatusText), nameof(GameTimerIgnoreEditable),
+        nameof(GamePriorityStatusText), nameof(GamePriorityOptionsEditable), nameof(GameCpuPriorityIndex), nameof(GameIoPriorityIndex), nameof(GameMemoryPriorityIndex),
         nameof(ResponsivenessSelected), nameof(PrioritySelected), nameof(NicSelected), nameof(UsbSelected),
         nameof(PcieSelected),
-        nameof(SubTogglesEditable), nameof(ForegroundSubTogglesEditable), nameof(PowerSaveSubTogglesEditable),
+        nameof(ForegroundSubTogglesEditable), nameof(PowerSaveSubTogglesEditable),
         nameof(LaptopExcludedSubTogglesEditable), nameof(LaptopExcludedBadgeVisible),
     };
 
@@ -210,9 +226,12 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
         }
 
         if (e.PropertyName is null or "" or nameof(IFrameService.FeaturesEditable) or nameof(IFrameService.FrameModeEnabled)
-            or nameof(IFrameService.IsGameRunning) or nameof(IFrameService.DwmRestartOnGameStart) or nameof(IFrameService.DwmStatusText) or nameof(IFrameService.TimerStatusText)
-            or nameof(IFrameService.ResponseBoostEnabled) or nameof(IFrameService.ResponseBoostTimerEnabled) or nameof(IFrameService.GamePowerThrottlingDisabled) or nameof(IFrameService.GamePowerStatusText) or nameof(IFrameService.GamePowerHasError)
+            or nameof(IFrameService.IsGameRunning) or nameof(IFrameService.DwmRestartOnGameStart) or nameof(IFrameService.DwmStatusText)
+            or nameof(IFrameService.GamePowerThrottlingDisabled) or nameof(IFrameService.GamePowerStatusText) or nameof(IFrameService.GamePowerHasError)
+            or nameof(IFrameService.GameTimerIgnoreEnabled) or nameof(IFrameService.GameTimerIgnoreStatusText) or nameof(IFrameService.GameTimerIgnoreSupported) or nameof(IFrameService.GameTimerIgnoreHasError)
+            or nameof(IFrameService.GameProcessPriorityEnabled) or nameof(IFrameService.GameCpuPriority) or nameof(IFrameService.GameIoPriority) or nameof(IFrameService.GameMemoryPriority) or nameof(IFrameService.GamePriorityStatusText)
             or nameof(IFrameService.ForegroundBoostEnabled) or nameof(IFrameService.ForegroundResponsivenessEnabled)
+            or nameof(IFrameService.PowerPlanLockText) or nameof(IFrameService.PowerPlanLockEnabled) or nameof(IFrameService.FramePowerLockTargetGuid)
             or nameof(IFrameService.ForegroundPriorityEnabled) or nameof(IFrameService.PowerSaveLatencyEnabled)
             or nameof(IFrameService.NicPowerSavingOffEnabled) or nameof(IFrameService.UsbSuspendOffEnabled)
             or nameof(IFrameService.PcieAspmOffEnabled) or nameof(IFrameService.IsLaptopChassis))

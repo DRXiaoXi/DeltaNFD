@@ -121,11 +121,41 @@ internal static class ProcmanMemoryModeChecks
         var views = Path.Combine(Directory.GetCurrentDirectory(), "src", "DeltaNFD", "Views");
         var xaml = XDocument.Load(Path.Combine(views, "ProcessPage.xaml")); XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var combo = xaml.Descendants().Single(n => (string?)n.Attribute(x + "Name") == "MemoryModeCombo");
-        Check(combo.Elements().Select(n => (string?)n.Attribute("Content")).SequenceEqual(new[] { "普通回收模式", "激进回收模式", "稳洲回收模式" }), "all three mode choices visible");
+        Check(combo.Elements().Where(n => n.Name.LocalName == "ComboBoxItem").Select(n => (string?)n.Attribute("Content")).SequenceEqual(new[] { "普通回收模式", "激进回收模式", "稳洲回收模式" }), "all three mode choices visible with a help-enabled header");
         var source = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "src/DeltaNFD.Execution/Execution/Procman/ProcmanMemory.cs"));
         Check(!source.Contains("_sampler.Sample()") && !source.Contains("MinimumTrimWorkingSet"), "production memory path has no CPU sampler or old size threshold");
         var background = File.ReadAllText(Path.Combine(Directory.GetCurrentDirectory(), "src/DeltaNFD.Execution/Execution/Procman/ProcmanBackground.cs"));
         Check(!background.Contains("_memoryBackoffUntil") && !background.Contains("_memoryReboundUntil"), "removed effectiveness/rebound backoff implementation");
+        // 规则快照：同一缓存只解析一次；返回副本不影响缓存；另一个实例写入后下一次读取可见。
+        var ruleStore = new ProcmanRuleStore(Path.Combine(root, "rules-cache.json"));
+        ruleStore.Save(new() { ExecutablePath = @"C:\Apps\cache.exe", Capability = "priority", Value = "Normal", Enabled = true });
+        var parsesBefore = ruleStore.ParseCount;
+        var copied = ruleStore.Load(); copied[0].Enabled = false;
+        for (var attempt = 0; attempt < 5; attempt++) ruleStore.Load();
+        Check(ruleStore.Load()[0].Enabled && ruleStore.ParseCount - parsesBefore <= 1, "rule snapshot parses once and returns copies");
+        new ProcmanRuleStore(Path.Combine(root, "rules-cache.json")).Save(new() { ExecutablePath = @"C:\Apps\cache-second.exe", Capability = "priority", Value = "Normal", Enabled = true });
+        Check(ruleStore.Load().Count == 2, "rule snapshot sees writes made through another store instance");
+        // 一轮候选枚举只读取一次规则快照，与进程数量无关。
+        engine.FrameModeActiveForTests = () => true; now = now.AddHours(1);
+        engine.MemoryIdentitiesForTests = () => identities; engine.MemoryReadForTests = _ => 1024;
+        engine.SaveBackgroundConfig(engine.BackgroundStatus().Config with { MemoryMode = ProcmanMemoryModes.Normal });
+        var parseBase = engine.RuleParseCountForTests;
+        preview = await engine.PreviewMemoryAsync();
+        Check(preview.Mode == ProcmanMemoryModes.Normal && engine.RuleParseCountForTests - parseBase <= 1, "one candidate pass reads the rule snapshot at most once for all processes");
+        // 全局回收的原生调用不得持有 _gate（手动与自动两条路径）。
+        var gate = typeof(ProcmanEngine).GetField("_gate", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(engine)!;
+        bool? heldInNative = null;
+        engine.MemoryGlobalTrimForTests = _ => { heldInNative = System.Threading.Monitor.IsEntered(gate); return new ProcmanMemoryTrimReport([], "fixture global"); };
+        engine.SaveBackgroundConfig(engine.BackgroundStatus().Config with { MemoryMode = ProcmanMemoryModes.Aggressive });
+        now = now.AddHours(1);
+        preview = await engine.PreviewMemoryAsync();
+        engine.TrimMemory(new() { PreviewId = preview.Id, Processes = [] });
+        Check(heldInNative == false, "manual global native call runs outside _gate");
+        now = now.AddHours(1); heldInNative = null;
+        engine.MemoryPressureForTests = () => 95; engine.MemoryPressureWindowForTests = TimeSpan.Zero;
+        engine.SaveBackgroundConfig(engine.BackgroundStatus().Config with { MemoryMode = ProcmanMemoryModes.Aggressive });
+        engine.AutomaticMemoryOnceForTests();
+        Check(heldInNative == false, "automatic global native call runs outside _gate");
         Console.WriteLine($"Memory modes: {count} checks passed; all global/all-process effects simulated, native global tested only with false guard. No real global cleanup.");
     }
 }

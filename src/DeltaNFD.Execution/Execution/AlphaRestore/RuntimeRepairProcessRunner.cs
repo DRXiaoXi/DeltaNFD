@@ -50,17 +50,7 @@ internal sealed class RuntimeRepairProcessRunner(string root, Func<bool>? busyPr
     private void Save(Activity record, bool create)
     {
         Directory.CreateDirectory(root);
-        if (create)
-        {
-            using var file = new FileStream(RecordPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
-            JsonSerializer.Serialize(file, record); file.Flush(true);
-        }
-        else
-        {
-            var temporary = RecordPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            try { File.WriteAllText(temporary, JsonSerializer.Serialize(record)); File.Move(temporary, RecordPath, true); }
-            finally { if (File.Exists(temporary)) File.Delete(temporary); }
-        }
+        RuntimeOperationJournal.Write(RecordPath, record, overwrite: !create);
     }
 
     internal async Task<RuntimeStepResult> RunAsync(ProcessStartInfo info, string label, TimeSpan timeout,

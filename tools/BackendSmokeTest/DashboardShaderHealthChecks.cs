@@ -72,6 +72,9 @@ internal static class DashboardShaderHealthChecks
         shader.Driver = ShaderDriverState.TooOld;
         nv.Report = Report("default", "inherited");
         Check((await DashboardShaderHealth.CheckAsync(shader, nv)).State == DashboardHealthState.Abnormal, "old driver remains abnormal with default cache");
+        shader.Driver = ShaderDriverState.ProblemSeries;
+        var retired = await DashboardShaderHealth.CheckAsync(shader, nv);
+        Check(retired.State == DashboardHealthState.Normal && !retired.Text.Contains("问题驱动"), "retired driver-series state no longer marks homepage abnormal");
         shader.Driver = ShaderDriverState.Ok;
         nv.Report = Report("custom", "custom");
         Check((await DashboardShaderHealth.CheckAsync(shader, nv)).OpenCacheRecovery, "override detected before refresh");
@@ -131,7 +134,7 @@ internal static class DashboardShaderHealthChecks
         }
         public IReadOnlyList<NvSettingDef> GetSettingCatalog() => throw new Exception("Unexpected catalog read");
         public Task<Dictionary<uint, (bool HasOverride, uint Value)>?> GetGameSettingValuesAsync() => throw new Exception("Unexpected settings read");
-        public Task<OperationResult> ApplyGameSettingsAsync(IReadOnlyList<(uint Id, uint? Value)> changes) => throw new Exception("Unexpected write");
+        public Task<OperationResult> ApplyGameSettingsAsync(IReadOnlyList<(uint Id, uint? Value)> changes, bool rebarWarningAccepted = false) => throw new Exception("Unexpected write");
         public Task<OperationResult> SetDrsFilesReadOnlyAsync(bool readOnly) => throw new Exception("Unexpected write");
         public Task<OperationResult> SetShaderCacheSizeAsync(string scope, uint? value) => throw new Exception("Unexpected write");
     }

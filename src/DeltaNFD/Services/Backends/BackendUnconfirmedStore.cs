@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Management;
 using System.Text.Json;
 using DeltaNFD.Backends;
 
@@ -16,6 +15,7 @@ namespace DeltaNFD.Services.Backends;
 internal static class BackendUnconfirmedStore
 {
     internal static Func<int, (IReadOnlyList<ChildProcess> Children, bool Ok)>? DescendantsForTests { get; set; }
+    internal static Func<IReadOnlyList<BackendProcessTree.Entry>>? ProcessSnapshotForTests { get; set; }
     internal const string PhaseIntent = "intent";
     internal const string PhaseUnconfirmed = "unconfirmed";
 
@@ -265,11 +265,13 @@ internal static class BackendUnconfirmedStore
             }
             return false;
         }
-        var (children, ok) = CaptureDescendants(e.Pid);
+        var (children, ok) = CaptureDescendants(e.Pid, e.StartTicks);
         if (!ok || children.Any(c => c.StartTicks <= 0)) return Unavailable();
         var known = new List<ChildProcess>();
         foreach (var child in e.Children ?? [])
         {
+            // 旧版仅按 PPID 枚举，可能记入早于后端启动的无关进程。保留原始证据后剔除确定不可能的身份。
+            if (child.StartTicks > 0 && child.StartTicks / 10 < e.StartTicks / 10) continue;
             if (child.StartTicks > 0) { known.Add(child); continue; }
             var observed = children.FirstOrDefault(c => c.Pid == child.Pid && c.Name == child.Name && c.StartTicks >= e.StartTicks);
             if (observed is not null) { known.Add(observed); continue; }
@@ -279,14 +281,14 @@ internal static class BackendUnconfirmedStore
             catch (ArgumentException) { }
             catch { return Unavailable(); }
         }
-        var combined = known.Concat(children.Where(c => c.StartTicks >= e.StartTicks))
+        var combined = known.Concat(children.Where(c => c.StartTicks / 10 >= e.StartTicks / 10))
             .DistinctBy(c => (c.Pid, c.StartTicks)).ToArray();
         // Also re-query known descendants; installers can outlive their original parent.
         foreach (var child in known)
         {
-            var (descendants, childOk) = CaptureDescendants(child.Pid);
+            var (descendants, childOk) = CaptureDescendants(child.Pid, child.StartTicks);
             if (!childOk || child.StartTicks <= 0 || descendants.Any(c => c.StartTicks <= 0)) return Unavailable();
-            combined = combined.Concat(descendants.Where(c => c.StartTicks >= child.StartTicks))
+            combined = combined.Concat(descendants.Where(c => c.StartTicks / 10 >= child.StartTicks / 10))
                 .DistinctBy(c => (c.Pid, c.StartTicks)).ToArray();
         }
         if (!ReadEvidence(path).SequenceEqual(bytes)) throw new IOException("记录已变化，请重新核对。");
@@ -443,7 +445,7 @@ internal static class BackendUnconfirmedStore
                 lines.Add(exited
                     ? "原后端已确认退出；这不代表修改已还原。"
                     : "进程仍在运行或身份无法确认，禁止解除阻塞。");
-                if (e.ChildrenUnknown) lines.Add("无法确认子进程（安装器）状态，继续保留阻塞。");
+                if (e.ChildrenUnknown) lines.Add("无法确认相关子进程状态，继续保留阻塞；请刷新并重新核对。");
 
                 result.Add(new Review(module, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)),
                     string.Join("\n", lines), exited && !e.ChildrenUnknown)
@@ -530,42 +532,20 @@ internal static class BackendUnconfirmedStore
         return destination;
     }
 
-    /// <summary>枚举某进程的全部子孙进程（含父进程已退出后仍挂在原 PPID 下的孤立安装器）。失败时 ok=false。</summary>
-    public static (IReadOnlyList<ChildProcess> Children, bool Ok) CaptureDescendants(int rootPid)
+    /// <summary>基于实例创建时间枚举子孙；允许真正的孤立安装器，排除 PPID 复用留下的无关分支。</summary>
+    public static (IReadOnlyList<ChildProcess> Children, bool Ok) CaptureDescendants(int rootPid, long rootStartTicks)
     {
         if (DescendantsForTests is { } capture) return capture(rootPid);
-        var children = new List<ChildProcess>();
+        if (rootPid <= 0 || rootStartTicks <= 0) return ([], false);
         try
         {
-            var frontier = new Queue<int>();
-            frontier.Enqueue(rootPid);
-            var seen = new HashSet<int> { rootPid };
-            while (frontier.Count > 0)
-            {
-                var parent = frontier.Dequeue();
-                using var searcher = new ManagementObjectSearcher(
-                    $"SELECT ProcessId, Name, ParentProcessId, CreationDate FROM Win32_Process WHERE ParentProcessId={parent}");
-                foreach (var item in searcher.Get())
-                {
-                    using var record = (ManagementBaseObject)item;
-                    var pid = Convert.ToInt32(record["ProcessId"]);
-                    if (!seen.Add(pid)) continue;
-                    var name = Convert.ToString(record["Name"]) ?? "";
-                    children.Add(new ChildProcess(name, pid, TryParseCreationTicks(Convert.ToString(record["CreationDate"]))));
-                    frontier.Enqueue(pid);
-                }
-            }
-            return (children, children.All(c => c.StartTicks > 0));
+            var snapshot = (ProcessSnapshotForTests ?? BackendNativeProcessSnapshot.Read)();
+            return BackendProcessTree.Capture(rootPid, rootStartTicks, snapshot);
         }
-        catch
+        catch (Exception ex)
         {
-            return (children, false);
+            Log.Warn("官方后端子进程快照未完成，保留核对阻塞：" + ex.GetType().Name + "；" + ex.Message);
+            return ([], false);
         }
-    }
-
-    private static long TryParseCreationTicks(string? wmiDate)
-    {
-        try { return ManagementDateTimeConverter.ToDateTime(wmiDate ?? "").ToUniversalTime().Ticks; }
-        catch { return 0; }
     }
 }

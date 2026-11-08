@@ -21,6 +21,20 @@ public sealed partial class ProcessPage : Page
 
     private readonly ObservableCollection<ProcessRowVm> _rows = [];
     private readonly ObservableCollection<CapabilityVm> _capabilities = [];
+    private string _detailPath = "";
+
+    // 两个只读展示的折叠区首次展开时才创建内容（x:Load=False）。
+    private void ShowDetailPath()
+    {
+        var path = DetailPathText ?? FindName(nameof(DetailPathText)) as TextBlock;
+        if (path is not null) path.Text = _detailPath;
+    }
+
+    private void ShowCapabilities()
+    {
+        var list = CapabilityList ?? FindName(nameof(CapabilityList)) as ItemsControl;
+        if (list is not null) list.ItemsSource ??= _capabilities;
+    }
     private readonly ObservableCollection<HeldChangeVm> _held = [];
     private readonly DispatcherTimer _timer = new() { Interval = PollInterval };
 
@@ -46,6 +60,7 @@ public sealed partial class ProcessPage : Page
         if (_memoryBusy || _propertyBusy) return;
         _memoryBusy = true;
         MemoryPreviewButton.IsEnabled = false;
+        MemoryTrimStatusText.Visibility = Visibility.Visible;
         MemoryTrimStatusText.Text = "正在核对内存回收模式与目标…";
         try
         {
@@ -150,9 +165,10 @@ public sealed partial class ProcessPage : Page
     public ProcessPage()
     {
         InitializeComponent();
+        DetailPathExpander.RegisterPropertyChangedCallback(Expander.IsExpandedProperty, (s, _) => { if (((Expander)s).IsExpanded) ShowDetailPath(); });
+        CapabilityExpander.RegisterPropertyChangedCallback(Expander.IsExpandedProperty, (s, _) => { if (((Expander)s).IsExpanded) ShowCapabilities(); });
         RebuildRuleValues();
         ProcessList.ItemsSource = _rows;
-        CapabilityList.ItemsSource = _capabilities;
         HeldList.ItemsSource = _held;
         _timer.Tick += (_, _) => { if (AutoRefreshToggle.IsChecked == true && IsProcessTab) _ = RefreshListAsync(preserveSelection: true); };
         Loaded += (_, _) =>
@@ -336,6 +352,7 @@ public sealed partial class ProcessPage : Page
         if (_suppressSelection) return;
         _selected = ProcessList.SelectedItem as ProcessRowVm;
         UpdateSelectedExclusion();
+        UpdateSelectedTimerIgnoreList();
         if (_selected is null) { ShowEmptyDetail(); return; }
         _lastAffinityValue = "";
         AlwaysTakeoverCheck.IsChecked = false;
@@ -375,7 +392,8 @@ public sealed partial class ProcessPage : Page
         }
 
         DetailNameText.Text = detail.Process.Name;
-        DetailPathText.Text = detail.Process.ExecutablePath;
+        _detailPath = detail.Process.ExecutablePath;
+        if (DetailPathText is not null) DetailPathText.Text = _detailPath;
         DetailMetaText.Text = $"PID {detail.Process.Pid} · 内存 {(detail.Process.WorkingSetMb is { } mb ? $"{mb:0.#} MB" : "未知")}"
             + (IsProtectedPath(detail.Process.ExecutablePath) ? " · 受保护（只读）" : "");
 
@@ -400,6 +418,7 @@ public sealed partial class ProcessPage : Page
         StableList.Apply(_held, heldRows, h => (h.Capability, h.OriginalValue, h.AppliedValue, h.Owner, h.AppliedUtc), (_, _) => { });
         HeldPanel.Visibility = _held.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         UpdateSelectedExclusion();
+        UpdateSelectedTimerIgnoreList();
 
         var protectedProcess = IsProtectedPath(detail.Process.ExecutablePath);
         ControlPanel.Visibility = protectedProcess ? Visibility.Collapsed : Visibility.Visible;
@@ -474,19 +493,7 @@ public sealed partial class ProcessPage : Page
         _processorToggles
             .Where(t => t.Tag is ProcmanGroupMask m && m.Group == group);
 
-    private static string CapabilityTitle(string capability) => capability switch
-    {
-        "priority" => "CPU 优先级",
-        "affinity" => "CPU 亲和性",
-        "cpuSet" => "CPU 集合",
-        "memoryPriority" => "内存优先级",
-        "ecoQos" => "效率模式（EcoQoS）",
-        "priorityBoost" => "动态优先级提升",
-        "ioPriority" => "I/O 优先级",
-        "gpuPriority" => "GPU 调度优先级",
-        "gpuPreference" => "GPU 首选项",
-        _ => capability,
-    };
+    private static string CapabilityTitle(string capability) => ProcessRuleChoices.Title(capability);
 
     private void ShowIdentityWarning(string message)
     {
@@ -814,26 +821,16 @@ public sealed partial class ProcessPage : Page
         if (RuleValueCombo is not null)
         {
             RebuildRuleValues();
-            if (_workspaceReady && IsGameRulesTab) LoadGameCapabilityRule();
         }
     }
 
     private void RebuildRuleValues(string? selectedValue = null)
     {
-        var mask = RuleCapabilityCombo.SelectedIndex is 3 or 4;
+        var mask = ProcessRuleChoices.UsesMask(RuleCapabilityCombo.SelectedIndex);
         RuleMaskPanel.Visibility = mask ? Visibility.Visible : Visibility.Collapsed;
         RuleValueCombo.Visibility = mask ? Visibility.Collapsed : Visibility.Visible;
         RuleValueCombo.Items.Clear();
-        (string Label, string Value)[] choices = RuleCapabilityCombo.SelectedIndex switch
-        {
-            0 => [("低", "Idle"), ("低于正常", "BelowNormal"), ("正常", "Normal"), ("高于正常", "AboveNormal"), ("高", "High")],
-            1 => [("开启效率模式", "true"), ("关闭效率模式", "false")],
-            2 => [("启用动态提升", "True"), ("关闭动态提升", "False")],
-            5 => [("很低", "VeryLow"), ("低", "Low"), ("正常", "Normal"), ("高", "High")],
-            6 => [("很低", "1"), ("低", "2"), ("中等", "3"), ("低于正常", "4"), ("正常（最高可用）", "5")],
-            7 => [("低", "0"), ("低于正常", "1"), ("正常", "2"), ("高于正常", "3"), ("高", "4")],
-            _ => [],
-        };
+        var choices = ProcessRuleChoices.ValuesFor(RuleCapabilityCombo.SelectedIndex);
         foreach (var choice in choices) RuleValueCombo.Items.Add(new ComboBoxItem { Content = choice.Label, Tag = choice.Value });
         if (mask)
         {
@@ -842,7 +839,7 @@ public sealed partial class ProcessPage : Page
             return;
         }
         var index = Array.FindIndex(choices, c => c.Value.Equals(selectedValue, StringComparison.OrdinalIgnoreCase));
-        if (index < 0) index = RuleCapabilityCombo.SelectedIndex switch { 0 or 5 or 7 => 2, 6 => 4, _ => 0 };
+        if (index < 0) index = ProcessRuleChoices.DefaultValueIndex(RuleCapabilityCombo.SelectedIndex);
         RuleValueCombo.SelectedIndex = choices.Length == 0 ? -1 : index;
     }
 
@@ -857,7 +854,7 @@ public sealed partial class ProcessPage : Page
             var rules = BackendJson.Deserialize<ProcmanRulesListResult>(data);
             _savedRules = rules.Rules;
             RuleListPanel.Children.Clear();
-            var visibleRules = rules.Rules.Where(r => !IsGameRulesTab || r.ExecutablePath.Equals(_ruleTargetPath, StringComparison.OrdinalIgnoreCase)).ToList();
+            var visibleRules = rules.Rules;
             foreach (var rule in visibleRules)
             {
                 var line = new Grid { ColumnSpacing = 12, Padding = new Thickness(0, 8, 0, 8) };
@@ -879,11 +876,10 @@ public sealed partial class ProcessPage : Page
                 if (!edit.IsEnabled) ToolTipService.SetToolTip(edit, ProcmanProcessProtection.AceReason);
                 edit.Click += (_, _) =>
                 {
-                    ProcessTabs.SelectedItem = IsGameRulesTab ? GameTab : RulesTab;
+                    ProcessTabs.SelectedItem = RulesTab;
                     SavedRuleEditor.Visibility = Visibility.Visible;
                     SetRuleTarget(rule.ExecutablePath);
-                    RuleCapabilityCombo.SelectedIndex = rule.Capability switch
-                    { "priority" => 0, "ecoQos" => 1, "priorityBoost" => 2, "affinity" => 3, "cpuSet" => 4, "ioPriority" => 5, "memoryPriority" => 6, "gpuPriority" => 7, _ => -1 };
+                    RuleCapabilityCombo.SelectedIndex = ProcessRuleChoices.IndexOf(rule.Capability);
                     RebuildRuleValues(rule.Value); RuleEnabledToggle.IsOn = rule.Enabled;
                     RuleAutoTakeoverCheck.IsChecked = rule.AutoTakeover;
                     RuleNoteText.Text = "已载入该规则，调整后点击保存。";
@@ -909,21 +905,16 @@ public sealed partial class ProcessPage : Page
 
     private async void SaveRule_Click(object sender, RoutedEventArgs e)
     {
-        if (_gameRulesLoading || _ruleSaveBusy) return;
-        if (IsGameRulesTab && !GameRulePathBox.Text.Trim().Trim('"').Equals(_ruleTargetPath, StringComparison.OrdinalIgnoreCase))
-        { RuleNoteText.Text = "请先点击“使用此路径”，再保存该主进程的规则。"; return; }
+        if (_ruleSaveBusy) return;
         if (_ruleTargetPath.Length == 0)
         {
             RuleNoteText.Text = "请先选择应用或编辑已有总是规则。";
             return;
         }
         if (ProcmanProcessProtection.IsAceProtected(_ruleTargetPath)) { RuleNoteText.Text = ProcmanProcessProtection.AceReason; return; }
-        var capability = RuleCapabilityCombo.SelectedIndex switch
-        {
-            0 => "priority", 1 => "ecoQos", 2 => "priorityBoost", 3 => "affinity", 4 => "cpuSet", 5 => "ioPriority", 6 => "memoryPriority", 7 => "gpuPriority", _ => null,
-        };
+        var capability = ProcessRuleChoices.CapabilityAt(RuleCapabilityCombo.SelectedIndex);
         if (capability is null) { RuleNoteText.Text = "请选择能力。"; return; }
-        var value = RuleCapabilityCombo.SelectedIndex is 3 or 4 ? RuleValueBox.Text.Trim()
+        var value = ProcessRuleChoices.UsesMask(RuleCapabilityCombo.SelectedIndex) ? RuleValueBox.Text.Trim()
             : (RuleValueCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "";
         if (value.Length == 0) { RuleNoteText.Text = "请选择规则设置，CPU 规则需至少选择一个处理器。"; return; }
 

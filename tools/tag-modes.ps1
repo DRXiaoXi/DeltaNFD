@@ -18,7 +18,7 @@ function Add-Mode([string]$KeyName, [string]$Mode) {
 
 # enable-type items (optimization = turning something ON)
 $enableKeys = @(
-    'HAGS', 'TimerResolution', 'HPETName', 'Win32PrioritySeparation',
+    'HAGS', 'HPETName', 'Win32PrioritySeparation',
     'SystemResponsiveness', 'svccombine', 'PagingSetttings', 'TSX',
     'TakeOwnership', 'ShowAllIconsInTaskBar', 'OldBatteryFlyout',
     'OldPhotoViewer', 'OldContextMenu', 'ContextMenuDelay'

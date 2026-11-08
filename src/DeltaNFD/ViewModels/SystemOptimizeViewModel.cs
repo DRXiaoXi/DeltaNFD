@@ -23,9 +23,36 @@ public partial class AdvancedTweakGroupVm : ObservableObject
         _ => "极高风险",
     };
 
-    [ObservableProperty] private bool isApplied;
-    [ObservableProperty] private string detailText = "";
-    [ObservableProperty] private bool isBusy;
+    private bool isApplied;
+    public bool IsApplied
+    {
+        get => isApplied;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(isApplied, value))
+            {
+                OnPropertyChanging(nameof(IsApplied));
+                isApplied = value;
+                OnIsAppliedChanged(value);
+                OnPropertyChanged(nameof(IsApplied));
+            }
+        }
+    }
+    partial void OnIsAppliedChanged(bool value);
+
+    private string detailText = "";
+    public string DetailText
+    {
+        get => detailText;
+        set => SetProperty(ref detailText, value);
+    }
+
+    private bool isBusy;
+    public bool IsBusy
+    {
+        get => isBusy;
+        set => SetProperty(ref isBusy, value);
+    }
 
     public string StateText => IsApplied ? "已应用" : "未应用";
 
@@ -47,16 +74,66 @@ public partial class SystemOptimizeViewModel : ObservableObject
     /// <summary>扩展优化库 子栏目（基本设置/安全性/自定义/服务组/精简/隐私/调整/任务/启用TSX/UP推荐）。</summary>
     public BxDbViewModel Bx { get; } = new();
 
-    [ObservableProperty] private bool isLoadingGroups;
-    [ObservableProperty] private string groupsStatusText = "正在读取分组状态…";
+    private bool isLoadingGroups;
+    public bool IsLoadingGroups
+    {
+        get => isLoadingGroups;
+        set => SetProperty(ref isLoadingGroups, value);
+    }
+
+    private string groupsStatusText = "正在读取分组状态…";
+    public string GroupsStatusText
+    {
+        get => groupsStatusText;
+        set => SetProperty(ref groupsStatusText, value);
+    }
 
     // ---------------- 虚拟内存（页面文件）设置 ----------------
 
-    [ObservableProperty] private string pagefileStatusText = "正在读取虚拟内存状态…";
-    [ObservableProperty] private string pagefileMinText = "16";
-    [ObservableProperty] private string pagefileMaxText = "32";
-    [ObservableProperty] private bool pagefileBusy;
-    [ObservableProperty] private int selectedDriveIndex;
+    private string pagefileStatusText = "正在读取虚拟内存状态…";
+    public string PagefileStatusText
+    {
+        get => pagefileStatusText;
+        set => SetProperty(ref pagefileStatusText, value);
+    }
+
+    private string pagefileMinText = "16";
+    public string PagefileMinText
+    {
+        get => pagefileMinText;
+        set => SetProperty(ref pagefileMinText, value);
+    }
+
+    private string pagefileMaxText = "32";
+    public string PagefileMaxText
+    {
+        get => pagefileMaxText;
+        set => SetProperty(ref pagefileMaxText, value);
+    }
+
+    private bool pagefileBusy;
+    public bool PagefileBusy
+    {
+        get => pagefileBusy;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(pagefileBusy, value))
+            {
+                OnPropertyChanging(nameof(PagefileBusy));
+                pagefileBusy = value;
+                OnPagefileBusyChanged(value);
+                OnPropertyChanged(nameof(PagefileBusy));
+            }
+        }
+    }
+    partial void OnPagefileBusyChanged(bool value);
+
+    private int selectedDriveIndex;
+    public int SelectedDriveIndex
+    {
+        get => selectedDriveIndex;
+        set => SetProperty(ref selectedDriveIndex, value);
+    }
 
     /// <summary>目标盘符下拉（固定磁盘，标签含 系统/游戏/介质标注）。</summary>
     public ObservableCollection<string> PagefileDriveChoices { get; } = new();
@@ -121,7 +198,22 @@ public partial class SystemOptimizeViewModel : ObservableObject
     }
 
     /// <summary>虚拟内存设置是否可操作。</summary>
-    [ObservableProperty] private bool gameReadOnly = true;
+    private bool gameReadOnly = true;
+    public bool GameReadOnly
+    {
+        get => gameReadOnly;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(gameReadOnly, value))
+            {
+                OnPropertyChanging(nameof(GameReadOnly));
+                gameReadOnly = value;
+                OnGameReadOnlyChanged(value);
+                OnPropertyChanged(nameof(GameReadOnly));
+            }
+        }
+    }
+    partial void OnGameReadOnlyChanged(bool value);
     partial void OnGameReadOnlyChanged(bool value) => OnPropertyChanged(nameof(PagefileApplyEnabled));
     public bool PagefileApplyEnabled => !GameReadOnly && !PagefileBusy;
 

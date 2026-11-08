@@ -1,8 +1,8 @@
 ; 三角帧不掉洲（Delta No FPS Drops / Delta NFD）安装脚本 · Inno Setup 6
 ; 编译：ISCC.exe DeltaNFD.iss
-; 产物：三角帧不掉洲_DeltaNFD_安装包_0.9305_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
+; 产物：三角帧不掉洲_DeltaNFD_安装包_0.9316_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
 ;
-; 当前源码版本：0.9305 / Beta0.93-RC3。内部更新数值保持递增；发布显示为 Beta0.93-RC3。
+; 当前源码版本：0.9316 / Beta0.931-RC3。内部更新数值保持递增；显示为 Beta0.931-RC3。
 ;
 ; 安装/卸载统一安全交接：先封锁新启动，通知主程序完成恢复并退出，再核对所有官方执行者。
 ; 卸载保留备份时，在删除程序前复制并校验完整数据；历史记录仍待核对时保留原目录。
@@ -14,8 +14,8 @@
 #define MyAppShortName "Delta NFD"
 #define MyAppEnglishName "Delta No FPS Drops"
 #define MyAppDisplayName "三角帧不掉洲（Delta NFD）"
-#define MyAppVersion "0.9305"
-#define MyAppDisplayVersion "Beta0.93-RC3"
+#define MyAppVersion "0.9316"
+#define MyAppDisplayVersion "Beta0.931-RC3"
 #define MyAppExeName "DeltaNFD.exe"
 ; 登录任务名（与 AppControlService / FrameService 创建的一致）
 #define AutoStartTaskName "DeltaNFD_AutoStart"
@@ -88,7 +88,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "DeploymentControl.ps1"; Flags: dontcopy
-Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "Assets\DotNetRepair\*,Assets\VCRedistRepair\*,Assets\VCRedistRepair_unpacked\*,Assets\DirectXRepair\*,Assets\VCRedist2015-2022-*.exe,Assets\VCRedistRepair.exe"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "Assets\DotNetRepair\*,Assets\VCRedistRepair\*,Assets\VCRedistRepair_unpacked\*,Assets\Vc14Baseline14.42\*,Assets\Vc14FileRepair14.42\*,Assets\VCRedist2015-2022-*.exe,Assets\VCRedistRepair.exe"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppShortcutName}"; Filename: "{app}\{#MyAppExeName}"
@@ -558,16 +558,17 @@ begin
         MsgBox('新程序已安装，但' + TaskWarning + '。请在任务计划程序中检查登录任务。', mbError, MB_OK);
     end;
     { Files and task migration are complete. Release before [Run] starts the new GUI. }
-    for RetiredIndex := 0 to 6 do
+    for RetiredIndex := 0 to 7 do
     begin
       case RetiredIndex of
         0: OldRuntimeDir := ExpandConstant('{app}\Assets\VCRedistRepair');
         1: OldRuntimeDir := ExpandConstant('{app}\Assets\VCRedistRepair_unpacked');
-        2: OldRuntimeDir := ExpandConstant('{app}\Assets\DirectXRepair');
+        2: OldRuntimeDir := ExpandConstant('{app}\Assets\Vc14Baseline14.42');
         3: OldRuntimeDir := ExpandConstant('{app}\Assets\VCRedist2015-2022-x64.exe');
         4: OldRuntimeDir := ExpandConstant('{app}\Assets\VCRedist2015-2022-x86.exe');
         5: OldRuntimeDir := ExpandConstant('{app}\Assets\VCRedistRepair.exe');
         6: OldRuntimeDir := ExpandConstant('{app}\Assets\DirectXRepair_unpacked');
+        7: OldRuntimeDir := ExpandConstant('{app}\Assets\Vc14FileRepair14.42');
       end;
       if FileExists(ExpandConstant('{userappdata}\Delta NFD\runtime-repair-active.json')) or
         FileExists(ExpandConstant('{userappdata}\Delta NFD\official-backend-unconfirmed\runtime.json')) then

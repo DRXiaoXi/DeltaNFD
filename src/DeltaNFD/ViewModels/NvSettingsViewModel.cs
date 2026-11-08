@@ -15,6 +15,11 @@ public partial class NvSettingRowVm : ObservableObject
 
     public string Description => Def.Description;
 
+    // DLSS 说明由标题后的帮助图标展示；不改变设置目录、选项和写入计划。
+    public bool IsDlss => Id is 0x10E41DF3 or 0x10E41DF5 or 0x10E41DF1 or 0x10308298;
+    public string TitleHelpText => IsDlss ? Description : "";
+    public bool ShowDescription => !IsDlss;
+
     public ObservableCollection<string> OptionLabels { get; } = new();
 
     /// <summary>百分比缩放模式（33–100% 滑条任意调节，如 DLSS 超分渲染比例）。</summary>
@@ -29,18 +34,68 @@ public partial class NvSettingRowVm : ObservableObject
     public double ScaleMax => Def.ScaleMax;
 
     /// <summary>驱动是否支持该设置（按读取结果推断；不支持时置灰显示说明）。</summary>
-    [ObservableProperty] private bool supported = true;
+    private bool supported = true;
+    public bool Supported
+    {
+        get => supported;
+        set => SetProperty(ref supported, value);
+    }
 
     /// <summary>当前覆盖值对应的选项下标（-1 = 无覆盖/默认，或覆盖值不在候选列表中）。</summary>
-    [ObservableProperty] private int selectedIndex = -1;
+    private int selectedIndex = -1;
+    public int SelectedIndex
+    {
+        get => selectedIndex;
+        set
+        {
+            if (!EqualityComparer<int>.Default.Equals(selectedIndex, value))
+            {
+                OnPropertyChanging(nameof(SelectedIndex));
+                selectedIndex = value;
+                OnSelectedIndexChanged(value);
+                OnPropertyChanged(nameof(SelectedIndex));
+            }
+        }
+    }
+    partial void OnSelectedIndexChanged(int value);
 
     // ---------------- 百分比缩放模式状态 ----------------
 
     /// <summary>是否覆盖渲染比例（关 = 默认，交还游戏内档位决定）。</summary>
-    [ObservableProperty] private bool scaleOverride;
+    private bool scaleOverride;
+    public bool ScaleOverride
+    {
+        get => scaleOverride;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(scaleOverride, value))
+            {
+                OnPropertyChanging(nameof(ScaleOverride));
+                scaleOverride = value;
+                OnScaleOverrideChanged(value);
+                OnPropertyChanged(nameof(ScaleOverride));
+            }
+        }
+    }
+    partial void OnScaleOverrideChanged(bool value);
 
     /// <summary>滑条所选百分比（应用时四舍五入取整并夹回范围）。</summary>
-    [ObservableProperty] private double selectedScale = 66;
+    private double selectedScale = 66;
+    public double SelectedScale
+    {
+        get => selectedScale;
+        set
+        {
+            if (!EqualityComparer<double>.Default.Equals(selectedScale, value))
+            {
+                OnPropertyChanging(nameof(SelectedScale));
+                selectedScale = value;
+                OnSelectedScaleChanged(value);
+                OnPropertyChanged(nameof(SelectedScale));
+            }
+        }
+    }
+    partial void OnSelectedScaleChanged(double value);
 
     /// <summary>缩放行当前显示文本（跟随滑条实时刷新）。</summary>
     public string ScaleText => $"{ScaleToInt()}%";
@@ -79,7 +134,12 @@ public partial class NvSettingRowVm : ObservableObject
     }
 
     /// <summary>当前系统真实状态文字。</summary>
-    [ObservableProperty] private string stateText = "读取中…";
+    private string stateText = "读取中…";
+    public string StateText
+    {
+        get => stateText;
+        set => SetProperty(ref stateText, value);
+    }
 
     private int _actualIndex = -1;
 
@@ -107,18 +167,169 @@ public partial class NvSettingsViewModel : ObservableObject
 
     public ObservableCollection<NvSettingRowVm> Rows { get; } = new();
 
-    [ObservableProperty] private bool isLoading;
-    [ObservableProperty] private bool isApplying;
-    [ObservableProperty] private string statusText = "正在检测 NVIDIA 环境…";
-    [ObservableProperty] private string gpuSummaryText = "";
-    [ObservableProperty] private bool isNvidia;
-    [ObservableProperty] private bool nvApiAvailable;
-    [ObservableProperty] private bool drsFilesLocked;
-    [ObservableProperty] private string lockStatusText = "";
-    [ObservableProperty] private bool lockBusy;
-    [ObservableProperty] private bool shaderCacheNonDefault;
-    [ObservableProperty] private bool shaderCacheCheckFailed;
-    [ObservableProperty] private string shaderCacheAdvice = "正在检测全局及三角洲着色器缓存大小…";
+    private bool isSelectingOption;
+    public bool IsSelectingOption
+    {
+        get => isSelectingOption;
+        private set { if (SetProperty(ref isSelectingOption, value)) RefreshFlags(); }
+    }
+    private readonly Dictionary<uint, uint?> _rebarAcknowledgements = [];
+    private uint? _displayedDriverVersion;
+    public bool CanEditOptions => EnvironmentReady && !IsLoading && !IsApplying && !IsSelectingOption;
+
+    private bool isLoading;
+    public bool IsLoading
+    {
+        get => isLoading;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(isLoading, value))
+            {
+                OnPropertyChanging(nameof(IsLoading));
+                isLoading = value;
+                OnIsLoadingChanged(value);
+                OnPropertyChanged(nameof(IsLoading));
+            }
+        }
+    }
+    partial void OnIsLoadingChanged(bool value);
+
+    private bool isApplying;
+    public bool IsApplying
+    {
+        get => isApplying;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(isApplying, value))
+            {
+                OnPropertyChanging(nameof(IsApplying));
+                isApplying = value;
+                OnIsApplyingChanged(value);
+                OnPropertyChanged(nameof(IsApplying));
+            }
+        }
+    }
+    partial void OnIsApplyingChanged(bool value);
+
+    private string statusText = "正在检测 NVIDIA 环境…";
+    public string StatusText
+    {
+        get => statusText;
+        set => SetProperty(ref statusText, value);
+    }
+
+    private string gpuSummaryText = "";
+    public string GpuSummaryText
+    {
+        get => gpuSummaryText;
+        set => SetProperty(ref gpuSummaryText, value);
+    }
+
+    private bool isNvidia;
+    public bool IsNvidia
+    {
+        get => isNvidia;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(isNvidia, value))
+            {
+                OnPropertyChanging(nameof(IsNvidia));
+                isNvidia = value;
+                OnIsNvidiaChanged(value);
+                OnPropertyChanged(nameof(IsNvidia));
+            }
+        }
+    }
+    partial void OnIsNvidiaChanged(bool value);
+
+    private bool nvApiAvailable;
+    public bool NvApiAvailable
+    {
+        get => nvApiAvailable;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(nvApiAvailable, value))
+            {
+                OnPropertyChanging(nameof(NvApiAvailable));
+                nvApiAvailable = value;
+                OnNvApiAvailableChanged(value);
+                OnPropertyChanged(nameof(NvApiAvailable));
+            }
+        }
+    }
+    partial void OnNvApiAvailableChanged(bool value);
+
+    private bool drsFilesLocked;
+    public bool DrsFilesLocked
+    {
+        get => drsFilesLocked;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(drsFilesLocked, value))
+            {
+                OnPropertyChanging(nameof(DrsFilesLocked));
+                drsFilesLocked = value;
+                OnDrsFilesLockedChanged(value);
+                OnPropertyChanged(nameof(DrsFilesLocked));
+            }
+        }
+    }
+    partial void OnDrsFilesLockedChanged(bool value);
+
+    private string lockStatusText = "";
+    public string LockStatusText
+    {
+        get => lockStatusText;
+        set => SetProperty(ref lockStatusText, value);
+    }
+
+    private bool lockBusy;
+    public bool LockBusy
+    {
+        get => lockBusy;
+        set => SetProperty(ref lockBusy, value);
+    }
+
+    private bool shaderCacheNonDefault;
+    public bool ShaderCacheNonDefault
+    {
+        get => shaderCacheNonDefault;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(shaderCacheNonDefault, value))
+            {
+                OnPropertyChanging(nameof(ShaderCacheNonDefault));
+                shaderCacheNonDefault = value;
+                OnShaderCacheNonDefaultChanged(value);
+                OnPropertyChanged(nameof(ShaderCacheNonDefault));
+            }
+        }
+    }
+    partial void OnShaderCacheNonDefaultChanged(bool value);
+
+    private bool shaderCacheCheckFailed;
+    public bool ShaderCacheCheckFailed
+    {
+        get => shaderCacheCheckFailed;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(shaderCacheCheckFailed, value))
+            {
+                OnPropertyChanging(nameof(ShaderCacheCheckFailed));
+                shaderCacheCheckFailed = value;
+                OnShaderCacheCheckFailedChanged(value);
+                OnPropertyChanged(nameof(ShaderCacheCheckFailed));
+            }
+        }
+    }
+    partial void OnShaderCacheCheckFailedChanged(bool value);
+
+    private string shaderCacheAdvice = "正在检测全局及三角洲着色器缓存大小…";
+    public string ShaderCacheAdvice
+    {
+        get => shaderCacheAdvice;
+        set => SetProperty(ref shaderCacheAdvice, value);
+    }
 
     public bool EnvironmentReady => IsNvidia && NvApiAvailable;
     public bool ShowShaderCacheStatus => EnvironmentReady && !ShaderCacheNonDefault && !ShaderCacheCheckFailed;
@@ -132,7 +343,7 @@ public partial class NvSettingsViewModel : ObservableObject
 
     public bool HasPendingChanges => PendingCount > 0;
 
-    public bool ApplyEnabled => !IsApplying && !IsLoading && EnvironmentReady && HasPendingChanges && !DrsFilesLocked;
+    public bool ApplyEnabled => CanEditOptions && HasPendingChanges && !DrsFilesLocked;
 
     public string ApplyButtonText => HasPendingChanges ? $"应用更改（{PendingCount}）" : "应用更改";
 
@@ -146,10 +357,56 @@ public partial class NvSettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(HasPendingChanges));
         OnPropertyChanged(nameof(ApplyEnabled));
         OnPropertyChanged(nameof(ApplyButtonText));
+        OnPropertyChanged(nameof(CanEditOptions));
     }
 
     /// <summary>行选项变化时由页面调用，刷新待应用计数。</summary>
     public void OnRowSelectionChanged() => RefreshFlags();
+
+    /// <summary>来自页面的用户选择。先确认再改待应用值；不写驱动配置。</summary>
+    public async Task<bool> SelectOptionAsync(NvSettingRowVm row, int index, Func<string, Task<bool>>? confirmRebar = null)
+    {
+        if (!CanEditOptions || !Rows.Contains(row) || index < 0 || index >= row.Def.Options.Length) return false;
+        if (index == row.SelectedIndex) return true;
+        IsSelectingOption = true;
+        try
+        {
+            var accepted = false;
+            var selected = row.Def.Options[index].Value;
+            if (row.Id == NvDriverSettingPolicy.RebarPolicyId
+                && NvDriverSettingPolicy.Validate([(row.Id, selected)], _displayedDriverVersion, true) is { } validation)
+            {
+                StatusText = validation;
+                return false;
+            }
+            if (NvDriverSettingPolicy.IsRebarEnable(row.Id, selected))
+            {
+                // 以页面已读取的版本立即提示；应用时仍重新读取实际版本，防止旧确认被复用。
+                if (NvDriverSettingPolicy.RebarWarning(_displayedDriverVersion, [(row.Id, selected)]) is { } warning)
+                {
+                    if (confirmRebar is null || !await confirmRebar(warning))
+                    {
+                        StatusText = "已取消开启 ReBAR，保留原选项；未写入驱动配置。";
+                        return false;
+                    }
+                    accepted = true;
+                }
+            }
+            if (NvDriverSettingPolicy.IsRebarSetting(row.Id))
+            {
+                _rebarAcknowledgements.Remove(row.Id);
+                if (accepted) _rebarAcknowledgements[row.Id] = _displayedDriverVersion;
+            }
+            row.SelectedIndex = index;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            StatusText = "未更改选项，请重试：" + ex.Message;
+            return false;
+        }
+        finally { IsSelectingOption = false; }
+    }
 
     public NvSettingsViewModel()
     {
@@ -169,12 +426,13 @@ public partial class NvSettingsViewModel : ObservableObject
 
     public async Task LoadAsync()
     {
-        if (IsLoading)
+        if (IsLoading || IsSelectingOption)
         {
             return;
         }
 
         IsLoading = true;
+        _rebarAcknowledgements.Clear();
         try
         {
             await LoadEnvironmentAsync();
@@ -220,6 +478,9 @@ public partial class NvSettingsViewModel : ObservableObject
 
             foreach (var row in Rows)
             {
+                var v2Unavailable = row.Id == NvDriverSettingPolicy.RebarPolicyId
+                    && !(_displayedDriverVersion >= NvDriverSettingPolicy.RebarMinimumDriver);
+                const string v2VersionNote = "v2 需确认的 616.56 及以上驱动；当前仅可恢复驱动默认。";
                 if (!values.TryGetValue(row.Id, out var state))
                 {
                     if (row.IsScale)
@@ -228,7 +489,7 @@ public partial class NvSettingsViewModel : ObservableObject
                     }
                     else
                     {
-                        row.SetActual(-1, "未知");
+                        row.SetActual(-1, v2Unavailable ? v2VersionNote : "未知");
                     }
 
                     continue;
@@ -270,29 +531,30 @@ public partial class NvSettingsViewModel : ObservableObject
                 string text;
                 if (!hasOverride)
                 {
-                    text = index >= 0
-                        ? $"当前：默认（生效值 {def.Options[index].Label}）"
-                        : "当前：默认（未覆盖）";
-                    index = Math.Max(index, 0); // 默认态选中「默认」档；生效值未知时选第一项
-                    // 生效值不在候选里且无覆盖：选 0（默认档）
+                    text = "当前：驱动默认（本游戏未覆盖此项）";
+                    index = 0; // 继承值只供说明，下拉必须停在「删除覆盖」，不能伪装成显式覆盖。
                 }
                 else
                 {
                     text = index >= 0
                         ? $"当前：已覆盖 → {def.Options[index].Label}"
-                        : $"当前：已覆盖 → 自定义值 0x{value:X}";
-                    if (index < 0)
-                    {
-                        index = 0;
-                    }
+                        : $"当前：未知或联动不一致的覆盖（0x{value:X}）；选择新值或恢复默认以处理";
                 }
 
-                row.SetActual(index, text);
+                row.SetActual(index, text + (v2Unavailable ? "\n" + v2VersionNote : ""));
             }
 
             StatusText = $"就绪 · 配置目标：{ServiceLocator.GameTarget.Current.DisplayName}（首次应用时自动创建独立配置）";
         }
-        catch (Exception ex) { StatusText = "驱动状态读取失败，请刷新重试：" + ex.Message; }
+        catch (Exception ex)
+        {
+            foreach (var row in Rows)
+            {
+                if (row.IsScale) row.SetActualScale(false, 0, "读取失败");
+                else row.SetActual(-1, "读取失败");
+            }
+            StatusText = "驱动状态读取失败，请刷新重试：" + ex.Message;
+        }
         finally
         {
             IsLoading = false;
@@ -305,6 +567,7 @@ public partial class NvSettingsViewModel : ObservableObject
         try { env = await _nv.GetEnvironmentAsync(); }
         catch
         {
+            _displayedDriverVersion = null;
             ShaderCacheNonDefault = false; ShaderCacheCheckFailed = true;
             ShaderCacheAdvice = "着色器缓存大小读取失败，无法确认全局及三角洲是否为驱动默认。请点「刷新状态」重试。";
             throw;
@@ -312,13 +575,14 @@ public partial class NvSettingsViewModel : ObservableObject
         IsNvidia = env.IsNvidia;
         NvApiAvailable = env.NvApiAvailable;
         DrsFilesLocked = env.DrsFilesLocked;
+        _displayedDriverVersion = env.DriverVersion;
         ShaderCacheNonDefault = env.ShaderCache?.HasNonDefault == true;
         ShaderCacheCheckFailed = env.IsNvidia && env.ShaderCache?.Complete != true && !ShaderCacheNonDefault;
         ShaderCacheAdvice = !env.IsNvidia ? "未检测到 NVIDIA 显卡，无需检查 N 卡着色器缓存大小。"
             : env.ShaderCache?.Advice ?? "后端未返回着色器缓存大小，无法确认是否为默认；请更新后端并刷新状态。";
 
         GpuSummaryText = env.IsNvidia
-            ? $"显卡：{env.GpuName} · NVAPI：{(env.NvApiAvailable ? "可用" : "不可用")}"
+            ? $"显卡：{env.GpuName} · 驱动：{NvDriverSettingPolicy.FormatDriver(env.DriverVersion)} · NVAPI：{(env.NvApiAvailable ? "可用" : "不可用")}"
             : "显卡：未检测到 NVIDIA 设备";
 
         LockStatusText = env.DrsFilesLocked
@@ -329,7 +593,7 @@ public partial class NvSettingsViewModel : ObservableObject
     }
 
     /// <summary>应用全部待更改项。</summary>
-    public async Task<OperationResult?> ApplyChangesAsync()
+    public async Task<OperationResult?> ApplyChangesAsync(Func<string, Task<bool>>? confirmRebar = null)
     {
         if (IsApplying || !ApplyEnabled)
         {
@@ -343,13 +607,38 @@ public partial class NvSettingsViewModel : ObservableObject
         }
 
         IsApplying = true;
+        var submitted = false;
         try
         {
             var changes = pending
                 .Select(r => (r.Id, Value: SelectedValueOf(r)))
                 .ToList();
 
-            var result = await _nv.ApplyGameSettingsAsync(changes);
+            var accepted = false;
+            if (changes.Any(c => NvDriverSettingPolicy.IsRebarEnable(c.Id, c.Value)
+                || c.Id == NvDriverSettingPolicy.RebarPolicyId && c.Value is not null))
+            {
+                // 应用时重新读取，不能依赖打开页面时缓存的版本。
+                var env = await _nv.GetEnvironmentAsync();
+                if (NvDriverSettingPolicy.Validate(changes, env.DriverVersion, true) is { } validation)
+                {
+                    StatusText = validation;
+                    return OperationResult.Fail(validation);
+                }
+                if (NvDriverSettingPolicy.RebarWarning(env.DriverVersion, changes) is { } warning)
+                {
+                    accepted = changes.Where(c => NvDriverSettingPolicy.IsRebarEnable(c.Id, c.Value))
+                        .All(c => _rebarAcknowledgements.TryGetValue(c.Id, out var acknowledgedDriver) && acknowledgedDriver == env.DriverVersion);
+                    if (!accepted && (confirmRebar is null || !await confirmRebar(warning)))
+                    {
+                        StatusText = "已取消应用；待更改项已保留。";
+                        return null;
+                    }
+                    accepted = true;
+                }
+            }
+            submitted = true;
+            var result = await _nv.ApplyGameSettingsAsync(changes, accepted);
             StatusText = result.Message;
             if (result.Success)
             {
@@ -358,6 +647,11 @@ public partial class NvSettingsViewModel : ObservableObject
             }
 
             return result;
+        }
+        catch (Exception ex)
+        {
+            StatusText = "未确认应用完成，请刷新核对：" + ex.Message;
+            return new OperationResult { Success = false, OutcomeUnknown = submitted, Message = StatusText };
         }
         finally
         {
@@ -379,13 +673,13 @@ public partial class NvSettingsViewModel : ObservableObject
         }
 
         var value = row.Def.Options[row.SelectedIndex].Value;
-        return value == 0 ? null : value; // 选中「默认」= 删除覆盖
+        return value; // null=删除覆盖；0=显式关闭/自适应/G-SYNC 等合法驱动值。
     }
 
     /// <summary>全部恢复默认（删除全部覆盖项，含联动总开关）。</summary>
     public async Task<OperationResult?> ResetAllAsync()
     {
-        if (IsApplying || !EnvironmentReady)
+        if (IsApplying || IsSelectingOption || !EnvironmentReady)
         {
             return null;
         }
@@ -397,6 +691,7 @@ public partial class NvSettingsViewModel : ObservableObject
             // 联动总开关一并清理
             changes.Add((0x10E41E01, null));
             changes.Add((0x10E41E03, null));
+            changes.AddRange(NvDriverSettingPolicy.RetiredManagedIds.Select(id => (id, (uint?)null)));
 
             var result = await _nv.ApplyGameSettingsAsync(changes);
             StatusText = result.Message;
@@ -416,7 +711,7 @@ public partial class NvSettingsViewModel : ObservableObject
     /// <summary>切换 nvdrsdb 只读锁定。</summary>
     public async Task<OperationResult?> SetLockAsync(bool readOnly)
     {
-        if (LockBusy)
+        if (LockBusy || IsSelectingOption)
         {
             return null;
         }

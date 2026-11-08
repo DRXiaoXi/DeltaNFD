@@ -7,10 +7,22 @@ namespace DeltaNFD.ViewModels;
 
 public partial class DashboardViewModel
 {
-    [ObservableProperty]
     private DashboardHealthState memoryHealthState = DashboardHealthState.Checking;
-    [ObservableProperty]
+    public DashboardHealthState MemoryHealthState
+    {
+        get => memoryHealthState;
+        set
+        {
+            if (EqualityComparer<DashboardHealthState>.Default.Equals(memoryHealthState, value)) return;
+            OnPropertyChanging(nameof(MemoryHealthState));
+            memoryHealthState = value;
+            OnMemoryHealthStateChanged(value);
+            OnPropertyChanged(nameof(MemoryHealthState));
+        }
+    }
+    partial void OnMemoryHealthStateChanged(DashboardHealthState value);
     private string memoryStatusText = "正在读取可用物理内存…";
+    public string MemoryStatusText { get => memoryStatusText; set => SetProperty(ref memoryStatusText, value); }
     private BackendCpuFrameService? _memoryHeartbeat;
     private DashboardMemoryObserver? _memoryObserver;
     private bool _memoryAttached;

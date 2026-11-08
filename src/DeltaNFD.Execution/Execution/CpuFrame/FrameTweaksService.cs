@@ -289,10 +289,12 @@ public sealed class FrameTweaksService
         try { snapshot = System.Text.Json.JsonSerializer.Deserialize<SchemeContentSnapshot>(bytes); }
         catch (System.Text.Json.JsonException) { return "电源内容快照损坏，原值无法完整确认"; }
         if (!ValidSnapshot(snapshot)) return "电源内容快照元数据或原值不完整";
+        var expectedSettings = snapshot!.Settings.Where(s => !IsUserBrightnessSetting(s)).ToArray();
+        if (expectedSettings.Length == 0) return null;
         var live = await QuerySchemeSettingsAsync(snapshot!.Scheme);
         if (live is null) return "无法读取快照所属计划（可能已删除或访问失败），未猜测恢复";
         var missing = new List<string>();
-        foreach (var expected in snapshot.Settings.Where(s => !live.Any(a => a.Subgroup == s.Subgroup && a.Setting == s.Setting)))
+        foreach (var expected in expectedSettings.Where(s => !live.Any(a => a.Subgroup == s.Subgroup && a.Setting == s.Setting)))
         {
             var direct = await QueryPlanSettingValuesAsync(snapshot.Scheme, expected.Subgroup, expected.Setting);
             if (!ValidPowerValue(direct.Ac) || !ValidPowerValue(direct.Dc)) missing.Add(expected.Setting);
@@ -376,7 +378,7 @@ public sealed class FrameTweaksService
     /// 由帧格「降低省电延迟」在帧格期间<b>临时</b>改写、退出帧格时还原的电源计划设置。
     /// 电源计划「内容锁定」的快照与差异校验都必须排除这些项：否则 30 秒守护会把帧格的
     /// 临时改写改回原值，而退出帧格时的还原又会和锁定互相覆盖 —— 两套机制互相打架。
-    /// 这是唯一的排除清单定义处（快照与守护差异校验都引用它）。
+    /// 这是帧格临时改写项的统一清单；亮度由下方独立规则排除。
     /// </summary>
     private static readonly (string Subgroup, string Setting)[] FrameManagedPowerSettings =
     [
@@ -390,6 +392,19 @@ public sealed class FrameTweaksService
             s.Subgroup.Equals(subgroup, StringComparison.OrdinalIgnoreCase) &&
             s.Setting.Equals(setting, StringComparison.OrdinalIgnoreCase) &&
             ((usb && s.Setting == UsbSuspendSetting) || (pcie && s.Setting == PcieAspmSetting)));
+
+    // Brightness is an interactive user setting, not a frame-performance invariant.
+    // Apply this exclusion both when creating snapshots and when reading old snapshots.
+    private const string DisplaySubgroup = "7516b95f-f776-4464-8c53-06167f40cc99";
+    private static readonly HashSet<string> UserBrightnessSettings = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "aded5e82-b909-4619-9949-f5d71dac0bcb", // Normal brightness.
+        "f1fbfde2-a960-4165-9f88-50667911ce96", // Dimmed brightness.
+        "fbd9aa66-9553-4097-ba44-ed6e9d65eab8", // Adaptive brightness.
+    };
+    private static bool IsUserBrightnessSetting(SchemeSettingEntry setting) =>
+        setting.Subgroup.Equals(DisplaySubgroup, StringComparison.OrdinalIgnoreCase)
+        && UserBrightnessSettings.Contains(setting.Setting);
 
     /// <summary>与 PowerService.HexValueRegex 同构：输出末尾两个 0x 值依次为交流/直流当前值（本地化安全）。</summary>
     private static readonly Regex PowerHexValueRegex = new("0x[0-9A-Fa-f]{1,8}", RegexOptions.Compiled);
@@ -732,8 +747,8 @@ public sealed class FrameTweaksService
     }
 
     /// <summary>
-    /// 快照指定电源计划的全部 AC/DC 设置（内容锁定的基准）。
-    /// 仅排除本轮实际启用的临时省电改写；未启用的 USB/PCIe 设置仍受内容保护。
+    /// 快照指定电源计划的非亮度 AC/DC 设置（内容锁定的基准）。
+    /// 同时排除本轮实际启用的临时省电改写；未启用的 USB/PCIe 设置仍受内容保护。
     /// </summary>
     public async Task<OperationResult> SnapshotPowerSchemeContentAsync(string schemeGuid, bool excludeUsb = false, bool excludePcie = false)
     {
@@ -744,7 +759,7 @@ public sealed class FrameTweaksService
             {
                 var existing = System.Text.Json.JsonSerializer.Deserialize<SchemeContentSnapshot>(await File.ReadAllTextAsync(SchemeContentSnapshotPath));
                 return ValidSnapshot(existing) && existing!.Scheme.Equals(schemeGuid, StringComparison.OrdinalIgnoreCase)
-                    ? OperationResult.Ok("沿用首次锁定的内容快照，未覆盖原始基准。")
+                    ? OperationResult.Ok("沿用首次锁定的内容快照，未覆盖原始基准；亮度相关设置不参与还原。")
                     : OperationResult.Fail("已有内容快照无效或属于其他计划，请先恢复；未覆盖旧记录。");
             }
             var settings = await QuerySchemeSettingsAsync(schemeGuid);
@@ -754,7 +769,7 @@ public sealed class FrameTweaksService
             }
 
             var kept = settings
-                .Where(s => !IsFrameManagedPowerSetting(s.Subgroup, s.Setting, excludeUsb, excludePcie))
+                .Where(s => !IsUserBrightnessSetting(s) && !IsFrameManagedPowerSetting(s.Subgroup, s.Setting, excludeUsb, excludePcie))
                 .ToList();
             var snapshot = new SchemeContentSnapshot { Scheme = schemeGuid, Settings = kept };
             if (!ValidSnapshot(snapshot)) return OperationResult.Fail("电源计划明细为空或不完整，未创建内容快照。");
@@ -763,7 +778,7 @@ public sealed class FrameTweaksService
             if (!ValidSnapshot(saved) || !saved!.Scheme.Equals(schemeGuid, StringComparison.OrdinalIgnoreCase))
                 return OperationResult.Fail("内容快照保存后校验失败，已保留记录且未覆盖。");
             Log.Info($"帧格·电源锁定：已快照计划 {schemeGuid} 的 {kept.Count} 项设置" +
-                $"（排除帧格临时改写项 {settings.Count - kept.Count} 项）");
+                $"（亮度相关设置不纳入；排除帧格临时改写项 {settings.Count - kept.Count} 项）");
             return OperationResult.Ok($"已快照 {kept.Count} 项设置");
         }
         catch (Exception ex)
@@ -795,6 +810,7 @@ public sealed class FrameTweaksService
 
     /// <summary>
     /// 把锁定的电源计划内容与快照比对，逐项自动还原被改动过的设置（内容守护）。
+    /// 新旧快照中的亮度相关项一律跳过，不写回、不直接查询、不参与复检。
     /// 返回明确成功/失败结果；缺失、无效或读写失败均保留快照，不冒充恢复成功。
     /// </summary>
     public async Task<OperationResult> VerifyAndRestorePowerSchemeContentAsync(string expectedSchemeGuid, CancellationToken cancellationToken = default)
@@ -814,6 +830,9 @@ public sealed class FrameTweaksService
             }
 
             cancellationToken.ThrowIfCancellationRequested();
+            var expectedSettings = snapshot.Settings.Where(s => !IsUserBrightnessSetting(s)).ToArray();
+            if (expectedSettings.Length == 0)
+                return OperationResult.Ok("旧快照仅含亮度相关设置，无需还原计划内容；当前亮度设置已保留。");
             var live = await QuerySchemeSettingsAsync(snapshot.Scheme);
             cancellationToken.ThrowIfCancellationRequested();
             if (live is null)
@@ -826,7 +845,7 @@ public sealed class FrameTweaksService
             var restored = new List<string>();
             var failures = new List<string>();
 
-            foreach (var expected in snapshot.Settings)
+            foreach (var expected in expectedSettings)
             {
                 if (!liveMap.TryGetValue(expected.Subgroup + "/" + expected.Setting, out var actual))
                 {
@@ -886,7 +905,7 @@ public sealed class FrameTweaksService
                 else
                 {
                     var checkMap = checkedSettings.ToDictionary(s => s.Subgroup + "/" + s.Setting, StringComparer.OrdinalIgnoreCase);
-                    foreach (var expected in snapshot.Settings)
+                    foreach (var expected in expectedSettings)
                     {
                         if (!checkMap.TryGetValue(expected.Subgroup + "/" + expected.Setting, out var actual))
                         {
@@ -987,6 +1006,12 @@ public sealed class FrameTweaksService
                 Dc = hexValues.Count >= 2 ? hexValues[^1] : null,
             });
         }
+
+        // Empty/unstructured output still fails. Brightness-only output is different:
+        // callers with a valid old brightness-only snapshot have nothing to restore.
+        if (settings.Count == 0) return null;
+        settings.RemoveAll(IsUserBrightnessSetting);
+        if (settings.Count == 0) return settings;
 
         if (_nativePowerReads)
             foreach (var entry in settings)

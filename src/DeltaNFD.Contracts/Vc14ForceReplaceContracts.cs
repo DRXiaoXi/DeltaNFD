@@ -37,7 +37,7 @@ public sealed record Vc14ForceReplacePreview(
     int AclRepairCount = 0,
     int LockedCount = 0)
 {
-    public Vc14Baseline Baseline { get; init; } = Vc14Baseline.V142;
+    public Vc14Baseline Baseline { get; init; } = Vc14Baseline.V144;
     public string Summary => CanRun
         ? $"目标 {PayloadVersion}：待替换 {ReplaceCount} 个，仅修复权限 {AclRepairCount} 个，已匹配 {SkipCount} 个"
             + (DowngradeCount > 0 ? $"，其中 {DowngradeCount} 个当前版本较新（将降级）" : "")
@@ -49,5 +49,5 @@ public sealed record Vc14ForceReplacePreview(
 public sealed class Vc14ForceReplaceArgs
 {
     public string Fingerprint { get; set; } = "";
-    public Vc14Baseline Baseline { get; set; } = Vc14Baseline.V142;
+    public Vc14Baseline Baseline { get; set; } = Vc14Baseline.V144;
 }

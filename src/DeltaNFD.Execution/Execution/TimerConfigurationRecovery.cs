@@ -10,7 +10,6 @@ internal interface ITimerRecoveryEnvironment
     TimerRecoveryStatus Read();
     void Save(TimerRecoveryRecord record);
     int DeleteValue(string name);
-    int EnableDevice(string id);
 }
 
 internal static class TimerRecoveryEngine
@@ -28,12 +27,10 @@ internal static class TimerRecoveryEngine
             if (!before.BcdReadable) return OperationResult.Fail("无法读取当前启动配置，未执行恢复。");
             if (string.IsNullOrWhiteSpace(args.Fingerprint) || args.Fingerprint!=before.Fingerprint)
                 return OperationResult.Fail("配置已变化，请刷新并重新确认恢复范围。");
-            if (args.RestoreDisabledDevices && !before.DevicesReadable) return OperationResult.Fail("无法确认设备状态，未执行恢复。");
-            var devices=args.RestoreDisabledDevices ? before.Devices.Where(d=>d.Disabled).ToArray() : [];
-            if (devices.Length>16 || devices.Any(d=>!TimerConfigurationInspection.IsHpetDevice(d.InstanceId)))
-                return OperationResult.Fail("设备范围不符合固定 HPET 规则，未执行恢复。");
+            if (args.RestoreDisabledDevices)
+                return OperationResult.Fail("HPET 设备检测与启用入口已移除，请刷新后只确认启动计时器恢复。");
             journal=new() { Before=before, Changed=before.PendingRestart };
-            env.Save(journal); // Durable before any boot or device write; failure aborts.
+            env.Save(journal); // Durable before any boot write; failure aborts.
             foreach (var name in new[] { "disabledynamictick", "useplatformtick" })
             {
                 token.ThrowIfCancellationRequested();
@@ -52,29 +49,12 @@ internal static class TimerRecoveryEngine
                 if (!after.BcdReadable || remaining.Length!=0) return Stop("启动项 "+name+" 尚未确认恢复（退出码 "+code+"）。",code<0);
                 journal.Steps.Add(name+" 已独立复检为不存在；退出码 "+code);env.Save(journal);
             }
-            foreach (var device in devices)
-            {
-                token.ThrowIfCancellationRequested();
-                if (env.Blocker() is { } guard) return Stop(guard);
-                var current=env.Read();
-                var target=current.Devices.SingleOrDefault(d=>d.InstanceId.Equals(device.InstanceId,StringComparison.OrdinalIgnoreCase));
-                if (!current.DevicesReadable || target is null) return Stop("设备身份或状态发生变化，未继续操作。");
-                if (!target.Disabled) { journal.Steps.Add(device.InstanceId+" 已不再禁用");env.Save(journal);continue; }
-                journal.Changed=true;env.Save(journal);
-                var code=env.EnableDevice(device.InstanceId);
-                var after=env.Read();
-                if (code<0) return Stop("设备恢复执行超时，结果尚未确认。",true);
-                if (!after.DevicesReadable || !after.Devices.Any(d=>d.InstanceId.Equals(device.InstanceId,StringComparison.OrdinalIgnoreCase) && d.ProblemCode==0))
-                    return Stop("HPET 设备尚未确认恢复（退出码 "+code+"）；若要求重启，请重启后重新核对。",code<0);
-                journal.Steps.Add(device.InstanceId+" 已启用并复检");env.Save(journal);
-            }
             var final=env.Read();
             if (!final.BcdReadable || final.DynamicTick.Length!=0 || final.PlatformTick.Length!=0)
                 return Stop("最终启动配置复检未通过。");
             journal.Completed=true;env.Save(journal);
             var reboot=journal.Changed || before.PendingRestart;
             return new() { Success=true,RequiresReboot=reboot,Message=(reboot ? "恢复已完成，必须手动重启电脑后再检测；当前启动的计时器行为不会立即改变。" : "启动配置已核对为 Windows 默认。")
-                +(final.Devices.Any(d=>d.Disabled) ? " 仍有未选择恢复的已禁用 HPET 设备，请核对设备选项。" : "")
                 +" 未修改运行库、useplatformclock 或其他启动配置。原始状态已归档。" };
         }
         catch (OperationCanceledException) { return Stop("已取消后续恢复。"); }
@@ -106,11 +86,6 @@ internal sealed class WindowsTimerRecoveryEnvironment : ITimerRecoveryEnvironmen
     {
         if (name is not ("disabledynamictick" or "useplatformtick")) throw new InvalidOperationException("启动项不在恢复范围内");
         return Run("bcdedit.exe",["/deletevalue","{current}",name]);
-    }
-    public int EnableDevice(string id)
-    {
-        if (!TimerConfigurationInspection.IsHpetDevice(id)) throw new InvalidOperationException("设备不在恢复范围内");
-        return Run("pnputil.exe",["/enable-device",id]);
     }
     private static int Run(string file,string[] args)
     {

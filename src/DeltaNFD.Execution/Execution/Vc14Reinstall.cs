@@ -23,8 +23,8 @@ public interface IVc14ReinstallEnvironment
     IReadOnlyList<Vc14RemovalPlanItem> Plan(Vc14Scan scan) => Vc14Reinstall.BuildRemovalPlan(scan);
     OperationResult Cleanup(Vc14Scan scan, IProgress<string>? progress, CancellationToken token) => Vc14ResidueCleanup.Run(scan, this, progress, token);
     IReadOnlyList<Vc14ResidueItem> Residues(Vc14Scan scan) => Vc14ResidueCleanup.Survey(scan);
-    /// <summary>本次操作要安装的 14.x 基线；旧测试/兼容实现默认 14.42。</summary>
-    Vc14Baseline Baseline => Vc14Baseline.V142;
+    /// <summary>本次操作只安装 14.44 基线。</summary>
+    Vc14Baseline Baseline => Vc14Baseline.V144;
     OperationResult CleanupRegistrations(Vc14Scan scan, IReadOnlyList<Vc14ResidueItem> confirmed, IProgress<string>? progress, CancellationToken token)
         => Vc14ResidueCleanup.Run(scan, this, progress, token, Vc14ResidueCleanup.Fingerprint(confirmed));
     Vc14Continuation? PendingInstall() => null;
@@ -45,15 +45,15 @@ public interface IVc14ReinstallEnvironment
 
 /// <summary>
 /// 全新 14.x 全量重装：按用户 2026-10-15 授权，卸载所有检测到的 x86/x64 C++ 14.x 登记
-/// （含未知包装，按其登记的卸载命令执行），再安装所选内置 2015–2022 14.42/14.44 基线并复检。
+/// （含未知包装，按其登记的卸载命令执行），再安装内置 2015–2022 14.44 基线并复检。
 /// 颜色规则是项目游戏兼容性策略；重装不代表已验证帧率改善。
 /// </summary>
 public static partial class Vc14Reinstall
 {
-    /// <summary>默认基线（14.42）；兼容旧调用与既有固定检查。</summary>
-    public const string BaselineVersion = "14.42.34433.0";
+    /// <summary>当前唯一安装基线。</summary>
+    public const string BaselineVersion = "14.44.35211.0";
     internal static IReadOnlyDictionary<string, string> BaselineHashes => Vc14BaselineInfo.Default.ExeHashes;
-    // 默认 14.42 基线 Burn 包装码；已登记时安装阶段改用原包 /repair 补回组件。
+    // 当前 14.44 基线 Burn 包装码；已登记时安装阶段改用原包 /repair 补回组件。
     internal static IReadOnlyDictionary<string, string> BaselineBundles => Vc14BaselineInfo.Default.BundleIds;
 
     /// <summary>枚举全部 14.x 登记（MSI 产品、Burn 包装、仅登记卸载命令的未知条目），生成卸载计划。</summary>
@@ -184,7 +184,7 @@ public static partial class Vc14Reinstall
         return PreferVerifiedBundles(plan);
     }
 
-    internal static string Fingerprint(IReadOnlyList<Vc14RemovalPlanItem> plan) => Fingerprint(plan, Vc14Baseline.V142);
+    internal static string Fingerprint(IReadOnlyList<Vc14RemovalPlanItem> plan) => Fingerprint(plan, Vc14Baseline.V144);
 
     internal static string Fingerprint(IReadOnlyList<Vc14RemovalPlanItem> plan, Vc14Baseline baseline) => Convert.ToHexString(SHA256.HashData(
         Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
@@ -216,9 +216,10 @@ public static partial class Vc14Reinstall
             if (mode == Vc14RepairMode.InstallOnly)
             {
                 if (pending is null && !scan.IsMissing) blocker ??= "没有待安装记录，请先预览完整重装或执行单独卸载阶段。";
-                if (pending is not null && pending.Baseline != environment.Baseline)
-                    blocker ??= "待安装记录属于 " + pending.Baseline.Label()
-                        + "，当前选择 " + environment.Baseline.Label() + "；请选择同一基线继续安装，或先核对待安装记录。";
+                if (pending is not null && pending.Baseline != environment.Baseline
+                    && !(pending.Baseline == Vc14Baseline.V142 && environment.Baseline == Vc14Baseline.V144
+                        && pending.UninstallVerified && scan.IsMissing))
+                    blocker ??= "历史待安装记录与当前 14.44 不符；请先核对原卸载结果，再重新预览完整修复 14.x。记录保留，不恢复 14.42 安装。";
                 if (scan.Products.Any(p => !Vc14Catalog.SameVersion(p.Version, info.Version)))
                     blocker ??= "旧 14.x 组件仍在，不能跳过卸载直接安装。请核对或继续卸载阶段。";
             }
@@ -285,6 +286,11 @@ public static partial class Vc14Reinstall
                 // record must follow the user's current choice, otherwise a later InstallOnly would
                 // demand the old baseline even though that install was already replaced.
                 environment.SavePendingInstall(pending with { UninstallVerified = false, Baseline = environment.Baseline });
+            }
+            else if (environment.PendingInstall() is { } historical && historical.Baseline != environment.Baseline)
+            {
+                // Only the newly confirmed, verified-absent migration may change the install target.
+                environment.SavePendingInstall(historical with { Baseline = environment.Baseline });
             }
 
             // 阶段一：逐项卸载全部可移除的 14.x 登记（含未知包装）。
@@ -396,7 +402,8 @@ public static partial class Vc14Reinstall
     }
 }
 
-internal sealed class Vc14ReinstallEnvironment(bool allowTemporaryInstaller = false, Vc14Baseline baseline = Vc14Baseline.V142) : IVc14ReinstallEnvironment
+internal sealed class Vc14ReinstallEnvironment(bool allowTemporaryInstaller = false, Vc14Baseline baseline = Vc14Baseline.V144,
+    string? dataRoot = null, string? diagnosticsDirectory = null, Func<bool>? installerBusy = null) : IVc14ReinstallEnvironment
 {
     public Vc14Baseline Baseline { get; } = baseline;
     private Vc14BaselineInfo Info => Vc14BaselineInfo.For(Baseline);
@@ -414,13 +421,13 @@ internal sealed class Vc14ReinstallEnvironment(bool allowTemporaryInstaller = fa
     public Vc14Continuation? PendingInstall() => new Vc14ContinuationStore(root).Read();
     public void SavePendingInstall(Vc14Continuation record) => new Vc14ContinuationStore(root).Save(record);
     public void CompletePendingInstall() => new Vc14ContinuationStore(root).Complete();
-    private readonly string root = AppDataPaths.Root;
-    private readonly string logs = Path.Combine(Log.LogDirectory, "vc14-reinstall-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8]);
+    private readonly string root = dataRoot ?? AppDataPaths.Root;
+    private readonly string logs = diagnosticsDirectory ?? Path.Combine(Log.LogDirectory, "vc14-reinstall-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8]);
     public string DiagnosticsDirectory => logs;
     public void Trace(string stage, object value)
     {
         Directory.CreateDirectory(logs);
-        File.WriteAllText(Path.Combine(logs, stage + "-" + Guid.NewGuid().ToString("N") + ".json"), JsonSerializer.Serialize(value));
+        RuntimeOperationJournal.Write(Path.Combine(logs, stage + "-" + Guid.NewGuid().ToString("N") + ".json"), value);
     }
     public Vc14Scan Scan() => Vc14Catalog.Scan();
     public string? Blocker()
@@ -630,29 +637,29 @@ internal sealed class Vc14ReinstallEnvironment(bool allowTemporaryInstaller = fa
     }
 
     /// <summary>启动安装/卸载进程并等待退出；全程写入活动事务记录，崩溃后可由核对入口复核，不强杀。</summary>
-    private async Task<Vc14StepResult> RunProcessAsync(ProcessStartInfo info, IProgress<string>? progress, CancellationToken token, TimeSpan waitLimit)
+    internal async Task<Vc14StepResult> RunProcessAsync(ProcessStartInfo info, IProgress<string>? progress, CancellationToken token, TimeSpan waitLimit)
     {
         token.ThrowIfCancellationRequested();
         var active = Path.Combine(root, "runtime-repair-active.json");
         Directory.CreateDirectory(root);
         using var owner = Process.GetCurrentProcess();
         var id = Guid.NewGuid().ToString("D");
+        var bootId = WindowsBootIdentity.Read();
         object Record(string stage, int pid, long ticks) => new
         {
             Id = id, Stage = stage, Pid = pid, StartTicks = ticks, Executable = info.FileName,
             OwnerPid = owner.Id, OwnerStartTicks = owner.StartTime.ToUniversalTime().Ticks, CreatedUtc = DateTimeOffset.UtcNow,
+            BootId = bootId,
         };
-        using (var file = new FileStream(active, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
-            JsonSerializer.Serialize(file, Record("prepared", 0, 0));
+        RuntimeOperationJournal.Write(active, Record("prepared", 0, 0));
         Process? process = null;
         var started = false;
         try
         {
             process = Process.Start(info) ?? throw new IOException("安装器未启动。");
             started = true;
-            var temporary = active + "." + id + ".tmp";
-            File.WriteAllText(temporary, JsonSerializer.Serialize(Record("running", process.Id, process.StartTime.ToUniversalTime().Ticks)));
-            File.Move(temporary, active, true);
+            RuntimeOperationJournal.Write(active, Record("running", process.Id, process.StartTime.ToUniversalTime().Ticks), overwrite: true);
+            Trace("installer-started", new { Id = id, Pid = process.Id, Executable = info.FileName, StartTicks = process.StartTime.ToUniversalTime().Ticks });
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
             timeout.CancelAfter(waitLimit);
             progress?.Report("正在等待安装事务，PID " + process.Id);
@@ -665,7 +672,8 @@ internal sealed class Vc14ReinstallEnvironment(bool allowTemporaryInstaller = fa
                 progress?.Report("安装事务仍运行，正在等待 PID " + process.Id + "；日志：" + logs);
             }
             await wait;
-            if (RuntimeInstallationReview.InstallerBusy())
+            Trace("installer-exited", new { Id = id, Pid = process.Id, process.ExitCode });
+            if ((installerBusy ?? RuntimeInstallationReview.InstallerBusy)())
                 return new(process.ExitCode, true, "进程已退出，但 MSI 事务仍忙，记录保留。日志：" + logs);
             var archive = Path.Combine(root, "runtime-repair-history");
             Directory.CreateDirectory(archive);

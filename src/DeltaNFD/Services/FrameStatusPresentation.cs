@@ -2,25 +2,56 @@ namespace DeltaNFD.Services;
 
 internal static class FrameStatusPresentation
 {
-    internal static string Timer(bool selected, bool active, CpuFrameStatusSnapshot? snapshot, DateTimeOffset now, string error)
+    internal static string Priority(bool selected, bool active, ProcmanStatusSnapshot? snapshot, DateTimeOffset now, string error)
     {
-        var timer = snapshot?.Timer;
-        var pending = timer is { ReleasePending: true } or { OwnershipUnknown: true }
-            || timer?.RequestHeld == true && (!selected || !active)
-            || snapshot?.TimerActive == true && (timer is null || timer.UpdatedUtc == default);
-        if (error.Length > 0)
-            return pending ? "计时器释放仍待核对；后端连接状态未知" : "计时器后端状态待确认，未确认生效或请求已释放";
-        if (!pending && (!selected || !active)) return selected ? "已选择 · 等待开启帧格，尚未持有计时器请求" : "未启用";
-        if (!GameObservationState.Fresh(snapshot, now) || error.Length > 0)
-            return pending ? "计时器释放仍待核对；后端连接状态未知" : "计时器后端状态待确认，未确认精度维持生效";
-        if (timer is null || timer.UpdatedUtc == default || timer.UpdatedUtc > now.AddSeconds(2) || now - timer.UpdatedUtc > TimeSpan.FromSeconds(10))
-            return pending ? "计时器释放结果待核对；状态尚未更新" : "等待后端核对计时器请求与实际读数";
-        if (pending && !timer.ReleasePending && !timer.OwnershipUnknown)
-            return "选项已关闭，正在等待后端释放计时器请求";
-        if (timer.RequestHeld && !snapshot!.MonitorRunning && !timer.ReleasePending)
-            return "监控已停止，计时器仍持有请求，释放待核对";
-        return timer.Message;
+        var state = snapshot?.FramePriority;
+        var pending = state is { RestorePending: true } || state is { BackupCount: > 0 } && (!selected || !active);
+        if (error.Length > 0) return pending ? "三角洲优先级恢复仍待核对；后端连接状态未知" : "优先级后端状态待确认，未确认锁定生效";
+        if (!pending && (!selected || !active)) return selected ? "已选择 · 等待开启一键帧格模式" : "未启用";
+        if (snapshot is null || snapshot.Module != DeltaNFD.Backends.BackendModules.Procman || snapshot.UpdatedUtc == default
+            || snapshot.UpdatedUtc > now.AddSeconds(2) || now - snapshot.UpdatedUtc > TimeSpan.FromSeconds(10)
+            || state is null || state.UpdatedUtc == default
+            || state.UpdatedUtc > now.AddSeconds(2) || now - state.UpdatedUtc > TimeSpan.FromSeconds(10))
+            return pending ? "三角洲优先级恢复仍待核对；等待后端更新" : "等待后端核对 CPU、IO 和内存优先级，未确认生效";
+        if (pending && !state.RestorePending) return "正在等待后端还原三角洲优先级，尚未确认完成";
+        if (!snapshot!.RulesEngineRunning && state.Maintaining) return "监控已停止，三角洲优先级恢复仍待核对";
+        return state.Message;
     }
+    internal static string TimerIgnore(bool selected, bool active, ProcmanStatusSnapshot? snapshot, DateTimeOffset now, string error)
+    {
+        var state = snapshot?.FrameTimerIgnore;
+        var pending = state is { RestorePending: true } || state is { BackupCount: > 0 } && (!selected || !active);
+        var fresh = snapshot is not null && snapshot.Module == DeltaNFD.Backends.BackendModules.Procman
+            && snapshot.UpdatedUtc != default && snapshot.UpdatedUtc <= now.AddSeconds(2)
+            && now - snapshot.UpdatedUtc <= TimeSpan.FromSeconds(10)
+            && state is not null && state.UpdatedUtc != default && state.UpdatedUtc <= now.AddSeconds(2)
+            && now - state.UpdatedUtc <= TimeSpan.FromSeconds(10);
+        var reading = Reading(fresh && error.Length == 0 ? state!.SystemCurrentMilliseconds : null);
+        string WithReading(string message) => message + reading;
+        if (error.Length > 0)
+            return WithReading(pending ? "三角洲定时器请求忽略状态恢复仍待核对；后端连接状态未知" : "进程管理后端状态待确认，未确认该功能生效");
+        if (!pending && fresh && state is { Supported: false })
+            return WithReading(selected ? "本系统不支持该功能（仅 Windows 11 起）" : "未启用（本系统不支持该功能）");
+        if (!pending && (!selected || !active)) return WithReading(selected ? "已选择 · 等待开启一键帧格模式" : "未启用");
+        if (!fresh)
+            return WithReading(pending ? "三角洲定时器请求忽略状态恢复仍待核对；等待后端更新" : "等待后端核对三角洲定时器请求忽略状态，未确认生效");
+        if (pending && !state!.RestorePending) return WithReading("正在等待后端恢复三角洲定时器请求忽略状态，尚未确认完成");
+        if (!snapshot!.RulesEngineRunning && state!.Maintaining) return WithReading("监控已停止，三角洲定时器请求忽略状态恢复仍待核对");
+        if (state!.InstanceCount > 0 && !state.RestorePending)
+        {
+            if (state.IgnoreApplied)
+                return WithReading("已忽略三角洲的精度请求，三角洲使用系统当前最佳时钟");
+            if (state.LegacyGlobalReachable == false)
+                return WithReading("已跳过忽略位：本系统按进程计时，忽略会让三角洲回落到 15.625ms；三角洲保留自身精度");
+            if (state.LegacyGlobalReachable is null)
+                return WithReading("系统时钟可达性未确认，未施加忽略位");
+        }
+        return WithReading(state!.Message);
+    }
+
+    /// <summary>只读展示：当前系统定时器分辨率实际读数（不改写、不申请、不释放）。</summary>
+    private static string Reading(double? milliseconds) => milliseconds is { } value && double.IsFinite(value) && value > 0
+        ? $"（当前系统定时器读数 {value:0.###} ms）" : "（当前系统定时器读数不可用）";
 
     internal static string Dwm(bool selected, bool active, CpuFrameStatusSnapshot? snapshot, DateTimeOffset now, string error)
     {

@@ -21,7 +21,7 @@ internal static class Vc14OwnershipChecks
         var product = new Vc14Entry("{931A2CF0-2404-45EA-82F5-345735AE6A90}",
             "Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.51.36247", "14.51.36247", "x64", "Minimum", "{36F68A90-239C-34DF-B58C-64B30153CE35}");
         var provider = new Vc14DependencyProvider("fixture", "Microsoft.VS.VC_RuntimeMinimumVSU_amd64,v14", product.Code, "", [id]);
-        Vc14DependencyApproval Evaluate(IReadOnlyList<Vc14DependencyOwner> owners) => Vc14DependencyPolicy.Evaluate(product, [provider], _ => owners, _ => false);
+        Vc14DependencyApproval Evaluate(IReadOnlyList<Vc14DependencyOwner> owners) => Vc14DependencyPolicy.Evaluate(product, [provider], _ => owners, (_, _) => false);
         var approved = Evaluate(owner);
         Check(approved.Argument == "IGNOREDEPENDENCIES=" + id && !approved.Argument.Contains("ALL"), "only this exact verified reference is ignored");
         Check(approved.Evidence.Contains(original.Sha256) && approved.Evidence.Contains("BundledSignedOwnershipOriginal"), "consent fingerprint binds source bytes and provenance");

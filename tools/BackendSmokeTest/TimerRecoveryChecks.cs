@@ -1,4 +1,4 @@
-using DeltaNFD.Inspection;
+﻿using DeltaNFD.Inspection;
 using DeltaNFD.Services;
 using DeltaNFD.Services.TweakDb;
 using DeltaNFD.Backends;
@@ -22,7 +22,7 @@ internal static class TimerRecoveryChecks
         Check(!TimerConfigurationInspection.ParseBcd(0,entry+"useplatformtick maybe").BcdReadable,"未知值不当默认");
         Check(TimerConfigurationInspection.ParseBcd(0,entry).BcdReadable,"两项不存在可确认默认");
         Check(new TimerRecoveryStatus{BcdReadable=true,DevicesReadable=true}.NeedsAttention==false,"正常不告警");
-        Check(new TimerRecoveryStatus{BcdReadable=true,DevicesReadable=true,Devices=[new(@"ACPI\PNP0103\0",22)]}.NeedsAttention,"只有设备禁用仍告警");
+        Check(!new TimerRecoveryStatus{BcdReadable=true,DevicesReadable=true,Devices=[new(@"ACPI\PNP0103\0",22)]}.NeedsAttention,"历史设备禁用不再触发告警");
         var normal = new TimerRecoveryStatus { BcdReadable=true, DevicesReadable=true };
         var normalNotice = TimerHealthPresentation.Create(normal);
         Check(!normalNotice.IsOpen && !normalNotice.IsError,"主页：两类检测正常不告警");
@@ -43,10 +43,10 @@ internal static class TimerRecoveryChecks
         Check(both.IsError && both.Title=="启动计时器选项已开启" && both.Message.Contains("useplatformtick") && both.Message.Contains("disabledynamictick"),"待重启不遮蔽两项当前开启");
         Check(both.Message.Contains("仍需手动重启"),"当前开启同时保留恢复重启记录提示");
         var hpet=TimerHealthPresentation.Create(normal with { Devices=[new(@"ACPI\PNP0103\0",22)] });
-        Check(hpet.IsOpen && !hpet.IsError && hpet.Title=="HPET 设备已禁用" && hpet.Message.Contains("另行勾选"),"保留独立HPET设备警告和确认");
+        Check(!hpet.IsOpen && !hpet.Message.Contains("HPET"),"历史设备禁用不再触发告警或恢复入口");
         var combined=TimerHealthPresentation.Create(normal with { PlatformTick="Yes", Devices=[new(@"ACPI\PNP0103\0",22)] });
-        Check(combined.IsError && combined.Message.Contains("useplatformtick") && combined.Message.Contains("HPET 设备被禁用"),"两类同时异常不遗漏设备提醒");
-        foreach (var state in new[] { normal with { BcdReadable=false }, normal with { DevicesReadable=false },
+        Check(combined.IsError && combined.Message.Contains("useplatformtick") && !combined.Message.Contains("HPET 设备被禁用"),"只保留启动项异常提醒");
+        foreach (var state in new[] { normal with { BcdReadable=false },
             normal with { BcdReadable=false, PlatformTick="Yes" } })
         {
             var notice=TimerHealthPresentation.Create(state);
@@ -78,7 +78,7 @@ internal static class TimerRecoveryChecks
         var changed=new Fake();var stale=changed.Read();changed.Platform="No";
         Check(!TimerRecoveryEngine.Run(changed,new(stale.Fingerprint,false),default).Success && changed.Writes.Count==0,"指纹变化拒绝");
         var device=new Fake{Devices=[new(@"ACPI\PNP0103\0",22)]};
-        Check(Run(device,true).Success && device.Devices[0].ProblemCode==0,"明确选择后恢复固定HPET设备");
+        Check(!Run(device,true).Success && device.EnabledDevices==0 && device.Writes.Count==0,"历史设备恢复参数被拒绝且不进行任何写入");
         var skip=new Fake{Devices=[new(@"ACPI\PNP0103\0",22)]};
         Check(Run(skip).Success && skip.Devices[0].Disabled && skip.EnabledDevices==0,"未选择不改设备");
         var badDevice=new Fake{Devices=[new(@"PCI\OTHER\0",22)]};Check(!Run(badDevice,true).Success && badDevice.Writes.Count==0,"禁止其他设备");

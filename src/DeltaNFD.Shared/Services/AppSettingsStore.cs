@@ -43,15 +43,60 @@ public sealed class AppSettings
     /// <summary>帧格开启电源锁定时记住的用户原电源计划 GUID（退出时还原）。</summary>
     public string FramePowerPreviousSchemeGuid { get; set; } = "";
 
-    // ---- 帧格：加速系统响应模式（不改电源计划，运行时行为零残留） ----
-    /// <summary>总开关：帧格页「加速系统响应模式」。</summary>
-    public bool FrameResponseBoostEnabled { get; set; }
-
-    /// <summary>帧格和游戏运行期间系统定时器 0.5ms，默认开。</summary>
-    public bool FrameResponseBoostTimerEnabled { get; set; } = true;
-
+    // ---- 帧格：游戏进程电源限制（不改电源计划，运行时行为零残留） ----
     // 新偏好独立于已退休的 EcoQos 字段，避免升级时自动恢复旧开启选择。
     public bool FrameGamePowerThrottlingDisabled { get; set; }
+
+    // ---- 帧格：让系统忽略三角洲定时器分辨率请求（Windows 11 起，默认关） ----
+    /// <summary>对经身份核验的三角洲主进程设置 IGNORE_TIMER_RESOLUTION 位；关闭或退出时恢复原值。</summary>
+    public bool FrameGameTimerIgnoreEnabled { get; set; }
+
+    // ---- 帧格：定时器精度请求忽略列表（Windows 11 起，默认空） ----
+    /// <summary>用户手动加入忽略列表的进程映像名（如 TimerPrecision.App.exe）；为空表示不启用。
+    /// 只作用于当前用户会话的普通进程，系统/服务/反作弊/本工具自身一律拒绝。</summary>
+    public List<string> TimerIgnoreExtraProcesses { get; set; } = new();
+
+    // ---- 钟摆计划：全局锁定系统最佳计时器分辨率（仅 Windows 11，默认关） ----
+    /// <summary>启用后由进程管理后端用独立持有进程全局锁定最佳分辨率。</summary>
+    // Historical JSON field only. Execution follows FrameModeActive; this value grants no authority.
+    public bool OptimalClockEnabled { get; set; }
+    public int OptimalClockScanLoadThreads { get; set; }
+
+    /// <summary>锁定的定时器分辨率（100ns；5130 = 0.5130ms，为本机研究结论的临界窗口上沿）。</summary>
+    public uint OptimalClockResolution100ns { get; set; } = 5130;
+
+    /// <summary>最近一次扫描得到的「典型延迟最低」分辨率（100ns；0 = 尚未扫描）。</summary>
+    public uint OptimalClockBestTypical100ns { get; set; }
+
+    /// <summary>最近一次扫描得到的「最稳」分辨率（100ns；0 = 尚未扫描）。</summary>
+    public uint OptimalClockBestStable100ns { get; set; }
+
+    /// <summary>最近一次扫描完成时间（UTC；null = 尚未扫描）。</summary>
+    public DateTimeOffset? OptimalClockScanUtc { get; set; }
+
+    /// <summary>实验兼容扫描绑定的系统版本；旧结果不能自动授权 Win10 全局锁定。</summary>
+    public string OptimalClockScanPlatform { get; set; } = "";
+
+    /// <summary>
+    /// 最近一次**成功扫描**实际使用的检测模式（由后端在扫描成功后写入，仅用于如实标注历史结果）。
+    /// 不要用它保存「用户在下拉框里的选择」，否则只改下拉就会把旧结果标成新模式。
+    /// </summary>
+    public OptimalClockScanMode OptimalClockScanMode { get; set; }
+
+    /// <summary>用户在下拉框里选择的检测模式（下次扫描使用；默认最低延迟）。</summary>
+    public OptimalClockScanMode OptimalClockPreferredScanMode { get; set; }
+
+    /// <summary>稳定延迟模式选定的安全裕量（ms；0 = 最低延迟模式）。</summary>
+    public double OptimalClockSafetyMarginMs { get; set; }
+
+    /// <summary>稳定延迟模式三条件验证说明（供页面展示）。</summary>
+    public string OptimalClockStableConditions { get; set; } = "";
+
+    /// <summary>提升三角洲进程优先级，默认关闭；保留用户明确保存的选择。</summary>
+    public bool FrameGamePriorityEnabled { get; set; } = false;
+    public FrameCpuPriority FrameGameCpuPriority { get; set; } = FrameCpuPriority.RealTime;
+    public FrameIoPriority FrameGameIoPriority { get; set; } = FrameIoPriority.High;
+    public FrameMemoryPriority FrameGameMemoryPriority { get; set; } = FrameMemoryPriority.Normal;
 
     // ---- 帧格：内存清理（实验性；清空待备内存列表） ----
     /// <summary>帧格功能：内存清理（standby list 清空），帧格激活时自动触发 + 手动执行；实验性功能默认关。</summary>

@@ -18,7 +18,7 @@ internal static class Vc14CatalogInspection
                 return Vc14Severity.Normal;
             var arch = Regex.IsMatch(name, @"\bx64\b", RegexOptions.IgnoreCase) ? "x64" : name.Contains("arm64", StringComparison.OrdinalIgnoreCase) ? "arm64" : "x86";
             if (products.Any(p => p.Architecture == arch && SameVersion(p.Version, version)))
-                return Vc14Severity.Normal;
+                return Classify(name, version) == Vc14Severity.Evaluation ? Vc14Severity.Evaluation : Vc14Severity.Normal;
             return Vc14Severity.Warning;
         }
 
@@ -27,18 +27,14 @@ internal static class Vc14CatalogInspection
 
     internal static Vc14Severity Classify(string name, string version)
     {
-        // 14.42/14.44 are the two selectable official repair baselines; both are compatible here.
-        // Detection is baseline-independent; the user's selected baseline only changes repair/force target.
+        // Only 14.44 is the current installation baseline; 14.42 is a retired baseline.
         Version.TryParse(version, out var v);
+        if (name.Contains("Visual C++ v14", StringComparison.OrdinalIgnoreCase)
+            || v is { Major: 14, Minor: 50 or 51 })
+            return Vc14Severity.Evaluation;
         if (v is { Major: 14, Minor: 44 })
             return Vc14Severity.Normal;
-        if (name.Contains("Visual C++ v14", StringComparison.OrdinalIgnoreCase))
-            return Vc14Severity.Abnormal;
-        if (v is null)
-            return Vc14Severity.Warning;
-        if (v.Major == 14 && v.Minor is 50 or 51)
-            return Vc14Severity.Abnormal;
-        return v.Major == 14 && v.Minor != 42 ? Vc14Severity.Warning : Vc14Severity.Normal;
+        return Vc14Severity.Warning;
     }
 
     internal static string Fingerprint(Vc14Scan scan, bool includeLegacy = true) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { Products = scan.Products.OrderBy(p => p.Code, StringComparer.OrdinalIgnoreCase), Legacy = includeLegacy ? "" : "" }))));

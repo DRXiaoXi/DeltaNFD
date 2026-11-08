@@ -57,15 +57,15 @@
                         </Grid.RowDefinitions>
                         <StackPanel Spacing="4" VerticalAlignment="Center" Grid.Row="0">
                             <TextBlock Text="{x:Bind ViewModel.Bx.StatusText, Mode=OneWay}" Style="{StaticResource NoteStyle}"/>
-                            <TextBlock Text="{x:Bind ViewModel.Bx.ApplyProgressText, Mode=OneWay}" Opacity="0.75" TextWrapping="Wrap" Visibility="{x:Bind ViewModel.Bx.IsApplyingBatch, Mode=OneWay}" Style="{StaticResource NoteStyle}"/>
+                            <TextBlock Text="{x:Bind ViewModel.Bx.ApplyProgressText, Mode=OneWay}" TextWrapping="Wrap" Visibility="{x:Bind ViewModel.Bx.IsApplyingBatch, Mode=OneWay}" Style="{StaticResource CaptionStyle}"/>
                             <ProgressBar Value="{x:Bind ViewModel.Bx.ApplyProgress, Mode=OneWay}" Maximum="100" Foreground="{StaticResource AppAccentBrush}" Visibility="{x:Bind ViewModel.Bx.IsApplyingBatch, Mode=OneWay}"/>
                         </StackPanel>
                         <Button Style="{StaticResource PrimaryButtonStyle}" Content="{x:Bind ViewModel.Bx.ApplyChangesButtonText, Mode=OneWay}" IsEnabled="{x:Bind ViewModel.Bx.ApplyChangesEnabled, Mode=OneWay}" Command="{x:Bind ViewModel.Bx.ApplyChangesCommand}" VerticalAlignment="Center" Grid.Row="1" HorizontalAlignment="Stretch"/>
                     </Grid>
                 </Border>
             </Grid>
-            <Border CornerRadius="8" Padding="14,10" Background="#26EF4444">
-                <TextBlock FontSize="12" Foreground="#FECACA" TextWrapping="Wrap" Text="⚠ 开关拨动仅记录你的意图，不会立即生效——确认好要改的项目后，点击「应用更改」才会写入系统；未应用前可随时拨回。各子栏目的勾选会全部保留并累计，点一次「应用更改」即跨栏目统一生效。Defender / 防火墙 / VBS / 更新 等高危项在应用时会二次确认。"/>
+            <Border CornerRadius="8" Padding="14,10" Background="{ThemeResource SystemFillColorCautionBackgroundBrush}">
+                <TextBlock Style="{StaticResource WarningTextStyle}" TextWrapping="Wrap" Text="开关只记录你的选择，点击「应用更改」后才会写入系统；高危项应用时会二次确认。"/>
             </Border>
             <!-- 扩展优化库条目面板（全部子栏目，含 UP推荐） -->
             <Border Style="{StaticResource CardBorderStyle}" ui:HoverLift.Enabled="False">
@@ -90,21 +90,22 @@
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="{x:Bind DisplayName}" FontWeight="SemiBold" FontSize="14" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{x:Bind DisplayName}" FontWeight="SemiBold" TextWrapping="Wrap"/>
                                             <ProgressRing Grid.Column="1" Width="18" Height="18" IsActive="{x:Bind IsBusy, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}" VerticalAlignment="Center"/>
                                         </Grid>
                                         <TextBlock Text="{x:Bind Description}" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
                                     </StackPanel>
                                     <Button Grid.Column="1" Content="{x:Bind DetailsButtonText, Mode=OneWay}" Visibility="{x:Bind HasDetails}" FontSize="11" Padding="10,4" VerticalAlignment="Center" Click="BxDetailsButton_Click" Style="{StaticResource SecondaryButtonStyle}"/>
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <Button Content="恢复此项" Style="{StaticResource SecondaryButtonStyle}" Visibility="{x:Bind ShowSecurityRestore, Mode=OneWay}" IsEnabled="{x:Bind CanEdit, Mode=OneWay}" Click="RestoreSecurityItem_Click" ToolTipService.ToolTip="仅准备恢复此项的已备份原值，点击应用更改后执行。"/>
                                         <ComboBox MinWidth="150" VerticalAlignment="Center" IsEnabled="{x:Bind CanEdit, Mode=OneWay}" Visibility="{x:Bind HasGears, Mode=OneWay}" ItemsSource="{x:Bind GearOptions}" DisplayMemberPath="Label" SelectedIndex="{x:Bind SelectedGearIndex, Mode=OneWay}" SelectionChanged="GearSelection_Changed"/>
                                         <ToggleSwitch VerticalAlignment="Center" IsEnabled="{x:Bind CanEdit, Mode=OneWay}" Visibility="{x:Bind ShowToggle, Mode=OneWay}" IsOn="{x:Bind IsOn, Mode=OneWay}" Toggled="BxToggle_Toggled" OnContent="" OffContent="" MinWidth="0" Margin="0" HorizontalAlignment="Right"/>
                                     </StackPanel>
-                                    <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="{x:Bind StateText, Mode=OneWay}" FontSize="12" Opacity="0.85" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                    <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="{x:Bind StateText, Mode=OneWay}" Style="{StaticResource NoteStyle}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,8,0,0"/>
                                     <ItemsControl Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" ItemsSource="{x:Bind Details}" Visibility="{x:Bind DetailsVisible, Mode=OneWay}" Margin="0,8,0,0">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="x:String">
-                                                <TextBlock Text="{x:Bind}" Opacity="0.7" TextWrapping="Wrap" Padding="8,1" Style="{StaticResource NoteStyle}"/>
+                                                <TextBlock Text="{x:Bind}" TextWrapping="Wrap" Padding="8,1" Style="{StaticResource CaptionStyle}"/>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -123,8 +124,8 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Spacing="3" VerticalAlignment="Center">
-                            <TextBlock Text="虚拟内存（页面文件）" Style="{StaticResource H3Style}"/>
-                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="设置固定大小的页面文件，避免系统在内存吃紧时动态扩展页面文件造成卡顿。最小/最大均不得低于 16 GB（页面文件过小会导致大型游戏内存不足报错）；写入上方所选盘符（默认系统盘，机械盘/游戏盘应用前会提示建议更换），应用后需重启电脑生效。"/>
+                            <TextBlock Text="虚拟内存（页面文件）" Style="{StaticResource H3Style}" ui:HelpTip.Text="设置固定大小的页面文件，避免系统在内存吃紧时动态扩展页面文件造成卡顿。最小/最大均不得低于 16 GB（页面文件过小会导致大型游戏内存不足报错）；写入上方所选盘符（默认系统盘，机械盘/游戏盘应用前会提示建议更换），应用后需重启电脑生效。"/>
+                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="设置固定大小的页面文件，最小/最大均不低于 16 GB。"/>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                             <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.PagefileBusy, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}"/>

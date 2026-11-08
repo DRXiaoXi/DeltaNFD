@@ -63,14 +63,14 @@ internal static class Vc14BundleIdentityChecks
                 var msi = new Vc14Entry("{931A2CF0-2404-45EA-82F5-345735AE6A90}", "Microsoft Visual C++ 2022 " + arch + " Minimum Runtime - 14.51.36247",
                     "14.51.36247", arch, "Minimum", "{36F68A90-239C-34DF-B58C-64B30153CE35}");
                 var provider = new Vc14DependencyProvider("test", "Microsoft.VS.VC_RuntimeMinimumVSU_" + (arch == "x64" ? "amd64" : "x86") + ",v14", msi.Code, "", [expected]);
-                Check(Vc14DependencyPolicy.Evaluate(msi, [provider], _ => recovered, _ => true).Clients.Single() == expected,
+                Check(Vc14DependencyPolicy.Evaluate(msi, [provider], _ => recovered, (_, _) => true).Clients.Single() == expected,
                     "actual original flows from missing ARP through narrow approval");
                 var wrong = Guid.NewGuid().ToString("B");
                 var wrongPath = Vc14BundleIdentity.FixedCacheCandidates(cacheRoot, wrong, arch).Single();
                 Directory.CreateDirectory(Path.GetDirectoryName(wrongPath)!); File.Copy(path, wrongPath);
                 var unknown = Vc14DependencyPolicy.ResolveCacheOwners(wrong, arch, [], cacheRoot);
                 Check(unknown.Count == 1 && !unknown[0].CacheVerified, "signed original in another GUID folder is not that owner");
-                Reject(() => Vc14DependencyPolicy.Evaluate(msi, [provider with { Clients = [wrong] }], _ => unknown, _ => false),
+                Reject(() => Vc14DependencyPolicy.Evaluate(msi, [provider with { Clients = [wrong] }], _ => unknown, (_, _) => false),
                     "copied signed original cannot authorize arbitrary orphan");
                 var missing = new Vc14DependencyOwner("ARP", proof.Name, proof.Version, "Microsoft Corporation", false, false, "original registration");
                 var reconciled = Vc14DependencyPolicy.ResolveCacheOwners(expected, arch, [missing], cacheRoot);
@@ -80,7 +80,7 @@ internal static class Vc14BundleIdentityChecks
                 Check(resumedOwner.CacheVerified && resumedOwner.Name == proof.Name && resumedOwner.Version == proof.Version
                     && resumedOwner.Publisher == "Microsoft Corporation" && resumedOwner.Values == partial.Values
                     && resumedOwner.IdentitySource == "SignedOriginalMissingArpFields", "logs11 partial Burn metadata recovered through actual signed cache");
-                Check(Vc14DependencyPolicy.Evaluate(msi, [provider], _ => [resumedOwner], _ => true).Clients.Single() == expected,
+                Check(Vc14DependencyPolicy.Evaluate(msi, [provider], _ => [resumedOwner], (_, _) => true).Clients.Single() == expected,
                     "actual signed cache allows the incomplete ARP owner's exact dependency");
                 var conflict = Vc14DependencyPolicy.ResolveCacheOwners(expected, arch, [missing with { Version = "14.44.0" }], cacheRoot);
                 Check(!conflict[0].CacheVerified && conflict[0].Proof!.Verified, "valid original does not repair contradictory registration identity");

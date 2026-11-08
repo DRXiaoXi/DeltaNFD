@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using DeltaNFD.Native;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
@@ -13,7 +14,7 @@ public sealed record ProcmanCapabilityResult(bool Ok, string? Value, string Erro
 
 /// <summary>
 /// 通用进程属性能力原语：每项能力都实现「读取 → 设置 → 回读」三步，回读不一致视为失败。
-/// 只使用公开 Win32 API；掩码一律按处理器组传递（ushort 组号 + ulong 掩码），绝不退化为组 0 单掩码。
+/// 优先使用公开 Win32 API，策略接口不可用时使用同句柄的 NT 兼容调用；掩码一律按处理器组传递（ushort 组号 + ulong 掩码），绝不退化为组 0 单掩码。
 /// </summary>
 public static partial class ProcmanCapabilities
 {
@@ -26,11 +27,13 @@ public static partial class ProcmanCapabilities
 
     [ThreadStatic] private static SafeProcessHandle? _pinned;
     [ThreadStatic] private static int _pinnedPid;
-    internal static IDisposable Pin(ProcmanProcessIdentity identity)
+    internal static IDisposable Pin(ProcmanProcessIdentity identity, bool requireOrdinaryUser = false)
     {
         var handle = OpenProcess(AccessSetInformation, false, identity.Pid);
         if (handle.IsInvalid) { handle.Dispose(); throw new IOException("无法打开写入句柄：" + Marshal.GetLastWin32Error()); }
         if (!ProcmanIdentity.Matches(handle, identity)) { handle.Dispose(); throw new IOException("写入句柄身份不符，已拒绝修改。"); }
+        if (requireOrdinaryUser && !ProcmanIdentity.IsCurrentOrdinaryUser(handle, identity))
+        { handle.Dispose(); throw new IOException("无法确认目标属于当前用户会话的非服务普通进程，已拒绝新增施加。"); }
         var prior = _pinned; var priorPid = _pinnedPid;
         _pinned = handle; _pinnedPid = identity.Pid;
         return new PinScope(() => { _pinned = prior; _pinnedPid = priorPid; handle.Dispose(); });
@@ -330,23 +333,18 @@ public static partial class ProcmanCapabilities
 
     // ---------------- EcoQoS（效率模式；掩码清零 = 交还系统控制） ----------------
 
-    private const int ProcessInformationClassPowerThrottling = 4;
-    private const uint PowerThrottlingCurrentVersion = 1;
-    private const uint PowerThrottlingExecutionSpeed = 0x1;
+    /// <summary>让内核忽略该进程的定时器分辨率请求（Windows 11 起支持）。</summary>
+    internal const uint PowerThrottlingIgnoreTimerResolution = 0x4;
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct PROCESS_POWER_THROTTLING_STATE
+    private static ProcmanCapabilityResult ReadEcoQos(SafeProcessHandle handle)
     {
-        public uint Version;
-        public uint ControlMask;
-        public uint StateMask;
+        try
+        {
+            var state = ProcessPowerThrottling.Read(handle);
+            return ProcmanCapabilityResult.Success($"eco:{state.ControlMask}:{state.StateMask}");
+        }
+        catch (Exception ex) { return ProcmanCapabilityResult.Failure("读取 EcoQoS 失败：" + ex.Message); }
     }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetProcessInformation(SafeProcessHandle handle, int informationClass, ref PROCESS_POWER_THROTTLING_STATE information, int size);
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GetProcessInformation(SafeProcessHandle handle, int informationClass, ref PROCESS_POWER_THROTTLING_STATE information, int size);
 
     /// <summary>读取 EcoQoS 是否被本进程显式固定（ControlMask 含 EXECUTION_SPEED 位）。无法读取固定状态时如实报错。</summary>
     public static ProcmanCapabilityResult ReadEcoQos(int pid)
@@ -355,63 +353,94 @@ public static partial class ProcmanCapabilities
         if (handle is null) return ProcmanCapabilityResult.Failure("打开进程失败（权限不足或进程已退出）。");
         using (handle)
         {
-            var state = new PROCESS_POWER_THROTTLING_STATE { Version = 1 };
-            return GetProcessInformation(handle, 4, ref state, Marshal.SizeOf<PROCESS_POWER_THROTTLING_STATE>())
-                ? ProcmanCapabilityResult.Success($"eco:{state.ControlMask}:{state.StateMask}")
-                : ProcmanCapabilityResult.Failure("读取 EcoQoS 失败：" + Marshal.GetLastWin32Error());
+            return ReadEcoQos(handle);
         }
     }
 
-    public static ProcmanCapabilityResult SetEcoQos(int pid, bool enabled)
+    public static ProcmanCapabilityResult SetEcoQos(int pid, bool enabled) =>
+        WriteEcoQos(pid, enabled ? "eco:1:1" : "eco:1:0");
+
+    public static bool EcoEnabled(string raw) => TryParseEcoQos(raw, out _, out var state) && (state & 1) != 0;
+
+    private static bool TryParseEcoQos(string? raw, out uint control, out uint state)
     {
-        var handle = TryOpen(pid, AccessSetInformation);
-        if (handle is null) return ProcmanCapabilityResult.Failure("打开进程失败（权限不足或进程已退出）。");
-        using (handle)
-        {
-            var state = new PROCESS_POWER_THROTTLING_STATE { Version = 1 };
-            if (!GetProcessInformation(handle, 4, ref state, Marshal.SizeOf<PROCESS_POWER_THROTTLING_STATE>()))
-                return ProcmanCapabilityResult.Failure("无法读取原 EcoQoS，未修改。");
-            state.ControlMask |= 1;
-            state.StateMask = enabled ? state.StateMask | 1 : state.StateMask & ~1u;
-            if (!SetProcessInformation(handle, ProcessInformationClassPowerThrottling, ref state, Marshal.SizeOf<PROCESS_POWER_THROTTLING_STATE>()))
-                return ProcmanCapabilityResult.Failure("设置效率模式失败：Win32 错误 " + Marshal.GetLastWin32Error());
-        }
-        var actual = ReadEcoQos(pid);
-        return actual.Ok && EcoEnabled(actual.Value!) == enabled && actual.Value!.Split(':')[1] is { } control && (uint.Parse(control) & 1) != 0
-            ? actual : ProcmanCapabilityResult.Failure("EcoQoS 回读未确认。");
+        control = state = 0;
+        return raw?.Split(':') is ["eco", var c, var s]
+            && uint.TryParse(c, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out control)
+            && uint.TryParse(s, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out state);
     }
 
-    public static bool EcoEnabled(string raw) => raw.Split(':') is ["eco", _, var state] && uint.TryParse(state, out var value) && (value & 1) != 0;
-    public static ProcmanCapabilityResult RestoreEcoQos(int pid, string raw)
+    // Old journals contain full masks; EcoQoS owns only EXECUTION_SPEED (bit 1).
+    // State bits not explicitly controlled are system-managed, not restoration targets.
+    internal static bool EcoQosMatches(string? actual, string? expected) =>
+        TryParseEcoQos(actual, out var ac, out var av) && TryParseEcoQos(expected, out var ec, out var ev)
+        && (ac & 1) == (ec & 1) && ((av ^ ev) & ac & 1) == 0;
+
+    public static ProcmanCapabilityResult RestoreEcoQos(int pid, string raw) => WriteEcoQos(pid, raw);
+
+    public static ProcmanCapabilityResult ClearEcoQos(int pid) => WriteEcoQos(pid, "eco:0:0");
+
+    private static ProcmanCapabilityResult WriteEcoQos(int pid, string raw)
     {
-        var parts = raw.Split(':');
-        if (parts.Length != 3 || parts[0] != "eco" || !uint.TryParse(parts[1], out var control) || !uint.TryParse(parts[2], out var value))
-            return ProcmanCapabilityResult.Failure("原 EcoQoS 状态不可确认，保留恢复记录。");
         using var handle = TryOpen(pid, AccessSetInformation);
-        if (handle is null) return ProcmanCapabilityResult.Failure("无法打开 EcoQoS 恢复句柄。");
-        var state = new PROCESS_POWER_THROTTLING_STATE { Version = 1, ControlMask = control, StateMask = value };
-        if (!SetProcessInformation(handle, 4, ref state, Marshal.SizeOf<PROCESS_POWER_THROTTLING_STATE>()))
-            return ProcmanCapabilityResult.Failure("恢复 EcoQoS 失败：" + Marshal.GetLastWin32Error());
-        var actual = ReadEcoQos(pid);
-        return actual.Ok && actual.Value == raw ? actual : ProcmanCapabilityResult.Failure("EcoQoS 恢复回读不一致。");
+        if (handle is null) return ProcmanCapabilityResult.Failure("无法打开 EcoQoS 修改句柄。");
+        ProcmanCapabilityResult Read() => ReadEcoQos(handle);
+        ProcmanCapabilityResult Write(uint control, uint value)
+        {
+            try { ProcessPowerThrottling.Write(handle, control, value); return ProcmanCapabilityResult.Success(""); }
+            catch (Exception ex) { return ProcmanCapabilityResult.Failure("设置 EcoQoS 失败：" + ex.Message); }
+        }
+        return UpdateEcoQos(raw, Read, Write);
     }
 
-    public static ProcmanCapabilityResult ClearEcoQos(int pid)
+    // Shared by the fixed-handle native path and isolated fake-API checks.
+    internal static ProcmanCapabilityResult UpdateEcoQos(string raw, Func<ProcmanCapabilityResult> read,
+        Func<uint, uint, ProcmanCapabilityResult> write)
+    {
+        if (!TryParseEcoQos(raw, out var targetControl, out var targetState))
+            return ProcmanCapabilityResult.Failure("原 EcoQoS 状态不可确认，保留恢复记录。");
+        var current = read();
+        if (!current.Ok || !TryParseEcoQos(current.Value, out var control, out var state))
+            return ProcmanCapabilityResult.Failure("无法读取原 EcoQoS，未修改。" + current.Error);
+        if (EcoQosMatches(current.Value, raw)) return current;
+        control = (control & ~1u) | (targetControl & 1u);
+        state = ((state & ~1u) | (targetState & targetControl & 1u)) & control;
+        var result = write(control, state);
+        if (!result.Ok) return result;
+        var actual = read();
+        if (!actual.Ok || !TryParseEcoQos(actual.Value, out var actualControl, out var actualState)
+            || actualControl != control || ((actualState ^ state) & control) != 0)
+            return ProcmanCapabilityResult.Failure("EcoQoS 回读未确认，保留恢复记录。");
+        return actual;
+    }
+
+    /// <summary>读取完整电源节流状态（ControlMask/StateMask），供按位操作使用；失败如实返回。</summary>
+    internal static (bool Ok, uint Control, uint State, string Error) ReadPowerThrottling(int pid)
     {
         var handle = TryOpen(pid, AccessSetInformation);
-        if (handle is null) return ProcmanCapabilityResult.Failure("打开进程失败（权限不足或进程已退出）。");
+        if (handle is null) return (false, 0, 0, "打开进程失败（权限不足或进程已退出）。");
         using (handle)
         {
-            var state = new PROCESS_POWER_THROTTLING_STATE
+            try
             {
-                Version = PowerThrottlingCurrentVersion,
-                ControlMask = 0, // 掩码清零 = 该项交还系统策略
-                StateMask = 0,
-            };
-            if (!SetProcessInformation(handle, ProcessInformationClassPowerThrottling, ref state, Marshal.SizeOf<PROCESS_POWER_THROTTLING_STATE>()))
-                return ProcmanCapabilityResult.Failure("交还效率模式失败：Win32 错误 " + Marshal.GetLastWin32Error());
+                var state = ProcessPowerThrottling.Read(handle);
+                return (true, state.ControlMask, state.StateMask, "");
+            }
+            catch (Exception ex) { return (false, 0, 0, "读取进程电源节流状态失败：" + ex.Message); }
         }
-        return ReadEcoQos(pid);
+    }
+
+    /// <summary>写入完整电源节流状态；状态位必须落在控制掩码内（否则系统返回错误 87），写入后由调用方回读核对。</summary>
+    internal static (bool Ok, string Error) WritePowerThrottling(int pid, uint control, uint stateValue)
+    {
+        if ((stateValue & ~control) != 0) return (false, "状态位超出控制掩码，未写入。");
+        var handle = TryOpen(pid, AccessSetInformation);
+        if (handle is null) return (false, "打开进程失败（权限不足或进程已退出）。");
+        using (handle)
+        {
+            try { ProcessPowerThrottling.Write(handle, control, stateValue); return (true, ""); }
+            catch (Exception ex) { return (false, "设置进程电源节流状态失败：" + ex.Message); }
+        }
     }
 
     // ---------------- I/O 优先级（ntdll 兼容层：NtSetInformationProcess/ProcessIoPriority，Windows 8+ 受支持） ----------------

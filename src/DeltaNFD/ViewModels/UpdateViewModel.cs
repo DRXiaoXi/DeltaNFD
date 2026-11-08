@@ -27,92 +27,208 @@ public partial class UpdateViewModel : ObservableObject
     /// <summary>确认框钩子（由页面构造时赋值）：title, message, primaryButtonText → 是否确认。</summary>
     public Func<string, string, string, Task<bool>>? ConfirmHook { get; set; }
 
-    [ObservableProperty]
     private string currentVersionText = "";
+    public string CurrentVersionText { get => currentVersionText; set => SetProperty(ref currentVersionText, value); }
 
-    [ObservableProperty]
     private string statusText = "尚未检查更新。";
+    public string StatusText { get => statusText; set => SetProperty(ref statusText, value); }
 
-    [ObservableProperty]
     private string availableVersionText = "";
+    public string AvailableVersionText { get => availableVersionText; set => SetProperty(ref availableVersionText, value); }
 
-    [ObservableProperty]
     private string notes = "";
+    public string Notes { get => notes; set => SetProperty(ref notes, value); }
 
-    [ObservableProperty]
     private string releasePageUrl = "";
+    public string ReleasePageUrl { get => releasePageUrl; set => SetProperty(ref releasePageUrl, value); }
 
-    [ObservableProperty]
     private string progressText = "";
+    public string ProgressText { get => progressText; set => SetProperty(ref progressText, value); }
 
-    [ObservableProperty]
     private string actionButtonText = "检查更新";
+    public string ActionButtonText { get => actionButtonText; set => SetProperty(ref actionButtonText, value); }
 
-    [ObservableProperty]
     private double progressPercent;
+    public double ProgressPercent { get => progressPercent; set => SetProperty(ref progressPercent, value); }
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActionEnabled))]
-    [NotifyPropertyChangedFor(nameof(SkipEnabled))]
-    [NotifyPropertyChangedFor(nameof(DetailsVisible))]
     private bool updateAvailable;
+    public bool UpdateAvailable
+    {
+        get => updateAvailable;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(updateAvailable, value)) return;
+            OnPropertyChanging(nameof(UpdateAvailable));
+            OnPropertyChanging(nameof(ActionEnabled));
+            OnPropertyChanging(nameof(SkipEnabled));
+            OnPropertyChanging(nameof(DetailsVisible));
+            updateAvailable = value;
+            OnPropertyChanged(nameof(UpdateAvailable));
+            OnPropertyChanged(nameof(ActionEnabled));
+            OnPropertyChanged(nameof(SkipEnabled));
+            OnPropertyChanged(nameof(DetailsVisible));
+        }
+    }
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActionEnabled))]
-    [NotifyPropertyChangedFor(nameof(SkipEnabled))]
-    [NotifyPropertyChangedFor(nameof(CheckEnabled))]
-    [NotifyPropertyChangedFor(nameof(ChannelEnabled))]
-    [NotifyPropertyChangedFor(nameof(ServerEnabled))]
-    [NotifyPropertyChangedFor(nameof(ModeEnabled))]
     private bool isBusy;
+    public bool IsBusy
+    {
+        get => isBusy;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(isBusy, value)) return;
+            OnPropertyChanging(nameof(IsBusy));
+            OnPropertyChanging(nameof(ActionEnabled));
+            OnPropertyChanging(nameof(SkipEnabled));
+            OnPropertyChanging(nameof(CheckEnabled));
+            OnPropertyChanging(nameof(ChannelEnabled));
+            OnPropertyChanging(nameof(ServerEnabled));
+            OnPropertyChanging(nameof(ModeEnabled));
+            isBusy = value;
+            OnPropertyChanged(nameof(IsBusy));
+            OnPropertyChanged(nameof(ActionEnabled));
+            OnPropertyChanged(nameof(SkipEnabled));
+            OnPropertyChanged(nameof(CheckEnabled));
+            OnPropertyChanged(nameof(ChannelEnabled));
+            OnPropertyChanged(nameof(ServerEnabled));
+            OnPropertyChanged(nameof(ModeEnabled));
+        }
+    }
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CancelEnabled))]
     private bool isDownloading;
+    public bool IsDownloading
+    {
+        get => isDownloading;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(isDownloading, value)) return;
+            OnPropertyChanging(nameof(IsDownloading));
+            OnPropertyChanging(nameof(CancelEnabled));
+            isDownloading = value;
+            OnPropertyChanged(nameof(IsDownloading));
+            OnPropertyChanged(nameof(CancelEnabled));
+        }
+    }
 
-    [ObservableProperty]
     private bool showProgress;
+    public bool ShowProgress { get => showProgress; set => SetProperty(ref showProgress, value); }
 
-    [ObservableProperty]
     private bool autoCheck = true;
+    public bool AutoCheck
+    {
+        get => autoCheck;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(autoCheck, value)) return;
+            OnPropertyChanging(nameof(AutoCheck));
+            autoCheck = value;
+            OnAutoCheckChanged(value);
+            OnPropertyChanged(nameof(AutoCheck));
+        }
+    }
+    partial void OnAutoCheckChanged(bool value);
 
-    [ObservableProperty]
     private bool emergencyPolicyEnabled = true;
+    public bool EmergencyPolicyEnabled
+    {
+        get => emergencyPolicyEnabled;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(emergencyPolicyEnabled, value)) return;
+            OnPropertyChanging(nameof(EmergencyPolicyEnabled));
+            emergencyPolicyEnabled = value;
+            OnEmergencyPolicyEnabledChanged(value);
+            OnPropertyChanged(nameof(EmergencyPolicyEnabled));
+        }
+    }
+    partial void OnEmergencyPolicyEnabledChanged(bool value);
 
     public string EmergencyPolicyStatus => EmergencyPolicyUpdateService.Status;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(UpdateChannelDescription))]
     private int updateChannelIndex;
+    public int UpdateChannelIndex
+    {
+        get => updateChannelIndex;
+        set
+        {
+            if (EqualityComparer<int>.Default.Equals(updateChannelIndex, value)) return;
+            OnPropertyChanging(nameof(UpdateChannelIndex));
+            OnPropertyChanging(nameof(UpdateChannelDescription));
+            updateChannelIndex = value;
+            OnUpdateChannelIndexChanged(value);
+            OnPropertyChanged(nameof(UpdateChannelIndex));
+            OnPropertyChanged(nameof(UpdateChannelDescription));
+        }
+    }
+    partial void OnUpdateChannelIndexChanged(int value);
 
     public bool ChannelEnabled => !IsBusy;
     public string UpdateChannelDescription => UpdateChannelIndex == 0
         ? "接收 Alpha、Beta 和 Release 更新。" : "只接收 Beta 和 Release 更新。";
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(UpdateServerDescription))]
-    [NotifyPropertyChangedFor(nameof(SourceHint))]
     private int updateServerIndex;
+    public int UpdateServerIndex
+    {
+        get => updateServerIndex;
+        set
+        {
+            if (EqualityComparer<int>.Default.Equals(updateServerIndex, value)) return;
+            OnPropertyChanging(nameof(UpdateServerIndex));
+            OnPropertyChanging(nameof(UpdateServerDescription));
+            OnPropertyChanging(nameof(SourceHint));
+            updateServerIndex = value;
+            OnUpdateServerIndexChanged(value);
+            OnPropertyChanged(nameof(UpdateServerIndex));
+            OnPropertyChanged(nameof(UpdateServerDescription));
+            OnPropertyChanged(nameof(SourceHint));
+        }
+    }
+    partial void OnUpdateServerIndexChanged(int value);
 
     public bool ServerEnabled => !IsBusy;
     public string UpdateServerDescription => UpdateServerPolicy.Description((UpdateServer)UpdateServerIndex);
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(UpdateModeDescription))]
-    [NotifyPropertyChangedFor(nameof(SourceHint))]
     private int updateModeIndex;
+    public int UpdateModeIndex
+    {
+        get => updateModeIndex;
+        set
+        {
+            if (EqualityComparer<int>.Default.Equals(updateModeIndex, value)) return;
+            OnPropertyChanging(nameof(UpdateModeIndex));
+            OnPropertyChanging(nameof(UpdateModeDescription));
+            OnPropertyChanging(nameof(SourceHint));
+            updateModeIndex = value;
+            OnUpdateModeIndexChanged(value);
+            OnPropertyChanged(nameof(UpdateModeIndex));
+            OnPropertyChanged(nameof(UpdateModeDescription));
+            OnPropertyChanged(nameof(SourceHint));
+        }
+    }
+    partial void OnUpdateModeIndexChanged(int value);
     public bool ModeEnabled => !IsBusy;
     public string UpdateModeDescription => UpdateModePolicy.Description((UpdateMode)UpdateModeIndex);
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SkipEnabled))]
     private bool mandatory;
+    public bool Mandatory
+    {
+        get => mandatory;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(mandatory, value)) return;
+            OnPropertyChanging(nameof(Mandatory));
+            OnPropertyChanging(nameof(SkipEnabled));
+            mandatory = value;
+            OnPropertyChanged(nameof(Mandatory));
+            OnPropertyChanged(nameof(SkipEnabled));
+        }
+    }
 
-    [ObservableProperty]
     private InfoBarSeverity severity = InfoBarSeverity.Informational;
+    public InfoBarSeverity Severity { get => severity; set => SetProperty(ref severity, value); }
 
-    [ObservableProperty]
     private bool infoBarOpen;
+    public bool InfoBarOpen { get => infoBarOpen; set => SetProperty(ref infoBarOpen, value); }
 
     /// <summary>当前版本说明（关于卡与更新卡共用同一来源：csproj 的版本属性）。</summary>
     public string CurrentVersionDetail => $"当前版本 {AppVersion.Text}（{AppVersion.NumericText}）";

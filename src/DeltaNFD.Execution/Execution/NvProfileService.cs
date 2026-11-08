@@ -111,7 +111,8 @@ public sealed class NvProfileService : INvProfileService
         if (GameTargetService.Default.IsCustom && !File.Exists(GameExeName)) return null;
         try
         {
-            return NvApiDrs.GetApplicationSettings(GameExeName, [.. NvSettingsCatalog.Definitions.Select(c => c.Id)]);
+            var raw = NvApiDrs.GetApplicationSettings(GameExeName, NvDriverSettingPolicy.ReadIds);
+            return raw is null ? null : NvDriverSettingPolicy.Project(raw);
         }
         catch (InvalidOperationException)
         {
@@ -119,7 +120,7 @@ public sealed class NvProfileService : INvProfileService
         }
     });
 
-    public Task<OperationResult> ApplyGameSettingsAsync(IReadOnlyList<(uint Id, uint? Value)> changes) => Task.Run(() =>
+    public Task<OperationResult> ApplyGameSettingsAsync(IReadOnlyList<(uint Id, uint? Value)> changes, bool rebarWarningAccepted = false) => Task.Run(() =>
     {
         using var targetOperation = GameTargetService.Default.BeginOperation();
         if (GameTargetService.Default.IsCustom && !File.Exists(GameExeName)) return OperationResult.Fail("目标 EXE 不存在，请重新选择。");
@@ -131,6 +132,8 @@ public sealed class NvProfileService : INvProfileService
         Log.Info("NV设置：应用 " + string.Join(", ", changes.Select(c => $"0x{c.Id:X8}={(c.Value is null ? "默认" : $"0x{c.Value:X}")}")));
 
         var env = GetEnvironmentAsync().GetAwaiter().GetResult();
+        if (NvDriverSettingPolicy.Validate(changes, env.DriverVersion, rebarWarningAccepted) is { } validation)
+            return OperationResult.Fail(validation);
         if (!env.IsNvidia || !env.NvApiAvailable)
         {
             Log.Warn($"NV设置：环境不可用（N卡={env.IsNvidia}，NVAPI={env.NvApiAvailable}）");
@@ -144,7 +147,9 @@ public sealed class NvProfileService : INvProfileService
         }
 
         // 展开联动总开关：SR preset / SR 比例 任一非默认 → 开启 SR Enable；两者都默认 → 删除 SR Enable。FG 同理。
-        var expanded = ExpandCompanionChanges(changes);
+        var current = NvApiDrs.GetApplicationSettings(GameExeName, NvDriverSettingPolicy.ReadIds);
+        if (current is null) return OperationResult.Fail("原设置读取失败，未写入驱动配置。");
+        var expanded = NvDriverSettingPolicy.Expand(changes, current, env.DriverVersion);
 
         var (ok, message) = NvApiDrs.ApplyApplicationSettings(
             GameExeName, GameTargetService.Default.Current.DisplayName, expanded);
@@ -161,52 +166,6 @@ public sealed class NvProfileService : INvProfileService
             ? OperationResult.Ok(message + "立即对之后启动的游戏会话生效。")
             : OperationResult.Fail(message);
     });
-
-    private List<(uint Id, uint? Value)> ExpandCompanionChanges(IReadOnlyList<(uint Id, uint? Value)> changes)
-    {
-        var result = new List<(uint, uint?)>(changes);
-
-        void HandleCompanion(uint enableId, uint[] dependents)
-        {
-            // 本次（或既有）依赖项是否为非默认：以本次提交的最终意图为准
-            bool AnyNonDefault()
-            {
-                foreach (var id in dependents)
-                {
-                    var change = changes.FirstOrDefault(c => c.Id == id);
-                    if (change.Id == id)
-                    {
-                        if (change.Value is > 0)
-                        {
-                            return true;
-                        }
-
-                        continue;
-                    }
-
-                    // 本次未改：读现有覆盖状态判断
-                    var current = NvApiDrs.GetApplicationSettings(GameExeName, [id]);
-                    if (current is not null && current.TryGetValue(id, out var state) && state.HasOverride && state.Value != 0)
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-
-            if (!changes.Any(c => dependents.Contains(c.Id)))
-            {
-                return; // 依赖项都没动，不动总开关
-            }
-
-            result.Add((enableId, AnyNonDefault() ? 1u : null));
-        }
-
-        HandleCompanion(0x10E41E01, [0x10E41DF3, 0x10E41DF5]); // DLSS-SR Enable
-        HandleCompanion(0x10E41E03, [0x10E41DF1]);             // DLSS-FG Enable
-        return result;
-    }
 
     // ---------------- nvdrsdb 只读锁定 ----------------
 

@@ -74,7 +74,7 @@ internal static class Vc14StagedChecks
                 "stale-fingerprint", null, default)).Success && changedPlan.Calls.Count == 0,
                 "normal-mode full repair refuses a changed confirmed removal plan");
             var resumedBaseline = Fresh(); resumedBaseline.Products.Clear(); resumedBaseline.AddBaseline("x64");
-            resumedBaseline.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow) { UninstallVerified = true });
+            resumedBaseline.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow) { UninstallVerified = true, Baseline = Vc14Baseline.V144 });
             resumedBaseline.ExcludeOrphanWrappers = true;
             Check((await DeltaNFD.Services.AlphaRestore.RuntimeBetaRepairEnvironment.PrepareV14Async(resumedBaseline,
                 Vc14Reinstall.Fingerprint(resumedBaseline.Plan(resumedBaseline.Scan())), null, default)).Success
@@ -182,24 +182,35 @@ internal static class Vc14StagedChecks
             Check((await Run(normal, Vc14RepairMode.InstallOnly)).Success, "continue in normal mode");
             Check(normal.Calls.All(c => !c.StartsWith("remove")) && normal.Products.Count == 4, "resume only installs fixed baseline");
             Check(normal.PendingInstall() is null && Directory.GetFiles(Path.Combine(normal.Root, "runtime-repair-history")).Length == 1, "archive checkpoint only after final verification");
+            var migration = Fresh(); migration.Products.Clear(); migration.InstallFail = "x86";
+            var oldRecord = new Vc14Continuation(Guid.NewGuid().ToString("D"), DateTimeOffset.UnixEpoch);
+            migration.SavePendingInstall(oldRecord);
+            Check(migration.PendingInstall() == oldRecord, "historical default 142 remains readable without rewriting");
+            Check(!Vc14Reinstall.Preview(migration, Vc14RepairMode.InstallOnly).CanRepair && migration.Calls.Count == 0, "unverified historical uninstall cannot migrate");
+            oldRecord = oldRecord with { UninstallVerified = true }; migration.SavePendingInstall(oldRecord);
+            var migrationPreview = Vc14Reinstall.Preview(migration, Vc14RepairMode.InstallOnly);
+            Check(migrationPreview.CanRepair && migrationPreview.Baseline == Vc14Baseline.V144 && migration.PendingInstall() == oldRecord, "explicit new 144 preview leaves old verified evidence unchanged");
+            Check(!(await Run(migration, Vc14RepairMode.InstallOnly)).Success && migration.PendingInstall() == oldRecord with { Baseline = Vc14Baseline.V144 }, "confirmed migration preserves identity/time/proof on partial install");
+            migration.InstallFail = "";
+            Check((await Run(migration, Vc14RepairMode.InstallOnly)).Success && migration.Calls.All(c => !c.StartsWith("remove")), "migrated partial install retries 144 only");
 
             var none = Fresh();
             Check(!Vc14Reinstall.Preview(none, Vc14RepairMode.InstallOnly).CanRepair, "no checkpoint, no install-only execution");
             none.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow));
             Check(!Vc14Reinstall.Preview(none, Vc14RepairMode.InstallOnly).CanRepair, "checkpoint must not bypass remaining old components");
             var partial = Fresh(); partial.Products.Clear(); partial.AddBaseline("x64");
-            partial.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow));
+            partial.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow) { Baseline = Vc14Baseline.V144 });
             Check((await Run(partial, Vc14RepairMode.InstallOnly)).Success && !partial.Calls.Contains("cleanup"), "partial baseline retry preserves installed components and repairs both architectures");
             var installFail = Fresh(); installFail.Products.Clear(); installFail.InstallFail = "x86";
-            installFail.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow));
+            installFail.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow) { Baseline = Vc14Baseline.V144 });
             Check(!(await Run(installFail, Vc14RepairMode.InstallOnly)).Success && installFail.PendingInstall() is not null, "failed baseline install retains checkpoint");
             installFail.InstallFail = "";
             Check((await Run(installFail, Vc14RepairMode.InstallOnly)).Success, "resume partial failed install without another uninstall");
             var stale = Fresh(); var consent = Vc14Reinstall.Preview(stale, Vc14RepairMode.UninstallOnly);
             Check(!(await Vc14Reinstall.RunAsync(stale, consent.Fingerprint, null, default)).Success && stale.Calls.Count == 0, "mode switching invalidates confirmation");
-            var installConsent = Fresh(); installConsent.Products.Clear(); installConsent.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow));
+            var installConsent = Fresh(); installConsent.Products.Clear(); installConsent.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow) { Baseline = Vc14Baseline.V144 });
             var before = Vc14Reinstall.Preview(installConsent, Vc14RepairMode.InstallOnly);
-            installConsent.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow));
+            installConsent.SavePendingInstall(new(Guid.NewGuid().ToString("D"), DateTimeOffset.UtcNow) { Baseline = Vc14Baseline.V144 });
             Check(!(await Vc14Reinstall.RunAsync(installConsent, before.Fingerprint, null, default, Vc14RepairMode.InstallOnly)).Success, "checkpoint identity bound to consent");
             var cannotSave = Fresh(); cannotSave.SaveError = true;
             Check(!(await Run(cannotSave, Vc14RepairMode.UninstallOnly)).Success && cannotSave.Calls.Count == 0, "checkpoint persistence failure must prevent uninstall");

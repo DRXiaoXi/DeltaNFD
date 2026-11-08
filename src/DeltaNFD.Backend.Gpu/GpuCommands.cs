@@ -189,7 +189,7 @@ internal static class GpuCommands
         if (changes.Count == 0)
             return BackendResult.Failed("gpu.driver.apply", "没有要应用的设置。");
         context.ReportProgress("正在写入驱动设置…", null, "driver");
-        var result = await new NvProfileService().ApplyGameSettingsAsync(changes);
+        var result = await new NvProfileService().ApplyGameSettingsAsync(changes, args.RebarWarningAccepted);
         return Wrap("gpu.driver.apply", result);
     }
 

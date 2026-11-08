@@ -35,6 +35,14 @@ public sealed class BackendCommandContext
     public void ReportProgress(string message, int? percent = null, string stage = "") =>
         _report(new BackendProgress(percent, message, stage));
 
+    /// <summary>在命令执行栈内上报，避免 Progress 在线程池另抛异常并使后端退出，保证进度先于结果。</summary>
+    public IProgress<string> Progress(string stage) => new CommandProgress(this, stage);
+
+    private sealed class CommandProgress(BackendCommandContext context, string stage) : IProgress<string>
+    {
+        public void Report(string value) => context.ReportProgress(value, null, stage);
+    }
+
     /// <summary>把 args 反序列化为强类型参数对象；失败抛 <see cref="BackendContractException"/>。</summary>
     public T ArgsAs<T>() where T : notnull => BackendJson.Deserialize<T>(Args);
 

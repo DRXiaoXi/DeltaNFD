@@ -115,12 +115,18 @@ internal static class CpuFrameStatusChecks
             var snapshot = BackendJson.Deserialize<ReconcileSnapshot>(reconcile.Data!.Value);
             Check(snapshot.Module == BackendModules.CpuFrame, "核对快照模块为 cpuframe");
             Check(snapshot.RecoveryScopes.Any(s => s.Id == "priority") && snapshot.RecoveryScopes.Any(s => s.Id == "affinity")
-                && snapshot.RecoveryScopes.Any(s => s.Id == "ccd") && snapshot.RecoveryScopes.Any(s => s.Id == "power"),
-                "核对返回优先级/亲和性/CCD/电源恢复范围");
+                && snapshot.RecoveryScopes.Any(s => s.Id == "power"),
+                "核对返回优先级/亲和性/电源恢复范围");
+            // 单/双 CCD 调度已迁到进程管理后端：CPU/帧格不再持有或宣称 CCD 恢复范围。
+            Check(!snapshot.RecoveryScopes.Any(s => s.Id == "ccd") && !snapshot.Items.Any(i => i.Id == "ccd"),
+                "CPU/帧格核对不再包含 CCD 范围");
             var bad = await client.InvokeAsync(BackendCommands.CpuFrameRecover, new RecoverArgs { Scope = "definitely-not-a-scope" }, null, CancellationToken.None);
             Check(bad.Status == BackendResultStatuses.Failed, "未知恢复范围被拒绝");
+            // 0.5ms 计时器已从帧格移除：其恢复范围同步退役，不得再被当作合法范围。
             var timerRecover = await client.InvokeAsync(BackendCommands.CpuFrameRecover, new RecoverArgs { Scope = "timer" }, null, CancellationToken.None);
-            Check(timerRecover.Status == BackendResultStatuses.Ok, "无待恢复项的合法范围返回成功（如实不误报阻塞）");
+            Check(timerRecover.Status == BackendResultStatuses.Failed, "退役的计时器恢复范围被拒绝");
+            var cleanRecover = await client.InvokeAsync(BackendCommands.CpuFrameRecover, new RecoverArgs { Scope = "priority" }, null, CancellationToken.None);
+            Check(cleanRecover.Status == BackendResultStatuses.Ok, "无待恢复项的合法范围返回成功（如实不误报阻塞）");
 
             // 5b) T4 扩展迁移命令的只读/无副作用路径（不触发任何真实系统写入）。
             var topo = await client.InvokeAsync(BackendCommands.CpuFrameTopology, new { }, null, CancellationToken.None);
@@ -144,19 +150,14 @@ internal static class CpuFrameStatusChecks
             Check(prioOff.Status == BackendResultStatuses.Ok, "priority.apply(false) 无目标时安全返回 ok");
 
             foreach (var retired in new[] {
-                new CpuFrameBoostArgs { CoreParking = true, Timer = true },
-                new CpuFrameBoostArgs { CoreParking = true, EcoQos = true, Timer = true } })
+                new CpuFrameGamePowerArgs { CoreParking = true, EcoQos = true } })
             {
-                var refused = await client.InvokeAsync(BackendCommands.CpuFrameBoostApply, retired, null, CancellationToken.None);
+                var refused = await client.InvokeAsync(BackendCommands.CpuFrameGamePowerApply, retired, null, CancellationToken.None);
                 Check(refused.Status == BackendResultStatuses.Failed && refused.Message.Contains("已移除"),
                     "旧协议开启退休功能时明确拒绝整个请求");
-                var after = await client.InvokeAsync(BackendCommands.CpuFrameStatus, new { }, null, CancellationToken.None);
-                Check(after.Status == BackendResultStatuses.Ok && after.Data is not null &&
-                    !BackendJson.Deserialize<CpuFrameStatusSnapshot>(after.Data.Value).TimerActive,
-                    "退休请求被拒绝后不会顺带启动计时器");
             }
-            var boostOff = await client.InvokeAsync(BackendCommands.CpuFrameBoostApply,
-                new CpuFrameBoostArgs { CoreParking = false, EcoQos = false, Timer = false }, null, CancellationToken.None);
+            var boostOff = await client.InvokeAsync(BackendCommands.CpuFrameGamePowerApply,
+                new CpuFrameGamePowerArgs { CoreParking = false, EcoQos = false }, null, CancellationToken.None);
             Check(boostOff.Status == BackendResultStatuses.Ok, "旧协议的关闭请求继续接受");
 
             // 6) 目标切换：后端在下一次 tick 同步新目标并自增代次（重新复核路径）。
@@ -175,16 +176,12 @@ internal static class CpuFrameStatusChecks
             Check(switched is not null, "目标切换后后端代次自增并改为新路径");
             Check(!switched!.GameRunning, "新目标无匹配进程时报告未运行（不把偏好当生效）");
 
-            var timerWaiting = await client.InvokeAsync(BackendCommands.CpuFrameBoostApply,
-                new CpuFrameBoostArgs { Timer = true }, null, CancellationToken.None);
-            Check(timerWaiting.Status == BackendResultStatuses.Ok, "计时器可配置为随游戏启动，不把等待状态当失败");
-            var waitingStatus = await client.InvokeAsync(BackendCommands.CpuFrameStatus, new { }, null, CancellationToken.None);
-            Check(waitingStatus.Status == BackendResultStatuses.Ok && waitingStatus.Data is not null &&
-                !BackendJson.Deserialize<CpuFrameStatusSnapshot>(waitingStatus.Data.Value).TimerActive,
-                "无目标游戏时仍不请求定时器");
-            Check((await client.InvokeAsync(BackendCommands.CpuFrameBoostApply,
-                new CpuFrameBoostArgs { Timer = false }, null, CancellationToken.None)).Status == BackendResultStatuses.Ok,
-                "仅计时器的新请求可正常关闭");
+            var powerOn = await client.InvokeAsync(BackendCommands.CpuFrameGamePowerApply,
+                new CpuFrameGamePowerArgs { EcoQos = true }, null, CancellationToken.None);
+            Check(powerOn.Status == BackendResultStatuses.Ok, "游戏节能请求可配置，不把无游戏等待状态当失败");
+            var powerOff = await client.InvokeAsync(BackendCommands.CpuFrameGamePowerApply,
+                new CpuFrameGamePowerArgs { EcoQos = false }, null, CancellationToken.None);
+            Check(powerOff.Status == BackendResultStatuses.Ok, "游戏节能请求可正常关闭");
 
             // 7) 断线：杀掉后端进程后调用必须如实失败，不能折算成功。
             // Only disconnect the process launched by this isolated test. Never enumerate and

@@ -35,7 +35,7 @@ internal static class AceCoreOwnershipInspection
             // A game discovery gap can only increase the number of games, not the CORE count.
             // Preserve its details without downgrading an already proved CORE <= known-games result.
             var coreCountIncomplete = notes.Count > 0;
-            var candidates = (discover ?? AceGameDiscovery.Read)(notes, CheckGame);
+            var candidates = (discover ?? AceDefaultGameInspection.Read)(notes, CheckGame);
             var games = new List<AceGameInstallation>();
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             Stopwatch? manualWatch = null;
@@ -69,6 +69,8 @@ internal static class AceCoreOwnershipInspection
                     if (paths.Count == 0)
                     {
                         if (candidate.SearchChildren) notes.Add($"手动目录未发现可识别的 ACE 组件；可能未安装或超出检索范围，未据此判定异常：{directory}");
+                        else if (candidate.Source == AceDefaultGameInspection.DeltaSource)
+                            notes.Add($"已识别三角洲目录中未发现可识别的 ACE 组件，未计入 ACE 游戏数：{directory}");
                         continue;
                     }
                     // Registry/launcher records can point at different levels of the same installation.
@@ -102,14 +104,14 @@ internal static class AceCoreOwnershipInspection
                 detail += "部分目录或安装信息仍待核对，请查看明细。";
             return new()
             {
-                Level = level, SysCount = shared.Count,
+                Level = level, SysCount = shared.Count, CoreInventoryComplete = !coreCountIncomplete,
                 Files = shared.Select(path => "· " + Path.GetRelativePath(root, path)).ToList(),
                 Games = games, Notes = notes.Distinct().Take(32).ToList(),
                 ManuallyAssociatedGameCount = manualCount,
                 Summary = countSummary + detail,
                 Advice = excess ? "请确认所有含 ACE 的游戏均已添加/关联，并重新检测。计数提醒不证明多余文件已失效或可删除，目录读取缺口请查看明细。"
                     : coreCountIncomplete ? "共享 CORE 目录未读全，不能确认驱动总数，请查看读取明细后重试。检测不会自动删除组件。"
-                    : "按已读完整的共享 CORE 文件数与已确认的 ACE 游戏数量核对，不要求驱动内容匹配；其他游戏检索提示保留在明细，不影响本次数量结果。检测不会自动删除组件。",
+                    : "默认检查软件已识别的三角洲及玩家手动添加的游戏目录，并按去重游戏数核对共享 CORE 数量；其他游戏仍需手动添加。检测不会自动删除组件。",
             };
         }
         catch (OperationCanceledException) { return Blocked(); }

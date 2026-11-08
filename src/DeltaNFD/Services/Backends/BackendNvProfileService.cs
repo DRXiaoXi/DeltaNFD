@@ -74,11 +74,12 @@ internal sealed class BackendNvProfileService : INvProfileService
         return mapped;
     }
 
-    public async Task<OperationResult> ApplyGameSettingsAsync(IReadOnlyList<(uint Id, uint? Value)> changes)
+    public async Task<OperationResult> ApplyGameSettingsAsync(IReadOnlyList<(uint Id, uint? Value)> changes, bool rebarWarningAccepted = false)
     {
         var args = new NvDriverApplyArgs
         {
             Changes = changes.Select(c => new NvSettingChangeDto { Id = c.Id, Value = c.Value }).ToList(),
+            RebarWarningAccepted = rebarWarningAccepted,
         };
         var result = await InvokeAsync(BackendCommands.GpuDriverApply, args, CancellationToken.None);
         return Map(result, "应用驱动设置");

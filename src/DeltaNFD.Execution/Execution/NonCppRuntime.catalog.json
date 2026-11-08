@@ -1,0 +1,1864 @@
+{
+  "Files": [
+    {
+      "Name": "d3dcompiler_33.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dcompiler_33.dll",
+      "Sha256": "90DC7E301A3DFB1C015CB73811B77A5EA21F8EE46944011BCA3A270584473013",
+      "Version": "9.18.904.15",
+      "Length": 1400176,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dcompiler_34.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dcompiler_34.dll",
+      "Sha256": "95538BA7D65336B617F64D66789F3BF53F9BF52FFD4F717483D1A7E6A02C64B3",
+      "Version": "9.19.949.46",
+      "Length": 1401200,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dcompiler_35.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dcompiler_35.dll",
+      "Sha256": "B82F096607A52B76F69A2DB03392E008DD60A7DCE74665B0E09F5593BA7CA7CA",
+      "Version": "9.19.949.1104",
+      "Length": 1985904,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dcompiler_36.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dcompiler_36.dll",
+      "Sha256": "D002A8731182968D4036D54E401F9792A57C1C84CAEF576059CA18190B4698A4",
+      "Version": "9.19.949.2111",
+      "Length": 2006552,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_37.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/D3DCompiler_37.dll",
+      "Sha256": "425F0D7EE0F2845424266AA56F2CDCE3A61541D5E2C7D7813F4373E45DF0CB8B",
+      "Version": "9.22.949.2248",
+      "Length": 1860120,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_38.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/D3DCompiler_38.dll",
+      "Sha256": "1FF6374215E326B72DBDC2FE8AF4F9002C5D755358ED8795D781F4A1078AF174",
+      "Version": "9.23.949.2378",
+      "Length": 1941528,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_39.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/D3DCompiler_39.dll",
+      "Sha256": "54F4F734DD149EF9EE8C999CC3D7858082B85C551F17FA08553CDE1ABDEE3C3E",
+      "Version": "9.24.949.2307",
+      "Length": 1942552,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_40.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/D3DCompiler_40.dll",
+      "Sha256": "BD81CF5C9B127519DBEB284E699E9D7545EE1130E655FD6A4E66B959E9D9AAAC",
+      "Version": "9.24.950.2656",
+      "Length": 2605920,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_41.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/D3DCompiler_41.dll",
+      "Sha256": "F96D915C2D51346FE1A35A7D0B7ACEF7A3734AF2C75579085FCE9D1A29E0F2E6",
+      "Version": "9.26.952.2844",
+      "Length": 2430312,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_42.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/D3DCompiler_42.dll",
+      "Sha256": "4D61E843AA86D8801A60D01B8E872379C5B2503795A2BCBE6141978396ADE00B",
+      "Version": "9.27.952.3022",
+      "Length": 2582888,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_43.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/D3DCompiler_43.dll",
+      "Sha256": "44C3A7E330B54A35A9EFA015831392593AA02E7DA1460BE429D17C3644850E8A",
+      "Version": "9.29.952.3111",
+      "Length": 2526056,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_47.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/D3DCompiler_47.dll",
+      "Sha256": "FD3CC271308E1C1FD21821E0ECAF29498EDD46839A4A2712B2FAB7AA96B755E2",
+      "Version": "6.3.9600.18611",
+      "Length": 4296704,
+      "RegisterCom": false,
+      "OsManaged": true
+    },
+    {
+      "Name": "d3dcsx_42.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dcsx_42.dll",
+      "Sha256": "8852C218583DC11113705BD89DABD51B0F77DB6B393EAF9A9A751652B7CDEF24",
+      "Version": "9.27.952.3022",
+      "Length": 5554512,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dcsx_43.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dcsx_43.dll",
+      "Sha256": "3C9E1B87F2763F58402B5104D21E0D9D5DB352FCCCF7801EAA4CD1F5DBC20945",
+      "Version": "9.29.952.3111",
+      "Length": 1907552,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx10.dll",
+      "Sha256": "03115A37F75FFFB7ABF07A59EC6ECB5217D3479BC95F92846C7E9B91822A0567",
+      "Version": "9.16.843.0",
+      "Length": 469264,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_33.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx10_33.dll",
+      "Sha256": "3F0248C3BB9BDA2A901B343B3B58172E175A86450D421F0FC4AEBBD5A7D11477",
+      "Version": "9.18.904.21",
+      "Length": 506728,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_34.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx10_34.dll",
+      "Sha256": "F7F367DF5D0FB5E32113515339D928A51D4253B1C0E21854277F67D0B271FCE3",
+      "Version": "9.19.949.46",
+      "Length": 506728,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_35.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx10_35.dll",
+      "Sha256": "2030B7D57C88B653A0EB55EA85AD90C6C8630A00F5A56EA5F9B6985ACDDA5289",
+      "Version": "9.19.949.1104",
+      "Length": 508264,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_36.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx10_36.dll",
+      "Sha256": "6B632DCF9EF779D72855EEB1BB4676AB922FFB9204F7D587475477FA2F51BE4A",
+      "Version": "9.19.949.2009",
+      "Length": 508264,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_37.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx10_37.dll",
+      "Sha256": "3BB17715D9DE0878F65A3A006B8614532A6133F56E12EF5FA392A63337C0C275",
+      "Version": "9.19.949.2185",
+      "Length": 529424,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_38.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx10_38.dll",
+      "Sha256": "1274A3902A0A8CE9309D2B636EEC3D42048AC90A68A0ADD0E372027B3F000104",
+      "Version": "9.23.949.2378",
+      "Length": 540688,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_39.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx10_39.dll",
+      "Sha256": "1EC45BDB37E9F8BF7B6684DEFF6799B06D4BC2E2EF72B5F278D6C4B3A7597B13",
+      "Version": "9.24.949.2307",
+      "Length": 540688,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_40.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx10_40.dll",
+      "Sha256": "48AF3A1834640969660A37899A4CB17677FD499C26185AC940D284A0B4212FB3",
+      "Version": "9.24.950.2656",
+      "Length": 519000,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_41.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx10_41.dll",
+      "Sha256": "464653C6C52E16D53B87C1F199C693F748FA48228F7690F086350B0F7BEC581D",
+      "Version": "9.26.952.2844",
+      "Length": 520544,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_42.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx10_42.dll",
+      "Sha256": "DFB4BAAA5F06467183839F14F5D28466E7C6E7EAA90F292C4516ED6926F5DA8A",
+      "Version": "9.27.952.3001",
+      "Length": 523088,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_43.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx10_43.dll",
+      "Sha256": "9BFFA1EA073D79E9954CB398FC91B93ED9DC79ED2205995D4B949F1CC2AD3BD1",
+      "Version": "9.29.952.3111",
+      "Length": 511328,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx11_42.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx11_42.dll",
+      "Sha256": "FEDB54EEF0FB7A61514FD4273F5F13535DE1082F55BFB5F7B05A1016F495DCDB",
+      "Version": "9.27.952.3022",
+      "Length": 285024,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx11_43.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx11_43.dll",
+      "Sha256": "981E42629DF751217406E7150477CDDC853B79ABD6A8568A1566298ED8F7BD59",
+      "Version": "9.29.952.3111",
+      "Length": 276832,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_24.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_24.dll",
+      "Sha256": "1EC422BD6421C741EEF57847260967F215913649901E21DD9C46EB1B3BB10906",
+      "Version": "9.5.132.0",
+      "Length": 3544272,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_25.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_25.dll",
+      "Sha256": "10B09474BFE4E2BB395472628646BC5F353FBFBEC976575C45EEFF49984EBAA6",
+      "Version": "9.6.168.0",
+      "Length": 3823312,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_26.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_26.dll",
+      "Sha256": "30B06DBBD202494BAE3B87487E7273ADCFFD17A9D2C29977030FDE0570AA841B",
+      "Version": "9.7.239.0",
+      "Length": 3767504,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_27.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_27.dll",
+      "Sha256": "F9DD288C9895973F8DB1856D172779041C6DEE173AD1EF53B1727FC85CB6B75F",
+      "Version": "9.8.299.0",
+      "Length": 3807440,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_28.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_28.dll",
+      "Sha256": "A2870F86E2F1B11646FF3F404BDBDE10520C481C1400B20D25FDF56E66FB0A17",
+      "Version": "9.10.455.0",
+      "Length": 3815120,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_29.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_29.dll",
+      "Sha256": "D496C31A6B0F41398ECAD7698987C55C2CB88EB6568976BA9B01A197879DD9DC",
+      "Version": "9.11.519.0",
+      "Length": 3830992,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_30.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_30.dll",
+      "Sha256": "7D1374E3B921A70B5028472AB164D9E582E3C3525334235D642664189DA9B157",
+      "Version": "9.12.589.0",
+      "Length": 3927248,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_31.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_31.dll",
+      "Sha256": "84167B7DF7E97C63F0CC15C1D272CDC7BBA942F6F36A8801AEC9840825891D0D",
+      "Version": "9.15.779.0",
+      "Length": 3977496,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_32.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_32.dll",
+      "Sha256": "7C723479E3720A52F286D2E9E044F19ED893A34E6819D53E4DE6991048FEBAD1",
+      "Version": "9.16.843.0",
+      "Length": 4398360,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_33.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_33.dll",
+      "Sha256": "7338B1D039D0C08E45F24874E4918FFA642EBFE5967C96035F66F509265FA33E",
+      "Version": "9.18.904.15",
+      "Length": 4494184,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_34.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_34.dll",
+      "Sha256": "715FA6D4931324CCA594C4FDFC60274ED29D296BB4592D102B36BC976C8B8ADA",
+      "Version": "9.19.949.46",
+      "Length": 4496232,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_35.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_35.dll",
+      "Sha256": "CA195B7EE7AEE29E6417ACF0E6C1736D9AAC76890A622EB62ED137394FC6F2B9",
+      "Version": "9.19.949.1104",
+      "Length": 5073256,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_36.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_36.dll",
+      "Sha256": "C683E8E543BDD678DFDEA0B325A3DE04A419EEB053E2F32702D8B472AAF54C6D",
+      "Version": "9.19.949.2111",
+      "Length": 5081608,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_37.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_37.dll",
+      "Sha256": "8C1D75B01208B59FCABFB389DF296E00A58713322F00112FBE80AA7B6221708A",
+      "Version": "9.22.949.2248",
+      "Length": 4910088,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_38.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_38.dll",
+      "Sha256": "B54E832BD8D7E94772C680F49C31B86F9C5DB456F8E5CAC66720D533896F1CFE",
+      "Version": "9.23.949.2378",
+      "Length": 4991496,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_39.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_39.dll",
+      "Sha256": "AECBE2965F7C9AA60257670114C06B21A3DE914B03E20FF569C5CB44EC4807FD",
+      "Version": "9.24.949.2307",
+      "Length": 4992520,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_40.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_40.dll",
+      "Sha256": "8A9EA8BC06786D342AF4E7D171ABBE6640CF31D9D01AFB86DBF63F26302077DB",
+      "Version": "9.24.950.2656",
+      "Length": 5631312,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_41.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_41.dll",
+      "Sha256": "33FD649D5B6E90BD7B7F51D1431EF3501772AE985E320442E5FD750E4368669A",
+      "Version": "9.26.952.2844",
+      "Length": 5425496,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_42.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_42.dll",
+      "Sha256": "1D6F5AA25AC2F1E55D3FD89CD5B33EDD4DE3709BF0353C75AB8645CEBC087FA5",
+      "Version": "9.27.952.3001",
+      "Length": 2475352,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_43.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/d3dx9_43.dll",
+      "Sha256": "84B900DBD7FA978D6E0CAEE26FC54F2F61D92C9C75D10B35F00E3E82CD1D67B4",
+      "Version": "9.29.952.3111",
+      "Length": 2401112,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "x3daudio1_0.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/x3daudio1_0.dll",
+      "Sha256": "77CC09CEA6DE69F12106E6DD9DF1C0446A525A54C3953D69D64711B9394CC38F",
+      "Version": "9.11.519.0",
+      "Length": 16592,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "x3daudio1_1.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/x3daudio1_1.dll",
+      "Sha256": "FAC23787E7C199C1969806850B5A9652F66F6DCAC86F48F6F834ABC253848A55",
+      "Version": "9.15.779.0",
+      "Length": 17688,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "x3daudio1_2.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/x3daudio1_2.dll",
+      "Sha256": "7A34A7A8AF47C6B2CF890ECB56BAD2454BA5EB1EF2DF6FAD9EE53C4770E941CC",
+      "Version": "9.21.1148.0",
+      "Length": 21000,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "X3DAudio1_3.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/X3DAudio1_3.dll",
+      "Sha256": "96C2A80A7FA7670D323E584B956CC98F69F2A22E5329CE4A93269468B142DE44",
+      "Version": "9.22.1284.0",
+      "Length": 28168,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "X3DAudio1_4.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/X3DAudio1_4.dll",
+      "Sha256": "E38B62C0946B9E4E1446E0F8C6335FC7328EB20CC587E310983F3F6D6571AC5D",
+      "Version": "9.23.1350.0",
+      "Length": 28168,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "X3DAudio1_5.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/X3DAudio1_5.dll",
+      "Sha256": "8DD91637F40136F8F941D0B9E8A096964336759A91BEB3265A78627E800DA85F",
+      "Version": "9.25.1476.0",
+      "Length": 25936,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "X3DAudio1_6.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/X3DAudio1_6.dll",
+      "Sha256": "0AFCF64138AACAB2B4A5E110392A7D978694DC545845F89782C07C650F212F3B",
+      "Version": "9.26.1590.0",
+      "Length": 24920,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "X3DAudio1_7.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/X3DAudio1_7.dll",
+      "Sha256": "9460709339701AD471A5CABE6365355F4D586DC4FCB86507C1331839DC555446",
+      "Version": "9.28.1886.0",
+      "Length": 24920,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_0.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine2_0.dll",
+      "Sha256": "A00AD310F3D7B2D4DE2F5A4C081359FA443CE0BAECC72EBF39D6B30CCF7BABCE",
+      "Version": "9.11.519.0",
+      "Length": 355536,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_1.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine2_1.dll",
+      "Sha256": "3CA31F274EA55CB966EC0B49ADDF72E1E21269406AE5FC44DE3D5BBC884A6CE4",
+      "Version": "9.12.589.0",
+      "Length": 352464,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_10.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine2_10.dll",
+      "Sha256": "3FCC50623A5DA6B23788DBDE6EB10418B414865B12C84247DDB3024FDA59A8AB",
+      "Version": "9.21.1148.0",
+      "Length": 411656,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_2.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine2_2.dll",
+      "Sha256": "7B4E5938F1F69E5B8AAA8ECB479245B5773786192A47F9FDF6BD8ECCFB109B83",
+      "Version": "9.13.644.0",
+      "Length": 354072,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_3.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine2_3.dll",
+      "Sha256": "1CF72300E03B4B6FC48E1D9E79D93C42D657EE1F87153035D1578D1AF8616AD5",
+      "Version": "9.14.701.0",
+      "Length": 363288,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_4.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine2_4.dll",
+      "Sha256": "2BFA6E7B793299A306A554B60A39D001E493937E88DCA403D9F0DD1EA0DE1AA0",
+      "Version": "9.15.779.0",
+      "Length": 364824,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_5.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine2_5.dll",
+      "Sha256": "A737EA87FD5B44343C26DA6D47508901B916B83C5F4A508C0B18C56FAF8C0329",
+      "Version": "9.16.857.0",
+      "Length": 390424,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_6.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine2_6.dll",
+      "Sha256": "9F4C316BE32E4DE8C6594C26FF50410D2763B5F3320741B912A81A9EA9B7728E",
+      "Version": "9.17.892.0",
+      "Length": 393576,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_7.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine2_7.dll",
+      "Sha256": "BCF3012A44B448402166BBAB661A9FBCA7F9E3C11AD17B3F96A54BBBB82BB235",
+      "Version": "9.18.944.0",
+      "Length": 403304,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_8.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine2_8.dll",
+      "Sha256": "43A29C6DAE6468CA4163795A7555003A71384B8DBE052BE0B3BF1D7D4D19CF24",
+      "Version": "9.19.1007.0",
+      "Length": 409960,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_9.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine2_9.dll",
+      "Sha256": "28EE04A1BD08FAEBF937367E3C3FAE4D20980BA08070382497964EC77951B749",
+      "Version": "9.20.1057.0",
+      "Length": 411496,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_0.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine3_0.dll",
+      "Sha256": "1C953325E2F9E2033065C9898420453ED8B812EB739A7ADDA5021114A6FC9074",
+      "Version": "9.22.1284.0",
+      "Length": 177672,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_1.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine3_1.dll",
+      "Sha256": "444A0B9836B0116EDC50E4226C5B6BAEDD4F92FC099DAB21CFC246ABA0C24975",
+      "Version": "9.23.1350.0",
+      "Length": 177672,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_2.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine3_2.dll",
+      "Sha256": "7D0D28DFD60A28283846C9B00F26BA8F98AF16D95E81AD577EE0E89D56C2EF50",
+      "Version": "9.24.1400.0",
+      "Length": 177672,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_3.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine3_3.dll",
+      "Sha256": "2382BDAD39EB8A94194EC4D169203067710D044B31E8F9B1C0571FD6CE32F23D",
+      "Version": "9.25.1476.0",
+      "Length": 175440,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_4.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine3_4.dll",
+      "Sha256": "E4296C55D860E9F14F91C58841A7100036152D55BCB4BDCDF659DDC1D8A4C52F",
+      "Version": "9.26.1590.0",
+      "Length": 174936,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_5.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine3_5.dll",
+      "Sha256": "65E8EFEBDF388F3075817F451ED96C4765BF83C0408B84F4F4F71A3F4214DA8C",
+      "Version": "9.27.1734.0",
+      "Length": 176968,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_6.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine3_6.dll",
+      "Sha256": "6E656D37EADEC5ACF8CA99F2DF37768EAEC1C919E616CAF3805C0884B2AF7C26",
+      "Version": "9.28.1886.0",
+      "Length": 176984,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_7.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xactengine3_7.dll",
+      "Sha256": "31B7D87C0B7A5E44EC6FC935F11EC9BA949D8161C667F8396896AC92E9BC6745",
+      "Version": "9.29.1962.0",
+      "Length": 176984,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAPOFX1_0.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/XAPOFX1_0.dll",
+      "Sha256": "671C24F825629381870567D726B7DBC3890D665648043C041EB1100163C49E12",
+      "Version": "9.23.1350.0",
+      "Length": 68104,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAPOFX1_1.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/XAPOFX1_1.dll",
+      "Sha256": "CD03A9EF13123C1B9CE3D92B9E9FD9B9682C9F66C167DD8A326E4BD0ACFF73F2",
+      "Version": "9.24.1400.0",
+      "Length": 72200,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAPOFX1_2.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/XAPOFX1_2.dll",
+      "Sha256": "F16E5795FAC7A97FC1FFB5D049C011EE5F0DCDC4C6393664B6A9D94F949FDF0F",
+      "Version": "9.25.1476.0",
+      "Length": 74576,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAPOFX1_3.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/XAPOFX1_3.dll",
+      "Sha256": "787E10D48D90DB50DC155FCA53FE8C5C1A383CA24D468733D4B8FE3ACF2D0A34",
+      "Version": "9.26.1590.0",
+      "Length": 73544,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAPOFX1_4.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/XAPOFX1_4.dll",
+      "Sha256": "D42E7E91EAFCE25550F08A63240E23FBE3DDD278B852E36E4EAB05BC42F5EC7D",
+      "Version": "9.28.1886.0",
+      "Length": 78680,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAPOFX1_5.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/XAPOFX1_5.dll",
+      "Sha256": "E47DCF74D50403B376C562E4121E359E5886E42FCC60B3FA8BA53E6826854C49",
+      "Version": "9.29.1962.0",
+      "Length": 77656,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_0.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/XAudio2_0.dll",
+      "Sha256": "EED9479428DF33F7A9BE5ECA9806C2E3412509274638D13032C6C0ED1A3A9EF1",
+      "Version": "9.22.1284.0",
+      "Length": 489480,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_1.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/XAudio2_1.dll",
+      "Sha256": "7C7C67E2255217D12C5C2AFE53556C0F131049BE7DB4043AED9C1379B9CA9AA1",
+      "Version": "9.23.1350.0",
+      "Length": 511496,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_2.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/XAudio2_2.dll",
+      "Sha256": "9AC81279B1625CBD9A8B59716AAC63EF68D722DAE586291457D24366A5F4E78B",
+      "Version": "9.24.1400.0",
+      "Length": 513544,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_3.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/XAudio2_3.dll",
+      "Sha256": "D8E9C006EDCF959F414AE7E3FF2E11AF0885BC84CEDC8249FDC1C5E71CDCA8BA",
+      "Version": "9.25.1476.0",
+      "Length": 518480,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_4.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/XAudio2_4.dll",
+      "Sha256": "DF7DDBEA32ACECC7FD6743002D211506AB75CB1685B4D2B708EA160C610A6F0D",
+      "Version": "9.26.1590.0",
+      "Length": 521560,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_5.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/XAudio2_5.dll",
+      "Sha256": "36C77312026A3BD5FB928F4FE599A077B08264A82F2863875C2D4619EE133B71",
+      "Version": "9.27.1734.0",
+      "Length": 517960,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_6.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/XAudio2_6.dll",
+      "Sha256": "3240447EF7BAB48EC32A19F36E990BBDDFDCB0F664FD9F58449F46788B5C32DD",
+      "Version": "9.28.1886.0",
+      "Length": 530776,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_7.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/XAudio2_7.dll",
+      "Sha256": "F8636CCC37BBFC84107992B60E4226EB7237417112267ED64B08F72983AC4314",
+      "Version": "9.29.1962.0",
+      "Length": 518488,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xinput1_1.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xinput1_1.dll",
+      "Sha256": "87C7F921BBF171FA04F7C2ADAF8B25D4BF152D12C6B99771DA42F3AF07F78987",
+      "Version": "9.12.589.0",
+      "Length": 83664,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "xinput1_2.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xinput1_2.dll",
+      "Sha256": "77055B6A144C4017ACD0A8B34520CF9A84BE6B9C75DB40F7A708B9F4E38AA138",
+      "Version": "9.14.701.0",
+      "Length": 83736,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "xinput1_3.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xinput1_3.dll",
+      "Sha256": "756CAD002E1553CFA1A91EBE8C1B9380FFABE0B4B1916C4A4DB802396DDFBEF8",
+      "Version": "9.18.944.0",
+      "Length": 107368,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "xinput9_1_0.dll",
+      "Architecture": "x64",
+      "RelativePath": "x64/xinput9_1_0.dll",
+      "Sha256": "81C6DFCD7BCB4F2B2580A98C8E66A3EB624B44F48B80F42A1F8134E448171CC9",
+      "Version": "9.10.455.0",
+      "Length": 81616,
+      "RegisterCom": false,
+      "OsManaged": true
+    },
+    {
+      "Name": "d3dcompiler_33.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dcompiler_33.dll",
+      "Sha256": "12E238AF4B4EDC1F774213709A87A91B77B2C9D2D18FE475B027872923B6FA17",
+      "Version": "9.18.904.15",
+      "Length": 1123696,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dcompiler_34.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dcompiler_34.dll",
+      "Sha256": "5044A5810FD931339933A8D0C56115A5A5C27D8C0D8E348977E2724A032ACCF0",
+      "Version": "9.19.949.46",
+      "Length": 1124720,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dcompiler_35.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dcompiler_35.dll",
+      "Sha256": "5A866CDF74F981E783624DAFB0E72F133AD9F9B293856D7A18C7558FA357BEB1",
+      "Version": "9.19.949.1104",
+      "Length": 1358192,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dcompiler_36.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dcompiler_36.dll",
+      "Sha256": "F15EFCAB1780FE7D784A3CD3798F147FA249E81B7EF9A494B85DC7FDAB084734",
+      "Version": "9.19.949.2111",
+      "Length": 1374232,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_37.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/D3DCompiler_37.dll",
+      "Sha256": "715876D15B590936E4D32602A764D810650EEC134922B32EEA742E2FA71791C1",
+      "Version": "9.22.949.2248",
+      "Length": 1420824,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_38.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/D3DCompiler_38.dll",
+      "Sha256": "DDCAADBDD47BCBA02C8D1880D456ACC20732D21554977338AE507987ED04046E",
+      "Version": "9.23.949.2378",
+      "Length": 1491992,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_39.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/D3DCompiler_39.dll",
+      "Sha256": "B99B655ABC4EC45851CC2ACDB7A348E739687200A4FE3BE9C35D6738DD61112F",
+      "Version": "9.24.949.2307",
+      "Length": 1493528,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_40.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/D3DCompiler_40.dll",
+      "Sha256": "F0A6F156D13150DE6EBB094233E5FF78581FBDB77BD0FF8D083698C42BC8E13B",
+      "Version": "9.24.950.2656",
+      "Length": 2036576,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_41.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/D3DCompiler_41.dll",
+      "Sha256": "69DDADF8F5BE24F10382706480B55E2492008D102001779F976608E880C65AAB",
+      "Version": "9.26.952.2844",
+      "Length": 1846632,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_42.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/D3DCompiler_42.dll",
+      "Sha256": "6C976311406C23AA71018D274DA0ECDEF43B6E3A3B0B01E941A5E8E4E974386C",
+      "Version": "9.27.952.3022",
+      "Length": 1974616,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_43.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/D3DCompiler_43.dll",
+      "Sha256": "2F23182EC6F4889397AC4BF03D62536136C5BDBA825C7D2C4EF08C827F3A8A1C",
+      "Version": "9.29.952.3111",
+      "Length": 2106216,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "D3DCompiler_47.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/D3DCompiler_47.dll",
+      "Sha256": "E3009E3738FAB1F7CD685567C5AA1EB0A408AC51D0CDA5DA788841174D7625B1",
+      "Version": "6.3.9600.18611",
+      "Length": 3550208,
+      "RegisterCom": false,
+      "OsManaged": true
+    },
+    {
+      "Name": "d3dcsx_42.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dcsx_42.dll",
+      "Sha256": "E462EB3D41DB54988CE3BE46CED60B0073F8D939A9946CDA67FB1DF3C8AFE0A1",
+      "Version": "9.27.952.3022",
+      "Length": 5501792,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dcsx_43.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dcsx_43.dll",
+      "Sha256": "B46A44B6FCE8F141C9E02798645DB2EE0DA5C69EA71195E29F83A91A355FA2CA",
+      "Version": "9.29.952.3111",
+      "Length": 1868128,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx10.dll",
+      "Sha256": "FD2CAA28493EA76021B93641958238B7A933F4F6DB1A2070BE03CC81D87D8307",
+      "Version": "9.16.843.0",
+      "Length": 440080,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_33.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx10_33.dll",
+      "Sha256": "B04E2B089656EAE01A0071359F9D7FB040DEA804C1B9D2379431864174259C2D",
+      "Version": "9.18.904.21",
+      "Length": 443752,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_34.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx10_34.dll",
+      "Sha256": "330E120D745E1132252DF81800362A7AE0B61A9060AFC800165BA8A1D55D3FB3",
+      "Version": "9.19.949.46",
+      "Length": 443752,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_35.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx10_35.dll",
+      "Sha256": "DB775655FD923E29509402556F86002DD9AEA062CDCDBA7073E1057A67B5CE50",
+      "Version": "9.19.949.1104",
+      "Length": 444776,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_36.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx10_36.dll",
+      "Sha256": "AEE0248F18DFEF8194451A22C69ADDA1CCA38C03AE9AA776114DA9D8851D4C38",
+      "Version": "9.19.949.2009",
+      "Length": 444776,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_37.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx10_37.dll",
+      "Sha256": "61AAF973712F848B24C3E769E3252248ECE96DB63F206DE0CA7FF43D9ED87A51",
+      "Version": "9.19.949.2187",
+      "Length": 462864,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_38.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx10_38.dll",
+      "Sha256": "BF463B7EE2235F351309B5FD790F514ACF2B55A4A1F90222F7479024CC28FC34",
+      "Version": "9.23.949.2378",
+      "Length": 467984,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_39.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx10_39.dll",
+      "Sha256": "613AFDB8B44BB3BED945279229D9604A3CD553F8C2B9B091235CBAB8CD00DE61",
+      "Version": "9.24.949.2307",
+      "Length": 467984,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_40.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx10_40.dll",
+      "Sha256": "C05787CBF3AA4527BAAE96A425CEAC910090EF48809990A450C33F3CDA0E4767",
+      "Version": "9.24.950.2656",
+      "Length": 452440,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_41.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx10_41.dll",
+      "Sha256": "9F4C15E1F68795727EDED4737ACC5A1AA85F896CD9E6924FDDC9128B48F1BBD6",
+      "Version": "9.26.952.2844",
+      "Length": 453456,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_42.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx10_42.dll",
+      "Sha256": "46429C4AFFE041B08A7ACFDA0E9162BA42DE966ACB2CBCAF09EF976232073B51",
+      "Version": "9.27.952.3001",
+      "Length": 453456,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx10_43.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx10_43.dll",
+      "Sha256": "56FCD13650FD1F075743154E8C48465DD68A236AB8960667D75373139D2631BF",
+      "Version": "9.29.952.3111",
+      "Length": 470880,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx11_42.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx11_42.dll",
+      "Sha256": "8C8FA8DCE19E2F43E82CECD73A268E831A5CE0A16023845F7FA7FCB597772E85",
+      "Version": "9.27.952.3022",
+      "Length": 235344,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx11_43.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx11_43.dll",
+      "Sha256": "492E960CB3CCFC8C25FC83F7C464BA77C86A20411347A1A9B3E5D3E8C9180A8D",
+      "Version": "9.29.952.3111",
+      "Length": 248672,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_24.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_24.dll",
+      "Sha256": "94EC67763F67932DD4273EF5CC12889A5CEF090FFEA3EE78A80C7B530272B1B5",
+      "Version": "9.5.132.0",
+      "Length": 2222800,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_25.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_25.dll",
+      "Sha256": "4C54DF27CE84D21B2924E64FF79B13E7876CE85D8E0C9C1D0ABD8DA73888187A",
+      "Version": "9.6.168.0",
+      "Length": 2337488,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_26.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_26.dll",
+      "Sha256": "8EA96FE01C3C86A36FCB3795AE03EB12034003E335EF475571EFAEDA17C5BC78",
+      "Version": "9.7.239.0",
+      "Length": 2297552,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_27.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_27.dll",
+      "Sha256": "A70D571CD675C97C9EEB4A234DBA1D667FFB54EC3BB14DEFB36B3E2F605AE257",
+      "Version": "9.8.299.0",
+      "Length": 2319568,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_28.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_28.dll",
+      "Sha256": "F3E391B5F1C1F9637CABF2B812B6F5D65E4776C89D779F506F6B643CC563176D",
+      "Version": "9.10.455.0",
+      "Length": 2323664,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_29.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_29.dll",
+      "Sha256": "C5E21C18F8C79BC517DA59E3192C39EA73BDCAF85867628187F6B3CCA07DD21F",
+      "Version": "9.11.519.0",
+      "Length": 2332368,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_30.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_30.dll",
+      "Sha256": "5EDEED79F2359527A55B8189CFA8B9B121CD608D44EEAD905A0F3436938AD532",
+      "Version": "9.12.589.0",
+      "Length": 2388176,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_31.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_31.dll",
+      "Sha256": "E2065619FE6EB0034833B1DC0369DEB4A6EDC3110E38A1132EEAFCF430C578A5",
+      "Version": "9.15.779.0",
+      "Length": 2414360,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_32.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_32.dll",
+      "Sha256": "E96693794DAA05A75A83C11DF2E7B42F2DE61567C6AD0B69E353B50F6C88119F",
+      "Version": "9.16.843.0",
+      "Length": 3426072,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_33.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_33.dll",
+      "Sha256": "C6B7B2AD7742DDE5DD8D1A35FDC1C185E586E551AD9C74D3FB21759CD8CA4DA8",
+      "Version": "9.18.904.15",
+      "Length": 3495784,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_34.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_34.dll",
+      "Sha256": "B6F77F06518D35345FB61172B6A13159125ED60C469D28B1A2E07970E9DDF81D",
+      "Version": "9.19.949.46",
+      "Length": 3497832,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_35.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_35.dll",
+      "Sha256": "2198022938156B790E9CFB0F7997494B66A11A1AD49B395BE58251D635B66B26",
+      "Version": "9.19.949.1104",
+      "Length": 3727720,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_36.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_36.dll",
+      "Sha256": "C12F0AB0338EB5031D3D04BEAF7208AC848F7E037D21FF963D2AF90221CBE935",
+      "Version": "9.19.949.2111",
+      "Length": 3734536,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_37.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_37.dll",
+      "Sha256": "C2CCB84C672A9D8966E82A28005A4269886EE304972AC3590C0B8A9C1622A3D8",
+      "Version": "9.22.949.2248",
+      "Length": 3786760,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_38.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_38.dll",
+      "Sha256": "743E77A228E7D75442263AD70051E44534F7972C6326FD34B505A9C2C245894B",
+      "Version": "9.23.949.2378",
+      "Length": 3850760,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_39.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_39.dll",
+      "Sha256": "5D29988CAD858F754ECC62C3D30DE555F82CC21B5B26C448B890295E9B7BEE82",
+      "Version": "9.24.949.2307",
+      "Length": 3851784,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_40.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_40.dll",
+      "Sha256": "16FD909AEB68D0D1ACA8529DC7F78880B97D6649D70CE8D03A2C858BC28E216B",
+      "Version": "9.24.950.2656",
+      "Length": 4379984,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_41.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_41.dll",
+      "Sha256": "6AC4DF203AF419D3F3B7D9A99E14A3490EA3AD307C474BFE36BAEA642B1421F6",
+      "Version": "9.26.952.2844",
+      "Length": 4178264,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_42.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_42.dll",
+      "Sha256": "F8B9CFAB7FFFBC8F98E41AA439D72921DC180634A1FEBCA2A9D41A0DF35D3472",
+      "Version": "9.27.952.3001",
+      "Length": 1892184,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "d3dx9_43.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/d3dx9_43.dll",
+      "Sha256": "0B28546BE22C71834501F7D7185EDE5D79742457331C7EE09EFC14490DD64F5F",
+      "Version": "9.29.952.3111",
+      "Length": 1998168,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "x3daudio1_0.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/x3daudio1_0.dll",
+      "Sha256": "228DFECE2B4555A243A73E7BF461036F1E53951977625651FF5A59DEAEAF4B88",
+      "Version": "9.11.519.0",
+      "Length": 14032,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "x3daudio1_1.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/x3daudio1_1.dll",
+      "Sha256": "FF15F14174A5543F028FA49CCA745582FE4CACF3BBE490749CF43444690AB359",
+      "Version": "9.15.779.0",
+      "Length": 15128,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "x3daudio1_2.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/x3daudio1_2.dll",
+      "Sha256": "4C448C7F77E3B4385D2CD35D0C470589CDF0524E532F9CF7AE084A8F88AA949A",
+      "Version": "9.21.1148.0",
+      "Length": 17928,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "X3DAudio1_3.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/X3DAudio1_3.dll",
+      "Sha256": "74EC3E6B253AF1B68252E62A5C08479453B3341D49C606ADCF36913FE9ED9717",
+      "Version": "9.22.1284.0",
+      "Length": 25608,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "X3DAudio1_4.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/X3DAudio1_4.dll",
+      "Sha256": "799B38139523A3B30D26E21798EE705375C61EED8AE2434FDDB52FDE51F4BB78",
+      "Version": "9.23.1350.0",
+      "Length": 25608,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "X3DAudio1_5.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/X3DAudio1_5.dll",
+      "Sha256": "315944BB2A1959C8A4BD2677ED415363E1611C7351CE55319DC98FD2AAC83F87",
+      "Version": "9.25.1476.0",
+      "Length": 23376,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "X3DAudio1_6.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/X3DAudio1_6.dll",
+      "Sha256": "574D14AB9A641C6CBADD78F2CD6C088B64B59C3646057952E63CAD7D2778E1C3",
+      "Version": "9.26.1590.0",
+      "Length": 22360,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "X3DAudio1_7.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/X3DAudio1_7.dll",
+      "Sha256": "288C701BDEDF1D45C63DD0B7D424A752F8819F90FEB5088C582F76BC98970BA3",
+      "Version": "9.28.1886.0",
+      "Length": 22360,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_0.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine2_0.dll",
+      "Sha256": "CFD1C2D34FEB7D94F282E97BF762A99BFA7309DC7353D96DFE4AADC187D26C67",
+      "Version": "9.11.519.0",
+      "Length": 230096,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_1.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine2_1.dll",
+      "Sha256": "666CEF7D27A38F709063C9C581FD95E6B3FA27167BFF4BEFF484DBA2DC922A2B",
+      "Version": "9.12.589.0",
+      "Length": 229584,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_10.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine2_10.dll",
+      "Sha256": "113640AE8CF78CAA7CFACE2F906F9E6B60809906F5C26E08B2E90FC48430F3B7",
+      "Version": "9.21.1148.0",
+      "Length": 267272,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_2.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine2_2.dll",
+      "Sha256": "4F996EDB65022E33AE9C9F7ACF7232C8D444F75C50C72894F6D3173B55404EBE",
+      "Version": "9.13.644.0",
+      "Length": 230168,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_3.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine2_3.dll",
+      "Sha256": "CA20CF8E4034719A46BF67C6009486C2C1CFC2DA10FFED3A67DCAE677B4F6793",
+      "Version": "9.14.701.0",
+      "Length": 236824,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_4.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine2_4.dll",
+      "Sha256": "1E0E09FC077BDEEE3DE065C663B83F6717D39D56778833F030955077D490D000",
+      "Version": "9.15.779.0",
+      "Length": 237848,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_5.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine2_5.dll",
+      "Sha256": "EC68B5163CBB5F15E2FBE37FDF5FCB0D01DFFBE53A460CB2CF668F31F0127AD5",
+      "Version": "9.16.857.0",
+      "Length": 251672,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_6.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine2_6.dll",
+      "Sha256": "BE45AEF0889B03E2243282A912F41580E8566DB666A782C26A1D4D7988799D03",
+      "Version": "9.17.892.0",
+      "Length": 255848,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_7.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine2_7.dll",
+      "Sha256": "A43C92AF3FBE91DFE2A1D415342631FE64E18C7DD3E16E93B6C78947B68E7BD6",
+      "Version": "9.18.944.0",
+      "Length": 261480,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_8.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine2_8.dll",
+      "Sha256": "15D82E89BEA30BF82DE6BA0CFBE97EEAF05D1E06BC0133F0D1EE8D0CC41F51F6",
+      "Version": "9.19.1007.0",
+      "Length": 266088,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine2_9.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine2_9.dll",
+      "Sha256": "93A0D8FC38E4E9A301D9E721AFBEEDC5AF40BECC0B11A6E7E8E38F08F366FF6E",
+      "Version": "9.20.1057.0",
+      "Length": 267112,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_0.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine3_0.dll",
+      "Sha256": "887329745C479CE8D3023C969ADF66780DD7E51AB536F0A08550BA4C77066C20",
+      "Version": "9.22.1284.0",
+      "Length": 238088,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_1.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine3_1.dll",
+      "Sha256": "088999560171C60129C95F9B541852392602561DCE43E4C61A453D48065F52CA",
+      "Version": "9.23.1350.0",
+      "Length": 238088,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_2.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine3_2.dll",
+      "Sha256": "E6A34C1F068F89D6515CB460EED3B4DBB53522C5579E6C75741482F0D40D9F99",
+      "Version": "9.24.1400.0",
+      "Length": 238088,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_3.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine3_3.dll",
+      "Sha256": "EF052BC9B7FDE596FFF3EA2D9C8FC994F3282953DEAD1B7F5477E7154AF67245",
+      "Version": "9.25.1476.0",
+      "Length": 235856,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_4.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine3_4.dll",
+      "Sha256": "D3BAD7995B998F2C95DBB33020A198EF5A248825321032F051619F353D46182B",
+      "Version": "9.26.1590.0",
+      "Length": 235352,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_5.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine3_5.dll",
+      "Sha256": "1D37AB9B90372EAAAFB5055401449DC3184428FED559BAAF36FBCCCD2479611A",
+      "Version": "9.27.1734.0",
+      "Length": 238936,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_6.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine3_6.dll",
+      "Sha256": "8A7E7C5AC2E6230F0249D46751522E7ECF85E7490CF7491AB73BF2E7E59E4C0F",
+      "Version": "9.28.1886.0",
+      "Length": 238936,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xactengine3_7.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xactengine3_7.dll",
+      "Sha256": "D7B1CF58898046C430D49CF8F778E4898280F4709340C3938D3139894166FE8D",
+      "Version": "9.29.1962.0",
+      "Length": 239960,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAPOFX1_0.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/XAPOFX1_0.dll",
+      "Sha256": "8B396D275DE2550AF8ADA6A1FF71F0F4870B51C8407E44044C2DDE7AD6B754CC",
+      "Version": "9.23.1350.0",
+      "Length": 65032,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAPOFX1_1.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/XAPOFX1_1.dll",
+      "Sha256": "5AB63C0F040FDF65E681EBA4DAA55ED83E89EA10C426DC2FC763DA0FC94F3ACE",
+      "Version": "9.24.1400.0",
+      "Length": 68616,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAPOFX1_2.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/XAPOFX1_2.dll",
+      "Sha256": "D1A55061BCB42F69B7CF35E2985D48E30C7A90F0BC668E90390F465B36BD0161",
+      "Version": "9.25.1476.0",
+      "Length": 70992,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAPOFX1_3.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/XAPOFX1_3.dll",
+      "Sha256": "B05AD9417028B9777F69422CAA01AE9FD22C7BFE542BC6E7DE2649E28A4EA643",
+      "Version": "9.26.1590.0",
+      "Length": 69464,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAPOFX1_4.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/XAPOFX1_4.dll",
+      "Sha256": "0AEE44B12913A95840EE6431D90518B0D72C54A27392E21EE6995E2151554A06",
+      "Version": "9.28.1886.0",
+      "Length": 74072,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAPOFX1_5.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/XAPOFX1_5.dll",
+      "Sha256": "BECFDCD6B16523573CB52DF87AA7D993F1B345BA903D0618C3B36535C3800197",
+      "Version": "9.29.1962.0",
+      "Length": 74072,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_0.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/XAudio2_0.dll",
+      "Sha256": "E435B73193BDF651F7AE564EBA05266595AC672DB45E0E22DCE92D0BCB3C6513",
+      "Version": "9.22.1284.0",
+      "Length": 479752,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_1.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/XAudio2_1.dll",
+      "Sha256": "32A7C6A4EDEF46F025A4A5C64B892E29BAAAE948E86D9ED49E82014EEC1441DE",
+      "Version": "9.23.1350.0",
+      "Length": 507400,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_2.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/XAudio2_2.dll",
+      "Sha256": "9C7897B4EE1BCD190B1C0B7B77E64EE731D234764683A1E2286AF70D86B62753",
+      "Version": "9.24.1400.0",
+      "Length": 509448,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_3.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/XAudio2_3.dll",
+      "Sha256": "04DEC9D7C68962E01EFEC0AAC0EF7A3499BC4C16E8A41BD61FE6641DA48D7DCC",
+      "Version": "9.25.1476.0",
+      "Length": 514384,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_4.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/XAudio2_4.dll",
+      "Sha256": "BCDE4317DEBD0052B1436A6FDA60E1DCB1E308979498117FA0CB50061F38101C",
+      "Version": "9.26.1590.0",
+      "Length": 517448,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_5.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/XAudio2_5.dll",
+      "Sha256": "C596DE2AB8394FB62538FEF0B4657317F4EAD50A6D798C5D066E25E334576C27",
+      "Version": "9.27.1734.0",
+      "Length": 515416,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_6.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/XAudio2_6.dll",
+      "Sha256": "61B57170F7C6365714396072D22CB98746718C0F44C9F0D5C62FDB1B218639C7",
+      "Version": "9.28.1886.0",
+      "Length": 528216,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "XAudio2_7.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/XAudio2_7.dll",
+      "Sha256": "D1690B602CB317F7F1E1E13E3FC5819AD8B5B38A92D812078AFB1B408CCC4B69",
+      "Version": "9.29.1962.0",
+      "Length": 527192,
+      "RegisterCom": true,
+      "OsManaged": false
+    },
+    {
+      "Name": "xinput1_1.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xinput1_1.dll",
+      "Sha256": "69CD725C53E0302E75DB20E9A3E4B33F58DCEAA2E6EA4938B2733DF8BC289A71",
+      "Version": "9.12.589.0",
+      "Length": 62672,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "xinput1_2.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xinput1_2.dll",
+      "Sha256": "9714D146A785D458F0DE8FEF387D82C9F8E101C02407A0CBEB06F02A69518EEC",
+      "Version": "9.14.701.0",
+      "Length": 62744,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "xinput1_3.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xinput1_3.dll",
+      "Sha256": "8D540D484EA41E374FD0107D55D253F87DED4CE780D515D8FD59BBE8C98970A7",
+      "Version": "9.18.944.0",
+      "Length": 81768,
+      "RegisterCom": false,
+      "OsManaged": false
+    },
+    {
+      "Name": "xinput9_1_0.dll",
+      "Architecture": "x86",
+      "RelativePath": "x86/xinput9_1_0.dll",
+      "Sha256": "9C14C5AFD282BE3E16117FF35D9896A96BDEF497C45DA950A730D279BD0E0CF6",
+      "Version": "9.10.455.0",
+      "Length": 61136,
+      "RegisterCom": false,
+      "OsManaged": true
+    }
+  ]
+}

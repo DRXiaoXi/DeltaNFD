@@ -247,6 +247,16 @@ public sealed class ProcmanReleaseArgs
 /// <summary>进程管理状态快照（空闲状态推送 + status 命令共用）。</summary>
 public sealed class ProcmanStatusSnapshot
 {
+    public FrameGamePrioritySnapshot FramePriority { get; init; } = new();
+
+    /// <summary>帧格：让系统忽略三角洲定时器分辨率请求的实际状态。</summary>
+    public FrameTimerIgnoreSnapshot FrameTimerIgnore { get; init; } = new();
+
+    /// <summary>「忽略列表」里各进程的定时器精度请求忽略状态（与三角洲那项独立的另一份记录）。</summary>
+    public FrameTimerIgnoreSnapshot TimerIgnoreList { get; init; } = new();
+
+    /// <summary>「钟摆计划」：全局锁定系统最佳计时器分辨率的实际状态（仅 Windows 11）。</summary>
+    public OptimalClockSnapshot OptimalClock { get; init; } = new();
     public string Module { get; init; } = "procman";
     public int BackendPid { get; init; }
     public string BackendPriorityClass { get; init; } = "";
@@ -265,6 +275,12 @@ public sealed class ProcmanStatusSnapshot
 
     /// <summary>待核对（上次会话遗留）的修改记录数。</summary>
     public int UnreconciledCount { get; init; }
+
+    /// <summary>双 CCD 专属调度是否实际生效（本后端持有此运行态，前端只读镜像）。</summary>
+    public bool DualCcdSchedulingActive { get; init; }
+
+    /// <summary>单 CCD 排除 CPU0 是否实际生效。</summary>
+    public bool SingleCcdExcludeActive { get; init; }
 
     /// <summary>最近一次动作说明。</summary>
     public string LastAction { get; init; } = "";
@@ -432,4 +448,10 @@ public sealed class ProcmanNativeProbeResult
     public bool IoPrioritySupported { get; init; }
     public bool GpuPrioritySupported { get; init; }
     public string Notes { get; init; } = "";
+}
+
+/// <summary>双 CCD 调度参数。</summary>
+public sealed class ProcmanCcdArgs
+{
+    public int GameCcdIndex { get; set; }
 }

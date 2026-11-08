@@ -4,7 +4,7 @@
             <StackPanel Spacing="4">
                 <ui:PageHeader Title="NVIDIA显卡设置"/>
                 <TextBlock Text="{x:Bind TargetLabel}" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
-                <TextBlock Text="针对目标游戏进程的驱动级设置（DLSS 模型 / 渲染比例 / 帧生成 / Smooth Motion / 抗锯齿 / 显存回退）" Style="{StaticResource NoteStyle}"/>
+                <TextBlock Text="只写入目标游戏进程的 NVIDIA 驱动配置。" Style="{StaticResource NoteStyle}"/>
             </StackPanel>
             <!-- 环境状态 + 数据库锁定 -->
             <Grid RowSpacing="12" ColumnSpacing="12" ui:AdaptiveColumns.Enabled="True" ui:AdaptiveColumns.Threshold="900" ui:AdaptiveColumns.LeftWeight="3" ui:AdaptiveColumns.RightWeight="2">
@@ -19,10 +19,10 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <StackPanel Spacing="4" VerticalAlignment="Center" Grid.Row="0">
-                                <TextBlock Text="驱动环境" Style="{StaticResource H2Style}"/>
+                                <TextBlock Text="驱动环境" Style="{StaticResource H2Style}" ui:HelpTip.Text="驱动配置数据库 = C:\ProgramData\NVIDIA Corporation\Drs\nvdrsdb0.bin 与 nvdrsdb1.bin。锁定为只读后，驱动更新 / NVIDIA App / 其他工具都无法改写驱动配置，本工具写入的优化不会被重置；需要修改任何驱动级设置（含本页）前请先解锁。"/>
                                 <TextBlock Text="{x:Bind ViewModel.GpuSummaryText, Mode=OneWay}" Style="{StaticResource BodyStyle}" TextWrapping="Wrap"/>
-                                <TextBlock Text="{x:Bind ViewModel.LockStatusText, Mode=OneWay}" Opacity="0.85" TextWrapping="Wrap" Style="{StaticResource H3Style}"/>
-                                <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="驱动配置数据库 = C:\ProgramData\NVIDIA Corporation\Drs\nvdrsdb0.bin 与 nvdrsdb1.bin。锁定为只读后，驱动更新 / NVIDIA App / 其他工具都无法改写驱动配置，本工具写入的优化不会被重置；需要修改任何驱动级设置（含本页）前请先解锁。"/>
+                                <TextBlock Text="{x:Bind ViewModel.LockStatusText, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Style="{StaticResource H3Style}"/>
+                                <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="锁定为只读后驱动更新与其他工具都无法改写配置；修改任何驱动级设置前请先解锁。"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Grid.Row="1">
                                 <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.LockBusy, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}"/>
@@ -46,22 +46,11 @@
                     </StackPanel>
                 </Border>
             </Grid>
-            <InfoBar IsOpen="{x:Bind ViewModel.ShaderCacheNonDefault, Mode=OneWay}" Severity="Error" IsClosable="False" Title="着色器缓存大小非默认：请改回驱动默认，避免三角洲抽帧" Message="{x:Bind ViewModel.ShaderCacheAdvice, Mode=OneWay}" AutomationProperties.LiveSetting="Polite">
-                <InfoBar.ActionButton>
-                    <Button Content="打开缓存修复与预热" Click="OpenShaderRecovery_Click" Style="{StaticResource SecondaryButtonStyle}"/>
-                </InfoBar.ActionButton>
-            </InfoBar>
-            <InfoBar IsOpen="{x:Bind ViewModel.ShaderCacheCheckFailed, Mode=OneWay}" Severity="Warning" IsClosable="False" Title="着色器缓存大小无法确认" Message="{x:Bind ViewModel.ShaderCacheAdvice, Mode=OneWay}">
-                <InfoBar.ActionButton>
-                    <Button Content="打开缓存处理页" Click="OpenShaderRecovery_Click" Style="{StaticResource SecondaryButtonStyle}"/>
-                </InfoBar.ActionButton>
-            </InfoBar>
-            <TextBlock Text="{x:Bind ViewModel.ShaderCacheAdvice, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Visibility="{x:Bind ViewModel.ShowShaderCacheStatus, Mode=OneWay}"/>
             <!-- 设置条目 -->
             <Grid RowSpacing="12" ColumnSpacing="12" ui:AdaptiveColumns.Enabled="True" ui:AdaptiveColumns.Threshold="1100" ui:AdaptiveColumns.LeftWeight="4" ui:AdaptiveColumns.RightWeight="2">
                 <Border Style="{StaticResource CardBorderStyle}" ui:HoverLift.Enabled="False" ui:AdaptiveColumns.WideRow="0" ui:AdaptiveColumns.WideColumn="0" ui:AdaptiveColumns.WideSpan="1">
                     <StackPanel Spacing="6">
-                        <ItemsControl ItemsSource="{x:Bind ViewModel.Rows}">
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.Rows}" IsEnabled="{x:Bind ViewModel.CanEditOptions, Mode=OneWay}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:NvSettingRowVm">
                                     <Grid ColumnSpacing="16" Style="{StaticResource FeatureTileGridStyle}" Margin="0,4" ui:HoverLift.Enabled="True">
@@ -70,11 +59,11 @@
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Spacing="3" VerticalAlignment="Center">
-                                            <TextBlock Text="{x:Bind Title}" TextWrapping="Wrap" Style="{StaticResource H3Style}"/>
-                                            <TextBlock Text="{x:Bind Description}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
-                                            <TextBlock Text="{x:Bind StateText, Mode=OneWay}" Opacity="0.75" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                                            <TextBlock Text="{x:Bind Title}" TextWrapping="Wrap" Style="{StaticResource H3Style}" ui:HelpTip.Text="{x:Bind TitleHelpText}"/>
+                                            <TextBlock Text="{x:Bind Description}" Visibility="{x:Bind ShowDescription}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{x:Bind StateText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource CaptionStyle}"/>
                                         </StackPanel>
-                                        <ComboBox Grid.Column="1" MinWidth="230" MaxWidth="330" VerticalAlignment="Center" Visibility="{x:Bind ShowComboBox, Mode=OneWay}" ItemsSource="{x:Bind OptionLabels}" SelectedIndex="{x:Bind SelectedIndex, Mode=TwoWay}" SelectionChanged="RowCombo_SelectionChanged"/>
+                                        <ComboBox Grid.Column="1" Tag="{x:Bind Id}" AutomationProperties.Name="{x:Bind Title}" MinWidth="230" MaxWidth="330" VerticalAlignment="Center" Visibility="{x:Bind ShowComboBox, Mode=OneWay}" ItemsSource="{x:Bind OptionLabels}" SelectedIndex="{x:Bind SelectedIndex, Mode=OneWay}" SelectionChanged="RowCombo_SelectionChanged"/>
                                         <!-- 百分比缩放行（DLSS 超分渲染比例）：覆盖开关 + 33–100% 滑条任意调节 -->
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Visibility="{x:Bind IsScale, Mode=OneWay}">
                                             <ToggleSwitch OnContent="覆盖" OffContent="默认" IsOn="{x:Bind ScaleOverride, Mode=TwoWay}" Toggled="ScaleToggle_Toggled" MinWidth="0" Margin="0"/>
@@ -89,11 +78,11 @@
                 </Border>
                 <Border Style="{StaticResource CardBorderStyle}" Padding="20,14" ui:AdaptiveColumns.WideRow="0" ui:AdaptiveColumns.WideColumn="1" ui:AdaptiveColumns.WideSpan="1">
                     <StackPanel Spacing="6">
-                        <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="· 全部设置只写入目标游戏进程（DeltaForceClient-Win64-Shipping.exe）的独立驱动配置，不影响其他游戏；首次应用时自动创建配置。"/>
-                        <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="· 设置立即保存到驱动配置数据库，对之后启动的游戏会话生效；游戏正在运行时建议重启游戏后确认效果。"/>
-                        <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="· 「恢复默认」= 删除该设置的覆盖，交还给游戏内选项 / 驱动默认值。"/>
-                        <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="· 锁定数据库只读是防重置手段：驱动更新或 NVIDIA App 不会覆盖你的优化；换驱动 / 需要改设置时记得先解锁。"/>
-                        <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="· DLSS 超分模型/渲染比例与帧生成模型的覆盖需要驱动 545 以上；Smooth Motion 档位需要支持该功能的显卡与驱动。设置项不被当前驱动支持时应用会如实报错。"/>
+                        <TextBlock Text="使用说明" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="· 全部设置只写入目标游戏进程（DeltaForceClient-Win64-Shipping.exe）的独立驱动配置，不影响其他游戏；首次应用时自动创建配置。&#10;&#10;· 设置立即保存到驱动配置数据库，对之后启动的游戏会话生效；游戏正在运行时建议重启游戏后确认效果。&#10;&#10;· 「恢复默认」= 删除该设置的覆盖，交还给游戏内选项 / 驱动默认值。&#10;&#10;· 锁定数据库只读是防重置手段：驱动更新或 NVIDIA App 不会覆盖你的优化；换驱动 / 需要改设置时记得先解锁。&#10;&#10;· DLSS 超分模型/渲染比例与帧生成模型的覆盖需要驱动 545 以上；Smooth Motion 档位需要支持该功能的显卡与驱动。设置项不被当前驱动支持时应用会如实报错。"/>
+                        <TextBlock Style="{StaticResource NoteStyle}" Text="设置对之后启动的游戏生效；「恢复默认」会删除该项覆盖。"/>
+                        <TextBlock Style="{StaticResource NoteStyle}" Text="ReBAR 与 v2 独立设置；v2 需 616.56+，开启建议 621.01+。" TextWrapping="Wrap"/>
+                        <TextBlock Style="{StaticResource NoteStyle}" Text="硬件和 BIOS 需已支持并启用 ReBAR；保存游戏策略不代表硬件已经启用。" TextWrapping="Wrap"/>
+                        <TextBlock Style="{StaticResource WarningTextStyle}" Text="数据库锁定为只读时，换驱动或修改设置前需先解锁。"/>
                     </StackPanel>
                 </Border>
             </Grid>

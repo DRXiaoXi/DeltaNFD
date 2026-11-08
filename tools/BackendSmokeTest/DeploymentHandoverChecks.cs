@@ -41,19 +41,25 @@ internal static class DeploymentHandoverChecks
                 check(File.ReadAllBytes(path).SequenceEqual(bytes), "部署：" + module + " 原始证据没有被关闭防护/删除文件冒充恢复");
                 await BackendLifecycle.AcknowledgeCurrentStateAsync(BackendUnconfirmedStore.ReviewAll().Single(r => r.Module == module));
             }
-            WriteHistory(BackendModules.CpuFrame, BackendCommands.CpuFramePowerLock);
-            using (var permit = await DeploymentHandover.PrepareAsync(uninstall: true))
-                check(permit.Ready && permit.ExitCode == 0, "部署：CPU 旧记录先完整恢复，再恢复脱机和防护，能够收敛");
-            check(!BackendUnconfirmedStore.PendingModules().Contains(BackendModules.CpuFrame), "部署：CPU 完整复核后才归档旧证据");
+            foreach (var command in new[] { BackendCommands.CpuFramePowerLock, "cpuframe.timer.apply", "cpuframe.timer.restore" })
+            {
+                WriteHistory(BackendModules.CpuFrame, command);
+                using (var permit = await DeploymentHandover.PrepareAsync(uninstall: true))
+                    check(permit.Ready && permit.ExitCode == 0, "部署：CPU 旧记录先完整恢复，再恢复脱机和防护：" + command);
+                check(!BackendUnconfirmedStore.PendingModules().Contains(BackendModules.CpuFrame), "部署：完整复核后才归档旧证据：" + command);
+            }
 
-            var volatileCpu = WriteHistory(BackendModules.CpuFrame, BackendCommands.CpuFrameMonitorStart);
-            DeploymentHandover.TargetRunningForTests = () => true;
-            using (var permit = await DeploymentHandover.PrepareAsync(uninstall: true))
-                check(!permit.Ready && File.Exists(volatileCpu), "部署：旧 CPU 执行者丢失原值且游戏仍运行时，不用冷启动快照冒充还原");
-            DeploymentHandover.TargetRunningForTests = () => false;
-            using (var permit = await DeploymentHandover.PrepareAsync(uninstall: true))
-                check(permit.Ready && !File.Exists(volatileCpu), "部署：游戏退出后，持久 CPU 恢复通过才允许卸载");
-            DeploymentHandover.TargetRunningForTests = null;
+            foreach (var command in new[] { BackendCommands.CpuFrameMonitorStart, "cpuframe.boost.apply" })
+            {
+                var volatileCpu = WriteHistory(BackendModules.CpuFrame, command);
+                DeploymentHandover.TargetRunningForTests = () => true;
+                using (var permit = await DeploymentHandover.PrepareAsync(uninstall: true))
+                    check(!permit.Ready && File.Exists(volatileCpu), "部署：旧执行者丢失原值且游戏仍运行时，不冒充还原：" + command);
+                DeploymentHandover.TargetRunningForTests = () => false;
+                using (var permit = await DeploymentHandover.PrepareAsync(uninstall: true))
+                    check(permit.Ready && !File.Exists(volatileCpu), "部署：游戏退出后完整恢复通过才允许卸载：" + command);
+                DeploymentHandover.TargetRunningForTests = null;
+            }
 
             var runtime = WriteHistory(BackendModules.Runtime, BackendCommands.RuntimeRepair);
             Environment.SetEnvironmentVariable("DELTANFD_TEST_DEPLOYMENT_RECOVERY", "failed");

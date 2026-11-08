@@ -23,7 +23,7 @@ internal enum ChassisKind
 
 /// <summary>
 /// 帧格服务的真实实现（T4 后：编排/展示，执行已迁入 CPU/帧格后端）：
-/// - 游戏监控、优先级、亲和性/CPU Sets、双单 CCD、DWM、计时器、加速响应、临时优化、
+/// - 游戏监控、优先级、亲和性/CPU Sets、双单 CCD、DWM、游戏节能、定时器请求忽略、临时优化、
 ///   帧格电源守护与内存清理均由后端进程执行；前端只持久化偏好、下发命令并展示状态快照。
 /// - 保留在前端：显卡伪装的编排与黑屏兜底（重载执行归显卡后端）、登录自启动、机箱形态探测、
 ///   玩家亮屏确认。
@@ -51,11 +51,13 @@ public sealed class FrameService : IFrameService
     private bool _gpuSpoofFrameConfigured;
     private bool _dualCcdArmed;
     private bool _dualCcdEnabled = true;
-    private bool _responseBoostEnabled;
-    private bool _responseBoostTimer = true;
     private bool _gamePowerThrottlingDisabled;
     private string _gamePowerStatusText = "";
-    private CpuFrameStatusSnapshot? _lastTimerSnapshot;
+    private bool _gameTimerIgnoreEnabled;
+    private bool _gamePriorityEnabled;
+    private FrameCpuPriority _gameCpuPriority = FrameCpuPriority.RealTime;
+    private FrameIoPriority _gameIoPriority = FrameIoPriority.High;
+    private FrameMemoryPriority _gameMemoryPriority = FrameMemoryPriority.Normal;
     public string GamePowerStatusText => _gamePowerStatusText;
     public bool GamePowerHasError { get; private set; }
     private bool _memoryCleanEnabled;
@@ -126,8 +128,9 @@ public sealed class FrameService : IFrameService
         ServiceLocator.GameMonitor.StatusChanged += OnObservationStateChanged;
         // 后端状态：显示实际生效状态（游戏运行、内存清理状态文字）。
         Backends.BackendCpuFrameService.Instance.StatusUpdated += OnCpuFrameStatus;
+        Backends.BackendProcmanService.Instance.StatusUpdated += OnProcmanStatus;
         if (!automationBlocked) _ = RestorePersistentCpuSchedulingAsync();
-        // 帧格模式跨重启保持：重新向后端下发加速响应/临时优化/电源锁定的期望。
+        // 帧格模式跨重启保持：重新向后端下发游戏节能/临时优化/电源锁定的期望。
         if (_frameModeActive && !automationBlocked) _ = SyncBackendExecutionAsync();
 
         // 机箱形态探测一次：供帧格页角标与后端跳过网卡/PCIe 省电的编排依据。
@@ -139,13 +142,11 @@ public sealed class FrameService : IFrameService
     {
         void Apply()
         {
-            if (_lastTimerSnapshot is null || snapshot.UpdatedUtc >= _lastTimerSnapshot.UpdatedUtc) _lastTimerSnapshot = snapshot;
             _gamePowerStatusText = snapshot.GamePowerStatus;
             GamePowerHasError = snapshot.GamePowerHasError;
             OnPropertyChanged(nameof(GamePowerHasError));
             OnPropertyChanged(nameof(GamePowerStatusText));
             OnPropertyChanged(nameof(DwmStatusText));
-            OnPropertyChanged(nameof(TimerStatusText));
             _memoryCleanStatusText = string.IsNullOrEmpty(snapshot.MemoryCleanStatus) ? _memoryCleanStatusText : snapshot.MemoryCleanStatus;
             if (snapshot.GameRunning != _isGameRunning)
             {
@@ -160,26 +161,40 @@ public sealed class FrameService : IFrameService
         else _dispatcher.TryEnqueue(Apply);
     }
 
-    /// <summary>应用启动后重新登记 CPU 亲和性规则及已保存的立即生效调度（交由 CPU/帧格后端执行）。</summary>
+    private void OnProcmanStatus(ProcmanStatusSnapshot snapshot)
+    {
+        void Apply()
+        {
+            OnPropertyChanged(nameof(GamePriorityStatusText));
+            OnPropertyChanged(nameof(GameTimerIgnoreStatusText));
+            UpdateStatus();
+        }
+        if (_dispatcher is null || _dispatcher.HasThreadAccess) Apply();
+        else _dispatcher.TryEnqueue(Apply);
+    }
+
+    /// <summary>应用启动后重新登记 CPU 亲和性规则（CPU/帧格后端）及已保存的单/双 CCD 调度（进程管理后端）。</summary>
     private async Task RestorePersistentCpuSchedulingAsync()
     {
         try
         {
             if (OfflineModeGuard.BlocksNormalAutomation) return;
             var cpuFrame = Backends.BackendCpuFrameService.Instance;
+            var procman = Backends.BackendProcmanService.Instance;
             var settings = AppSettingsStore.Read();
+            // 帧格生效的双 CCD 原由 CPU/帧格 tick 补应用；迁到进程管理后端后在此显式恢复。
             var frameDualWillRestore = settings.FrameModeActive
                 && settings.DualCcdArmed
                 && settings.DualCcdFrameEnabled;
 
             OperationResult? result = null;
-            if (!frameDualWillRestore && settings.DualCcdImmediateEnabled)
+            if (frameDualWillRestore || settings.DualCcdImmediateEnabled)
             {
-                result = await cpuFrame.ApplyDualCcdAsync(settings.DualCcdGameCcdIndex);
+                result = await procman.ApplyDualCcdAsync(settings.DualCcdGameCcdIndex);
             }
-            else if (!frameDualWillRestore && settings.SingleCcdExcludeCpu0Enabled)
+            else if (settings.SingleCcdExcludeCpu0Enabled)
             {
-                result = await cpuFrame.ApplySingleCcdAsync();
+                result = await procman.ApplySingleCcdAsync();
             }
 
             if (result is not null)
@@ -233,13 +248,62 @@ public sealed class FrameService : IFrameService
         }
     }
 
-    public string TimerStatusText
+    public bool GameProcessPriorityEnabled
+    {
+        get => _gamePriorityEnabled;
+        set
+        {
+            if (!FeaturesEditable || _gamePriorityEnabled == value) return;
+            _gamePriorityEnabled = value; SaveSettings(); OnPropertyChanged(); OnPropertyChanged(nameof(GamePriorityStatusText));
+        }
+    }
+    public FrameCpuPriority GameCpuPriority
+    {
+        get => _gameCpuPriority;
+        set { if (!FeaturesEditable || !Enum.IsDefined(value) || _gameCpuPriority == value) return; _gameCpuPriority = value; SaveSettings(); OnPropertyChanged(); }
+    }
+    public FrameIoPriority GameIoPriority
+    {
+        get => _gameIoPriority;
+        set { if (!FeaturesEditable || !Enum.IsDefined(value) || _gameIoPriority == value) return; _gameIoPriority = value; SaveSettings(); OnPropertyChanged(); }
+    }
+    public FrameMemoryPriority GameMemoryPriority
+    {
+        get => _gameMemoryPriority;
+        set { if (!FeaturesEditable || !Enum.IsDefined(value) || _gameMemoryPriority == value) return; _gameMemoryPriority = value; SaveSettings(); OnPropertyChanged(); }
+    }
+    public string GamePriorityStatusText
     {
         get
         {
-            var observation = ServiceLocator.GameMonitor;
-            return FrameStatusPresentation.Timer(_responseBoostEnabled && _responseBoostTimer, _frameModeActive,
-                observation.Latest ?? _lastTimerSnapshot, DateTimeOffset.UtcNow, observation.AutomationError);
+            var procman = Backends.BackendProcmanService.Instance;
+            return FrameStatusPresentation.Priority(_gamePriorityEnabled, _frameModeActive, procman.LatestStatus,
+                DateTimeOffset.UtcNow, procman.StatusError);
+        }
+    }
+    public string GameTimerIgnoreStatusText
+    {
+        get
+        {
+            var procman = Backends.BackendProcmanService.Instance;
+            return FrameStatusPresentation.TimerIgnore(_gameTimerIgnoreEnabled, _frameModeActive, procman.LatestStatus,
+                DateTimeOffset.UtcNow, procman.StatusError);
+        }
+    }
+    public bool GameTimerIgnoreHasError
+    {
+        get
+        {
+            var procman = Backends.BackendProcmanService.Instance;
+            return procman.LatestStatus?.FrameTimerIgnore.HasError == true;
+        }
+    }
+    public bool GameTimerIgnoreSupported
+    {
+        get
+        {
+            var procman = Backends.BackendProcmanService.Instance;
+            return procman.LatestStatus?.FrameTimerIgnore.Supported == true;
         }
     }
 
@@ -273,8 +337,8 @@ public sealed class FrameService : IFrameService
 
     public string PowerPlanLockText =>
         string.IsNullOrWhiteSpace(_powerLockTargetGuid)
-            ? "开启一键帧格模式时记住并锁定你当前的电源计划（不切换别的计划），并快照该计划的全部设置；游戏期间每 30 秒检查一次，既防止被其他程序改成省电方案，也会把被改动的计划内容（含 CPU实验室 的「异类调度策略」）按快照自动还原。帧格自己临时改写的省电项（USB 选择性暂停 / PCIE 链接状态电源管理）不在保护范围内。退出帧格模式时解除锁定并还原。"
-            : "开启一键帧格模式时切换并锁定到你选择的电源计划，并快照该计划的全部设置；游戏期间每 30 秒检查一次，被改走会自动切回，被改动的计划内容（含 CPU实验室 的「异类调度策略」）也会按快照自动还原。帧格自己临时改写的省电项（USB 选择性暂停 / PCIE 链接状态电源管理）不在保护范围内。退出帧格模式时还原为开启前的原计划。";
+            ? "开启一键帧格模式时记住并锁定你当前的电源计划（不切换别的计划），并快照该计划的非亮度设置；游戏期间每 30 秒检查一次，既防止被其他程序改成省电方案，也会把被改动的计划内容（含 调度改善 的「异类调度策略」）按快照自动还原。普通亮度、暗屏亮度和自适应亮度由玩家与系统控制，不参与内容守护或旧快照恢复。帧格自己临时改写的省电项（USB 选择性暂停 / PCIE 链接状态电源管理）不在保护范围内。退出帧格模式时解除锁定并还原。"
+            : "开启一键帧格模式时切换并锁定到你选择的电源计划，并快照该计划的非亮度设置；游戏期间每 30 秒检查一次，被改走会自动切回，被改动的计划内容（含 调度改善 的「异类调度策略」）也会按快照自动还原。普通亮度、暗屏亮度和自适应亮度由玩家与系统控制，不参与内容守护或旧快照恢复。帧格自己临时改写的省电项（USB 选择性暂停 / PCIE 链接状态电源管理）不在保护范围内。退出帧格模式时还原为开启前的原计划。";
 
     public bool GpuSpoofEnabled
     {
@@ -351,18 +415,20 @@ public sealed class FrameService : IFrameService
         }
     }
 
-    // ---------------- 加速系统响应模式（执行在后端） ----------------
+    // ---------------- 让系统忽略三角洲定时器分辨率请求（执行在进程管理后端） ----------------
 
-    /// <summary>加速系统响应模式总开关（关 = 全部机制不生效）。</summary>
-    public bool ResponseBoostEnabled
+    /// <summary>让系统忽略三角洲主进程的定时器分辨率请求；默认关，退出或关闭时恢复原值。</summary>
+    public bool GameTimerIgnoreEnabled
     {
-        get => _responseBoostEnabled;
+        get => _gameTimerIgnoreEnabled;
         set
         {
-            if (_responseBoostEnabled == value) return;
-            _responseBoostEnabled = value;
+            if (value && !ReleaseFeaturePolicy.FrameTimerIgnoreEnabled) return;
+            if (_gameTimerIgnoreEnabled == value) return;
+            _gameTimerIgnoreEnabled = value;
             SaveSettings();
             OnPropertyChanged();
+            OnPropertyChanged(nameof(GameTimerIgnoreStatusText));
             UpdateStatus();
             _ = SyncBackendExecutionAsync();
         }
@@ -375,19 +441,6 @@ public sealed class FrameService : IFrameService
         {
             if (_gamePowerThrottlingDisabled == value) return;
             _gamePowerThrottlingDisabled = value;
-            SaveSettings();
-            OnPropertyChanged();
-            _ = SyncBackendExecutionAsync();
-        }
-    }
-
-    public bool ResponseBoostTimerEnabled
-    {
-        get => _responseBoostTimer;
-        set
-        {
-            if (_responseBoostTimer == value) return;
-            _responseBoostTimer = value;
             SaveSettings();
             OnPropertyChanged();
             _ = SyncBackendExecutionAsync();
@@ -799,7 +852,7 @@ public sealed class FrameService : IFrameService
         // 双CCD 专属调度（帧格生效模式）：帧格开启时自动应用，退出时自动撤销。
         var dualNote = await ApplyArmedDualCcdAsync();
 
-        // 加速响应 / 临时优化 / 电源锁定：由后端执行。
+        // 游戏节能 / 临时优化 / 电源锁定：由后端执行。
         var execution = await SyncBackendExecutionAsync();
         var notes = dualNote + execution.Message;
         if (!execution.Success)
@@ -918,17 +971,20 @@ public sealed class FrameService : IFrameService
 
         var dualNote = await RevertArmedDualCcdAsync();
 
-        // 退出帧格：后端撤销加速响应、临时优化与电源锁定；失败时如实报告并保留恢复记录。
+        // 退出帧格：后端撤销游戏节能、临时优化与电源锁定；失败时如实报告并保留恢复记录。
         var cpuFrame = Backends.BackendCpuFrameService.Instance;
-        await cpuFrame.ApplyBoostAsync(false);
+        var gamePowerNote = await cpuFrame.ApplyGamePowerAsync(false);
         var tweaksNote = await cpuFrame.RevertTweaksAsync();
         var powerNote = await cpuFrame.UnlockPowerAsync();
-        var notes = dualNote + " " + tweaksNote.Message + " " + powerNote.Message + " " + background.Message;
+        var notes = dualNote + " " + gamePowerNote.Message + " " + tweaksNote.Message + " " + powerNote.Message + " " + background.Message;
+        var recoveryResults = new[] { gamePowerNote, tweaksNote, powerNote, background };
 
-        if (!powerNote.Success || !tweaksNote.Success || !background.Success)
+        if (recoveryResults.Any(result => !result.Success || result.IsPartial || result.OutcomeUnknown))
             return new OperationResult
             {
                 Success = false,
+                IsPartial = recoveryResults.Any(result => result.IsPartial),
+                OutcomeUnknown = recoveryResults.Any(result => result.OutcomeUnknown),
                 RequiresReboot = needsReboot,
                 Message = "帧格已停用，但部分设置恢复未完成，已保留恢复记录，请再次执行退出恢复。" + notes,
             };
@@ -952,7 +1008,7 @@ public sealed class FrameService : IFrameService
     }
 
     /// <summary>
-    /// 按当前设置与帧格状态把加速响应/临时优化/电源锁定的期望下发给后端（后端执行）。
+    /// 按当前设置与帧格状态把游戏节能/临时优化/电源锁定的期望下发给后端（后端执行）。
     /// 返回可拼接的状态说明。
     /// </summary>
     private async Task<OperationResult> SyncBackendExecutionAsync()
@@ -977,17 +1033,16 @@ public sealed class FrameService : IFrameService
             var cpuFrame = Backends.BackendCpuFrameService.Instance;
             if (!active)
             {
-                var stopped = await cpuFrame.ApplyBoostAsync(false);
+                var stopped = await cpuFrame.ApplyGamePowerAsync(false);
                 var restored = await cpuFrame.RevertTweaksAsync();
                 var unlocked = await cpuFrame.UnlockPowerAsync();
                 return stopped.Success && restored.Success && unlocked.Success && background.Success ? OperationResult.Ok(background.Message)
                     : OperationResult.Fail(stopped.Message + " " + restored.Message + " " + unlocked.Message + " " + background.Message);
             }
 
-            var boost = settings.FrameResponseBoostEnabled;
-            var boosted = await cpuFrame.ApplyBoostAsync(
-                boost && settings.FrameResponseBoostTimerEnabled,
-                boost && settings.FrameGamePowerThrottlingDisabled);
+            // Establish the existing maintenance loop before applying game power, without waiting for a game or next tick.
+            await cpuFrame.EnsureMonitorAsync();
+            var boosted = await cpuFrame.ApplyGamePowerAsync(settings.FrameGamePowerThrottlingDisabled);
 
             var notes = new List<string>();
             notes.Add(background.Message);
@@ -1028,7 +1083,6 @@ public sealed class FrameService : IFrameService
                 if (!power.Success) notes.Add(power.Message);
             }
 
-            await cpuFrame.EnsureMonitorAsync();
             var message = notes.Count == 0 ? "" : " " + string.Join("；", notes) + "。";
             return complete ? OperationResult.Ok(message) : OperationResult.Fail(message);
         }
@@ -1039,7 +1093,7 @@ public sealed class FrameService : IFrameService
         }
     }
 
-    // ---------------- 双CCD 专属调度（帧格生效模式，执行在后端） ----------------
+    // ---------------- 双CCD 专属调度（帧格生效模式，执行在进程管理后端） ----------------
 
     private async Task<string> ApplyArmedDualCcdAsync()
     {
@@ -1047,7 +1101,7 @@ public sealed class FrameService : IFrameService
         {
             var s = AppSettingsStore.Read();
             if (!s.DualCcdArmed || !s.DualCcdFrameEnabled) return "";
-            var result = await Backends.BackendCpuFrameService.Instance.ApplyDualCcdAsync(s.DualCcdGameCcdIndex);
+            var result = await Backends.BackendProcmanService.Instance.ApplyDualCcdAsync(s.DualCcdGameCcdIndex);
             return result.Success
                 ? $"双CCD调度已应用：游戏独占 CCD{s.DualCcdGameCcdIndex}，其他进程在另一个 CCD。"
                 : $"双CCD调度应用失败：{result.Message}";
@@ -1065,14 +1119,14 @@ public sealed class FrameService : IFrameService
             var s = AppSettingsStore.Read();
             if (!s.DualCcdArmed || !s.DualCcdFrameEnabled) return "";
 
-            var cpuFrame = Backends.BackendCpuFrameService.Instance;
-            var result = await cpuFrame.RevertDualCcdAsync();
+            var procman = Backends.BackendProcmanService.Instance;
+            var result = await procman.RevertDualCcdAsync();
             if (!result.Success) return $"双CCD调度撤销失败：{result.Message}";
 
             var note = "双CCD调度已撤销，所有进程恢复全部核心。";
             if (s.SingleCcdExcludeCpu0Enabled)
             {
-                var singleCcd = await cpuFrame.ApplySingleCcdAsync();
+                var singleCcd = await procman.ApplySingleCcdAsync();
                 note += singleCcd.Success
                     ? "已恢复先前保存的单CCD排除 CPU0 规则。"
                     : $"单CCD规则恢复失败：{singleCcd.Message}";
@@ -1107,7 +1161,7 @@ public sealed class FrameService : IFrameService
     private void UpdateStatus() => StatusText = DescribeStatus();
     private void OnObservationStateChanged()
     {
-        void Update() { UpdateStatus(); OnPropertyChanged(nameof(DwmStatusText)); OnPropertyChanged(nameof(TimerStatusText)); }
+        void Update() { UpdateStatus(); OnPropertyChanged(nameof(DwmStatusText)); OnPropertyChanged(nameof(GamePriorityStatusText)); OnPropertyChanged(nameof(GameTimerIgnoreStatusText)); }
         if (_dispatcher is null || _dispatcher.HasThreadAccess) Update();
         else _dispatcher.TryEnqueue(Update);
     }
@@ -1125,14 +1179,23 @@ public sealed class FrameService : IFrameService
                 ? $" · 显卡伪装为「{_gpuSpoofFakeName}」" : "";
             var powerPart = FrameStatusPresentation.Power(_powerPlanLockEnabled, _powerLockTargetGuid, snapshot, now);
             var dualPart = _dualCcdArmed && _dualCcdEnabled ? " · 双CCD调度" : "";
-            var boostPart = _responseBoostEnabled ? " · 加速响应" : "";
+            var powerThrottlePart = _gamePowerThrottlingDisabled ? " · 游戏节能关闭" : "";
+            var timerIgnorePart = _gameTimerIgnoreEnabled ? " · 忽略三角洲定时器请求" : "";
             var foregroundPart = _foregroundBoostEnabled ? " · 前台加速" : "";
             var powerSavePart = _powerSaveLatencyEnabled ? " · 省电延迟" : "";
             var memCleanPart = _memoryCleanEnabled ? " · 内存清理" : "";
             var target = GameTargetService.Default.Current.DisplayName;
             var gamePart = FrameStatusPresentation.Game(observation.TargetRunning, target);
             var execution = FrameStatusPresentation.Execution(snapshot, now, observation.AutomationError);
-            return $"{execution}{spoofPart}{powerPart}{dualPart}{boostPart}{foregroundPart}{powerSavePart}{memCleanPart}{gamePart}";
+            var pendulum = Backends.BackendProcmanService.Instance;
+            var clock = pendulum.ClockState;
+            var clockPart = !ReleaseFeaturePolicy.PendulumEnabled || !DeltaNFD.Inspection.PendulumGlobalInspection.Supported ? ""
+                : !pendulum.HasCurrentStatus || clock is null || !Backends.BackendProcmanService.IsFresh(clock.UpdatedUtc) ? " · 钟摆计划状态待确认"
+                : clock.Holding && clock.VerifiedGlobal && clock.Current100ns > 0 && (ulong)clock.Current100ns + 10 < clock.Resolution100ns ? " · 钟摆计划精度被覆盖（查看提醒）"
+                : clock.Holding && clock.VerifiedGlobal && !clock.HasError && clock.Current100ns > 0
+                    && clock.Current100ns <= (ulong)clock.Resolution100ns + 500 ? $" · 钟摆计划 {clock.Current100ns / 10000.0:0.0000} ms"
+                : " · 钟摆计划：" + clock.Message;
+            return $"{execution}{spoofPart}{powerPart}{dualPart}{powerThrottlePart}{timerIgnorePart}{foregroundPart}{powerSavePart}{memCleanPart}{gamePart}{clockPart}";
         }
 
         return GameTargetService.Default.Status;
@@ -1539,9 +1602,12 @@ public sealed class FrameService : IFrameService
         _gpuSpoofFrameConfigured = s.GpuSpoofFrameConfigured;
         _dualCcdArmed = s.DualCcdArmed;
         _dualCcdEnabled = s.DualCcdFrameEnabled;
-        _responseBoostEnabled = s.FrameResponseBoostEnabled;
-        _responseBoostTimer = s.FrameResponseBoostTimerEnabled;
+        _gameTimerIgnoreEnabled = ReleaseFeaturePolicy.FrameTimerIgnoreEnabled && s.FrameGameTimerIgnoreEnabled;
         _gamePowerThrottlingDisabled = s.FrameGamePowerThrottlingDisabled;
+        _gamePriorityEnabled = s.FrameGamePriorityEnabled;
+        _gameCpuPriority = s.FrameGameCpuPriority;
+        _gameIoPriority = s.FrameGameIoPriority;
+        _gameMemoryPriority = s.FrameGameMemoryPriority;
         _memoryCleanEnabled = false; // Ignore the obsolete persisted switch.
         _memoryCleanGameAutoEnabled = false;
         _memoryCleanThresholdPercent = Math.Clamp(s.FrameMemoryCleanThresholdPercent, 30, 95);
@@ -1573,9 +1639,12 @@ public sealed class FrameService : IFrameService
                 s.GpuSpoofEnabled = _gpuSpoofEnabled;
                 s.GpuSpoofFrameConfigured = _gpuSpoofFrameConfigured;
                 s.DualCcdFrameEnabled = _dualCcdEnabled;
-                s.FrameResponseBoostEnabled = _responseBoostEnabled;
-                s.FrameResponseBoostTimerEnabled = _responseBoostTimer;
+                if (ReleaseFeaturePolicy.FrameTimerIgnoreEnabled) s.FrameGameTimerIgnoreEnabled = _gameTimerIgnoreEnabled;
                 s.FrameGamePowerThrottlingDisabled = _gamePowerThrottlingDisabled;
+                s.FrameGamePriorityEnabled = _gamePriorityEnabled;
+                s.FrameGameCpuPriority = _gameCpuPriority;
+                s.FrameGameIoPriority = _gameIoPriority;
+                s.FrameGameMemoryPriority = _gameMemoryPriority;
                 s.FrameMemoryCleanEnabled = false;
                 s.GpuSpoofApplyMode = _gpuSpoofApplyMode.ToString();
                 s.GpuSpoofRegistryPath = _gpuSpoofRegistryPath;

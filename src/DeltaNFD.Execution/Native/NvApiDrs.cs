@@ -437,13 +437,15 @@ public static class NvApiDrs
                     var setting = NewSetting(id);
                     var reserved = 0u;
                     var st = _getSetting!(session, profile, id, ref setting, ref reserved);
-                    if (st != StatusOk)
+                    if (st == StatusSettingNotFound)
                     {
                         result[id] = (false, 0);
                         continue;
                     }
+                    if (st != StatusOk || setting.settingType != NvDrsSetting.TypeDword)
+                        throw new InvalidOperationException($"设置 0x{id:X8} 读取失败：{DescribeStatus(st)} / 类型 {setting.settingType}。");
 
-                    var hasOverride = setting.settingLocation == (int)NvDrsSetting.LocationCurrentProfile;
+                    var hasOverride = setting.settingLocation == (int)NvDrsSetting.LocationCurrentProfile && setting.isCurrentPredefined == 0;
                     var value = setting.currentValue is { Length: >= 4 }
                         ? BitConverter.ToUInt32(setting.currentValue, 0)
                         : 0u;
@@ -480,56 +482,53 @@ public static class NvApiDrs
                         : "未找到也无法创建该程序的驱动配置。");
                 }
 
-                var ok = 0;
-                var fail = new List<string>();
-                foreach (var (id, value) in changes)
+                return CommitApplicationWrites(changes, (id, value) =>
                 {
-                    int st;
                     if (value is null)
-                    {
-                        st = _deleteSetting!(session, profile, id);
-                        if (st == StatusOk || st == StatusSettingNotFound)
-                        {
-                            ok++; // 没有覆盖也算成功（本来就是要恢复默认）
-                        }
-                        else
-                        {
-                            fail.Add($"0x{id:X8}: {DescribeStatus(st)}");
-                        }
-                    }
-                    else
-                    {
-                        var setting = NewSetting(id);
-                        setting.settingType = (int)NvDrsSetting.TypeDword;
-                        setting.settingLocation = (int)NvDrsSetting.LocationCurrentProfile;
-                        setting.currentValue = [.. BitConverter.GetBytes(value.Value), .. new byte[4096]];
-                        st = _setSetting!(session, profile, ref setting, 0, 0);
-                        if (st == StatusOk)
-                        {
-                            ok++;
-                        }
-                        else
-                        {
-                            fail.Add($"0x{id:X8}: {DescribeStatus(st)}");
-                        }
-                    }
-                }
-
-                if (fail.Count > 0)
+                        return _deleteSetting!(session, profile, id);
+                    var setting = NewSetting(id);
+                    BitConverter.GetBytes(value.Value).CopyTo(setting.currentValue, 0);
+                    return _setSetting!(session, profile, ref setting, 0, 0);
+                }, () => _saveSettings!(session), () => _loadSettings!(session), id =>
                 {
-                    return (false, $"{ok} 项成功，{fail.Count} 项失败（{string.Join("；", fail.Take(3))}）");
-                }
-
-                var saveSt = _saveSettings!(session);
-                return saveSt == StatusOk
-                    ? (true, created ? $"已创建「{profileDisplayName}」配置并写入 {ok} 项设置。" : $"已写入 {ok} 项设置。")
-                    : (false, $"设置已提交但保存失败：{DescribeStatus(saveSt)}（数据库文件可能被只读锁定）");
+                    var setting = NewSetting(id);
+                    var reserved = 0u;
+                    var status = _getSetting!(session, profile, id, ref setting, ref reserved);
+                    return (status, setting.settingType == NvDrsSetting.TypeDword,
+                        setting.settingLocation == NvDrsSetting.LocationCurrentProfile && setting.isCurrentPredefined == 0,
+                        BitConverter.ToUInt32(setting.currentValue, 0));
+                });
             }
             finally
             {
                 _destroySession!(session);
             }
         }
+    }
+
+    internal static (bool Success, string Message) CommitApplicationWrites(IReadOnlyList<(uint Id, uint? Value)> changes,
+        Func<uint, uint?, int> set, Func<int> save, Func<int> reload,
+        Func<uint, (int Status, bool IsDword, bool HasOverride, uint Value)> read)
+    {
+        foreach (var (id, value) in changes)
+        {
+            var status = set(id, value);
+            if (status != StatusOk && !(value is null && status == StatusSettingNotFound))
+                return (false, $"0x{id:X8} 写入失败：{DescribeStatus(status)}。本次会话未保存，请刷新核对。");
+        }
+        var saved = save();
+        if (saved != StatusOk) return (false, $"驱动保存失败：{DescribeStatus(saved)}，请刷新核对实际状态。");
+        var loaded = reload();
+        if (loaded != StatusOk) return (false, $"已保存，但回读失败：{DescribeStatus(loaded)}，请刷新核对。");
+        foreach (var (id, value) in changes)
+        {
+            var actual = read(id);
+            var verified = value is null
+                ? actual.Status == StatusSettingNotFound || actual.Status == StatusOk && actual.IsDword && !actual.HasOverride
+                : actual.Status == StatusOk && actual.IsDword && actual.HasOverride && actual.Value == value;
+            if (!verified) return (false, $"已保存，但设置 0x{id:X8} 未通过回读核验，请刷新核对；不能确认全部生效。");
+        }
+        return (true, $"已保存并回读核验 {changes.Count} 项驱动配置。");
     }
 
     /// <summary>枚举本机驱动支持的设置名（用于按名称发现设置 ID；名称匹配子串）。</summary>

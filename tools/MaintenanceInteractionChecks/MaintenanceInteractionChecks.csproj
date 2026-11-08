@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>BackendSmokeTest</AssemblyName><ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable><PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <ProjectReference Include="../../src/DeltaNFD.Shared/DeltaNFD.Shared.csproj" />
+    <ProjectReference Include="../../src/DeltaNFD.Inspection/DeltaNFD.Inspection.csproj" />
+    <Compile Include="../../src/DeltaNFD/ViewModels/AceViewModel.cs" Link="AceViewModel.cs" />
+    <Compile Include="../../src/DeltaNFD/ViewModels/AceViewModel.ManualGames.cs" Link="AceViewModel.ManualGames.cs" />
+    <Compile Include="../../src/DeltaNFD/Services/AceGameSearchSettings.cs" Link="AceGameSearchSettings.cs" />
+  </ItemGroup>
+</Project>

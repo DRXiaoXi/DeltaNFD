@@ -23,6 +23,12 @@ public interface IFrameService : INotifyPropertyChanged
     /// <summary>一键帧格模式（只读）= 当前是否处于激活状态（激活状态跨重启保持）。</summary>
     bool FrameModeEnabled { get; }
 
+    bool GameProcessPriorityEnabled { get; set; }
+    FrameCpuPriority GameCpuPriority { get; set; }
+    FrameIoPriority GameIoPriority { get; set; }
+    FrameMemoryPriority GameMemoryPriority { get; set; }
+    string GamePriorityStatusText { get; }
+
     /// <summary>帧格功能：游戏期间持续监测 DWM，高 CPU 持续满足阈值时重启并复查；保留旧设置字段名。</summary>
     bool DwmRestartOnGameStart { get; set; }
     string DwmStatusText => "等待后端确认 DWM 持续监测状态";
@@ -64,17 +70,26 @@ public interface IFrameService : INotifyPropertyChanged
     /// <summary>帧格功能：双CCD调度是否随帧格模式自动应用/撤销（登记存在时可关）。</summary>
     bool DualCcdSchedulingEnabled { get; set; }
 
-    // ---- 帧格功能：加速系统响应模式（高分辨率计时器，不改电源计划） ----
+    // ---- 帧格功能：游戏进程电源限制（不改电源计划） ----
 
-    /// <summary>加速系统响应模式总开关（关 = 全部机制不生效）。</summary>
-    bool ResponseBoostEnabled { get; set; }
-
-    /// <summary>系统定时器 0.5ms（帧格激活且游戏运行时）。</summary>
-    bool ResponseBoostTimerEnabled { get; set; }
-    string TimerStatusText => "等待后端确认计时器请求与实际读数";
+    /// <summary>关闭目标游戏进程的执行速度节能（EcoQoS）；退出帧格或工具时恢复原值。</summary>
     bool GamePowerThrottlingDisabled { get; set; }
     string GamePowerStatusText { get; }
     bool GamePowerHasError { get; }
+
+    // ---- 帧格功能：让系统忽略三角洲定时器分辨率请求（仅 Windows 11） ----
+
+    /// <summary>让系统忽略三角洲主进程的定时器分辨率请求；默认关，退出或关闭时恢复原值。</summary>
+    bool GameTimerIgnoreEnabled { get; set; }
+
+    /// <summary>该功能当前是否受本系统支持（Windows 11 起；未知按不支持处理）。</summary>
+    bool GameTimerIgnoreSupported => false;
+
+    /// <summary>状态文字（实际生效数、当前系统读数、等待/未启用/错误）。</summary>
+    string GameTimerIgnoreStatusText => "等待后端核对定时器请求忽略状态";
+
+    /// <summary>最近一次错误（无错误为空）。</summary>
+    bool GameTimerIgnoreHasError => false;
 
     // ---- 帧格功能：前台加速响应（调度参数临时改写，退出帧格自动还原） ----
 

@@ -7,7 +7,7 @@ namespace DeltaNFD.Services;
 internal sealed class FactoryResetConfiguration(string root)
 {
     private static readonly string[] ConfigurationFiles = ["settings.json", "procman-rules.json", "procman-background.json"];
-    private static readonly string[] EvidenceFiles = ["offline-mode.json", "procman-changes.json"];
+    private static readonly string[] EvidenceFiles = ["offline-mode.json", "procman-changes.json", "frame-game-priority.json", "frame-game-timer-ignore.json"];
     private readonly string _root = Path.GetFullPath(root);
     internal string BackupDirectory { get; private set; } = "";
     internal Action<string>? BeforeReplaceForTests { get; set; }
@@ -42,6 +42,11 @@ internal sealed class FactoryResetConfiguration(string root)
         settings.FrameModeActive = settings.DwmRestartOnGameStart = settings.GamePriorityEnabled = settings.GameAffinityRuleEnabled = false;
         settings.SingleCcdExcludeCpu0Enabled = settings.DualCcdImmediateEnabled = false;
         settings.FrameAutomaticMemoryEnabled = false;
+        settings.FrameGamePriorityEnabled = false;
+        settings.FrameGamePowerThrottlingDisabled = false;
+        settings.FrameGameTimerIgnoreEnabled = false;
+        settings.OptimalClockEnabled = false;
+        settings.OptimalClockResolution100ns = 5130;
         settings.CloseToTrayEnabled = false;
         WriteAtomic("settings.json", JsonSerializer.SerializeToUtf8Bytes(settings));
     }

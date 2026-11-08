@@ -2,31 +2,11 @@
     <ScrollViewer IsEnabled="{x:Bind ViewModel.NormalModeControlsEnabled, Mode=OneWay}" HorizontalContentAlignment="Stretch" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
         <StackPanel MaxWidth="1440" Padding="28,20,28,32" Spacing="12">
             <StackPanel Spacing="4">
-                <ui:PageHeader Title="CPU实验室"/>
+                <ui:PageHeader Title="调度改善"/>
                 <TextBlock Text="{x:Bind TargetLabel}" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
-                <TextBlock Text="CPU 信息与核心调度（实验功能，逐步完善中）" Style="{StaticResource NoteStyle}"/>
+                <TextBlock Text="按本机处理器显示可用的调度选项；单/双 CCD 调度由进程管理后台执行。" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
             </StackPanel>
-            <!-- 处理器场景切换 -->
-            <Border Style="{StaticResource CardBorderStyle}">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="处理器场景" Style="{StaticResource H2Style}"/>
-                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="按处理器形态切换本页展示的优化卡片（默认自动检测本机）。切换到与本机不一致的场景仅用于查看，相关功能会自行检测并在不适用时拒绝执行。"/>
-                    <ItemsControl ItemsSource="{x:Bind ViewModel.Scenarios}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="8"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:LabScenarioVm">
-                                <ToggleButton Content="{x:Bind Title}" IsChecked="{x:Bind IsSelected, Mode=TwoWay}" Click="ScenarioChip_Click" FontWeight="SemiBold"/>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <InfoBar IsOpen="{x:Bind ViewModel.ScenarioMismatchVisible, Mode=OneWay}" Severity="Warning" Title="场景与本机处理器不一致" Message="{x:Bind ViewModel.ScenarioMismatchText, Mode=OneWay}" IsClosable="False"/>
-                </StackPanel>
-            </Border>
-            <!-- CPU 拓扑 -->
+                        <!-- CPU 拓扑 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
                     <Grid ColumnSpacing="16">
@@ -44,10 +24,10 @@
                     <TextBlock Text="{x:Bind ViewModel.TopologyText, Mode=OneWay}" Style="{StaticResource NoteStyle}"/>
                 </StackPanel>
             </Border>
-            <Border Style="{StaticResource CardBorderStyle}" Visibility="{x:Bind ViewModel.ShowIntelPcores, Mode=OneWay}">
+            <Border x:Name="IntelPcoresCard" x:Load="{x:Bind ViewModel.ShowIntelPcores, Mode=OneWay}" Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="Intel · 优先 P 核负载" Style="{StaticResource SectionTitleStyle}"/>
-                    <TextBlock Text="一键将当前电源计划的「生效的异类策略」设为 0，「异类线程调度策略」和「异类短线程调度策略」设为首选性能处理器（2）。交流和电池同时生效。这是调度偏好，不会禁用 E 核或锁定进程亲和性。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
+                    <TextBlock Text="Intel · 优先 P 核负载" Style="{StaticResource SectionTitleStyle}" ui:HelpTip.Text="一键将当前电源计划的「生效的异类策略」设为 0，「异类线程调度策略」和「异类短线程调度策略」设为首选性能处理器（2）。交流和电池同时生效。这是调度偏好，不会禁用 E 核或锁定进程亲和性。"/>
+                    <TextBlock Text="让 Windows 优先把负载放到 P 核，不禁用 E 核也不锁定亲和性。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <Button Content="一键优先 P 核负载" Style="{StaticResource PrimaryButtonStyle}" IsEnabled="{x:Bind ViewModel.CanPreferIntelPcores, Mode=OneWay}" Click="PreferIntelPcores_Click"/>
                         <Button Content="还原已备份策略" IsEnabled="{x:Bind ViewModel.IntelPcoreControlsEnabled, Mode=OneWay}" Click="RestoreIntelPcores_Click" Style="{StaticResource SecondaryButtonStyle}"/>
@@ -57,7 +37,7 @@
                 </StackPanel>
             </Border>
             <!-- AMD CCD 判定 -->
-            <Border Style="{StaticResource CardBorderStyle}" Visibility="{x:Bind ViewModel.ShowCcdJudge, Mode=OneWay}">
+            <Border x:Name="CcdJudgeCard" x:Load="{x:Bind ViewModel.ShowCcdJudge, Mode=OneWay}" Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="{x:Bind ViewModel.CcdSectionText, Mode=OneWay}" Style="{StaticResource H2Style}"/>
                     <TextBlock Text="{x:Bind ViewModel.CcdAdvice, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
@@ -70,19 +50,20 @@
                     </ItemsControl>
                 </StackPanel>
             </Border>
+            <TextBlock Text="CCD 调度" Style="{StaticResource H3Style}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="4,8,0,0"/>
             <!-- 双CCD 专属调度 -->
-            <Border Style="{StaticResource CardBorderStyle}" Visibility="{x:Bind ViewModel.ShowDualCcd, Mode=OneWay}" ui:HoverLift.Enabled="False">
+            <Border x:Name="DualCcdCard" x:Load="{x:Bind ViewModel.ShowDualCcd, Mode=OneWay}" Style="{StaticResource CardBorderStyle}" ui:HoverLift.Enabled="False">
                 <StackPanel Spacing="10">
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBlock Text="双CCD 专属调度" Style="{StaticResource H2Style}" VerticalAlignment="Center"/>
+                        <TextBlock Text="双CCD 专属调度" Style="{StaticResource H2Style}" VerticalAlignment="Center" ui:HelpTip.Text="游戏独占一个 CCD，所有其他进程推到另一个 CCD，让游戏获得最大的 CPU 资源。CPU0 留给系统中断和内核进程以保障系统流畅度下限。"/>
                         <Border Style="{StaticResource ChipBorderStyle}" Background="{ThemeResource ControlFillColorDefaultBrush}" VerticalAlignment="Center">
-                            <TextBlock Text="实验性" Opacity="0.75" Style="{StaticResource BadgeTextStyle}"/>
+                            <TextBlock Text="实验性" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource BadgeTextStyle}"/>
                         </Border>
-                        <Border Style="{StaticResource ChipBorderStyle}" Background="#33E5484D" VerticalAlignment="Center">
-                            <TextBlock Text="会导致 CPU 发热和功耗上升" Foreground="#FFE5484D" Style="{StaticResource BadgeTextStyle}"/>
+                        <Border Style="{StaticResource ChipBorderStyle}" Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}" VerticalAlignment="Center">
+                            <TextBlock Text="会导致 CPU 发热和功耗上升" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Style="{StaticResource BadgeTextStyle}"/>
                         </Border>
                     </StackPanel>
-                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="游戏独占一个 CCD，所有其他进程推到另一个 CCD，让游戏获得最大的 CPU 资源。CPU0 留给系统中断和内核进程以保障系统流畅度下限。"/>
+                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="游戏独占一个 CCD，其余进程推到另一个 CCD。"/>
                     <Grid ColumnSpacing="16" Style="{StaticResource FeatureTileGridStyle}" Margin="0,4" ui:HoverLift.Enabled="True">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -116,6 +97,20 @@
                     <TextBlock Text="{x:Bind ViewModel.DualCcdStatusText, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
+            <!-- 单CCD 优化调度 -->
+            <Border x:Name="SingleCcdCard" x:Load="{x:Bind ViewModel.ShowSingleCcd, Mode=OneWay}" Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="单CCD 优化调度" Style="{StaticResource H2Style}" ui:HelpTip.Text="把目标游戏进程的 CPU0 让出来：系统中断和内核进程集中在 CPU0，游戏在其余核心运行，减少调度抖动。对全部 AMD 机型可用（双CCD 机型不做 CCD 隔离、只想把 CPU0 留给系统时同样适用）。规则持久化：游戏未运行时点击即登记，游戏启动后由轮询自动应用并持续保持，恢复全部核心即解除。"/>
+                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="让游戏避开 CPU0，系统中断和内核进程留在 CPU0。"/>
+                    <TextBlock Text="{x:Bind ViewModel.GameStatusText, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+                        <Button Content="恢复全部核心" IsEnabled="{x:Bind ViewModel.SingleCcdRestoreEnabled, Mode=OneWay}" Click="RestoreCpu0Button_Click" Style="{StaticResource DangerButtonStyle}"/>
+                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="排除 CPU0" IsEnabled="{x:Bind ViewModel.SingleCcdApplyEnabled, Mode=OneWay}" Click="ExcludeCpu0Button_Click"/>
+                    </StackPanel>
+                    <TextBlock Text="{x:Bind ViewModel.SingleCcdStatusText, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+            <TextBlock Text="系统调度" Style="{StaticResource H3Style}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="4,8,0,0"/>
             <!-- 无省电电源计划 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
@@ -125,8 +120,8 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Spacing="4">
-                            <TextBlock Text="无省电电源计划" Style="{StaticResource H2Style}"/>
-                            <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="针对延迟与性能优化的电源计划（导入后显示为「无省电释放模式」，并自动激活立即生效；旧版计划可通过「修正计划名称」处理）。也可在 Windows 电源选项中切换；配合帧格页「电源计划锁定」可在游戏期间保持生效。"/>
+                            <TextBlock Text="无省电电源计划" Style="{StaticResource H2Style}" ui:HelpTip.Text="针对延迟与性能优化的电源计划（导入后显示为「无省电释放模式」，并自动激活立即生效；旧版计划可通过「修正计划名称」处理）。也可在 Windows 电源选项中切换；配合帧格页「电源计划锁定」可在游戏期间保持生效。"/>
+                            <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="导入后自动激活；配合帧格「电源计划锁定」可在游戏期间保持生效。"/>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                             <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.SchemeBusy, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}"/>
@@ -141,8 +136,8 @@
             <!-- 异类调度策略 -->
             <Border Style="{StaticResource CardBorderStyle}" ui:HoverLift.Enabled="False">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="异类调度策略" Style="{StaticResource H2Style}"/>
-                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="Windows 对混合架构 CPU（大小核 / 异构核心）的调度偏好，按当前电源计划交流/直流同时设置，选择后立即生效。仅对支持异构调度的平台有实际意义（Intel 大小核 / 部分 AMD 异构配置）。两个线程调度策略取值 0–5（5=自动，系统默认，让 Windows 自行选择落核偏好）；「生效的异类策略」为总策略（0–4，Windows 官方仅以编号命名，默认 4）。"/>
+                    <TextBlock Text="异类调度策略" Style="{StaticResource H2Style}" ui:HelpTip.Text="Windows 对混合架构 CPU（大小核 / 异构核心）的调度偏好，按当前电源计划交流/直流同时设置，选择后立即生效。仅对支持异构调度的平台有实际意义（Intel 大小核 / 部分 AMD 异构配置）。两个线程调度策略取值 0–5（5=自动，系统默认，让 Windows 自行选择落核偏好）；「生效的异类策略」为总策略（0–4，Windows 官方仅以编号命名，默认 4）。"/>
+                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="仅对大小核 / 异构 CPU 有效，选择后立即生效。"/>
                     <InfoBar IsOpen="{x:Bind ViewModel.PowerLockNoticeVisible, Mode=OneWay}" Severity="Warning" Title="帧格「电源计划锁定」已开启" Message="{x:Bind ViewModel.PowerLockNoticeText, Mode=OneWay}" IsClosable="False"/>
                     <ItemsControl ItemsSource="{x:Bind ViewModel.HeteroItems}" IsEnabled="{x:Bind ViewModel.IntelPcoreControlsEnabled, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
@@ -167,21 +162,64 @@
                     <TextBlock Text="{x:Bind ViewModel.HeteroStatusText, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
-            <!-- 单CCD 优化调度 -->
-            <Border Style="{StaticResource CardBorderStyle}" Visibility="{x:Bind ViewModel.ShowSingleCcd, Mode=OneWay}">
-                <StackPanel Spacing="10">
-                    <TextBlock Text="单CCD 优化调度" Style="{StaticResource H2Style}"/>
-                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="把目标游戏进程的 CPU0 让出来：系统中断和内核进程集中在 CPU0，游戏在其余核心运行，减少调度抖动。对全部 AMD 机型可用（双CCD 机型不做 CCD 隔离、只想把 CPU0 留给系统时同样适用）。规则持久化：游戏未运行时点击即登记，游戏启动后由轮询自动应用并持续保持，恢复全部核心即解除。"/>
-                    <TextBlock Text="{x:Bind ViewModel.GameStatusText, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
-                    <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
-                        <Button Content="恢复全部核心" IsEnabled="{x:Bind ViewModel.SingleCcdRestoreEnabled, Mode=OneWay}" Click="RestoreCpu0Button_Click" Style="{StaticResource DangerButtonStyle}"/>
-                        <Button Style="{StaticResource PrimaryButtonStyle}" Content="排除 CPU0" IsEnabled="{x:Bind ViewModel.SingleCcdApplyEnabled, Mode=OneWay}" Click="ExcludeCpu0Button_Click"/>
+            <TextBlock Text="三角洲规则" Style="{StaticResource H3Style}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="4,8,0,0"/>
+            <!-- 三角洲规则（原进程管理「三角洲规则」页签） -->
+            <Border Style="{StaticResource CardBorderStyle}" ui:HoverLift.Enabled="False">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="三角洲主进程规则" Style="{StaticResource H2Style}" ui:HelpTip.Text="无需启动游戏即可设置优先级、效率模式、动态提升、CPU 亲和性与集合、I/O、内存及 GPU 调度优先级。规则按一个完整 EXE 路径保存，游戏启动后自动尝试应用。"/>
+                    <TextBlock Text="按完整 EXE 路径保存规则，游戏启动后自动应用。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <TextBox x:Name="GameRulePathBox" Header="三角洲主进程完整路径" PlaceholderText="…\DeltaForce\Binaries\Win64\DeltaForceClient-Win64-Shipping.exe" MaxLength="32760"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button x:Name="UseGameRulePathButton" Content="使用此路径" Click="UseGameRulePath_Click"/>
+                        <Button x:Name="DetectGameRulePathButton" Content="自动识别安装位置" Click="DetectGameRulePath_Click" Style="{StaticResource SecondaryButtonStyle}"/>
                     </StackPanel>
-                    <TextBlock Text="{x:Bind ViewModel.SingleCcdStatusText, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="GameRuleStatusText" Text="进入此页后自动识别游戏安装位置；也可粘贴主进程路径。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                    <Grid ColumnSpacing="20" RowSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <ContentControl x:Name="GameRuleEditor" Grid.Column="0" IsEnabled="False" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Top">
+                        <StackPanel Spacing="12">
+                            <ComboBox x:Name="GameRuleCapabilityCombo" Header="能力" SelectedIndex="0" MinWidth="180" SelectionChanged="GameRuleCapabilityCombo_SelectionChanged" HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="CPU 优先级"/>
+                                <ComboBoxItem Content="效率模式（EcoQoS）"/>
+                                <ComboBoxItem Content="动态优先级提升"/>
+                                <ComboBoxItem Content="CPU 亲和性（g0:0x掩码）"/>
+                                <ComboBoxItem Content="CPU 集合（按组掩码）"/>
+                                <ComboBoxItem Content="I/O 优先级（Low/Normal 等）"/>
+                                <ComboBoxItem Content="内存优先级"/>
+                                <ComboBoxItem Content="GPU 调度优先级（0–4）"/>
+                            </ComboBox>
+                            <ComboBox x:Name="GameRuleValueCombo" Header="应用的设置" HorizontalAlignment="Stretch"/>
+                            <StackPanel x:Name="GameRuleMaskPanel" Spacing="8" Visibility="Collapsed">
+                                <TextBlock Text="直接选择本机逻辑 CPU，无需启动游戏；也可手动编辑处理器组掩码。" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                                <StackPanel x:Name="GameRuleCpuGroupPanel" Spacing="12"/>
+                                <Button Content="使用所选 CPU" Click="UseGameRuleCpus_Click" HorizontalAlignment="Left" Style="{StaticResource SecondaryButtonStyle}"/>
+                                <TextBox x:Name="GameRuleValueBox" Header="处理器组掩码" PlaceholderText="例：g0:0xF" MaxLength="512"/>
+                            </StackPanel>
+                            <ToggleSwitch x:Name="GameRuleEnabledToggle" Header="启用规则" OnContent="启用" OffContent="停用" IsOn="True"/>
+                            <CheckBox x:Name="GameRuleAutoTakeoverCheck" Content="允许规则接管游戏模式控制的同一属性"/>
+                            <Button x:Name="SaveGameRuleButton" Content="保存规则" Click="SaveGameRule_Click" Style="{StaticResource PrimaryButtonStyle}"/>
+                        </StackPanel>
+                        </ContentControl>
+                        <StackPanel Grid.Column="1" Spacing="10">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="已保存规则" Style="{StaticResource H3Style}" VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Content="刷新" Click="LoadGameRules_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                            </Grid>
+                            <TextBlock x:Name="GameRuleCountText" FontWeight="SemiBold" Text="尚未读取规则" TextWrapping="Wrap"/>
+                            <StackPanel x:Name="GameRuleListPanel" Spacing="3"/>
+                            <TextBlock x:Name="GameRuleNoteText" Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Text="后台抑制和自动内存回收请前往帧格页开启，三角洲主进程固定排除在这两项后台操作之外。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <Button Content="前往帧格开启后台功能" Click="OpenFrameBackground_Click" HorizontalAlignment="Left" Style="{StaticResource SecondaryButtonStyle}"/>
                 </StackPanel>
-            </Border>
-            <Border Style="{StaticResource CardBorderStyle}" Padding="20,14">
-                <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="进程亲和性与持久规则请在「进程管理」中设置；三角洲主进程可在对应的独立页签管理。"/>
             </Border>
         </StackPanel>
     </ScrollViewer>

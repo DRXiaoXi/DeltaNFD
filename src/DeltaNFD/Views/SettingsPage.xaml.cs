@@ -98,7 +98,6 @@ public sealed partial class SettingsPage : Page
             OnBackgroundChanged();
             Update.Attach();
             RefreshLegacyRecoveryControls();
-            RefreshFsoStatus();
 
         };
         Unloaded += (_, _) =>
@@ -182,7 +181,6 @@ public sealed partial class SettingsPage : Page
         TargetModeStatusText.Text = blocker.Length == 0 ? ServiceLocator.GameTarget.Status : blocker;
         _updatingTargetControls = false;
         RefreshGameRootsList();
-        RefreshFsoStatus();
     }
     private Task<string?> PickGameExeAsync()
     {
@@ -222,7 +220,7 @@ public sealed partial class SettingsPage : Page
                 {
                     Title = "暂不能更换游戏目标",
                     Content = new TextBlock { Text = blocker, TextWrapping = TextWrapping.Wrap },
-                    PrimaryButtonText = cpuRelated ? "CPU 实验室" : "帧格",
+                    PrimaryButtonText = cpuRelated ? "调度改善" : "帧格",
                     CloseButtonText = "取消",
                     DefaultButton = ContentDialogButton.Close,
                     XamlRoot = XamlRoot,
@@ -347,14 +345,15 @@ public sealed partial class SettingsPage : Page
 
     // ---------------- 三角洲安装目录管理（多安装） ----------------
 
-    private sealed class GameRootItem
+    [Microsoft.UI.Xaml.Data.Bindable]
+    public sealed class GameRootItem
     {
         public string Path { get; set; } = "";
         public string Source { get; set; } = "";
         public bool CanRemove { get; set; }
     }
 
-    private void RefreshGameRootsList()
+    private void RefreshGameRootsList(string? result = null)
     {
         if (ServiceLocator.GameTarget.IsCustom)
         {
@@ -363,19 +362,18 @@ public sealed partial class SettingsPage : Page
             return;
         }
 
-        var registered = new HashSet<string>(AppSettingsStore.Read().GameInstallRoots ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
-        var roots = DeltaForceLocator.FindRoots().ToList();
-        var items = roots.Select(r => new GameRootItem
+        try
         {
-            Path = r,
-            Source = registered.Contains(r) ? "用户登记" : "自动识别",
-            CanRemove = registered.Contains(r),
-        }).ToList();
-        GameRootsList.ItemsSource = items;
-
-        var overridePath = AppSettingsStore.Read().GameRootOverride ?? "";
-        GamePathStatusText.Text = (string.IsNullOrWhiteSpace(overridePath) ? "旧手动指定：未设置" : "旧手动指定：" + overridePath)
-            + "\n当前识别 " + roots.Count + " 个安装目录";
+            var rows = GameInstallSettings.List(DeltaForceLocator.FindAutomaticRoots());
+            GameRootsList.ItemsSource = rows.Select(r => new GameRootItem { Path = r.Path, Source = r.Source, CanRemove = r.CanRemove }).ToArray();
+            GamePathStatusText.Text = (result is null ? "" : result + "\n")
+                + $"手动记录 {rows.Count(r => r.CanRemove)} 个，自动识别 {rows.Count(r => r.Source.Contains("自动识别"))} 个。自动识别目录不会因清空手动记录而消失。";
+        }
+        catch (Exception ex)
+        {
+            GamePathStatusText.Text = "目录记录未能读取：" + ex.Message;
+            Log.Error("读取游戏安装目录记录失败", ex);
+        }
     }
 
     private void PickGameFolderButton_Click(object sender, RoutedEventArgs e)
@@ -432,8 +430,12 @@ public sealed partial class SettingsPage : Page
         if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "旧版设置恢复完成前，游戏目录不可更改。"; return; }
         if (ServiceLocator.GameTarget.IsCustom) { GamePathStatusText.Text = GameTargetService.DeltaOnlyMessage; return; }
         GamePathBox.Text = "";
-        AppSettingsStore.Update(s => s.GameRootOverride = "");
-        RefreshGameRootsList();
+        try
+        {
+            GameInstallSettings.ClearManual();
+            RefreshGameRootsList("已清空全部手动登记和旧手动指定，没有删除游戏文件。");
+        }
+        catch (Exception ex) { GamePathStatusText.Text = "清空手动记录失败：" + ex.Message; Log.Error("清空游戏目录记录失败", ex); }
     }
 
     private void RemoveGameRoot_Click(object sender, RoutedEventArgs e)
@@ -441,8 +443,12 @@ public sealed partial class SettingsPage : Page
         if (OfflineModeGuard.BlocksNormalAutomation) { GamePathStatusText.Text = "旧版设置恢复完成前，游戏目录不可更改。"; return; }
         if (ServiceLocator.GameTarget.IsCustom) { GamePathStatusText.Text = GameTargetService.DeltaOnlyMessage; return; }
         if (sender is not Button { Tag: string path }) return;
-        DeltaForceLocator.RemoveRegisteredRoot(path);
-        RefreshGameRootsList();
+        try
+        {
+            GameInstallSettings.RemoveManual(path);
+            RefreshGameRootsList("已移除手动记录；如该目录也能自动识别，仍会保留在列表中。");
+        }
+        catch (Exception ex) { GamePathStatusText.Text = "移除手动记录失败：" + ex.Message; Log.Error("移除游戏目录记录失败", ex); }
     }
 
     private void SearchGameFoldersButton_Click(object sender, RoutedEventArgs e) =>
@@ -511,72 +517,7 @@ public sealed partial class SettingsPage : Page
         RefreshGameRootsList();
     }
 
-    // ---------------- 三角帧本体设置 ----------------
-
-    private bool _suppressFsoToggle;
-
-    /// <summary>全屏优化改为对所有登记的三角洲安装同时生效；UI 开关反映总体状态。</summary>
-    private void RefreshFsoStatus()
-    {
-        if (FsoDisableToggle is null) return;
-        var exes = GameCompatibilityService.ResolveGameExePaths();
-        if (exes.Count == 0)
-        {
-            _suppressFsoToggle = true;
-            FsoDisableToggle.IsOn = false;
-            FsoDisableToggle.IsEnabled = false;
-            _suppressFsoToggle = false;
-            FsoStatusText.Text = "未找到三角洲游戏主程序，请先在上方「三角洲安装目录」中指定游戏目录。";
-            return;
-        }
-
-        var disabledCount = exes.Count(p => GameCompatibilityService.IsFullscreenOptimizationsDisabled(p));
-        _suppressFsoToggle = true;
-        FsoDisableToggle.IsOn = disabledCount == exes.Count;
-        FsoDisableToggle.IsEnabled = true;
-        _suppressFsoToggle = false;
-
-        FsoStatusText.Text = disabledCount switch
-        {
-            0 => $"当前状态：{exes.Count} 个安装均未禁用全屏优化",
-            var c when c == exes.Count => $"当前状态：全部 {exes.Count} 个安装已禁用全屏优化",
-            _ => $"当前状态：{disabledCount}/{exes.Count} 个安装已禁用全屏优化（开启后补全禁用，关闭后全部恢复）",
-        };
-    }
-
-    private void FsoDisableToggle_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (_suppressFsoToggle) return;
-
-        var exes = GameCompatibilityService.ResolveGameExePaths();
-        if (exes.Count == 0)
-        {
-            RefreshFsoStatus();
-            return;
-        }
-
-        var enable = FsoDisableToggle.IsOn;
-        var ok = 0;
-        var skip = 0;
-        var fail = new List<string>();
-        foreach (var exe in exes)
-        {
-            var result = enable
-                ? GameCompatibilityService.DisableFullscreenOptimizations(exe)
-                : GameCompatibilityService.RestoreFullscreenOptimizations(exe);
-            if (result.Success && result.IsSkipped) skip++;
-            else if (result.Success) ok++;
-            else fail.Add(result.Message);
-        }
-
-        var parts = new List<string>();
-        if (ok > 0) parts.Add($"成功 {ok} 个");
-        if (skip > 0) parts.Add($"跳过 {skip} 个");
-        if (fail.Count > 0) parts.Add($"失败 {fail.Count} 个");
-        FsoStatusText.Text = (parts.Count > 0 ? string.Join("，", parts) + "。" : "")
-            + (fail.Count > 0 ? string.Join("；", fail.Take(2)) : "");
-        RefreshFsoStatus();
-    }
+    private void GameModifications_Click(object sender, RoutedEventArgs e) => Frame.Navigate(typeof(GameModificationsPage));
 
     // ---------------- 背景 ----------------
 

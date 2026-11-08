@@ -53,8 +53,8 @@
                 <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
                 <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
                 <Setter Property="BorderThickness" Value="1"/>
-                <Setter Property="CornerRadius" Value="14"/>
-                <Setter Property="Padding" Value="22"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="Padding" Value="20"/>
                 <Setter Property="ui:HoverLift.Enabled" Value="True"/>
             </Style>
             <Style x:Key="FeatureCardBorderStyle" TargetType="Border" BasedOn="{StaticResource CardBorderStyle}">
@@ -62,8 +62,8 @@
             </Style>
             <!-- 文本 -->
             <Style x:Key="PageTitleStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="30"/>
-                <Setter Property="FontWeight" Value="Bold"/>
+                <Setter Property="FontSize" Value="20"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
                 <Setter Property="TextWrapping" Value="Wrap"/>
             </Style>
             <Style x:Key="PageSubtitleStyle" TargetType="TextBlock">
@@ -77,18 +77,13 @@
                 <Setter Property="FontWeight" Value="SemiBold"/>
                 <Setter Property="TextWrapping" Value="Wrap"/>
             </Style>
-            <Style x:Key="CardDescStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="12.5"/>
-                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}"/>
-                <Setter Property="TextWrapping" Value="Wrap"/>
-                <Setter Property="LineHeight" Value="18"/>
-            </Style>
+            <Style x:Key="CardDescStyle" TargetType="TextBlock" BasedOn="{StaticResource NoteStyle}"/>
             <!-- 主操作按钮（天空蓝实心） -->
             <Style x:Key="AccentButtonStyle" TargetType="Button">
                 <Setter Property="Background" Value="{StaticResource AppAccentBrush}"/>
                 <Setter Property="Foreground" Value="White"/>
-                <Setter Property="CornerRadius" Value="8"/>
-                <Setter Property="Padding" Value="20,10"/>
+                <Setter Property="CornerRadius" Value="4"/>
+                <Setter Property="Padding" Value="16,7"/>
                 <Setter Property="FontSize" Value="14"/>
                 <Setter Property="FontWeight" Value="SemiBold"/>
                 <Setter Property="BorderThickness" Value="0"/>
@@ -123,9 +118,9 @@
                 </Setter>
             </Style>
             <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
-                <Setter Property="FontSize" Value="13.5"/>
-                <Setter Property="Padding" Value="20,9"/>
-                <Setter Property="MinHeight" Value="36"/>
+                <Setter Property="FontSize" Value="14"/>
+                <Setter Property="Padding" Value="16,6"/>
+                <Setter Property="MinHeight" Value="32"/>
             </Style>
             <!-- 反色按钮（白底蓝字，用于 Hero 渐变卡上） -->
             <Style x:Key="InverseButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
@@ -163,7 +158,7 @@
             </Style>
             <!-- 小标签胶囊 -->
             <Style x:Key="ChipBorderStyle" TargetType="Border">
-                <Setter Property="CornerRadius" Value="6"/>
+                <Setter Property="CornerRadius" Value="4"/>
                 <Setter Property="Padding" Value="8,3"/>
                 <Setter Property="VerticalAlignment" Value="Center"/>
             </Style>

@@ -79,6 +79,12 @@ internal static class AceManualGameInspection
         return result;
     }
 
+    internal static IReadOnlyList<AceGameCandidate> ReadSavedRoots(List<string> notes, Func<bool> blocked)
+    {
+        if (blocked()) throw new OperationCanceledException();
+        return ReadRoots(DeltaNFD.Services.AppSettingsStore.ReadRequired().AceGameSearchRoots, notes, blocked);
+    }
+
     internal static List<string> FindAceDirectories(string root, Func<bool> blocked, Action? touch, List<string>? notes, Func<bool>? totalBudgetExpired = null)
     {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

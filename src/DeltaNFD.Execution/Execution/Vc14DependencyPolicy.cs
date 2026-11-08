@@ -71,7 +71,7 @@ internal static class Vc14DependencyPolicy
 
     // Pure policy boundary: fixtures do not access a registry or start installers.
     internal static Vc14DependencyApproval Evaluate(Vc14Entry product, IReadOnlyList<Vc14DependencyProvider> providers,
-        Func<string, IReadOnlyList<Vc14DependencyOwner>> readOwners, Func<string, bool> verifyPinnedBaseline,
+        Func<string, IReadOnlyList<Vc14DependencyOwner>> readOwners, Func<Vc14BaselineInfo, string, bool> verifyPinnedBaseline,
         Action<Vc14DependencyReport>? observe = null)
     {
         if (!Guid.TryParse(product.Code, out var id) || id == Guid.Empty
@@ -103,9 +103,13 @@ internal static class Vc14DependencyPolicy
                     owners = readOwners(client).OrderBy(o => o.Location, StringComparer.Ordinal).ToArray();
                     var baselineInfo = Vc14BaselineInfo.FromBundle(product.Architecture, client);
                     var baseline = baselineInfo is not null;
-                    var pinned = baseline && verifyPinnedBaseline(product.Architecture);
-                    if (baseline && !pinned) throw new IOException("内置 " + baselineInfo!.Label + " 原包未通过固定哈希、版本或微软签名校验");
                     owners = owners.Select(o => CompleteMissingOwnerIdentity(client, product.Architecture, o)).ToArray();
+                    // A verified exact-ID owner proves itself, including retired baselines. Only
+                    // missing ownership evidence needs the original for this reference's baseline.
+                    var verifiedOwners = baseline && HasVerifiedBaselineOwners(baselineInfo!, product.Architecture, owners);
+                    var pinned = baseline && !verifiedOwners && verifyPinnedBaseline(baselineInfo!, product.Architecture);
+                    if (baseline && !verifiedOwners && !pinned)
+                        throw new IOException("内置 " + baselineInfo!.Label + " 原包未通过固定哈希、版本或微软签名校验，且引用者缺少完整有效的自身原包证明");
                     if (pinned) owners = owners.Select(o => CompletePinnedBaselineIdentity(product.Architecture, baselineInfo!, o)).ToArray();
                     if (owners.Length == 0 && !pinned)
                         throw new IOException("四视图未找到引用者的卸载登记，精确 GUID 缓存目录也没有可核验原包（孤立引用）");
@@ -309,15 +313,17 @@ internal static class Vc14DependencyPolicy
         catch (DirectoryNotFoundException) { return false; }
     }
 
-    internal static bool VerifyPinnedBaseline(string arch) =>
-        Vc14BaselineInfo.All.Any(info => VerifyPinnedBaseline(info, arch));
-
     internal static bool VerifyPinnedBaseline(Vc14BaselineInfo info, string arch)
     {
         if (!info.ExeHashes.TryGetValue(arch, out var expected)) return false;
         var path = info.Exe(arch);
-        return HashFile(path).Equals(expected, StringComparison.OrdinalIgnoreCase)
-            && Vc14PackageTrust.Verify(path, info.Version, arch);
+        try
+        {
+            return HashFile(path).Equals(expected, StringComparison.OrdinalIgnoreCase)
+                && Vc14PackageTrust.Verify(path, info.Version, arch);
+        }
+        catch (FileNotFoundException) { return false; }
+        catch (DirectoryNotFoundException) { return false; }
     }
     private static string HashFile(string path)
     {

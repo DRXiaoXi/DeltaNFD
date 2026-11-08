@@ -43,7 +43,14 @@ public sealed partial class ProcmanEngine
         }
         catch { return null; }
     }
-    private bool MemoryEligible(ProcmanProcessIdentity identity, IReadOnlyList<ProcmanProcessIdentity> sample)
+    internal int RuleParseCountForTests => _rules.ParseCount;
+    // 一轮候选枚举共用同一份规则快照与前台窗口，避免逐进程重复读取配置。
+    private sealed record MemoryScan(IReadOnlyList<ProcmanProcessIdentity> Sample, List<ProcmanRuleEntry> Rules, int Foreground);
+    private MemoryScan NewScan(IReadOnlyList<ProcmanProcessIdentity> sample)
+        => new(sample, _rules.Load(), _backgroundConfig.MemoryMode == ProcmanMemoryModes.DeltaStable ? 0 : CurrentForegroundPid());
+    private int CurrentForegroundPid() => ForegroundForTests?.Invoke() ?? NativeProcman.ForegroundPid();
+
+    private bool MemoryEligible(ProcmanProcessIdentity identity, MemoryScan scan)
     {
         if (_frozen || _backgroundLoadError.Length > 0 || _backgroundConfig.MemoryMode == ProcmanMemoryModes.Aggressive) return false;
         if (ProcmanProcessProtection.IsAceProtected(identity.ExecutablePath)) return false;
@@ -51,30 +58,38 @@ public sealed partial class ProcmanEngine
         if (_backgroundConfig.MemoryMode == ProcmanMemoryModes.DeltaStable)
         {
             if (MemorySystemProcessForTests?.Invoke(identity) ?? ProcmanBackgroundFilter.IsSystemProcess(identity)) return false;
-            // A saved rule protects the executable even when disabled; recheck before each native trim.
-            if (_rules.Load().Any(r => r.ExecutablePath.Equals(identity.ExecutablePath, StringComparison.OrdinalIgnoreCase))) return false;
+            // A saved rule protects the executable even when disabled.
+            if (scan.Rules.Any(r => r.ExecutablePath.Equals(identity.ExecutablePath, StringComparison.OrdinalIgnoreCase))) return false;
         }
         else
         {
             if (IsBackgroundExcluded(identity.ExecutablePath) || ProcmanBackgroundFilter.IsToolProcess(identity.ExecutablePath)) return false;
-            var foreground = ForegroundForTests?.Invoke() ?? NativeProcman.ForegroundPid();
+            var foreground = scan.Foreground;
             if (foreground <= 0 || identity.Pid == foreground || identity.Pid == Environment.ProcessId) return false;
             if (BackgroundExcludedForTests?.Invoke(identity) ?? ProcmanBackgroundFilter.IsExcluded(identity)) return false;
-            if (_rules.EnabledRules().Any(r => r.ExecutablePath.Equals(identity.ExecutablePath, StringComparison.OrdinalIgnoreCase))
-                || _changeLog.ForProcess(identity.Pid, identity.StartTimeUtcTicks, identity.ExecutablePath)
-                    .Any()) return false;
+            if (scan.Rules.Any(r => r.Enabled && r.ExecutablePath.Equals(identity.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+                || _changeLog.ForProcess(identity.Pid, identity.StartTimeUtcTicks, identity.ExecutablePath).Any()) return false;
         }
         if (_lastMemoryTrim.TryGetValue(MemoryKey(identity), out var time)
             && (ClockForTests?.Invoke() ?? DateTime.UtcNow) - time < TimeSpan.FromSeconds(MemoryPolicy().MemoryCooldown(_backgroundConfig.MemoryCooldownSeconds))) return false;
-        return sample.Contains(identity) && MemorySize(identity) is >= 0;
+        return true;
     }
+
+    // 执行前的逐目标复核：每次重新读取规则，保证预览之后新增的规则仍会拦住该进程。
+    private bool MemoryEligible(ProcmanProcessIdentity identity, IReadOnlyList<ProcmanProcessIdentity> sample)
+        => MemoryEligible(identity, NewScan(sample)) && sample.Contains(identity) && MemorySize(identity) is >= 0;
+
     private ProcmanMemoryCandidate[] MemoryCandidates(IReadOnlyList<ProcmanProcessIdentity> sample)
     {
         var now = ClockForTests?.Invoke() ?? DateTime.UtcNow;
         foreach (var key in _lastMemoryTrim.Where(p => now - p.Value > TimeSpan.FromDays(2)).Select(p => p.Key).ToArray()) _lastMemoryTrim.Remove(key);
-        var candidates = sample.Distinct().Where(i => MemoryEligible(i, sample))
-            .Select(i => new ProcmanMemoryCandidate(new() { Pid = i.Pid, StartTimeUtcTicks = i.StartTimeUtcTicks, ExecutablePath = i.ExecutablePath },
-                Path.GetFileName(i.ExecutablePath), MemorySize(i) ?? 0, 0)).OrderByDescending(p => p.WorkingSetBytes);
+        var scan = NewScan(sample);
+        // 工作集只读一次：候选判定与排序共用同一结果。
+        var candidates = sample.Distinct().Where(i => MemoryEligible(i, scan))
+            .Select(i => (Identity: i, Size: MemorySize(i)))
+            .Where(c => c.Size is >= 0)
+            .Select(c => new ProcmanMemoryCandidate(new() { Pid = c.Identity.Pid, StartTimeUtcTicks = c.Identity.StartTimeUtcTicks, ExecutablePath = c.Identity.ExecutablePath },
+                Path.GetFileName(c.Identity.ExecutablePath), c.Size ?? 0, 0)).OrderByDescending(p => p.WorkingSetBytes);
         return (_backgroundConfig.MemoryMode == ProcmanMemoryModes.DeltaStable ? candidates : candidates.Take(MemoryBatchLimit)).ToArray();
     }
     public async Task<ProcmanMemoryPreview> PreviewMemoryAsync(CancellationToken token = default)
@@ -109,16 +124,20 @@ public sealed partial class ProcmanEngine
             {
                 if (args.Processes.Count != 0) return new([], "全局回收不接受进程清单。");
                 _memoryPreview = null;
-                return TrimGlobalMemory(token, automatic: false);
             }
-            var limit = mode == ProcmanMemoryModes.DeltaStable ? preview.Candidates.Count : MemoryBatchLimit;
-            if (args.Processes.Count < 1 || args.Processes.Count > limit || args.Processes.Any(p => p is null)
-                || args.Processes.Select(p => p.Pid).Distinct().Count() != args.Processes.Count
-                || args.Processes.Any(p => !preview.Candidates.Any(c => c.Identity.Pid == p.Pid && c.Identity.StartTimeUtcTicks == p.StartTimeUtcTicks
-                    && c.Identity.ExecutablePath.Equals(p.ExecutablePath, StringComparison.OrdinalIgnoreCase)))) return new([], "清单变化或请求超出确认范围，请重新预览。");
-            _memoryPreview = null;
-            return TrimMemoryBatch(args.Processes, token, automatic: false);
+            else
+            {
+                var limit = mode == ProcmanMemoryModes.DeltaStable ? preview.Candidates.Count : MemoryBatchLimit;
+                if (args.Processes.Count < 1 || args.Processes.Count > limit || args.Processes.Any(p => p is null)
+                    || args.Processes.Select(p => p.Pid).Distinct().Count() != args.Processes.Count
+                    || args.Processes.Any(p => !preview.Candidates.Any(c => c.Identity.Pid == p.Pid && c.Identity.StartTimeUtcTicks == p.StartTimeUtcTicks
+                        && c.Identity.ExecutablePath.Equals(p.ExecutablePath, StringComparison.OrdinalIgnoreCase)))) return new([], "清单变化或请求超出确认范围，请重新预览。");
+                _memoryPreview = null;
+                return TrimMemoryBatch(args.Processes, token, automatic: false);
+            }
         }
+        // 全局回收调用系统接口，放在 _gate 之外执行；模式与预览校验已在锁内完成。
+        return TrimGlobalMemory(token, automatic: false);
     }
     private bool MemoryOperationAllowed(CancellationToken token, bool automatic) => !token.IsCancellationRequested && !_frozen
         && MemoryPolicy().BlockReason(BackendCommands.CpuFrameMemoryClean) is null
@@ -129,13 +148,20 @@ public sealed partial class ProcmanEngine
     private ProcmanMemoryTrimReport TrimGlobalMemory(CancellationToken token, bool automatic)
     {
         var now = ClockForTests?.Invoke() ?? DateTime.UtcNow;
-        if (_lastGlobalMemoryTrim is { } previous && now - previous < TimeSpan.FromSeconds(MemoryPolicy().MemoryCooldown(_backgroundConfig.MemoryCooldownSeconds)))
-            return new([], "全局回收仍在用户设置的间隔内，未重复请求。");
-        bool Guard() => _backgroundConfig.MemoryMode == ProcmanMemoryModes.Aggressive && MemoryOperationAllowed(token, automatic);
-        if (!Guard()) return new([], "全局回收条件变化，未执行。");
-        var report = (MemoryGlobalTrimForTests ?? ProcmanGlobalMemoryReclaimer.Trim)(Guard);
-        _lastGlobalMemoryTrim = now;
-        return report;
+        lock (_gate)
+        {
+            if (_lastGlobalMemoryTrim is { } previous && now - previous < TimeSpan.FromSeconds(MemoryPolicy().MemoryCooldown(_backgroundConfig.MemoryCooldownSeconds)))
+                return new([], "全局回收仍在用户设置的间隔内，未重复请求。");
+            if (!GlobalMemoryGuard(token, automatic)) return new([], "全局回收条件变化，未执行。");
+            // 先记录本次请求时间，原生调用期间的并发请求会被间隔挡住。
+            _lastGlobalMemoryTrim = now;
+        }
+        // 原生调用不在 _gate 内执行；每个步骤前由守卫重新加锁复核，停止或模式切换仍能阻止后续步骤。
+        return (MemoryGlobalTrimForTests ?? ProcmanGlobalMemoryReclaimer.Trim)(() => GlobalMemoryGuard(token, automatic));
+    }
+    private bool GlobalMemoryGuard(CancellationToken token, bool automatic)
+    {
+        lock (_gate) return _backgroundConfig.MemoryMode == ProcmanMemoryModes.Aggressive && MemoryOperationAllowed(token, automatic);
     }
     private ProcmanMemoryTrimReport TrimMemoryBatch(List<ProcessIdentityArgs> processes, CancellationToken token, bool automatic)
     {

@@ -39,16 +39,135 @@ public partial class GpuSpoofViewModel : ObservableObject
     /// <summary>临时模式的生效时机选项：立即重载显卡（不重启）/ 重启生效（登录后自动还原原型号）。</summary>
     public string[] DirectApplyModeOptions { get; } = ["立即重载显卡（不重启）", "重启生效"];
 
-    [ObservableProperty] private AdapterVm? selectedAdapter;
-    [ObservableProperty] private int selectedPresetIndex;
-    [ObservableProperty] private string customName = "";
-    [ObservableProperty] private bool isBusy;
-    [ObservableProperty] private string adapterSummaryText = "正在检测显卡…";
-    [ObservableProperty] private bool isResultVisible;
-    [ObservableProperty] private string resultText = "";
-    [ObservableProperty] private InfoBarSeverity resultSeverity = InfoBarSeverity.Success;
-    [ObservableProperty] private int effectiveModeIndex;
-    [ObservableProperty] private int directApplyModeIndex;
+    private AdapterVm? selectedAdapter;
+    public AdapterVm? SelectedAdapter
+    {
+        get => selectedAdapter;
+        set => SetProperty(ref selectedAdapter, value);
+    }
+
+    private int selectedPresetIndex;
+    public int SelectedPresetIndex
+    {
+        get => selectedPresetIndex;
+        set
+        {
+            if (EqualityComparer<int>.Default.Equals(selectedPresetIndex, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(SelectedPresetIndex));
+            selectedPresetIndex = value;
+            OnSelectedPresetIndexChanged(value);
+            OnPropertyChanged(nameof(SelectedPresetIndex));
+        }
+    }
+    partial void OnSelectedPresetIndexChanged(int value);
+
+    private string customName = "";
+    public string CustomName
+    {
+        get => customName;
+        set
+        {
+            if (EqualityComparer<string>.Default.Equals(customName, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(CustomName));
+            customName = value;
+            OnCustomNameChanged(value);
+            OnPropertyChanged(nameof(CustomName));
+        }
+    }
+    partial void OnCustomNameChanged(string value);
+
+    private bool isBusy;
+    public bool IsBusy
+    {
+        get => isBusy;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(isBusy, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(IsBusy));
+            isBusy = value;
+            OnIsBusyChanged(value);
+            OnPropertyChanged(nameof(IsBusy));
+        }
+    }
+    partial void OnIsBusyChanged(bool value);
+
+    private string adapterSummaryText = "正在检测显卡…";
+    public string AdapterSummaryText
+    {
+        get => adapterSummaryText;
+        set => SetProperty(ref adapterSummaryText, value);
+    }
+
+    private bool isResultVisible;
+    public bool IsResultVisible
+    {
+        get => isResultVisible;
+        set => SetProperty(ref isResultVisible, value);
+    }
+
+    private string resultText = "";
+    public string ResultText
+    {
+        get => resultText;
+        set => SetProperty(ref resultText, value);
+    }
+
+    private InfoBarSeverity resultSeverity = InfoBarSeverity.Success;
+    public InfoBarSeverity ResultSeverity
+    {
+        get => resultSeverity;
+        set => SetProperty(ref resultSeverity, value);
+    }
+
+    private int effectiveModeIndex;
+    public int EffectiveModeIndex
+    {
+        get => effectiveModeIndex;
+        set
+        {
+            if (EqualityComparer<int>.Default.Equals(effectiveModeIndex, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(EffectiveModeIndex));
+            effectiveModeIndex = value;
+            OnEffectiveModeIndexChanged(value);
+            OnPropertyChanged(nameof(EffectiveModeIndex));
+        }
+    }
+    partial void OnEffectiveModeIndexChanged(int value);
+
+    private int directApplyModeIndex;
+    public int DirectApplyModeIndex
+    {
+        get => directApplyModeIndex;
+        set
+        {
+            if (EqualityComparer<int>.Default.Equals(directApplyModeIndex, value))
+            {
+                return;
+            }
+
+            OnPropertyChanging(nameof(DirectApplyModeIndex));
+            directApplyModeIndex = value;
+            OnDirectApplyModeIndexChanged(value);
+            OnPropertyChanged(nameof(DirectApplyModeIndex));
+        }
+    }
+    partial void OnDirectApplyModeIndexChanged(int value);
 
     /// <summary>是否为永久生效模式（默认）。</summary>
     public bool IsPermanentMode => EffectiveModeIndex == 0;

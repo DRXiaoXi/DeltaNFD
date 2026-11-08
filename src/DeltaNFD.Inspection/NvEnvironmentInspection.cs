@@ -11,6 +11,7 @@ public static class NvEnvironmentInspection
             IsNvidia = shader.IsNvidia,
             GpuName = shader.DriverAdapterName,
             NvApiAvailable = NvShaderInspection.IsAvailable,
+            DriverVersion = NvShaderInspection.ReadDriverVersion(),
             DrsFilesExist = DrsFiles().Any(File.Exists),
             DrsFilesLocked = DrsFiles().Any(p => File.Exists(p) && (File.GetAttributes(p) & FileAttributes.ReadOnly) != 0),
             ShaderCache = shader.IsNvidia ? NvShaderInspection.ReadShaderCacheSizes() : null,

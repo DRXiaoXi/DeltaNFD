@@ -147,8 +147,12 @@ public sealed partial class AcePage : Page
 
     private async void CheckCoreButton_Click(object sender, RoutedEventArgs e)
     {
-        await ViewModel.CheckCoreFilesAsync();
+        if (!ManualGameAdmissionAvailable())
+        { ViewModel.CoreCheckStatusText = "检测未开始：栏目正在收尾或游戏状态尚未确认，请完全退出三角洲后重试。"; return; }
+        await ViewModel.CheckCoreFilesAsync(cancellationToken: _pageOwner!.QueueToken);
     }
+
+    private void CancelCoreCheckButton_Click(object sender, RoutedEventArgs e) => ViewModel.CancelCoreCheck();
 
     private async void CheckVirtButton_Click(object sender, RoutedEventArgs e)
     {

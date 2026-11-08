@@ -69,12 +69,14 @@ public sealed partial class ProcmanEngine
             legacyRecovery = RestoreLegacySuppressionAdjustments();
             if (!legacyRecovery.Success) _automaticMemoryActive = false;
         }
-        if (_automaticMemoryActive || _rules.EnabledRules().Count > 0) _ = StartRulesEngine();
+        var stopped = OperationResult.Ok("");
+        if (_automaticMemoryActive || _rules.EnabledRules().Count > 0 || FramePriorityRequested || FrameTimerIgnoreRequested || TimerIgnoreListRequested || OptimalClockRequested) _ = StartRulesEngine();
         else
         {
-            _ = StopRulesEngineAsync().GetAwaiter().GetResult();
+            stopped = StopRulesEngineAsync().GetAwaiter().GetResult();
             lock (_gate) _frozen = false; // A normal configuration change must still allow manual previews.
         }
+        if (!stopped.Success) return OperationResult.Fail("设置已保存，帧格优先级恢复未完成：" + stopped.Message);
         return legacyRecovery.Success
             ? OperationResult.Ok("内存回收设置已保存，自动回收由帧格总开关与自动内存回收开关共同控制。")
             : OperationResult.Fail("内存回收设置已保存。" + legacyRecovery.Message);
@@ -106,16 +108,30 @@ public sealed partial class ProcmanEngine
         catch (InvalidDataException ex)
         {
             lock (_gate) { _backgroundLoadError = ex.Message; _automaticMemoryActive = false; }
-            return OperationResult.Fail(ex.Message);
+            if (FramePriorityRequested || FrameTimerIgnoreRequested || TimerIgnoreListRequested || OptimalClockRequested) _ = StartRulesEngine();
+            FramePriorityTick(force: true);
+            FrameTimerIgnoreTick(force: true);
+            TimerIgnoreListTick(force: true);
+            OptimalClockTick(force: true);
+            return OperationResult.Fail(ex.Message + "；" + FramePriorityState.Message + " " + FrameTimerIgnoreState.Message + " " + TimerIgnoreListState.Message + " " + OptimalClockState.Message);
         }
         var memory = SaveBackgroundConfig(config with { AutomaticMemoryEnabled = memoryActive });
-        if (!memory.Success) return memory;
+        var priorityOk = FramePriorityTick(force: true);
+        var timerIgnoreOk = FrameTimerIgnoreTick(force: true);
+        var timerListOk = TimerIgnoreListTick(force: true);
+        var clockOk = OptimalClockTick(force: true);
+        if (!memory.Success || !priorityOk || !timerIgnoreOk || !timerListOk || !clockOk)
+            return OperationResult.Fail(memory.Message + "；" + FramePriorityState.Message + " " + FrameTimerIgnoreState.Message + " " + TimerIgnoreListState.Message + " " + OptimalClockState.Message);
         var status = BackgroundStatus();
         if (memoryActive && !status.AutomaticMemoryActive)
             return OperationResult.Fail("帧格后台功能同步后，自动内存回收当前暂停：" + status.Note);
-        return OperationResult.Ok(active
+        return OperationResult.Ok((active
             ? $"帧格自动内存回收{(memoryActive ? "已启用" : "未选择")}。"
-            : "自动内存回收已随帧格停用，功能选项和详细参数保留。");
+            : "自动内存回收已随帧格停用，功能选项和详细参数保留。")
+            + (AppSettingsStore.Read().FrameGamePriorityEnabled || FramePriorityState.RestorePending ? "；" + FramePriorityState.Message : "")
+            + (AppSettingsStore.Read().FrameGameTimerIgnoreEnabled || FrameTimerIgnoreState.RestorePending ? "；" + FrameTimerIgnoreState.Message : "")
+            + (TimerIgnoreListRequested || TimerIgnoreListState.RestorePending || TimerIgnoreListState.HasError ? "；" + TimerIgnoreListState.Message : "")
+            + (OptimalClockRequested || OptimalClockState.Holding ? "；" + OptimalClockState.Message : ""));
     }
 
     private uint? MemoryPressure()
@@ -150,11 +166,24 @@ public sealed partial class ProcmanEngine
             if (mode != ProcmanMemoryModes.Aggressive && candidates.Length == 0)
             { _memoryFeedback = "没有当前可回收的进程；仍按用户设置的间隔检查，不追加无效或回涨退避。"; return; }
             _lastAutomaticRound = now;
-            _automaticMemoryReport = mode == ProcmanMemoryModes.Aggressive
-                ? TrimGlobalMemory(token, automatic: true)
-                : TrimMemoryBatch(candidates.Select(c => c.Identity).ToList(), token, automatic: true);
-            _memoryHighSince = null;
-            _memoryFeedback = "本轮已处理；下一轮沿用用户设置的最短间隔，不因无明显效果或快速回涨额外延长。";
+            if (mode != ProcmanMemoryModes.Aggressive)
+            {
+                _automaticMemoryReport = TrimMemoryBatch(candidates.Select(c => c.Identity).ToList(), token, automatic: true);
+                FinishAutomaticRound();
+                return;
+            }
         }
+        // 全局回收在 _gate 之外执行，避免系统调用阻塞预览和设置等操作；结果回写时再加锁。
+        var report = TrimGlobalMemory(token, automatic: true);
+        lock (_gate)
+        {
+            _automaticMemoryReport = report;
+            FinishAutomaticRound();
+        }
+    }
+    private void FinishAutomaticRound()
+    {
+        _memoryHighSince = null;
+        _memoryFeedback = "本轮已处理；下一轮沿用用户设置的最短间隔，不因无明显效果或快速回涨额外延长。";
     }
 }

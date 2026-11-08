@@ -88,8 +88,6 @@ internal sealed class BackendCpuFrameService : IAsyncDisposable
             if (Latest is { } latest && snapshot.UpdatedUtc < latest.UpdatedUtc) return;
             Latest = snapshot;
             if (snapshot.MonitorRunning) AutomationError = "";
-            CpuFrameStatusState.DualCcdSchedulingActive = snapshot.DualCcdSchedulingActive;
-            CpuFrameStatusState.SingleCcdExcludeActive = snapshot.SingleCcdExcludeActive;
             foreach (Action<CpuFrameStatusSnapshot> handler in StatusUpdated?.GetInvocationList() ?? [])
                 try { handler(snapshot); } catch (Exception ex) { Log.Warn("CPU/帧格状态订阅处理失败：" + ex.Message); }
         }
@@ -167,18 +165,6 @@ internal sealed class BackendCpuFrameService : IAsyncDisposable
     internal Task<OperationResult> ApplyAffinityAsync(ulong mask, CancellationToken ct = default) =>
         InvokeAsync(BackendCommands.CpuFrameAffinityApply, new CpuFrameAffinityArgs { Mask = mask }, ct);
 
-    internal Task<OperationResult> ApplyDualCcdAsync(int gameCcdIndex, CancellationToken ct = default) =>
-        InvokeAsync(BackendCommands.CpuFrameCcdApply, new CpuFrameCcdArgs { GameCcdIndex = gameCcdIndex }, ct);
-
-    internal Task<OperationResult> RevertDualCcdAsync(CancellationToken ct = default) =>
-        InvokeAsync(BackendCommands.CpuFrameCcdRevert, new { }, ct);
-
-    internal Task<OperationResult> ApplySingleCcdAsync(CancellationToken ct = default) =>
-        InvokeAsync(BackendCommands.CpuFrameSingleCcdApply, new { }, ct);
-
-    internal Task<OperationResult> RevertSingleCcdAsync(CancellationToken ct = default) =>
-        InvokeAsync(BackendCommands.CpuFrameSingleCcdRevert, new { }, ct);
-
     internal Task<OperationResult> RestoreAllAsync(CancellationToken ct = default) =>
         InvokeAsync(BackendCommands.CpuFrameRestore, new { }, ct);
 
@@ -187,9 +173,6 @@ internal sealed class BackendCpuFrameService : IAsyncDisposable
 
     internal Task<OperationResult> RestartDwmAsync(CancellationToken ct = default) =>
         InvokeAsync(BackendCommands.CpuFrameDwmRestart, new { }, ct);
-
-    internal Task<OperationResult> ApplyTimerAsync(bool enabled, CancellationToken ct = default) =>
-        InvokeAsync(BackendCommands.CpuFrameTimerApply, new CpuFrameToggleArgs { Enabled = enabled }, ct);
 
     internal Task<OperationResult> ApplyTweaksAsync(CpuFrameTempArgs args, CancellationToken ct = default) =>
         InvokeAsync(BackendCommands.CpuFrameTweaksApply, args, ct);
@@ -206,9 +189,9 @@ internal sealed class BackendCpuFrameService : IAsyncDisposable
     internal Task<OperationResult> ApplyPriorityAsync(bool enabled, CancellationToken ct = default) =>
         InvokeAsync(BackendCommands.CpuFramePriorityApply, new CpuFrameToggleArgs { Enabled = enabled }, ct);
 
-    internal Task<OperationResult> ApplyBoostAsync(bool timer, bool gamePower = false, CancellationToken ct = default) =>
-        InvokeAsync(BackendCommands.CpuFrameBoostApply,
-            new CpuFrameBoostArgs { Timer = timer, EcoQos = gamePower }, ct);
+    internal Task<OperationResult> ApplyGamePowerAsync(bool enabled, CancellationToken ct = default) =>
+        InvokeAsync(BackendCommands.CpuFrameGamePowerApply,
+            new CpuFrameGamePowerArgs { EcoQos = enabled }, ct);
 
     internal Task<OperationResult> CleanMemoryNowAsync(CancellationToken ct = default) =>
         Task.FromResult(OperationResult.Fail("旧帧格内存清理已下线；请使用进程管理中的后台内存回收。"));

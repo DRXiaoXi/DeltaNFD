@@ -100,7 +100,7 @@ public sealed partial class RuntimePage : Page
             if (installerConsent is not null && installerConsent.IsChecked != true) return;
             var result = await ViewModel.RepairAsync(preview.Fingerprint, cancellation.Token, mode, allowTemporary);
             var stageMessage = fullUninstallStage && result.Success
-                ? RuntimeRepairGuidance.OriginalText(result) + "\n\n这是全量修复的 V14 卸载阶段。临时 Installer 设置会随本次操作自动恢复（若失败会在结果中提示并可手动恢复）；请手动重启回正常模式，再点击“预览全量修复”重新确认；2005–2013 与其他组件尚未安装，不会自动续跑。"
+                ? RuntimeRepairGuidance.OriginalText(result) + "\n\n这是完整重装 C++的 V14 卸载阶段。临时 Installer 设置会随本次操作自动恢复（若失败会在结果中提示并可手动恢复）；请手动重启回正常模式，再点击“预览完整重装 C++”重新确认；2005–2013 与其他组件尚未安装，不会自动续跑。"
                 : RuntimeRepairGuidance.OriginalText(result);
             ViewModel.RepairStatusText = stageMessage;
             ViewModel.RecordRepairResult(result, cancellation.IsCancellationRequested);
@@ -142,9 +142,6 @@ public sealed partial class RuntimePage : Page
             status = new DeltaNFD.Inspection.NvidiaDriverSeriesStatus(false, true);
         }
         if (!_baselinePageLoaded || generation != _baselineReadGeneration) return;
-        var visibility = Visibility.Visible;
-        RepairBaseline144.Visibility = visibility;
-        FullBaseline144.Visibility = visibility;
         ViewModel.CompleteBaselineDriverCheck(status.Has596Series, status.DriverUnknown);
     }
 
@@ -280,7 +277,7 @@ public sealed partial class RuntimePage : Page
                 TextWrapping = TextWrapping.Wrap,
                 Text = "将卸载检测到的全部 C++ 运行库（2005–2013 / 2015–2022 / 14.x，共 " + preview.Entries.Count + " 项）。"
                     + "依赖其他安装包、身份变化、卸载器要求重启或结果未知时会停止。"
-                    + "卸载完成后必须回正常模式重新预览全量修复，由正常模式安装 C++ 基线；不会自动重启或续跑。",
+                    + "卸载完成后必须回正常模式重新预览完整重装 C++，由正常模式安装 C++ 基线；不会自动重启或续跑。",
             });
             body.Children.Add(new ScrollViewer
             {
@@ -354,8 +351,8 @@ public sealed partial class RuntimePage : Page
             {
                 var stageDialog = new ContentDialog
                 {
-                    XamlRoot = XamlRoot, Title = "全量修复：安全模式卸载阶段",
-                    Content = "安全模式下可选择只卸载 V14，或显式确认“卸载全部 C++（高风险）”。卸载全部 C++ 会处理检测到的 2005–2013、2015–2022 和 14.x 运行库；依赖阻塞、身份变化或结果未知时停止。2005–2013、VSTO 等安装步骤仍需回正常模式手动继续。\n\n临时启用 Installer 必须单独确认；若系统仍禁止启动 Windows Installer（如 1084），会停止并提示回正常模式；不会自动重启或执行安装。",
+                    XamlRoot = XamlRoot, Title = "完整重装 C++：安全模式卸载阶段",
+                    Content = "安全模式下可选择只卸载 V14，或显式确认“卸载全部 C++（高风险）”。卸载全部 C++ 会处理检测到的 2005–2013、2015–2022 和 14.x 运行库；依赖阻塞、身份变化或结果未知时停止。2005–2013 与 14.44 安装步骤仍需回正常模式手动继续。\n\n临时启用 Installer 必须单独确认；若系统仍禁止启动 Windows Installer（如 1084），会停止并提示回正常模式；不会自动重启或执行安装。",
                     PrimaryButtonText = "预览 V14 卸载阶段",
                     SecondaryButtonText = "卸载全部 C++（高风险）",
                     CloseButtonText = "取消",
@@ -380,7 +377,7 @@ public sealed partial class RuntimePage : Page
         _repairCancellation = cancellation;
         try
         {
-            ViewModel.RepairStatusText = "正在校验全量修复资源与处理清单…";
+            ViewModel.RepairStatusText = "正在校验完整重装 C++资源与处理清单…";
             var preview = await ViewModel.PreviewHighFpsAsync(false);
             if (!preview.CanRepair) { ViewModel.RecordRepairBlocker(preview.Blocker); return; }
             if (preview.HasUninstallSteps && !await ChooseRuntimeEnvironmentAsync(cancellation.Token, async () =>
@@ -393,12 +390,12 @@ public sealed partial class RuntimePage : Page
             preview = await ViewModel.PreviewHighFpsAsync(false);
             if (!preview.CanRepair) { ViewModel.RecordRepairBlocker(preview.Blocker); return; }
             var selected = preview.Baseline;
-            var description = (preview.HasUninstallSteps ? "将在当前环境受控卸载清单中的 V14，优先使用已核验的微软原包装并复检。" : "已核对无待卸载项或仅需继续补装已核验的 " + selected.Display() + " 基线。")
-                + "C++ 2005–2013 不先卸载，使用十个微软 x86/x64 原包逐包安装或修复。另处理 VSTO 与旧 VC/VB 辅助组件，最后安装工具内置的 " + selected.FullVersion() + " 双架构基线。已核验的较新旧版 C++ 组件保留，不盲目降级。"
+            var description = (preview.HasUninstallSteps ? "将在当前环境受控卸载清单中的 C++ 2005–2013 与 14.x，核验卸载身份并复检。" : "已核对无待卸载项或仅需继续补装已核验的 " + selected.Display() + " 基线。")
+                + "随后使用十个微软 x86/x64 原包重装 C++ 2005–2013，最后安装工具内置的 " + selected.FullVersion() + " 双架构基线。不安装 VSTO、VB 或非 C++ 组件。"
                 + "\n" + selected.Display() + " 普通原包修复后DLL仍是错误版本时，会自动尝试一次忽略文件版本的原始MSI重装，并再次检查实际DLL。";
             var confirm = new ContentDialog
             {
-                XamlRoot = XamlRoot, Title = "确认全量修复？",
+                XamlRoot = XamlRoot, Title = "确认完整重装 C++？",
                 Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
                     Text = description + "\n\n不安装 C++2026。V14 单独修复仍保留原入口。\n\n当前清单：\n"
                         + string.Join("\n", preview.Entries)
@@ -424,6 +421,86 @@ public sealed partial class RuntimePage : Page
         }
         finally { _repairCancellation = null; ViewModel.RepairIsBusy = false; if (!_startupExitPending) await ViewModel.LoadGuardAsync(); }
     }
+    private async void RepairNonCpp_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.CanUseBaselineActions) return;
+        await RunNonCppRepairAsync(false);
+    }
+
+    private async void RestoreNonCpp_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.GuardCleanupEnabled) return;
+        await RunNonCppRepairAsync(true);
+    }
+
+    private async Task RunNonCppRepairAsync(bool restore)
+    {
+        ViewModel.RepairIsBusy = true;
+        ViewModel.ManualRepairGuidanceText = "";
+        using var cancellation = new CancellationTokenSource();
+        _repairCancellation = cancellation;
+        try
+        {
+            string fingerprint = "";
+            string summary;
+            if (restore)
+            {
+                summary = "将核对保留的修复记录并恢复修复前文件。原值、文件身份或归属无法确认时保留记录并停止。此操作不撤销 COM 登记，不代表完整恢复。";
+            }
+            else
+            {
+                ViewModel.RepairStatusText = "正在检测非 C++ 运行库文件…";
+                var preview = await ViewModel.PreviewNonCppAsync(cancellation.Token);
+                cancellation.Token.ThrowIfCancellationRequested();
+                if (!preview.CanRepair) { ViewModel.RepairStatusText = preview.Blocker; return; }
+                fingerprint = preview.Fingerprint;
+                summary = "已检测 " + preview.Files.Count + " 项，待修复 "
+                    + preview.Files.Count(f => f.NeedsRepair && !f.OsManaged) + " 项，Windows 管理（只诊断） "
+                    + preview.Files.Count(f => f.OsManaged) + " 项。\n\n"
+                    + string.Join("\n", preview.Files.Select(f => f.Architecture + " · " + f.Name + " · "
+                        + f.Status + (f.OsManaged ? "（Windows 管理，只诊断）" : "") + "\n  " + f.Detail))
+                    + "\n\n修复可能变更 COM 登记；恢复仅还原修复前文件，不撤销 COM 登记。请先关闭游戏、其他应用和运行库防护。";
+            }
+            var confirm = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = restore ? "确认恢复非 C++ 修复前文件？" : "确认修复非 C++ 运行库？",
+                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock
+                    { Text = summary, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } },
+                PrimaryButtonText = restore ? "确认恢复文件" : "确认修复",
+                CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
+            };
+            if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary
+                || cancellation.IsCancellationRequested)
+            { ViewModel.RepairStatusText = "已取消，未执行非 C++ 文件操作。"; return; }
+            var progress = new Progress<string>(text => ViewModel.RepairStatusText = text);
+            var result = restore
+                ? await ViewModel.RestoreNonCppAsync(progress, cancellation.Token)
+                : await ViewModel.RepairNonCppAsync(fingerprint, progress, cancellation.Token);
+            ViewModel.RepairStatusText = result.Message;
+            await new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = result.Success ? "非 C++ 文件操作完成" : "非 C++ 文件操作未完成",
+                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock
+                    { Text = result.Message + "\n\n文件恢复不撤销 COM 登记，不代表完整恢复。", TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } },
+                CloseButtonText = "知道了", DefaultButton = ContentDialogButton.Close,
+            }.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner);
+        }
+        catch (OperationCanceledException) { ViewModel.RepairStatusText = "非 C++ 操作已停止；已完成的操作与恢复记录需核对。"; }
+        catch (Exception ex)
+        {
+            ViewModel.RepairStatusText = "非 C++ 操作未完成：" + ex.Message;
+            await ShowRuntimeExceptionAsync(ex);
+        }
+        finally
+        {
+            _repairCancellation = null;
+            ViewModel.RepairIsBusy = false;
+            if (!_startupExitPending) await ViewModel.LoadGuardAsync();
+        }
+    }
+
     private async void RefreshGuard_Click(object sender, RoutedEventArgs e) => await ViewModel.LoadGuardAsync();
     private async void ReviewRuntimeOperation_Click(object sender, RoutedEventArgs e)
     {

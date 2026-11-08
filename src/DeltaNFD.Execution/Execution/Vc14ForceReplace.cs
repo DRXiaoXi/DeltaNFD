@@ -35,8 +35,8 @@ internal sealed record Vc14ForceReplaceRegistryExport(string Name, string Key, b
 /// </summary>
 public static class Vc14ForceReplace
 {
-    /// <summary>默认基线（14.42）目标版本；兼容既有固定检查。</summary>
-    internal const string ExpectedVersion = "14.42.34433.0";
+    /// <summary>当前唯一 14.44 基线目标版本。</summary>
+    internal const string ExpectedVersion = "14.44.35211.0";
     private const int PayloadCount = 51;
     private const uint MoveFileReplaceExisting = 0x1;
     private const uint MoveFileDelayUntilReboot = 0x4;
@@ -58,14 +58,14 @@ public static class Vc14ForceReplace
     internal static Vc14ForceReplacePayloadSet PayloadSet(Vc14Baseline baseline) =>
         PayloadSets.Value.TryGetValue(baseline, out var set) ? set
             : throw new IOException("缺少 " + Vc14BaselineInfo.For(baseline).Label + " 的强制替换载荷清单。");
-    internal static IReadOnlyList<Vc14ForceReplacePayload> Payload => PayloadSet(Vc14Baseline.V142).Files;
-    internal static string PayloadFingerprint => PayloadSet(Vc14Baseline.V142).Fingerprint;
+    internal static IReadOnlyList<Vc14ForceReplacePayload> Payload => PayloadSet(Vc14Baseline.V144).Files;
+    internal static string PayloadFingerprint => PayloadSet(Vc14Baseline.V144).Fingerprint;
     internal static string WindowsRoot => Environment.GetFolderPath(Environment.SpecialFolder.Windows);
 
     /// <summary>只读预览：核对内置载荷、当前 51 个 DLL 版本/占用/ACL 状态，生成执行指纹。</summary>
     public static Vc14ForceReplacePreview Preview(CancellationToken token = default) =>
         PreviewCore(Vc14FileRepairSource.InstalledRoot, WindowsRoot, enforceHostChecks: true, versionReader: null, token,
-            Vc14Baseline.V142, inspectAcl: true);
+            Vc14Baseline.V144, inspectAcl: true);
 
     public static Vc14ForceReplacePreview Preview(Vc14Baseline baseline, CancellationToken token = default) =>
         PreviewCore(Vc14BaselineInfo.For(baseline).FileRepairRoot, WindowsRoot, enforceHostChecks: true, versionReader: null, token,
@@ -73,7 +73,7 @@ public static class Vc14ForceReplace
 
     /// <summary>执行强制替换；fingerprint 必须来自同一基线的本次预览。</summary>
     public static Task<OperationResult> RunAsync(string fingerprint, IProgress<string>? progress, CancellationToken token,
-        Vc14Baseline baseline = Vc14Baseline.V142) =>
+        Vc14Baseline baseline = Vc14Baseline.V144) =>
         Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
         {
             using var budget = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -85,7 +85,7 @@ public static class Vc14ForceReplace
     // ---- 预览 -----------------------------------------------------------------
 
     internal static Vc14ForceReplacePreview PreviewCore(string sourceRoot, string windowsRoot, bool enforceHostChecks,
-        Func<string, string?>? versionReader, CancellationToken token, Vc14Baseline baseline = Vc14Baseline.V142,
+        Func<string, string?>? versionReader, CancellationToken token, Vc14Baseline baseline = Vc14Baseline.V144,
         bool inspectAcl = false)
     {
         versionReader ??= ReadVersion;
@@ -246,7 +246,7 @@ public static class Vc14ForceReplace
 
     internal static async Task<OperationResult> RunCoreAsync(string fingerprint, IProgress<string>? progress, CancellationToken token,
         string sourceRoot, string windowsRoot, bool enforceHostChecks, Func<string, string?>? versionReader,
-        Action<string>? afterReplacementForTests = null, Vc14Baseline baseline = Vc14Baseline.V142,
+        Action<string>? afterReplacementForTests = null, Vc14Baseline baseline = Vc14Baseline.V144,
         bool inspectAcl = false)
     {
         versionReader ??= ReadVersion;
@@ -761,7 +761,7 @@ public static class Vc14ForceReplace
 
     /// <summary>从四个官方 CAB 解包并用固定清单逐项校验；返回 arch|file → 解包文件路径。</summary>
     internal static IReadOnlyDictionary<string, string> ExtractPayload(string sourceRoot, string destination, CancellationToken token,
-        Vc14Baseline baseline = Vc14Baseline.V142)
+        Vc14Baseline baseline = Vc14Baseline.V144)
     {
         VerifyMedia(sourceRoot, baseline);
         var set = PayloadSet(baseline);

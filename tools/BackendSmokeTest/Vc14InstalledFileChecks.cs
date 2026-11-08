@@ -11,7 +11,7 @@ internal static class Vc14InstalledFileChecks
         AppDataPaths.ConfigureIsolatedDataRoot(root, id);
         var count = 0;
         void Check(bool ok, string why) { if (!ok) throw new Exception(why); count++; }
-        foreach (var baseline in new[] { Vc14Baseline.V142, Vc14Baseline.V144 })
+        foreach (var baseline in new[] { Vc14Baseline.V144 })
         {
             var info = Vc14BaselineInfo.For(baseline);
             var folder = Path.Combine(root, baseline.ToString()); var windows = Path.Combine(folder, "Windows");
@@ -73,16 +73,24 @@ internal static class Vc14InstalledFileChecks
                 }
                 finally { RestoreHeld(path); }
             }
-            var otherBaseline = baseline == Vc14Baseline.V142 ? Vc14Baseline.V144 : Vc14Baseline.V142;
-            var other = Vc14BaselineInfo.For(otherBaseline);
-            var otherPayload = Vc14ForceReplace.ExtractPayload(Path.Combine(Path.GetFullPath(assetsRoot), other.FileRepairDirectory),
-                Path.Combine(folder, "other-baseline"), default, otherBaseline);
+            // Keep wrong-baseline coverage without shipping retired 14.42 media: only alter
+            // fixed file-version metadata on isolated copies; these fixtures are never executed.
             foreach (var key in payload.Keys)
             {
                 var path = Target(key); File.Move(path, path + ".held");
                 try
                 {
-                    File.Copy(otherPayload[key], path);
+                    var bytes = File.ReadAllBytes(payload[key]);
+                    byte[] signature = [0xbd, 0x04, 0xef, 0xfe, 0x00, 0x00, 0x01, 0x00];
+                    var offset = bytes.AsSpan().IndexOf(signature);
+                    Check(offset >= 0 && bytes.AsSpan(offset + signature.Length).IndexOf(signature) < 0,
+                        "Each DLL has one fixed version resource for the wrong-baseline fixture: " + key);
+                    System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 8), (14u << 16) | 42u);
+                    System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset + 12), 34433u << 16);
+                    File.WriteAllBytes(path, bytes);
+                    var version = System.Diagnostics.FileVersionInfo.GetVersionInfo(path);
+                    Check(version.FileMajorPart == 14 && version.FileMinorPart == 42 && version.FileBuildPart == 34433,
+                        "The isolated wrong-baseline fixture exposes 14.42.34433 metadata: " + key);
                     try { Verify(key.Split('|')[0]); throw new Exception("Wrong baseline DLL was accepted: " + key); }
                     catch (Vc14DllVersionMismatch ex) { Check(ex.Architecture == key.Split('|')[0], "Every member is version checked against the selected baseline."); }
                     File.Move(path, path + ".other-version-fixture");
@@ -138,7 +146,7 @@ internal static class Vc14InstalledFileChecks
             }
             Verify("x64"); Verify("x86");
         }
-        Console.WriteLine($"Installed DLL completeness: {count} checks passed; both baselines/all 51 files, actual verifier and reinstall flow, fake MSI/files only; no system DLL writes.");
+        Console.WriteLine($"Installed DLL completeness: {count} checks passed; 14.44/all 51 files, synthetic 14.42 version rejection, actual verifier and reinstall flow, fake MSI/files only; no system DLL writes.");
     }
 
     private sealed class EnvironmentFixture : IVc14ReinstallEnvironment

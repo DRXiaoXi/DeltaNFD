@@ -37,40 +37,40 @@ internal static class FrameFeatureChecks
         {
             AppSettingsStore.Update(path, s => s.DwmRestartOnGameStart = true);
             var settings = AppSettingsStore.Read(path);
-            Assert(settings.DwmRestartOnGameStart && !settings.FrameResponseBoostEnabled &&
-                !settings.FrameForegroundBoostEnabled && !settings.FramePowerSaveLatencyEnabled &&
-                !settings.FramePowerLockEnabled, "仅启用 DWM 后其他父功能必须保持关闭");
-            Assert(settings.FrameResponseBoostTimerEnabled, "计时器子选项偏好应保留");
-            Assert(!FrameFeatureState.IsSelected(settings.FrameResponseBoostEnabled, settings.FrameResponseBoostTimerEnabled),
-                "保留的子选项不等于已启用功能");
-            AppSettingsStore.Update(path, s => s.FrameResponseBoostEnabled = true);
-            AppSettingsStore.Update(path, s => s.FrameResponseBoostEnabled = false);
+            Assert(settings.DwmRestartOnGameStart && !settings.FrameGamePowerThrottlingDisabled &&
+                !settings.FrameGameTimerIgnoreEnabled && !settings.FrameForegroundBoostEnabled &&
+                !settings.FramePowerSaveLatencyEnabled && !settings.FramePowerLockEnabled,
+                "仅启用 DWM 后其他功能必须保持关闭");
+            AppSettingsStore.Update(path, s => s.FrameGamePowerThrottlingDisabled = true);
+            AppSettingsStore.Update(path, s => s.FrameGamePowerThrottlingDisabled = false);
             settings = AppSettingsStore.Read(path);
-            Assert(settings.FrameResponseBoostTimerEnabled && settings.DwmRestartOnGameStart &&
-                !settings.FrameForegroundBoostEnabled && !settings.FramePowerSaveLatencyEnabled,
-                "父开关往返不得丢失子偏好或改变其他功能");
+            Assert(!settings.FrameGamePowerThrottlingDisabled && !settings.FrameGameTimerIgnoreEnabled &&
+                settings.DwmRestartOnGameStart && !settings.FrameForegroundBoostEnabled &&
+                !settings.FramePowerSaveLatencyEnabled,
+                "独立开关往返不得改变其他功能或默认关闭的新功能");
 
-            // 升级前保存的 true 不得重新启用退休功能，计时器和其他偏好继续保持。
+            // 升级前保存的退休字段（0.5ms 计时器、核心常驻、旧 EcoQos 字段）不得重新启用任何功能。
             File.WriteAllText(path, """
                 {"FrameModeActive":true,"FrameResponseBoostEnabled":true,
                  "FrameResponseBoostCoreParkingEnabled":true,"FrameResponseBoostEcoQosEnabled":true,
-                 "FrameResponseBoostTimerEnabled":false,"RuntimeDetectionEnabled":false,
+                 "FrameResponseBoostTimerEnabled":true,"RuntimeDetectionEnabled":false,
                  "DwmRestartOnGameStart":true}
                 """);
             settings = AppSettingsStore.Read(path);
-            Assert(settings.FrameModeActive && settings.FrameResponseBoostEnabled && !settings.FrameResponseBoostTimerEnabled,
-                "旧配置的开启状态不能替代计时器的已保存关闭选择");
-            Assert(!settings.FrameGamePowerThrottlingDisabled, "退休 EcoQos 字段不自动启用新偏好");
-            Assert(!settings.RuntimeDetectionEnabled && settings.DwmRestartOnGameStart,
-                "退休字段不应改变其他偏好");
+            Assert(settings.FrameModeActive && settings.DwmRestartOnGameStart,
+                "旧配置仍可读取帧格与 DWM 偏好");
+            Assert(!settings.FrameGamePowerThrottlingDisabled && !settings.FrameGameTimerIgnoreEnabled,
+                "退休字段不得自动启用游戏节能或定时器请求忽略功能");
+            Assert(!settings.RuntimeDetectionEnabled, "退休字段不应改变其他偏好");
             AppSettingsStore.Update(path, s => s.FramePowerLockEnabled = true);
             using var saved = JsonDocument.Parse(File.ReadAllText(path));
             Assert(!saved.RootElement.TryGetProperty("FrameResponseBoostCoreParkingEnabled", out _) &&
-                !saved.RootElement.TryGetProperty("FrameResponseBoostEcoQosEnabled", out _),
+                !saved.RootElement.TryGetProperty("FrameResponseBoostEcoQosEnabled", out _) &&
+                !saved.RootElement.TryGetProperty("FrameResponseBoostTimerEnabled", out _),
                 "正常保存配置后不再写回退休字段");
             settings = AppSettingsStore.Read(path);
-            Assert(settings.FramePowerLockEnabled && !settings.FrameResponseBoostTimerEnabled && !settings.RuntimeDetectionEnabled,
-                "升级配置保存后继续保留计时器和其他设置");
+            Assert(settings.FramePowerLockEnabled && !settings.FrameGameTimerIgnoreEnabled && !settings.RuntimeDetectionEnabled,
+                "升级配置保存后继续保留其他设置");
         }
         finally
         {
@@ -83,15 +83,15 @@ internal static class FrameFeatureChecks
         var doc = XDocument.Load(source);
         var texts = doc.Descendants().Where(e => e.Name.LocalName == "TextBlock")
             .Select(e => (string?)e.Attribute("Text")).ToArray();
-        Assert(texts.Count(t => t == "{x:Bind FrameSrv.StatusText, Mode=OneWay}") == 1,
-            "全局状态只允许出现在帧格总开关");
-        foreach (var status in new[] { "DwmStatusText", "ResponseStatusText", "ForegroundStatusText", "PowerSaveStatusText" })
+        Assert(!texts.Contains("{x:Bind FrameSrv.StatusText, Mode=OneWay}") && !texts.Contains("{x:Bind ForegroundStatusText, Mode=OneWay}"),
+            "按文档移除总状态栏与前台配置状态，不移除功能结果");
+        foreach (var status in new[] { "DwmStatusText", "GamePowerStatusText", "GameTimerIgnoreStatusText", "PowerSaveStatusText" })
             Assert(texts.Contains($"{{x:Bind {status}, Mode=OneWay}}"), "缺少独立状态：" + status);
         var toggles = doc.Descendants().Where(e => e.Name.LocalName == "ToggleSwitch")
             .Select(e => (string?)e.Attribute("IsOn")).ToArray();
         Assert(!texts.Any(t => t is not null && t.Contains("核心常驻")),
             "帧格页面不再显示退休功能及其说明");
-        foreach (var option in new[] { "TimerSelected", "GamePowerSelected", "ResponsivenessSelected",
+        foreach (var option in new[] { "GamePowerSelected", "GameTimerIgnoreSelected", "ResponsivenessSelected",
             "PrioritySelected", "NicSelected", "UsbSelected" })
             Assert(toggles.Contains($"{{x:Bind {option}, Mode=TwoWay}}"), "缺少父子有效状态绑定：" + option);
         Console.WriteLine("帧格独立状态检查通过：8 组父开关组合、子项关闭、配置/激活区分、DWM 单项持久化、偏好保留、旧配置退休字段清理、XAML 绑定。");

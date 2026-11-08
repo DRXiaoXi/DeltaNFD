@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using DeltaNFD.Execution.OptimalClock;
 using DeltaNFD.Services;
 
 namespace DeltaNFD.Execution.Procman;
@@ -31,6 +32,8 @@ public sealed partial class ProcmanEngine : IDisposable
     internal Func<int>? ForegroundForTests { get; set; }
     internal Func<ProcmanProcessIdentity, bool>? BackgroundExcludedForTests { get; set; }
     internal Func<DateTime>? ClockForTests { get; set; }
+    // Only isolated in-assembly fixtures opt into the retained experimental algorithms.
+    internal bool ExperimentalTimerFeaturesForTests { get; set; }
 
     private readonly object _gate = new();
     private readonly ProcmanChangeLog _changeLog;
@@ -50,9 +53,15 @@ public sealed partial class ProcmanEngine : IDisposable
 
     internal ProcmanEngine(string logPath) : this(logPath, logPath + ".rules.json") { }
 
-    internal ProcmanEngine(string logPath, string rulesPath) : this(logPath, rulesPath, logPath + ".background.json") { }
+    internal ProcmanEngine(string logPath, string rulesPath, IFramePriorityApi? priorityApi = null, IFrameTimerIgnoreApi? timerIgnoreApi = null,
+        FrameTimerLegacyProbe? timerProbe = null, IOptimalClockHolderApi? clockHolder = null, IOptimalClockMeasurementApi? clockMeasurement = null,
+        Func<uint>? clockCurrentResolution = null)
+        : this(logPath, rulesPath, logPath + ".background.json", priorityApi, timerIgnoreApi, timerProbe, clockHolder, clockMeasurement, clockCurrentResolution) { }
 
-    private ProcmanEngine(string logPath, string rulesPath, string backgroundPath)
+    private ProcmanEngine(string logPath, string rulesPath, string backgroundPath, IFramePriorityApi? priorityApi = null,
+        IFrameTimerIgnoreApi? timerIgnoreApi = null, FrameTimerLegacyProbe? timerProbe = null,
+        IOptimalClockHolderApi? clockHolder = null, IOptimalClockMeasurementApi? clockMeasurement = null,
+        Func<uint>? clockCurrentResolution = null)
     {
         _changeLog = new ProcmanChangeLog(logPath);
         _rules = new ProcmanRuleStore(rulesPath);
@@ -60,6 +69,17 @@ public sealed partial class ProcmanEngine : IDisposable
         try { _backgroundConfig = _backgroundStore.Load(); }
         catch (InvalidDataException ex) { _backgroundLoadError = ex.Message; }
         _properties = new ProcessPropertyGate(Path.Combine(Path.GetDirectoryName(logPath)!, "procman-owners.json"));
+        _framePriority = new(Path.Combine(Path.GetDirectoryName(logPath)!, "frame-game-priority.json"), _properties, priorityApi);
+        _frameTimerIgnore = new(Path.Combine(Path.GetDirectoryName(logPath)!, "frame-game-timer-ignore.json"), _properties, timerIgnoreApi, timerProbe);
+        _timerIgnoreList = new(Path.Combine(Path.GetDirectoryName(logPath)!, "timer-ignore-list.json"), _properties, timerIgnoreApi, timerProbe,
+            accept: IsTimerIgnoreListTarget, validate: IsTimerIgnoreListIdentityAllowed,
+            capability: "timer-ignore-list", label: "忽略列表");
+        var executable = Environment.ProcessPath ?? "";
+        _pendulumLog = new(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(logPath))!, "logs"));
+        _optimalClockMeasurement = clockMeasurement ?? new NativeOptimalClockMeasurementApi(executable, diagnostics: _pendulumLog.Write);
+        _pendulumHistory = new(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(logPath))!, "pendulum-clock-notices.json"));
+        _optimalClock = new(clockHolder ?? new NativeOptimalClockHolder(executable, _pendulumLog.Write),
+            _optimalClockMeasurement, clockCurrentResolution, _pendulumHistory.Observe, _pendulumLog.Write);
     }
 
     public void Dispose() => _ = StopRulesEngineAsync().GetAwaiter().GetResult();
@@ -73,8 +93,14 @@ public sealed partial class ProcmanEngine : IDisposable
         RulesEngineRunning = _rulesEngineRunning,
         ResponsivenessEnabled = false, // Legacy wire fields: suppression has been retired.
         ResponsivenessConfig = null,
-        HeldChangeCount = _changeLog.Records.Count,
-        UnreconciledCount = _changeLog.Records.Count,
+        HeldChangeCount = _changeLog.Records.Count + _framePriority.Snapshot.BackupCount + _frameTimerIgnore.Snapshot.BackupCount + _timerIgnoreList.Snapshot.BackupCount,
+        UnreconciledCount = _changeLog.Records.Count + _framePriority.Snapshot.BackupCount + _frameTimerIgnore.Snapshot.BackupCount + _timerIgnoreList.Snapshot.BackupCount,
+        FramePriority = FramePriorityState,
+        FrameTimerIgnore = FrameTimerIgnoreState,
+        TimerIgnoreList = TimerIgnoreListState,
+        OptimalClock = OptimalClockState,
+        DualCcdSchedulingActive = ProcmanCcdScheduler.DualActive,
+        SingleCcdExcludeActive = ProcmanCcdScheduler.SingleActive,
         LastAction = Volatile.Read(ref _lastAction),
         LastError = Volatile.Read(ref _lastError),
         UpdatedUtc = DateTimeOffset.UtcNow,
@@ -298,6 +324,9 @@ public sealed partial class ProcmanEngine : IDisposable
         bool requiresReview = false)
         => new() { Capability = capability, Status = status, Message = message, ActualValue = actual, RequiresReview = requiresReview };
 
+    internal static bool MatchesRecordedValue(string capability, string? actual, string? expected) =>
+        capability == CapabilityEcoQos ? ProcmanCapabilities.EcoQosMatches(actual, expected) : actual == expected;
+
     /// <summary>通用写入骨架：控制权 → 写前记录 → 执行+回读 → 成功后更新记录 / 失败保留或回滚。</summary>
     private ProcmanCapabilityOutcome WriteCore(
         ProcmanProcessIdentity identity, string capability, string desiredValue, string originalValue,
@@ -317,7 +346,8 @@ public sealed partial class ProcmanEngine : IDisposable
         // ② 写前记录（接管时保留原始值的最早版本）
         var record = new ProcmanChangeLog.ChangeRecord(pid, start, path, capability, originalValue, desiredValue,
             ProcmanControlCoordinator.OwnerManual, DateTimeOffset.UtcNow);
-        if (existingRecord is not null && originalValue != existingRecord.AppliedValue && originalValue != existingRecord.OriginalValue)
+        if (existingRecord is not null && !MatchesRecordedValue(capability, originalValue, existingRecord.AppliedValue)
+            && !MatchesRecordedValue(capability, originalValue, existingRecord.OriginalValue))
             return Outcome(capability, "conflict", "当前值已被外部修改，未覆盖旧恢复记录，请先核对。");
         if (existingRecord is not null)
             record = existingRecord.Owner == "manual"
@@ -460,8 +490,8 @@ public sealed partial class ProcmanEngine : IDisposable
         var read = ProcmanCapabilities.ReadEcoQos(identity.Pid);
         if (!read.Ok) return Outcome(CapabilityEcoQos, "failed", read.Error);
         var original = read.Value!;
-        // EcoQoS 无法公开回读：结果按「已请求待核对」呈现（WriteCore 的 failed 分支保留记录）。
-        return WriteCore(identity, CapabilityEcoQos, enabled ? "EcoQoS 启用" : "EcoQoS 高性能", original, takeover,
+        // Persist the intended execution-speed bit before writing, including failed/readback-unknown attempts.
+        return WriteCore(identity, CapabilityEcoQos, enabled ? "eco:1:1" : "eco:1:0", original, takeover,
             () => ProcmanCapabilities.SetEcoQos(identity.Pid, enabled),
             () => ProcmanCapabilities.RestoreEcoQos(identity.Pid, original));
     }
@@ -571,13 +601,14 @@ public sealed partial class ProcmanEngine : IDisposable
             : record.AppliedValue;
         if (current is null || !current.Ok)
             return Outcome(record.Capability, "failed", "无法读取当前值，未恢复且记录保留。", requiresReview: true);
-        if (current.Value != record.OriginalValue && current.Value != appliedDisplay)
+        if (!MatchesRecordedValue(record.Capability, current.Value, record.OriginalValue)
+            && !MatchesRecordedValue(record.Capability, current.Value, appliedDisplay))
         {
             SetError($"PID {record.Pid} {record.Capability} 当前值（{current.Value}）与记录（{appliedDisplay}）不一致，疑似外部修改，保留冲突记录。");
             return Outcome(record.Capability, "conflict", $"当前值已被外部修改为 {current.Value}（记录为 {appliedDisplay}），未覆盖，请人工核对。");
         }
 
-        var restore = current.Value == record.OriginalValue ? current : record.Capability switch
+        var restore = MatchesRecordedValue(record.Capability, current.Value, record.OriginalValue) ? current : record.Capability switch
         {
             CapabilityPriority => ProcmanCapabilities.SetPriority(identity.Pid, ParsePriority(record.OriginalValue)),
             CapabilityAffinity => RestoreByOriginalAffinity(identity.Pid, record.OriginalValue),
@@ -637,7 +668,12 @@ public sealed partial class ProcmanEngine : IDisposable
         }
         await Task.CompletedTask;
         var message = $"通用进程控制还原完成：成功 {restored}，进程已退出 {missing}，冲突 {conflict}，失败 {failed}。";
-        if (failed > 0 || conflict > 0) { SetError(message); return OperationResult.Fail(message); }
+        var frameRestored = RestoreFramePriorities();
+        var timerIgnoreRestored = RestoreFrameTimerIgnore();
+        timerIgnoreRestored &= RestoreTimerIgnoreList("全部还原：忽略列表的定时器请求已恢复");
+        var clockRestored = StopOptimalClock("全部还原：钟摆计划已释放");
+        message += " " + FramePriorityState.Message + " " + FrameTimerIgnoreState.Message + " " + OptimalClockState.Message;
+        if (failed > 0 || conflict > 0 || !frameRestored || !timerIgnoreRestored || !clockRestored) { SetError(message); return OperationResult.Fail(message); }
         SetAction(message);
         return OperationResult.Ok(message);
     }
@@ -683,7 +719,7 @@ public sealed partial class ProcmanEngine : IDisposable
             };
             if (current is null || !current.Ok)
                 entries.Add(new() { Pid = record.Pid, ExecutablePath = record.ExecutablePath, Capability = record.Capability, Status = "conflict", Message = "当前值无法读取：" + (current?.Error ?? "该能力无公开回读接口，需人工核对。") });
-            else if (current.Value == record.AppliedValue)
+            else if (MatchesRecordedValue(record.Capability, current.Value, record.AppliedValue))
                 entries.Add(new() { Pid = record.Pid, ExecutablePath = record.ExecutablePath, Capability = record.Capability, Status = "applied", Message = "当前值与记录一致。" });
             else
                 entries.Add(new() { Pid = record.Pid, ExecutablePath = record.ExecutablePath, Capability = record.Capability, Status = "conflict", Message = $"当前值 {current.Value} 与记录 {record.AppliedValue} 不一致。" });
@@ -742,7 +778,13 @@ public sealed partial class ProcmanEngine : IDisposable
             cts.Dispose();
         }
         SetAction("规则引擎已停止。");
-        return OperationResult.Ok("规则引擎已停止。");
+        var priorities = RestoreFramePriorities("进程管理监控已停止，三角洲优先级原值已恢复");
+        var timerIgnore = RestoreFrameTimerIgnore("进程管理监控已停止，三角洲定时器请求忽略状态已恢复");
+        timerIgnore &= RestoreTimerIgnoreList("进程管理监控已停止，忽略列表的定时器请求已恢复");
+        var clock = StopOptimalClock("进程管理监控已停止，钟摆计划已释放");
+        return priorities && timerIgnore && clock
+            ? OperationResult.Ok("规则引擎已停止，帧格进程优先级、定时器忽略状态与钟摆计划均已恢复。")
+            : OperationResult.Fail(FramePriorityState.Message + " " + FrameTimerIgnoreState.Message + " " + OptimalClockState.Message);
     }
 
     private async Task RunRulesLoopAsync(CancellationToken token)
@@ -752,11 +794,19 @@ public sealed partial class ProcmanEngine : IDisposable
             try
             {
                 await RulesTickAsync(token).ConfigureAwait(false);
+                FramePriorityTick();
+                FrameTimerIgnoreTick();
+                TimerIgnoreListTick();
+                OptimalClockTick();
                 AutomaticMemoryTick(token);
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
             {
+                RestoreFramePriorities("规则循环异常，三角洲优先级已恢复并暂停");
+                RestoreFrameTimerIgnore("规则循环异常，三角洲定时器请求忽略状态已恢复并暂停");
+                RestoreTimerIgnoreList("规则循环异常，忽略列表的定时器请求已恢复并暂停");
+                StopOptimalClock("规则循环异常，钟摆计划已释放");
                 SetError("规则引擎 tick 异常：" + ex.Message);
             }
             try { await Task.Delay(RulesTickInterval, token).ConfigureAwait(false); }
@@ -818,7 +868,7 @@ public sealed partial class ProcmanEngine : IDisposable
                                 if (existing.Owner != "responsiveness" || RestoreRecord(existing, identity).Status != "restored") continue;
                             }
                             using var property = _properties.Enter(identity, rule.Capability);
-                            if (property.Owner != "system" && !(property.Owner == "game" && rule.AutoTakeover)) continue;
+                            if (property.Owner != "system" && !((property.Owner is "game" or "frame-priority") && rule.AutoTakeover)) continue;
                             ApplyRuleToProcess(identity, rule);
                         }
                     }
@@ -883,7 +933,7 @@ public sealed partial class ProcmanEngine : IDisposable
             rule.Capability, original, desired, ProcmanControlCoordinator.PrefixRule + Path.GetFileName(rule.ExecutablePath),
             DateTimeOffset.UtcNow);
         using var property = _properties.Enter(identity, rule.Capability);
-        if (property.Owner != "system" && !(property.Owner == "game" && rule.AutoTakeover)) return false;
+        if (property.Owner != "system" && !((property.Owner is "game" or "frame-priority") && rule.AutoTakeover)) return false;
         try { _changeLog.Add(record); property.SetOwner(record.Owner); }
         catch { return false; }
 
@@ -903,7 +953,8 @@ public sealed partial class ProcmanEngine : IDisposable
         ProcmanCapabilityResult original, Func<ProcmanCapabilityResult> apply, Func<string, ProcmanCapabilityResult> restore)
     {
         if (!original.Ok) return Outcome(rule.Capability, "failed", original.Error);
-        var ok = ApplyRuleCommon(identity, rule, rule.Value, original.Value!, apply, () => restore(original.Value!));
+        var desired = rule.Capability == CapabilityEcoQos ? (rule.Value == "true" ? "eco:1:1" : "eco:1:0") : rule.Value;
+        var ok = ApplyRuleCommon(identity, rule, desired, original.Value!, apply, () => restore(original.Value!));
         return Outcome(rule.Capability, ok ? "applied" : "failed", "");
     }
 
@@ -974,7 +1025,8 @@ public sealed partial class ProcmanEngine : IDisposable
         else if ((rule.Capability == CapabilityAffinity || rule.Capability == CapabilityCpuSet)
             && rule.Value.Length > 0 && ParseGroupMasks(rule.Value).Count == 0)
             return OperationResult.Fail("掩码规则值格式不合法（应为 g{组}:0x{掩码};… 或空）：" + rule.Value);
-        _ = StopRulesEngineAsync().GetAwaiter().GetResult();
+        var stopped = StopRulesEngineAsync().GetAwaiter().GetResult();
+        if (!stopped.Success) return OperationResult.Fail("帧格进程优先级恢复未完成，未修改规则：" + stopped.Message);
         lock (_gate)
         {
             var failure = RestoreRuleRecords(rule.ExecutablePath, rule.Capability);
@@ -983,7 +1035,7 @@ public sealed partial class ProcmanEngine : IDisposable
         try { _rules.Save(rule); }
         catch (Exception ex) { return OperationResult.Fail("规则保存失败：" + ex.Message); }
         // 有启用规则时保证引擎在跑（关窗驻留/最小化时规则仍在后台执行）。
-        if (_rules.EnabledRules().Count > 0 || _automaticMemoryActive) _ = StartRulesEngine();
+        if (_rules.EnabledRules().Count > 0 || _automaticMemoryActive || FramePriorityRequested || FrameTimerIgnoreRequested || TimerIgnoreListRequested || OptimalClockRequested) _ = StartRulesEngine();
         else lock (_gate) _frozen = false;
         SetAction($"规则已保存：{rule.ExecutablePath} {rule.Capability}={rule.Value}" + (rule.Enabled ? "（启用）" : "（停用）"));
         return OperationResult.Ok("规则已保存。");
@@ -992,7 +1044,8 @@ public sealed partial class ProcmanEngine : IDisposable
     /// <summary>删除规则：先恢复该规则拥有的属性，再从规则文件移除。</summary>
     public async Task<OperationResult> DeleteRuleAsync(string executablePath, string capability)
     {
-        await StopRulesEngineAsync();
+        var stopped = await StopRulesEngineAsync();
+        if (!stopped.Success) return OperationResult.Fail("帧格进程优先级恢复未完成，未删除规则：" + stopped.Message);
         var rule = _rules.Load().FirstOrDefault(r =>
             string.Equals(r.ExecutablePath, executablePath, StringComparison.OrdinalIgnoreCase)
             && string.Equals(r.Capability, capability, StringComparison.Ordinal));
@@ -1006,7 +1059,7 @@ public sealed partial class ProcmanEngine : IDisposable
         if (!_rules.Delete(executablePath, capability))
             return OperationResult.Fail("规则删除失败：未找到或文件被占用。");
         SetAction($"规则已删除并恢复其修改：{executablePath} {capability}");
-        if (_rules.EnabledRules().Count > 0 || _automaticMemoryActive) _ = StartRulesEngine();
+        if (_rules.EnabledRules().Count > 0 || _automaticMemoryActive || FramePriorityRequested || FrameTimerIgnoreRequested || TimerIgnoreListRequested || OptimalClockRequested) _ = StartRulesEngine();
         else lock (_gate) _frozen = false;
         await Task.CompletedTask;
         return OperationResult.Ok("规则已删除，其拥有的修改已还原。");

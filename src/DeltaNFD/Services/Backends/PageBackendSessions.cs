@@ -166,7 +166,7 @@ internal sealed class PageBackendSessionManager : IPageBackendSessionManager
     public PageBackendLease? Current { get; private set; }
     public bool? DeltaRunning { get; private set; }
     public event Action? Changed;
-    internal static readonly HashSet<string> Restricted = ["system", "spoof", "shader", "ace", "runtime"];
+    internal static readonly HashSet<string> Restricted = ["system", "spoof", "shader", "ace", "runtime", "gamemods"];
     public void Navigate(string route)
     {
         Current?.Suspend("已离开栏目。", leaving: true);
@@ -231,7 +231,7 @@ internal static class PageBackendSessions
     internal static void NoteDrain(PageBackendLease owner, Task drain)
     {
         var modules = owner.Route switch { "shader" => new[] { BackendModules.System, BackendModules.Gpu },
-            "system" => [BackendModules.System], "runtime" => [BackendModules.Runtime], "ace" => [BackendModules.Ace, BackendModules.System], _ => [BackendModules.Gpu] };
+            "system" or "gamemods" => [BackendModules.System], "runtime" => [BackendModules.Runtime], "ace" => [BackendModules.Ace, BackendModules.System], _ => [BackendModules.Gpu] };
         foreach (var module in modules) Drains[(module, owner.Id)] = drain;
     }
     private static Task[] PendingDrains(string module, PageBackendLease? owner)

@@ -26,6 +26,8 @@ internal static class RuntimePageSessionChecks
         internal RuntimeGuardMode Mode;
         internal readonly List<Vc14Baseline> Baselines = [];
         internal TaskCompletionSource? Entered, Hold;
+        internal Vc14Scan? Scan = new([], [], []);
+        internal Exception? ScanError;
         public string ModuleId => BackendModules.Runtime;
         public bool ExitConfirmed { get; private set; }
         public bool RequiresAttention { get; set; }
@@ -36,7 +38,7 @@ internal static class RuntimePageSessionChecks
             IfeoTotal = 3, IfeoManagedCount = Enabled ? 3 : 0, ScopeManagedCount = Enabled ? 3 : 0,
             Ue4PrereqFound = false, Ue4PrereqDenied = false, Mode = Mode
         });
-        public Task<Vc14Scan> Scan14Async() => Task.FromResult(new Vc14Scan([], [], []));
+        public Task<Vc14Scan> Scan14Async() => ScanError is { } error ? Task.FromException<Vc14Scan>(error) : Task.FromResult(Scan!);
         private async Task<OperationResult> Apply(Action action)
         {
             await PageBackendSessions.WaitGateAsync(_gate, Owner, default, ModuleId);
@@ -92,11 +94,34 @@ internal static class RuntimePageSessionChecks
             manager.Navigate("runtime");
             var vm = RuntimeViewModel.Current; var owner = manager.Current!; var guard = guards[^1];
             Check(ReferenceEquals(vm, RuntimeViewModel.Current), "Same page lease reuses its view model.");
+            if (i == 0) CheckObservableProperties(vm);
             Check(ReferenceEquals(guard.Owner, owner), "View model guard belongs to the current lease.");
             Check(!ReferenceEquals(vm, previous), "Reentry must not reuse a departed view model.");
             await vm.LoadGuardAsync();
             if (i == 0)
             {
+                await CheckVersionAlertPolicyAsync(vm, guard);
+                vm.SetRuntimePolicyChecking(true);
+                Check(!vm.GuardCleanupEnabled && !vm.CanChangeRuntimeDetection, "Checking policy disables ordinary runtime controls.");
+                vm.SetRuntimePolicyReason("fixture driver 596.49");
+                vm.SetRuntimePolicyChecking(false);
+                Check(vm.RuntimePolicyBlocked && !vm.GuardCleanupEnabled && !vm.GuardModeEnabled
+                    && !vm.CanChangeRuntimeDetection && vm.CanReviewRuntimeRecovery,
+                    "Active runtime policy disables ordinary controls and retains review.");
+                var before = guard.Writes;
+                Check(await vm.SetGuardAsync(true) is null && guard.Writes == before, "Active policy cannot enable protection.");
+                guard.Enabled = true;
+                await vm.LoadGuardAsync();
+                Check(vm.GuardToggleEnabled && vm.GuardIsEnabled, "Existing protection can still be turned off.");
+                Check((await vm.SetGuardAsync(false))?.Success == true && !vm.GuardIsEnabled,
+                    "Existing protection is actually released through the isolated guard.");
+                vm.SetRuntimePolicyReason(null);
+                Check(vm.RuntimeOperationsAvailable && vm.GuardCleanupEnabled && vm.CanChangeRuntimeDetection,
+                    "Policy withdrawal restores ordinary controls.");
+                vm.SetRuntimeDriverUnknown(true);
+                Check(vm.RuntimeDriverUnknown && vm.RuntimeOperationsAvailable && vm.GuardCleanupEnabled,
+                    "Unreadable driver is shown as unknown and does not expand the disable condition.");
+                vm.SetRuntimeDriverUnknown(false);
                 Check(vm.BaselineDriverChecking && !vm.CanUseBaselineActions && vm.GuardToggleEnabled,
                     "Initial driver check disables only baseline actions, not protection.");
                 vm.CompleteBaselineDriverCheck(false, false);
@@ -173,5 +198,91 @@ internal static class RuntimePageSessionChecks
         gate.Release(); await freshOwner.Stopping.WaitAsync(TimeSpan.FromSeconds(3));
         Check(BackendSessions.Snapshot().Count == 0, "Fixture starts no real backend process.");
         Console.WriteLine($"Runtime page session checks passed ({_checks}); actual view model and lease, isolated guard, no system writes.");
+    }
+    private static async Task CheckVersionAlertPolicyAsync(RuntimeViewModel vm, Guard guard)
+    {
+        var before = guard.Scan;
+        var writes = guard.Writes;
+        var product = new Vc14Entry("{E}", "Microsoft Visual C++ v14 X64 Minimum Runtime - 14.51.36247", "14.51.36247", "x64", "Minimum", "{U}");
+        var evaluated = new Vc14Scan([product], [new(product.Name, product.Version, product.Architecture, Vc14Severity.Evaluation, "待长期评估")], []);
+        RuntimeDetectionPreference.Shared.SetEnabled(true);
+        guard.Scan = evaluated;
+        await vm.LoadGuardAsync();
+        Check(vm.HasEvaluation && !vm.HasAbnormal && !vm.HasWarning && vm.EvaluationText.Contains("14.51"), "Verified evaluated version appears only in blue information state.");
+        guard.Scan = evaluated with { Issues = ["注册版本与 MSI 缓存版本不一致"] };
+        await vm.LoadGuardAsync();
+        Check(!vm.HasAbnormal && vm.HasEvaluation && vm.HasWarning
+            && vm.WarningText.Contains("不一致"), "Scan issues return to yellow while retaining the specific blue evaluation.");
+        guard.Scan = evaluated;
+        await vm.LoadGuardAsync();
+        Check(!vm.HasAbnormal && vm.HasEvaluation, "Successful recheck clears the warning and retains evaluation information.");
+        guard.ScanError = new IOException("无法读取版本");
+        await vm.LoadGuardAsync();
+        Check(!vm.HasAbnormal && !vm.HasEvaluation && vm.HasWarning && vm.WarningText.Contains("无法读取版本"), "Backend failure returns to yellow and clears stale blue state.");
+        guard.ScanError = null; guard.Scan = null;
+        await vm.LoadGuardAsync();
+        Check(!vm.HasAbnormal && !vm.HasEvaluation && vm.HasWarning && vm.WarningText.Contains("未返回"), "Missing scan result returns to yellow, not a missing-runtime claim.");
+        guard.Scan = evaluated; await vm.LoadGuardAsync();
+        await vm.SetRuntimeDetectionEnabledAsync(false);
+        Check(!vm.HasAbnormal && !vm.HasWarning && !vm.HasEvaluation, "Disabling detection clears all three alert channels.");
+        guard.Scan = before;
+        await vm.SetRuntimeDetectionEnabledAsync(true);
+        Check(guard.Writes == writes, "Severity changes and rechecks never trigger runtime repair writes.");
+    }
+
+    private static void CheckObservableProperties(RuntimeViewModel vm)
+    {
+        // Exercise the actual setters without invoking a backend or running repair operations.
+        var dependencies = new Dictionary<string, string[]>
+        {
+            [nameof(vm.RepairIsBusy)] = [nameof(vm.CanReviewRuntimeRecovery), nameof(vm.CanChangeRuntimeDetection), nameof(vm.GuardToggleEnabled), nameof(vm.GuardModeEnabled), nameof(vm.GuardCleanupEnabled), nameof(vm.CanUseBaselineActions)],
+            [nameof(vm.BaselineIndex)] = [nameof(vm.SelectedBaseline), nameof(vm.SelectedBaselineLabel), nameof(vm.SelectedBaselineVersion), nameof(vm.SelectedBaselineDescription), nameof(vm.ContinueInstallLabel)],
+            [nameof(vm.BaselineDriverChecking)] = [nameof(vm.CanUseBaselineActions)],
+            [nameof(vm.Hide144Baseline)] = [nameof(vm.SelectedBaseline), nameof(vm.SelectedBaselineLabel), nameof(vm.SelectedBaselineVersion), nameof(vm.SelectedBaselineDescription), nameof(vm.ContinueInstallLabel)],
+            [nameof(vm.AbnormalText)] = [nameof(vm.HasAbnormal)],
+            [nameof(vm.WarningText)] = [nameof(vm.HasWarning)],
+            [nameof(vm.EvaluationText)] = [nameof(vm.HasEvaluation)],
+            [nameof(vm.ManualRepairGuidanceText)] = [nameof(vm.HasManualRepairGuidance)],
+            [nameof(vm.GuardIsEnabled)] = [nameof(vm.GuardToggleText), nameof(vm.GuardToggleEnabled), nameof(vm.GuardModeEnabled)],
+            [nameof(vm.GuardIsBusy)] = [nameof(vm.CanReviewRuntimeRecovery), nameof(vm.GuardToggleEnabled), nameof(vm.GuardModeEnabled), nameof(vm.GuardCleanupEnabled), nameof(vm.CanUseBaselineActions), nameof(vm.GuardToggleText)],
+            [nameof(vm.GuardIsPartial)] = [nameof(vm.GuardToggleText)],
+        };
+        string[] names = [nameof(vm.RepairIsBusy), nameof(vm.BaselineIndex), nameof(vm.BaselineDriverChecking), nameof(vm.Hide144Baseline),
+            nameof(vm.BaselineDriverNotice), nameof(vm.RepairStatusText), nameof(vm.AbnormalText), nameof(vm.AbnormalTitle),
+            nameof(vm.WarningText), nameof(vm.EvaluationText), nameof(vm.DetectionStatusText), nameof(vm.ManualRepairGuidanceText), nameof(vm.InstalledText),
+            nameof(vm.GuardIsEnabled), nameof(vm.GuardIsBusy), nameof(vm.GuardIsPartial), nameof(vm.GuardStatusText)];
+        foreach (var name in names)
+        {
+            var property = typeof(RuntimeViewModel).GetProperty(name)!;
+            var old = property.GetValue(vm);
+            object next = old switch { bool b => !b, int => 1, _ => "fixture-property-value" };
+            var events = new List<string>();
+            System.ComponentModel.PropertyChangingEventHandler changing = (_, e) =>
+            {
+                events.Add("before:" + e.PropertyName);
+                Check(Equals(property.GetValue(vm), old), name + " must still expose its old value during PropertyChanging.");
+            };
+            System.ComponentModel.PropertyChangedEventHandler changed = (_, e) =>
+            {
+                events.Add(e.PropertyName!);
+                Check(Equals(property.GetValue(vm), next), name + " must expose its new value during dependent notifications.");
+            };
+            vm.PropertyChanging += changing; vm.PropertyChanged += changed;
+            try
+            {
+                property.SetValue(vm, next);
+                var expected = new[] { "before:" + name }.Concat(dependencies.GetValueOrDefault(name) ?? []).Append(name);
+                Check(events.SequenceEqual(expected), name + " must preserve changing/hook/dependent/changed notification order.");
+                events.Clear();
+                property.SetValue(vm, next);
+                Check(events.Count == 0, name + " same-value assignment must not notify or repeat its hook.");
+            }
+            finally
+            {
+                vm.PropertyChanging -= changing; vm.PropertyChanged -= changed;
+                property.SetValue(vm, old);
+            }
+            Check(Equals(property.GetValue(vm), old), name + " must restore the original value.");
+        }
     }
 }

@@ -20,12 +20,14 @@ public sealed class BxInspection
     private readonly Func<Task<bool?>> _hypervisorQuery;
     private readonly Func<HagsSnapshot> _hagsQuery;
     private readonly Func<MouseParameters> _mouseQuery;
+    private readonly Func<string, SecurityFeatureSnapshot> _securityQuery;
     public BxInspection(Func<Task<bool?>>? hypervisorQuery = null, Func<HagsSnapshot>? hagsQuery = null,
-        Func<MouseParameters>? mouseQuery = null)
+        Func<MouseParameters>? mouseQuery = null, Func<string, SecurityFeatureSnapshot>? securityQuery = null)
     {
         _hypervisorQuery = hypervisorQuery ?? (() => new SystemTweakInspection().IsHyperVFullyDisabledAsync());
         _hagsQuery = hagsQuery ?? SystemSwitchInspection.ReadHags;
         _mouseQuery = mouseQuery ?? SystemSwitchInspection.ReadMouse;
+        _securityQuery = securityQuery ?? SecurityFeatureInspection.Read;
     }
 
     private sealed record PnpDeviceState(string InstanceId, bool? Enabled);
@@ -98,6 +100,17 @@ public sealed class BxInspection
         HagsSnapshot? hags = null;
         foreach (var item in items)
         {
+            if (SecurityFeatureInspection.Handles(item.Name))
+            {
+                try
+                {
+                    var evidence = _securityQuery(item.Name);
+                    result[item] = evidence.State;
+                    Log.Info($"安全功能状态：{item.Name} → {evidence.State}；{evidence.Detail}");
+                }
+                catch { result[item] = BxState.Unknown; }
+                continue;
+            }
             if (item.Name == "setsaccel")
             {
                 try { var native = _mouseQuery(); result[item] = !native.Valid ? BxState.Unknown : native.Acceleration == 0 ? BxState.On : BxState.Off; }

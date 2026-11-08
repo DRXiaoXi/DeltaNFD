@@ -139,7 +139,7 @@
                                 <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{x:Bind StatusBrush(ViewModel.ShaderHealthState), Mode=OneWay}"/>
                                 <TextBlock Grid.Column="1" Text="着色器" Width="64" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                 <TextBlock Grid.Column="2" Text="{x:Bind ViewModel.ShaderStatusText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" Foreground="{x:Bind StatusBrush(ViewModel.ShaderHealthState), Mode=OneWay}" FontWeight="{x:Bind WeightFor(ViewModel.ShaderHealthState), Mode=OneWay}" VerticalAlignment="Center"/>
-                                <Button Grid.Column="3" Click="ShaderAction_Click" Content="{x:Bind ViewModel.ShaderActionText, Mode=OneWay}" Padding="12,5" Visibility="{x:Bind ActionVisibility(ViewModel.ShaderHealthState), Mode=OneWay}" VerticalAlignment="Center"/>
+                                <Button Grid.Column="3" Click="ShaderAction_Click" Content="{x:Bind ViewModel.ShaderActionText, Mode=OneWay}" Padding="12,5" Visibility="{x:Bind ViewModel.ShaderActionVisible, Mode=OneWay}" VerticalAlignment="Center"/>
                             </Grid>
                             <Grid ColumnSpacing="10" Padding="0,6">
                                 <Grid.ColumnDefinitions>

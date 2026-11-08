@@ -77,7 +77,7 @@ internal interface IOfficialCppEnvironment
 internal sealed class OfficialCppInstaller(IOfficialCppEnvironment environment, RuntimeRepairDiagnostics diagnostics)
 {
     internal async Task<RuntimeStepResult> RunAsync(OfficialCppPackage package, bool forceRepair, TimeSpan timeout,
-        IProgress<string>? progress, CancellationToken token)
+        IProgress<string>? progress, CancellationToken token, bool reinstallOnly = false)
     {
         var clock = Stopwatch.StartNew();
         RuntimeStepResult? last = null;
@@ -95,6 +95,7 @@ internal sealed class OfficialCppInstaller(IOfficialCppEnvironment environment, 
                 var installed = environment.ReadProduct(source.Product);
                 diagnostics.Save("official-" + package.Id + "-identity-" + source.Product.Trim('{', '}') + ".json", new { Source = source, Installed = installed });
                 expectedProducts.Add(source.Product, installed);
+                if (reinstallOnly && installed.State != -1) throw new IOException("原包安装前发现组件仍在，未转为修复或保留。");
                 if (installed.State == 5)
                 {
                     // Serviced VC2008 can keep its ProductCode while changing both
@@ -121,6 +122,7 @@ internal sealed class OfficialCppInstaller(IOfficialCppEnvironment environment, 
                 else if (installed.State == -1)
                 {
                     var candidates = environment.NewerRelated(source);
+                    if (reinstallOnly && candidates.Count != 0) throw new IOException("原包安装前出现较新组件，未降级或修复。");
                     if (candidates.Count > 1) throw new IOException("同系列较新产品不唯一，未猜测覆盖。");
                     if (candidates.Count == 1)
                     {
@@ -169,7 +171,7 @@ internal sealed class OfficialCppInstaller(IOfficialCppEnvironment environment, 
                 diagnostics.Save("official-" + package.Id + "-postcheck.json", new { Passed = checks.Count == 0, Errors = checks });
                 if (checks.Count == 0) return last with { Details = last.Details + "\n原包子组件与关键 DLL 复检通过。" };
                 // Only one repair after a completed install with verified product identities.
-                if (repair || attempt != 0) return last with { PostcheckPassed = false, Details = string.Join("\n", checks) };
+                if (reinstallOnly || repair || attempt != 0) return last with { PostcheckPassed = false, Details = string.Join("\n", checks) };
                 repair = true;
             }
             return new(null, "原包修复未完成。", PostcheckPassed: false);

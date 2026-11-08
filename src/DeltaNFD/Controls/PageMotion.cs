@@ -61,13 +61,13 @@ public static class PageMotion
             // Staggered cards use dedicated wrappers, so HoverLift owns the inner card transform.
             if(HoverLift.MotionTransform(element) is CompositeTransform composite){transform=composite;y=composite.TranslateY;}
             state.Targets.Add((element,opacity,transform,y));
-            var delay=TimeSpan.FromMilliseconds(panels is null?0:Math.Min(index,8)*40);
-            var duration=new Duration(TimeSpan.FromMilliseconds(panels is null?260:240));
+            var delay=TimeSpan.FromMilliseconds(panels is null?0:Math.Min(index,4)*40);
+            var duration=new Duration(TimeSpan.FromMilliseconds(panels is null?200:160));
             var fade=new DoubleAnimation{From=0,To=opacity,BeginTime=delay,Duration=duration};
             Storyboard.SetTarget(fade,element);Storyboard.SetTargetProperty(fade,"Opacity");storyboard.Children.Add(fade);
             if(transform is not null)
             {
-                var slide=new DoubleAnimation{From=y+(panels is null?-24:12),To=y,BeginTime=delay,Duration=duration,EnableDependentAnimation=true,EasingFunction=new CubicEase{EasingMode=EasingMode.EaseOut}};
+                var slide=new DoubleAnimation{From=y+(panels is null?-12:8),To=y,BeginTime=delay,Duration=duration,EnableDependentAnimation=true,EasingFunction=new CubicEase{EasingMode=EasingMode.EaseOut}};
                 Storyboard.SetTarget(slide,transform);Storyboard.SetTargetProperty(slide,"TranslateY");storyboard.Children.Add(slide);
             }
         }

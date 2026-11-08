@@ -19,29 +19,7 @@ public static class TimerConfigurationInspection
         var run = QueryBcd();
         var parsed = ParseBcd(run.ExitCode, run.Output);
         if (!parsed.BcdReadable) errors.Add("无法读取当前启动项（退出码 " + run.ExitCode + "），请以管理员运行工具");
-        var devices = new List<TimerDeviceState>();
-        var devicesReadable = false;
-        var boot = "";
-        try
-        {
-            var scope = new ManagementScope(@"\\.\root\cimv2", new ConnectionOptions { Timeout = TimeSpan.FromSeconds(10) });
-            var options = new System.Management.EnumerationOptions { Timeout = TimeSpan.FromSeconds(10), ReturnImmediately = false };
-            using var search = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT PNPDeviceID, ConfigManagerErrorCode FROM Win32_PnPEntity"), options);
-            using var results = search.Get();
-            foreach (ManagementObject device in results)
-                using (device)
-                {
-                    var id = device["PNPDeviceID"] as string ?? "";
-                    if (IsHpetDevice(id)) devices.Add(new(id, device["ConfigManagerErrorCode"] is { } code ? Convert.ToInt32(code) : null));
-                }
-            devicesReadable = devices.All(d => d.ProblemCode is not null);
-            if (!devicesReadable) errors.Add("HPET 设备状态不可读");
-            using var os = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT LastBootUpTime FROM Win32_OperatingSystem"), options);
-            using var systems = os.Get();
-            foreach (ManagementObject system in systems)
-                using (system) { boot = system["LastBootUpTime"] as string ?? ""; break; }
-        }
-        catch (Exception ex) { errors.Add("设备或启动时间查询失败：" + ex.Message); }
+        var boot = PendulumGlobalInspection.CurrentBootId;
         var incomplete = false; var restart = false;
         try
         {
@@ -51,11 +29,12 @@ public static class TimerConfigurationInspection
                     throw new InvalidDataException("恢复记录大小或文件类型不安全");
                 var record = JsonSerializer.Deserialize<TimerRecoveryRecord>(File.ReadAllText(RecordPath)) ?? throw new InvalidDataException("恢复记录为空");
                 incomplete = !record.Completed;
-                restart = record.Changed && (boot.Length == 0 || record.Before.BootId.Length == 0 || boot == record.Before.BootId);
+                var recordedBoot = PendulumGlobalInspection.NormalizeBootId(record.Before.BootId);
+                restart = record.Changed && (boot.Length == 0 || recordedBoot.Length == 0 || boot == recordedBoot);
             }
         }
         catch (Exception ex) { incomplete = true; errors.Add("恢复记录待核对：" + ex.Message); }
-        var result = parsed with { Devices = devices.OrderBy(d => d.InstanceId, StringComparer.OrdinalIgnoreCase).ToList(), DevicesReadable = devicesReadable,
+        var result = parsed with {
             BootId = boot, RecoveryIncomplete = incomplete, PendingRestart = restart, Error = string.Join("；", errors) };
         return result with { Fingerprint = Fingerprint(result) };
     }
@@ -73,7 +52,7 @@ public static class TimerConfigurationInspection
             DynamicTick = dynamicTick, PlatformTick = platformTick };
     }
     internal static string Fingerprint(TimerRecoveryStatus value) => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new {
-        value.BcdReadable,value.DynamicTick,value.PlatformTick,value.DevicesReadable,value.Devices,value.BootId,value.RecoveryIncomplete,value.PendingRestart })));
+        value.BcdReadable,value.DynamicTick,value.PlatformTick,value.BootId,value.RecoveryIncomplete,value.PendingRestart })));
     private static (int ExitCode,string Output) QueryBcd()
     {
         try

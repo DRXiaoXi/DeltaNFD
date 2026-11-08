@@ -67,18 +67,6 @@ public sealed class CpuFrameStatusSnapshot
     /// <summary>硬亲和性规则掩码（未启用为 0）。</summary>
     public ulong AffinityRuleMask { get; init; }
 
-    /// <summary>双 CCD 专属调度是否实际生效（后端拥有此运行态，前端只读镜像）。</summary>
-    public bool DualCcdSchedulingActive { get; init; }
-
-    /// <summary>单 CCD 排除 CPU0 是否实际生效。</summary>
-    public bool SingleCcdExcludeActive { get; init; }
-
-    /// <summary>双 CCD 调度绑定的游戏 CCD 下标（未生效为 -1）。</summary>
-    public int DualCcdGameIndex { get; init; } = -1;
-
-    /// <summary>兼容字段：本后端仍有或可能有计时器释放责任，不代表实际精度；详见 Timer。</summary>
-    public bool TimerActive { get; init; }
-    public TimerResolutionSnapshot Timer { get; init; } = new();
     public int GamePowerAppliedCount { get; init; }
     public int GamePowerRestorePending { get; init; }
     public bool GamePowerHasError { get; init; }
@@ -126,25 +114,6 @@ public sealed record DwmMonitorSnapshot
     public DateTimeOffset UpdatedUtc { get; init; }
 }
 
-/// <summary>本进程请求归属与系统查询分开；系统读数不代表游戏等待或呈现精度。</summary>
-public sealed record TimerResolutionSnapshot
-{
-    public bool Wanted { get; init; }
-    public bool RequestHeld { get; init; }
-    public bool OwnershipUnknown { get; init; }
-    public bool ReleasePending { get; init; }
-    public bool TargetReached { get; init; }
-    public bool HasError { get; init; }
-    public double RequestedMilliseconds { get; init; } = 0.5;
-    public double? ReturnedActualMilliseconds { get; init; }
-    public double? SystemCurrentMilliseconds { get; init; }
-    public int? RequestNtStatus { get; init; }
-    public int? ReleaseNtStatus { get; init; }
-    public DateTimeOffset SystemObservedUtc { get; init; }
-    public DateTimeOffset UpdatedUtc { get; init; }
-    public string Message { get; init; } = "当前后端未持有计时器请求。";
-}
-
 /// <summary>开关类命令参数（监控 / 优先级 / 计时器）。</summary>
 public sealed class CpuFrameToggleArgs
 {
@@ -155,12 +124,6 @@ public sealed class CpuFrameToggleArgs
 public sealed class CpuFrameAffinityArgs
 {
     public ulong Mask { get; set; }
-}
-
-/// <summary>双 CCD 调度参数。</summary>
-public sealed class CpuFrameCcdArgs
-{
-    public int GameCcdIndex { get; set; }
 }
 
 /// <summary>帧格电源锁定参数。</summary>
@@ -189,8 +152,8 @@ public sealed class CpuFrameTempArgs
     public bool LaptopExcluded { get; set; }
 }
 
-/// <summary>加速响应的期望状态；CoreParking 仅用于拒绝已退休功能。</summary>
-public sealed class CpuFrameBoostArgs
+/// <summary>游戏进程电源限制的期望状态；CoreParking 仅用于拒绝已退休功能。</summary>
+public sealed class CpuFrameGamePowerArgs
 {
     /// <summary>退休协议字段；true 时拒绝整个请求。</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
@@ -199,8 +162,6 @@ public sealed class CpuFrameBoostArgs
     /// <summary>游戏进程禁用执行速度节能，仍受帧格与保存偏好约束。</summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public bool EcoQos { get; set; }
-
-    public bool Timer { get; set; }
 }
 
 /// <summary>亲和性原值能否安全还原的参数（脱机切换前复核归属）。</summary>

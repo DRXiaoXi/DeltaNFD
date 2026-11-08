@@ -184,6 +184,25 @@ public sealed class AceCoreCheckResult
     public List<string> Notes { get; init; } = [];
     public int ManuallyAssociatedGameCount { get; init; }
     public bool HasExcessCoreFiles => SysCount > Games.Count;
+    public int AceDirectoryCount => Games.SelectMany(g => g.AceDirectories).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+    public bool CoreInventoryComplete { get; init; } = true;
+    /// <summary>仅用户主动全盘检测时返回；快速检查为 null。</summary>
+    public AceDiskScanSummary? DiskScan { get; init; }
+}
+
+public sealed class AceDiskScanSummary
+{
+    public int RootCount { get; init; }
+    public int CompletedRoots { get; init; }
+    public long DirectoriesVisited { get; init; }
+    public long SkippedDirectories { get; init; }
+    public long ExcludedDirectories { get; init; }
+    public int GameCandidatesFound { get; init; }
+    public int GamesInspected { get; init; }
+    public int UnconfirmedComponents { get; init; }
+    public long ElapsedMilliseconds { get; init; }
+    public bool Cancelled { get; init; }
+    public bool Complete { get; init; }
 }
 
 /// <summary>
@@ -212,6 +231,10 @@ public interface IAceService
     /// ACE-CORE*.sys 文件并与已识别的 ACE 游戏数量核对；数量偏多时按是否有效手动关联显示黄/红提醒。
     /// </summary>
     Task<AceCoreCheckResult> CheckCoreFilesAsync();
+
+    /// <summary>用户主动执行的本地固定磁盘递归识别；不授予清理所有权。</summary>
+    Task<AceCoreCheckResult> CheckAllDisksAsync(IProgress<string>? progress, CancellationToken cancellationToken)
+        => throw new NotSupportedException("此 ACE 服务不支持全盘检测。");
 
     /// <summary>
     /// ACE 虚拟化环境检测（纯只读）：硬件层（BIOS 中 VT-x/SVM、VT-d/IOMMU 是否开启）

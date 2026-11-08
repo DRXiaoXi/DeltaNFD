@@ -58,10 +58,18 @@ internal static class SystemCommands
                     : Wrap(c.Command, result);
             },
 
+            [BackendCommands.SystemPendulumGlobalConfigure] = async c => Wrap(c.Command, await PendulumGlobalSettings.ConfigureAsync(c.ArgsAs<PendulumGlobalArgs>(), c.CancellationToken)),
             [BackendCommands.SystemTimerRecover] = async c => Wrap(c.Command, await TimerConfigurationRecovery.RunAsync(c.ArgsAs<TimerRecoveryArgs>(), c.CancellationToken)),
             [BackendCommands.SystemShaderStatus] = ShaderStatusAsync,
             [BackendCommands.SystemShaderDiagnose] = ShaderDiagnoseAsync,
             [BackendCommands.SystemShaderClear] = ShaderClearAsync,
+            [BackendCommands.SystemGameRecordingStatus] = c => Task.FromResult(BackendResult.Ok(c.Command, "", GameRecordingModification.CreateDefault().Read())),
+            [BackendCommands.SystemGameRecordingChange] = c =>
+            {
+                c.CancellationToken.ThrowIfCancellationRequested();
+                using var target = GameTargetService.Default.BeginOperation();
+                return Task.FromResult(Wrap(c.Command, GameRecordingModification.CreateDefault().Change(c.ArgsAs<GameRecordingArgs>())));
+            },
             [BackendCommands.SystemShaderRecoveryClean] = async c => {
                 var args = c.ArgsAs<ShaderRecoveryCleanArgs>();
                 var result = await ShaderRecoveryCleanup.RunAsync(args.GameCache, args.NvidiaCache, c.CancellationToken);
@@ -116,7 +124,7 @@ internal static class SystemCommands
     {
         var args = context.ArgsAs<RecoverArgs>();
         var scope = (args.Scope ?? "").Trim().ToLowerInvariant();
-        if (scope is not ("tweaks" or "advanced" or "pagefile" or "defender" or "intel-pcore"))
+        if (scope is not ("tweaks" or "advanced" or "pagefile" or "defender" or "intel-pcore" or "game-recording"))
             return BackendResult.Failed("system.recover", $"未知恢复范围“{args.Scope}”，已拒绝执行。");
 
         context.ReportProgress("正在按可信备份恢复…", null, "recover");
@@ -124,6 +132,12 @@ internal static class SystemCommands
         var ok = true;
         switch (scope)
         {
+            case "game-recording":
+            {
+                using var target = GameTargetService.Default.BeginOperation();
+                var result = GameRecordingModification.CreateDefault().RestoreAll();
+                messages.Add(result.Message); ok = result.Success; break;
+            }
             case "intel-pcore":
             {
                 var result = await new PowerService().RestoreIntelPcoresAsync();
@@ -234,6 +248,12 @@ internal static class SystemCommands
             if (pcoreItems.Any(i => i.State == "待核对")) { complete = false; notes.Add("P 核策略存在待核对记录。"); }
         }
         catch (Exception ex) { complete = false; notes.Add("P 核策略备份无法读取：" + ex.Message); }
+        var recording = GameRecordingModification.CreateDefault().Read();
+        if (recording.RecoveryReadFailed || recording.RecordCount > 0 && (!recording.Complete || recording.Items.Any(i => i.HasRecord && i.NeedsReview)))
+        { complete = false; notes.Add(recording.Message); }
+        foreach (var item in recording.Items.Where(i => i.HasRecord))
+            items.Add(new ReconcileItem { Id = item.FilePath, Kind = "game-recording", State = item.State, HasBackup = item.HasRecord, Detail = item.Detail });
+        var recordingCount = recording.RecordCount;
         var prefix = notes.Count > 0 ? string.Join("；", notes) + "；" : "";
         return new ReconcileSnapshot
         {
@@ -243,6 +263,12 @@ internal static class SystemCommands
             Items = items,
             RecoveryScopes =
             [
+                new RecoveryScope
+                {
+                    Id = "game-recording", Description = "按原件备份恢复游戏录制组件（仅恢复本工具确认归属的文件）",
+                    Available = recordingCount > 0, AffectedCount = recordingCount,
+                    Reason = recordingCount > 0 ? "" : "没有游戏录制组件恢复记录。",
+                },
                 new RecoveryScope
                 {
                     Id = "intel-pcore", Description = "按备份还原 P 核优先前的三项策略（保留交流/电池差异）",

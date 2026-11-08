@@ -65,7 +65,6 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Spacing="3" VerticalAlignment="Center">
                             <TextBlock Text="预置伪装型号" TextWrapping="Wrap" Style="{StaticResource H2Style}"/>
-                            <TextBlock Text="与常见伪装工具一致的三个型号，直接选用即可" Style="{StaticResource CardDescStyle}"/>
                         </StackPanel>
                         <ListView ItemsSource="{x:Bind ViewModel.Presets}" SelectedIndex="{x:Bind ViewModel.SelectedPresetIndex, Mode=TwoWay}" SelectionMode="Single" IsItemClickEnabled="False" BorderThickness="0" Background="Transparent" HorizontalAlignment="Stretch" MaxHeight="380" Grid.Row="1" Grid.ColumnSpan="2" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Disabled" ItemContainerStyle="{StaticResource PresetTileItemStyle}" AutomationProperties.Name="预置伪装型号">
                             <ListView.ItemsPanel>

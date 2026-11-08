@@ -1,20 +1,27 @@
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using DeltaNFD.Services;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Animation;
 
 namespace DeltaNFD.Controls;
 
-/// <summary>Presentation-only card motion. No timers, services, sampling or system writes.</summary>
+/// <summary>
+/// Presentation-only card motion. No timers, services, sampling or system writes.
+/// 使用 ElementCompositionPreview 的 Translation 属性集，由合成线程执行。
+/// 与页面入场的 RenderTransform 共存；不混用互斥的 UIElement 渲染属性。
+/// </summary>
 public static class HoverLift
 {
-    private sealed class Motion(CompositeTransform transform)
+    private sealed class MotionState
     {
-        internal CompositeTransform Transform = transform;
-        internal double OriginalY = transform.TranslateY;
-        internal Storyboard? Animation;
+        internal Visual? Visual;
+        internal Vector3 Original;
+        internal bool Disabled;
     }
-    private static readonly ConditionalWeakTable<FrameworkElement, Motion> Motions = new();
+    private static readonly ConditionalWeakTable<FrameworkElement, MotionState> States = new();
     public static readonly DependencyProperty EnabledProperty = DependencyProperty.RegisterAttached(
         "Enabled", typeof(bool), typeof(HoverLift), new PropertyMetadata(false, OnEnabledChanged));
     public static void SetEnabled(DependencyObject element, bool value) => element.SetValue(EnabledProperty, value);
@@ -39,42 +46,51 @@ public static class HoverLift
             Reset(element);
         }
     }
-    private static void Enter(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e) => Move(sender, -4);
+    private static void Enter(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e) => Move(sender, -3);
     private static void Exit(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e) => Move(sender, 0);
     private static void Unload(object sender, RoutedEventArgs e) { if (sender is FrameworkElement element) Reset(element); }
 
-    private static void Move(object sender, double offset)
+    private static void Move(object sender, float offset)
     {
         if (sender is not FrameworkElement element) return;
-        var transform = MotionTransform(element);
-        if (transform is null) return; // Preserve another owner's transform.
-        var motion = Motions.GetValue(element, _ => new(transform));
-        var currentY = transform.TranslateY;
-        motion.Animation?.Stop();
-        if (!ReferenceEquals(motion.Transform, transform))
-        {
-            motion.Transform = transform;
-            motion.OriginalY = transform.TranslateY;
-        }
-        var destination = motion.OriginalY + offset;
         bool animate;
         try { animate = new Windows.UI.ViewManagement.UISettings().AnimationsEnabled; }
         catch { animate = false; }
-        if (!animate) { transform.TranslateY = destination; return; }
-        var animation = new DoubleAnimation
+        TryMove(element, offset, animate);
+    }
+
+    internal static bool TryMove(FrameworkElement element, float offset, bool animationsEnabled)
+    {
+        if (!animationsEnabled) { Reset(element); return true; }
+        var state = States.GetValue(element, _ => new MotionState());
+        if (state.Disabled) return false;
+        try
         {
-            From = currentY,
-            To = destination,
-            Duration = new Duration(TimeSpan.FromMilliseconds(160)),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-            EnableDependentAnimation = true,
-        };
-        Storyboard.SetTarget(animation, transform);
-        Storyboard.SetTargetProperty(animation, "TranslateY");
-        var storyboard = new Storyboard();
-        storyboard.Children.Add(animation);
-        motion.Animation = storyboard;
-        storyboard.Begin();
+            if (state.Visual is null)
+            {
+                var visual = ElementCompositionPreview.GetElementVisual(element);
+                // A pre-existing translation channel belongs to another behavior.
+                if (visual.Properties.TryGetVector3("Translation", out _) == CompositionGetValueStatus.Succeeded)
+                { state.Disabled = true; return false; }
+                ElementCompositionPreview.SetIsTranslationEnabled(element, true);
+                state.Visual = visual;
+                if (visual.Properties.TryGetVector3("Translation", out var original) == CompositionGetValueStatus.Succeeded)
+                    state.Original = original;
+            }
+            var animation = state.Visual.Compositor.CreateVector3KeyFrameAnimation();
+            animation.Duration = TimeSpan.FromMilliseconds(160);
+            animation.InsertKeyFrame(1, state.Original + new Vector3(0, offset, 0));
+            state.Visual.Properties.StartAnimation("Translation", animation);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            state.Disabled = true;
+            Restore(state);
+            // Cosmetic failures stay local; business exceptions keep the app's normal handling.
+            Log.Warn("悬停动效已停用：" + ex.Message);
+            return false;
+        }
     }
     internal static CompositeTransform? MotionTransform(FrameworkElement element)
     {
@@ -90,11 +106,24 @@ public static class HoverLift
         element.RenderTransform = transform;
         return transform;
     }
-    private static void Reset(FrameworkElement element)
+    internal static void Reset(FrameworkElement element)
     {
-        if (!Motions.TryGetValue(element, out var motion)) return;
-        motion.Animation?.Stop();
-        motion.Transform.TranslateY = motion.OriginalY;
-        Motions.Remove(element);
+        // Exiting/unloading an element that never hovered must not claim a rendering API.
+        if (States.TryGetValue(element, out var state)) Restore(state);
+    }
+
+    private static void Restore(MotionState state)
+    {
+        if (state.Visual is null) return;
+        try
+        {
+            state.Visual.Properties.StopAnimation("Translation");
+            state.Visual.Properties.InsertVector3("Translation", state.Original);
+        }
+        catch (Exception ex)
+        {
+            if (!state.Disabled) Log.Warn("悬停动效复位未完成：" + ex.Message);
+            state.Disabled = true;
+        }
     }
 }

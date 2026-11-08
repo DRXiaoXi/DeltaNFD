@@ -116,6 +116,7 @@ public sealed partial class ShaderRecoveryPage : Page
         if (!game && !nvidia) throw new InvalidOperationException("请至少选择一种缓存。");
         if (!await ConfirmAsync("删除所选旧缓存？", (game ? "· 已检测到的三角洲安装目录内 PSOCache\n" : "")
             + (nvidia ? "· 当前用户 NVIDIA DXCache 与 Windows D3DSCache，其他游戏也将重新编译\n" : "")
+            + (game && !nvidia ? ShaderCacheCleanupPolicy.SystemCacheNotice + "\n" : "")
             + "请退出三角洲和其他图形应用。删除无法撤销；占用或链接项会跳过并报告。清理后恢复驱动默认，再进入游戏重新预热。", "删除缓存")) return;
         var response = await _system.InvokeAsync(BackendCommands.SystemShaderRecoveryClean,
             new ShaderRecoveryCleanArgs { GameCache = game, NvidiaCache = nvidia }, null, CancellationToken.None);

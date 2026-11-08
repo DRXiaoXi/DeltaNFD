@@ -25,6 +25,13 @@ public sealed class ProcmanRuleStore
     private readonly string _filePath;
     private readonly Mutex _mutex;
 
+    private readonly object _cacheGate = new();
+    private List<ProcmanRuleEntry>? _cache;
+    private (DateTime Utc, long Length, bool Exists) _cacheStamp;
+
+    /// <summary>规则缓存重新载入次数（诊断与测试用）。</summary>
+    internal int ParseCount { get; private set; }
+
     public ProcmanRuleStore(string filePath)
     {
         _filePath = filePath;
@@ -38,9 +45,25 @@ public sealed class ProcmanRuleStore
     {
         try
         {
-            if (!File.Exists(_filePath)) return [];
-            using var stream = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
-            return JsonSerializer.Deserialize<RuleFile>(stream, JsonOptions)?.Rules ?? [];
+            // 先取文件指纹再读取：读取期间若被其他进程改写，缓存带的是旧指纹，下一次必然重读。
+            var stamp = ReadStamp();
+            lock (_cacheGate)
+            {
+                if (_cache is not null && _cacheStamp == stamp) return _cache.Select(Copy).ToList();
+            }
+            List<ProcmanRuleEntry> rules = [];
+            if (stamp.Exists)
+            {
+                using var stream = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+                rules = JsonSerializer.Deserialize<RuleFile>(stream, JsonOptions)?.Rules ?? [];
+            }
+            lock (_cacheGate)
+            {
+                _cache = rules;
+                _cacheStamp = stamp;
+                ParseCount++;
+            }
+            return rules.Select(Copy).ToList();
         }
         catch (Exception ex)
         {
@@ -98,8 +121,28 @@ public sealed class ProcmanRuleStore
         return JsonSerializer.Deserialize<RuleFile>(stream, JsonOptions) ?? new RuleFile();
     }
 
+    private (DateTime Utc, long Length, bool Exists) ReadStamp()
+    {
+        var info = new FileInfo(_filePath);
+        return info.Exists ? (info.LastWriteTimeUtc, info.Length, true) : (DateTime.MinValue, 0L, false);
+    }
+
+    private void Invalidate()
+    {
+        lock (_cacheGate) _cache = null;
+    }
+
+    // 返回副本：调用方修改返回值不会污染缓存。
+    private static ProcmanRuleEntry Copy(ProcmanRuleEntry rule) => new()
+    {
+        ExecutablePath = rule.ExecutablePath, Capability = rule.Capability, Value = rule.Value,
+        Enabled = rule.Enabled, AutoTakeover = rule.AutoTakeover, UpdatedUtc = rule.UpdatedUtc,
+    };
+
     private void WriteAll(RuleFile file)
     {
+        // 写入前失效缓存；即使写入中途失败，指纹变化也会让下一次读取重新解析。
+        Invalidate();
         var dir = Path.GetDirectoryName(_filePath);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
         var tempPath = _filePath + ".tmp";

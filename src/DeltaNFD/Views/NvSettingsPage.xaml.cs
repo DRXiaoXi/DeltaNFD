@@ -14,14 +14,14 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
     public bool ShowNoNvidia => !ViewModel.IsLoading && !ViewModel.EnvironmentReady;
 
     /// <summary>锁定按钮可用：环境就绪、未锁定、不忙。</summary>
-    public bool CanLock => ViewModel.EnvironmentReady && !ViewModel.DrsFilesLocked && !ViewModel.LockBusy;
+    public bool CanLock => ViewModel.CanEditOptions && !ViewModel.DrsFilesLocked && !ViewModel.LockBusy;
 
     /// <summary>解锁按钮可用：已锁定、不忙。</summary>
-    public bool CanUnlock => ViewModel.DrsFilesLocked && !ViewModel.LockBusy;
+    public bool CanUnlock => ViewModel.DrsFilesLocked && !ViewModel.LockBusy && !ViewModel.IsSelectingOption;
 
-    public bool CanRefresh => !ViewModel.IsLoading && !ViewModel.IsApplying;
+    public bool CanRefresh => !ViewModel.IsLoading && !ViewModel.IsApplying && !ViewModel.IsSelectingOption;
 
-    public bool CanReset => !ViewModel.IsApplying && !ViewModel.IsLoading && ViewModel.EnvironmentReady && !ViewModel.DrsFilesLocked;
+    public bool CanReset => ViewModel.CanEditOptions && !ViewModel.DrsFilesLocked;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -35,6 +35,7 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
                 or nameof(NvSettingsViewModel.DrsFilesLocked)
                 or nameof(NvSettingsViewModel.LockBusy)
                 or nameof(NvSettingsViewModel.IsLoading)
+                or nameof(NvSettingsViewModel.IsSelectingOption)
                 or nameof(NvSettingsViewModel.IsApplying))
             {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowNoNvidia)));
@@ -46,9 +47,14 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
         };
     }
 
-    private void RowCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void RowCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        // 任意行选项变化 → 刷新待应用计数
+        if (sender is not ComboBox combo || combo.Tag is not uint id) return;
+        var row = ViewModel.Rows.FirstOrDefault(r => r.Id == id);
+        if (row is null || ViewModel.IsLoading || row.SelectedIndex == combo.SelectedIndex) return;
+        // OneWay 回填避免未确认的「开启」先进入待写入状态；取消后立即复原显示。
+        await ViewModel.SelectOptionAsync(row, combo.SelectedIndex, ConfirmRebarAsync);
+        combo.SelectedIndex = row.SelectedIndex;
         ViewModel.OnRowSelectionChanged();
     }
 
@@ -74,11 +80,25 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
 
     private async void ApplyButton_Click(object sender, RoutedEventArgs e)
     {
-        var result = await ViewModel.ApplyChangesAsync();
+        var result = await ViewModel.ApplyChangesAsync(ConfirmRebarAsync);
         if (result is { Success: false })
         {
             await ShowErrorAsync(result.Message);
         }
+    }
+
+    private async Task<bool> ConfirmRebarAsync(string warning)
+    {
+        var confirm = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "开启 Resizable BAR 前请确认",
+            Content = warning,
+            PrimaryButtonText = "仍然开启",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        return await confirm.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
     }
 
     private async void ResetButton_Click(object sender, RoutedEventArgs e)
@@ -87,7 +107,7 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
         {
             XamlRoot = XamlRoot,
             Title = "全部恢复默认？",
-            Content = "将删除三角洲驱动配置中本页管理的全部覆盖项（含 DLSS 覆盖总开关），交还给游戏内选项与驱动默认值。确定继续？",
+            Content = "将删除此游戏驱动配置中本页管理的全部覆盖项（含 DLSS 总开关、各向异性过滤模式、监视器技术与 ReBAR），交还给游戏内选项与驱动默认值。确定继续？",
             PrimaryButtonText = "恢复默认",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,

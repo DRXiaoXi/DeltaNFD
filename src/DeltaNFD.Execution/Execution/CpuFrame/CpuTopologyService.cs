@@ -209,6 +209,13 @@ public sealed class CpuTopologyService : ICpuTopologyService
         get { lock (AffinityRuleLock) return AffinityRuleOriginals.Count != 0; }
     }
 
+    /// <summary>
+    /// 单/双 CCD 调度是否接管目标游戏亲和性：本进程内生效，或共享设置要求由进程管理后端执行。
+    /// CCD 调度迁到进程管理后端后，CPU/帧格后端看不到对方的运行态，只能按设置让位。
+    /// </summary>
+    private static bool CcdOwnsAffinity() => DualCcdSchedulingActive || SingleCcdExcludeActive
+        || DeltaNFD.Execution.Procman.ProcmanCcdScheduler.OwnsGameAffinity(AppSettingsStore.Read());
+
     internal static ulong GetSingleGroupAffinityMask(IReadOnlyList<CpuCoreInfo> cores, IReadOnlyList<int> groupLpCounts)
     {
         if (groupLpCounts.Count != 1 || groupLpCounts[0] is < 1 or > 64 || cores.Count == 0)
@@ -269,7 +276,7 @@ public sealed class CpuTopologyService : ICpuTopologyService
 
         lock (AffinityRuleLock)
         {
-            if (DualCcdSchedulingActive || SingleCcdExcludeActive)
+            if (CcdOwnsAffinity())
             {
                 AffinityRuleOriginals.Clear();
                 return; // 专属调度激活中，亲和性规则让位

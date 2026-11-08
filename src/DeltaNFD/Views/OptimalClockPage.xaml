@@ -1,0 +1,88 @@
+<Page x:Class="DeltaNFD.Views.OptimalClockPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ui="using:DeltaNFD.Controls" HorizontalContentAlignment="Stretch">
+    <ScrollViewer HorizontalContentAlignment="Stretch" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel MaxWidth="1440" Padding="28,20,28,32" Spacing="12">
+            <StackPanel Spacing="4">
+                <ui:PageHeader Title="钟摆计划"/>
+                <TextBlock Text="扫描本机最佳计时器精度；全局锁定随帧格开启，并持续核对实际生效状态。" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+            </StackPanel>
+            <Border Style="{StaticResource CardBorderStyle}" Visibility="{x:Bind ExperimentalVisibility, Mode=OneWay}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Windows 10 实验兼容" Style="{StaticResource SectionTitleStyle}"/>
+                    <TextBlock Text="{x:Bind GlobalStatusText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource WarningTextStyle}"/>
+                    <TextBlock Text="本机检测只说明当前系统的表现。Win11 的测试与模拟结果不能作为 Win10 实机通过的证据。" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorderStyle}" Visibility="{x:Bind GlobalSettingsVisibility, Mode=OneWay}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="全局生效精度" Style="{StaticResource SectionTitleStyle}"
+                        ui:HelpTip.Text="保存系统 GlobalTimerResolutionRequests 设置前备份原值；开启后必须完成一次系统重启，重开工具不算重启。已有外部设置但缺少重启证据时，可点击登记当前设置，再重启。注册表开启只是前提，实际锁定仍由后端实测与持续监督确认。"/>
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="开启全局生效精度" Style="{StaticResource H3Style}" VerticalAlignment="Center"/>
+                        <ToggleSwitch Grid.Column="1" AutomationProperties.Name="开启全局生效精度，保存后需要重启"
+                            IsOn="{x:Bind GlobalIsOn, Mode=OneWay}" IsEnabled="{x:Bind Editable, Mode=OneWay}" Toggled="Global_Toggled"
+                            OnContent="" OffContent="" MinWidth="0" HorizontalAlignment="Right"/>
+                    </Grid>
+                    <TextBlock Text="{x:Bind GlobalStatusText, Mode=OneWay}" Style="{StaticResource WarningTextStyle}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                    <Button Content="登记当前设置并等待重启" Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{x:Bind CanRegister, Mode=OneWay}" Click="RegisterGlobal_Click"/>
+                    <TextBlock Text="设置改变后需手动重启；重启前不能扫描或锁定。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="帧格锁定状态" Style="{StaticResource H2Style}"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
+                            <ProgressRing Width="20" Height="20" IsActive="{x:Bind Busy, Mode=OneWay}"/>
+                            <Button Content="刷新状态" Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{x:Bind CanRefresh, Mode=OneWay}" Click="Refresh_Click"/>
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Text="{x:Bind StatusText, Mode=OneWay}" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                    <TextBlock Text="{x:Bind FrameLinkText, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{x:Bind DetailText, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <Button Content="前往帧格" Style="{StaticResource SecondaryButtonStyle}" Click="Frame_Click"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="扫描本机最佳精度" Style="{StaticResource SectionTitleStyle}" ui:HelpTip.Text="粗扫、细扫与稳定性复测都使用 CPU 负载；每个候选用全新子进程测量。只保存通过安全侧复测的值；没有合格结果时不回退到默认值。扫描期间暂停锁定，完成后由帧格恢复监督。"/>
+                    <TextBlock Text="{x:Bind ScanPrerequisiteText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}"/>
+                    <Button Content="仅检测兼容性（无 CPU 负载）" Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{x:Bind CanScan, Mode=OneWay}" Click="Compatibility_Click"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <TextBlock Text="检测模式" VerticalAlignment="Center" Style="{StaticResource CardDescStyle}"/>
+                        <ComboBox Width="200" SelectedIndex="{x:Bind ScanModeIndex, Mode=TwoWay}" AutomationProperties.Name="钟摆计划检测模式">
+                            <ComboBoxItem Content="算法1（更稳定）"/>
+                            <ComboBoxItem Content="算法2（更激进）"/>
+                        </ComboBox>
+                    </StackPanel>
+                    <TextBlock Text="算法1取典型最快并在稳定侧取锁；算法2在空闲/标准/重载三条件下验证后取最细的合格值。" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="扫描本机最佳值" Style="{StaticResource PrimaryButtonStyle}" IsEnabled="{x:Bind CanScan, Mode=OneWay}" Click="Scan_Click"/>
+                        <Button Content="快速扫描" Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{x:Bind CanScan, Mode=OneWay}" Click="QuickScan_Click"/>
+                    </StackPanel>
+                    <TextBlock Text="{x:Bind ScanText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                    <TextBlock Text="{x:Bind OperationText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}" AutomationProperties.LiveSetting="Polite"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="精度覆盖与失效提醒" Style="{StaticResource SectionTitleStyle}"/>
+                    <TextBlock Text="其他请求可能让系统精度偏离锁定值。持续检测到覆盖时记录时间、目标值和实测值；无法核实的来源应用会明确标为未知。" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                    <TextBlock Text="{x:Bind HistoryText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" Style="{StaticResource CardDescStyle}"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="钟摆诊断日志" Style="{StaticResource SectionTitleStyle}"/>
+                    <TextBlock Text="{x:Bind DiagnosticText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" Style="{StaticResource NoteStyle}" AutomationProperties.LiveSetting="Polite"/>
+                    <Button Content="打开日志文件夹" Style="{StaticResource SecondaryButtonStyle}" Click="Logs_Click"/>
+                </StackPanel>
+            </Border>
+            <TextBlock Text="计时器精度不直接保证帧数收益；全局请求可能增加功耗与温度。" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

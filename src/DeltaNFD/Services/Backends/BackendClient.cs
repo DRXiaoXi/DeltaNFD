@@ -792,7 +792,7 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
             try
             {
                 // 在进程仍存活时枚举它启动的子进程（安装器等），供核对/解除阻塞前确认它们也已结束。
-                var (children, ok) = BackendUnconfirmedStore.CaptureDescendants(_process.Id);
+                var (children, ok) = BackendUnconfirmedStore.CaptureDescendants(_process.Id, _processStartTicks);
                 BackendUnconfirmedStore.PromoteIntent(_spec.Id, requestId, reason, _process.Id, _processStartTicks,
                     _processImagePath, command, children, childrenUnknown: !ok, sessionId: _sessionId);
                 BackendAttention.Report(ModuleId);

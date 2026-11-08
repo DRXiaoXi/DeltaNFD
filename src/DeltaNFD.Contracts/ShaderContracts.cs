@@ -6,10 +6,10 @@ public enum ShaderDriverState
     /// <summary>未检测到 N 卡（或驱动信息读取失败）。</summary>
     NotApplicable,
 
-    /// <summary>驱动过老（低于 572.83）：着色器渲染使用旧方法。</summary>
+    /// <summary>驱动过老（低于 576.88）：着色器渲染使用旧方法。</summary>
     TooOld,
 
-    /// <summary>问题驱动系列（591 / 592 / 610 / 616）：着色器文件可能缺失。</summary>
+    /// <summary>已退休，仅保留协议数值兼容；当前检测不再产生此状态。</summary>
     ProblemSeries,
 
     /// <summary>驱动状态正常。</summary>
@@ -73,17 +73,24 @@ public enum ShaderDiagLevel
     /// <summary>结构正常。</summary>
     Normal,
 
-    /// <summary>着色器异常（驱动非问题系列）：清理旧着色器 + 重新预热。</summary>
+    /// <summary>着色器缓存异常：清理旧着色器 + 重新预热。</summary>
     Abnormal,
 
-    /// <summary>着色器异常且驱动属问题系列；617.14 与 591/592/610/616 共用问题驱动判定，更高版本按大 NVPH 缺失判定。</summary>
+    /// <summary>已退休，仅保留协议数值兼容；当前检测不再归因问题驱动。</summary>
     AbnormalDriverIssue,
+
+    /// <summary>缓存结构可用，但有无需清理的状态提醒。</summary>
+    Warning = 5,
 }
+
+/// <summary>621.xx 的文件布局提示，不是驱动 ASD 开关或运行实效的读取结果。</summary>
+public enum ShaderCacheLayout { Unspecified = 0, Legacy = 1, Asd = 2 }
 
 /// <summary>着色器健康检测结果（纯只读）。</summary>
 public sealed class ShaderDiagnosis
 {
     public required ShaderDiagLevel Level { get; init; }
+    public ShaderCacheLayout CacheLayout { get; init; }
 
     /// <summary>一句话结论。</summary>
     public required string Summary { get; init; }
@@ -96,7 +103,7 @@ public sealed class ShaderDiagnosis
 }
 
 /// <summary>
-/// 着色器维护服务：N 卡驱动版本体检（问题驱动 / 过老驱动提醒）+ 三角洲 PSOCache 旧着色器清理
+/// 着色器维护服务：N 卡驱动版本读取与过老提醒 + 三角洲 PSOCache 旧着色器清理
 /// + PSOCache 健康检测（AMD / Intel / NVIDIA 通用的 GameVer 临时计数判定，以及 NVIDIA 专用的
 /// NVPH 结构判定）。
 /// PSOCache 位于 {游戏根}\DeltaForce\Saved\PSOCache，游戏运行时被锁定，需退出游戏后清理。
@@ -107,13 +114,16 @@ public interface IShaderService
     Task<ShaderStatus> GetStatusAsync();
 
     /// <summary>一键清除 PSOCache 旧着色器文件（游戏运行中会拒绝执行；清除后首次进图需重新编译着色器）。</summary>
+    /// <summary>清理游戏 PSOCache；执行时确认 NVIDIA 621.xx 时同时清理当前用户系统 D3DSCache。</summary>
     Task<OperationResult> ClearPsoCacheAsync();
 
     /// <summary>
     /// PSOCache 健康检测（纯只读），判定优先级：
     /// ① GameVer 达到 2 个及以上 → AMD / Intel / NVIDIA 通用异常判据；
-    /// ② 单版本下 SM6\DXCache（缺少目录时回退 SM5\DXCache）的 NVPH 文件缺失 / 0KB 损坏判定（仅 N 卡且驱动 ≥572.83 时下结论）；
-    ///    617.14 与 591/592/610/616 共用问题驱动判定；更高版本若 ≥256MB NVPH 少于两个，也判为驱动异常。
+    /// ② 单版本下 SM6\DXCache（缺少目录时回退 SM5\DXCache）的 NVPH 结构判定（仅 N 卡且驱动 ≥576.88）；
+    ///    621.00 起至少两个 NVPH：包含一个 256MiB 或 512MiB 加另一个非零文件，或至少两个均 ≥256MiB；允许额外非零文件，所有 NVPH 须非零。
+    ///    更早驱动沿用两个 ≥256MiB 与非零规则。
+    ///    无缓存时提示预热；读取失败拒绝下结论。缓存异常不归因驱动版本。
     /// </summary>
     Task<ShaderDiagnosis> DiagnoseAsync();
 }

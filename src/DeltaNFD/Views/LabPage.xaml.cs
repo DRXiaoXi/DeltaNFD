@@ -14,8 +14,17 @@ public sealed partial class LabPage : Page
     public LabPage()
     {
         InitializeComponent();
-        Loaded += (_, _) => ViewModel.AttachGameState();
-        Unloaded += (_, _) => ViewModel.DetachGameState();
+        Loaded += (_, _) =>
+        {
+            _detachedFromWindow = false;
+            ViewModel.AttachGameState();
+            _ = InitializeGameRulesAsync();
+        };
+        Unloaded += (_, _) =>
+        {
+            _detachedFromWindow = true;
+            ViewModel.DetachGameState();
+        };
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
@@ -26,13 +35,6 @@ public sealed partial class LabPage : Page
     private async void PreferIntelPcores_Click(object sender, RoutedEventArgs e) => await ViewModel.SetIntelPcorePreferenceAsync();
     private async void RestoreIntelPcores_Click(object sender, RoutedEventArgs e) => await ViewModel.SetIntelPcorePreferenceAsync(restore: true);
 
-    private void ScenarioChip_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is ToggleButton toggle && toggle.DataContext is LabScenarioVm chip)
-        {
-            ViewModel.SelectedScenarioIndex = chip.Index;
-        }
-    }
 
     private async void ImportSchemeButton_Click(object sender, RoutedEventArgs e)
     {

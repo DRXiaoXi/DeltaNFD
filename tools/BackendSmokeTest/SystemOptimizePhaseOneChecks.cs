@@ -1,4 +1,4 @@
-using DeltaNFD.Services.TweakDb;
+﻿using DeltaNFD.Services.TweakDb;
 
 internal static class SystemOptimizePhaseOneChecks
 {
@@ -64,7 +64,16 @@ internal static class SystemOptimizePhaseOneChecks
 
         Assert(BxService.MatchesAppxPattern(["Microsoft.XboxApp"], "Microsoft.Xbox*"), "APPX wildcard");
         Assert(!BxService.MatchesAppxPattern(["Microsoft.XboxApp"], "Microsoft.YourPhone"), "APPX absent");
-        Console.WriteLine("系统优化第一阶段合成检查通过（任务、兼容性、APPX 匹配）。");
+        var firstLine = typeof(DeltaNFD.Services.SystemTweakService).GetMethod("FirstLine",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+            ?? throw new InvalidOperationException("SystemTweakService.FirstLine is missing");
+        foreach (var (input, expected) in new (string? Input, string Expected)[]
+        {
+            (null, ""), ("", ""), ("  \r\n  ", ""), ("  query failed  ", "query failed"),
+            ("  first\r\nsecond  ", "first"), ("first\nsecond", "first"),
+        })
+            Assert((string?)firstLine.Invoke(null, [input]) == expected, "nullable command diagnostic first line");
+        Console.WriteLine("系统优化第一阶段合成检查通过（任务、兼容性、APPX 匹配、空值及多行错误诊断）。");
 
         void Check(BxState expected, BxTaskState first, BxTaskState second)
         {

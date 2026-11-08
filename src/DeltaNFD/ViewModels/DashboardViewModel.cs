@@ -11,48 +11,129 @@ public partial class DashboardViewModel : ObservableObject
     public IFrameService Frame { get; } = ServiceLocator.Frame;
 
     // ---- 优化检测（全量扫描系统优化项目，预读项目实际状态；结果顺延到系统优化页） ----
-    [ObservableProperty]
     private bool isScanning;
-    [ObservableProperty]
+    public bool IsScanning { get => isScanning; set => SetProperty(ref isScanning, value); }
     private string scanProgressText = "正在检测…";
-    [ObservableProperty]
+    public string ScanProgressText { get => scanProgressText; set => SetProperty(ref scanProgressText, value); }
     private string scanCompletedText = "";
+    public string ScanCompletedText { get => scanCompletedText; set => SetProperty(ref scanCompletedText, value); }
     // ---- 组件健康检测（与着色器 / ACE / 运行库服务的扫描结果同步） ----
-    [ObservableProperty]
     private string shaderStatusText = "检测中…";
-    [ObservableProperty]
+    public string ShaderStatusText { get => shaderStatusText; set => SetProperty(ref shaderStatusText, value); }
     private DashboardHealthState shaderHealthState = DashboardHealthState.Checking;
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShaderActionText))]
+    public DashboardHealthState ShaderHealthState
+    {
+        get => shaderHealthState;
+        set
+        {
+            if (EqualityComparer<DashboardHealthState>.Default.Equals(shaderHealthState, value)) return;
+            OnPropertyChanging(nameof(ShaderHealthState));
+            shaderHealthState = value;
+            OnShaderHealthStateChanged(value);
+            OnPropertyChanged(nameof(ShaderHealthState));
+        }
+    }
+    partial void OnShaderHealthStateChanged(DashboardHealthState value);
     private bool shaderCacheNeedsAttention;
+    public bool ShaderCacheNeedsAttention
+    {
+        get => shaderCacheNeedsAttention;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(shaderCacheNeedsAttention, value)) return;
+            OnPropertyChanging(nameof(ShaderCacheNeedsAttention));
+            OnPropertyChanging(nameof(ShaderActionText));
+            shaderCacheNeedsAttention = value;
+            OnPropertyChanged(nameof(ShaderCacheNeedsAttention));
+            OnPropertyChanged(nameof(ShaderActionText));
+        }
+    }
     public string ShaderActionText => ShaderCacheNeedsAttention ? "缓存修复与预热" : "去处理";
+    private bool shaderActionAllowed = true;
+    public bool ShaderActionAllowed
+    {
+        get => shaderActionAllowed;
+        set { if (SetProperty(ref shaderActionAllowed, value)) OnPropertyChanged(nameof(ShaderActionVisible)); }
+    }
+    public bool ShaderActionVisible => ShaderActionAllowed && (ShaderHealthState is DashboardHealthState.Warning
+        or DashboardHealthState.Abnormal or DashboardHealthState.Failed or DashboardHealthState.Disabled);
 
-    [ObservableProperty]
     private string aceStatusText = "检测中…";
-    [ObservableProperty]
+    public string AceStatusText { get => aceStatusText; set => SetProperty(ref aceStatusText, value); }
     private DashboardHealthState aceHealthState = DashboardHealthState.Checking;
-    [ObservableProperty]
+    public DashboardHealthState AceHealthState
+    {
+        get => aceHealthState;
+        set
+        {
+            if (EqualityComparer<DashboardHealthState>.Default.Equals(aceHealthState, value)) return;
+            OnPropertyChanging(nameof(AceHealthState));
+            aceHealthState = value;
+            OnAceHealthStateChanged(value);
+            OnPropertyChanged(nameof(AceHealthState));
+        }
+    }
+    partial void OnAceHealthStateChanged(DashboardHealthState value);
     private string runtimeStatusText = "检测中…";
-    [ObservableProperty]
+    public string RuntimeStatusText { get => runtimeStatusText; set => SetProperty(ref runtimeStatusText, value); }
     private DashboardHealthState runtimeHealthState = DashboardHealthState.Checking;
-    [ObservableProperty]
+    public DashboardHealthState RuntimeHealthState
+    {
+        get => runtimeHealthState;
+        set
+        {
+            if (EqualityComparer<DashboardHealthState>.Default.Equals(runtimeHealthState, value)) return;
+            OnPropertyChanging(nameof(RuntimeHealthState));
+            runtimeHealthState = value;
+            OnRuntimeHealthStateChanged(value);
+            OnPropertyChanged(nameof(RuntimeHealthState));
+        }
+    }
+    partial void OnRuntimeHealthStateChanged(DashboardHealthState value);
+    private bool runtimePolicyBlocked;
+    public bool RuntimePolicyBlocked
+    {
+        get => runtimePolicyBlocked;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(runtimePolicyBlocked, value)) return;
+            OnPropertyChanging(nameof(RuntimePolicyBlocked));
+            runtimePolicyBlocked = value;
+            OnRuntimePolicyBlockedChanged(value);
+            OnPropertyChanged(nameof(RuntimePolicyBlocked));
+        }
+    }
+    partial void OnRuntimePolicyBlockedChanged(bool value);
     private bool isHealthScanning;
+    public bool IsHealthScanning
+    {
+        get => isHealthScanning;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(isHealthScanning, value)) return;
+            OnPropertyChanging(nameof(IsHealthScanning));
+            isHealthScanning = value;
+            OnIsHealthScanningChanged(value);
+            OnPropertyChanged(nameof(IsHealthScanning));
+        }
+    }
+    partial void OnIsHealthScanningChanged(bool value);
     public bool CanRefreshHealth => !IsHealthScanning && Services.Backends.PageBackendSessions.Manager.DeltaRunning == false;
     public bool RuntimeUiEnabled => ReleaseFeatures.RuntimeUiEnabled;
     public bool IsLimitedTestBuild => !RuntimeUiEnabled;
-    public string RuntimeActionText => RuntimeHealthState == DashboardHealthState.Disabled ? "检测设置" : "去处理";
+    public string RuntimeActionText => RuntimePolicyBlocked ? "查看原因" : RuntimeHealthState == DashboardHealthState.Disabled ? "检测设置" : "去处理";
     public string HealthSummary => Services.Backends.PageBackendSessions.Manager.DeltaRunning != false
         ? DashboardMemoryHealth.PausedSummary(MemoryHealthState, HealthPauseReason)
         : DashboardHealthPresentation.Summary(IsHealthScanning, ShaderHealthState, AceHealthState, RuntimeHealthState, MemoryHealthState);
 
-    [ObservableProperty]
     private string targetName = "三角洲";
-    [ObservableProperty]
+    public string TargetName { get => targetName; set => SetProperty(ref targetName, value); }
     private string targetModeText = "三角洲模式";
-    [ObservableProperty]
+    public string TargetModeText { get => targetModeText; set => SetProperty(ref targetModeText, value); }
     private string targetPathText = "三角洲默认主进程";
-    [ObservableProperty]
+    public string TargetPathText { get => targetPathText; set => SetProperty(ref targetPathText, value); }
     private string lastHealthCheckText = "尚未检测";
+    public string LastHealthCheckText { get => lastHealthCheckText; set => SetProperty(ref lastHealthCheckText, value); }
     private bool _displayedCustomTarget;
     public void RefreshTargetDisplay()
     {
@@ -74,19 +155,26 @@ public partial class DashboardViewModel : ObservableObject
         _displayedCustomTarget = target.IsCustom;
     }
 
-    partial void OnShaderHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
+    partial void OnShaderHealthStateChanged(DashboardHealthState value)
+    {
+        if (value is DashboardHealthState.Checking or DashboardHealthState.Disabled) ShaderActionAllowed = true;
+        OnPropertyChanged(nameof(ShaderActionVisible));
+        OnPropertyChanged(nameof(HealthSummary));
+    }
     partial void OnAceHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
     partial void OnRuntimeHealthStateChanged(DashboardHealthState value)
     {
         OnPropertyChanged(nameof(HealthSummary));
         OnPropertyChanged(nameof(RuntimeActionText));
     }
+    partial void OnRuntimePolicyBlockedChanged(bool value) => OnPropertyChanged(nameof(RuntimeActionText));
 
     public void RefreshRuntimeDetectionPreference()
     {
         RuntimeDetectionPreference.Shared.Reload();
         if (!RuntimeUiEnabled)
             return;
+        if (RuntimePolicyBlocked) return;
         if (!RuntimeDetectionPreference.Shared.Enabled)
         {
             RuntimeHealthState = DashboardHealthState.Disabled;
@@ -105,16 +193,16 @@ public partial class DashboardViewModel : ObservableObject
         OnPropertyChanged(nameof(HealthSummary));
     }
 
-    [ObservableProperty]
     private string powerPlanText = "--";
-    [ObservableProperty]
+    public string PowerPlanText { get => powerPlanText; set => SetProperty(ref powerPlanText, value); }
     private string enabledOptimizesText = "0 / 0";
-    [ObservableProperty]
+    public string EnabledOptimizesText { get => enabledOptimizesText; set => SetProperty(ref enabledOptimizesText, value); }
     private bool isOptimizing;
-    [ObservableProperty]
+    public bool IsOptimizing { get => isOptimizing; set => SetProperty(ref isOptimizing, value); }
     private double optimizeProgress;
-    [ObservableProperty]
+    public double OptimizeProgress { get => optimizeProgress; set => SetProperty(ref optimizeProgress, value); }
     private string optimizeStatusText = "就绪";
+    public string OptimizeStatusText { get => optimizeStatusText; set => SetProperty(ref optimizeStatusText, value); }
     public DashboardViewModel()
     {
         RefreshTargetDisplay();
@@ -164,6 +252,7 @@ public partial class DashboardViewModel : ObservableObject
         if (!CanApplyHealth(generation))
             return;
         ShaderCacheNeedsAttention = result.OpenCacheRecovery;
+        ShaderActionAllowed = result.ShowAction;
         ShaderStatusText = result.Text;
         ShaderHealthState = result.State;
     }
@@ -258,8 +347,18 @@ public partial class DashboardViewModel : ObservableObject
         if (read.Error is { } error)
             throw error;
         var(status, scan) = read.Value;
-        RuntimeHealthState = scan.HasAbnormal ? DashboardHealthState.Abnormal : scan.HasWarning || status.GuardIssue.Length > 0 || status.IfeoRestorePending || status.Ue4RestorePending || status.Ue4PrereqDenied || status.IfeoManagedCount > 0 && !status.IfeoApplied ? DashboardHealthState.Warning : DashboardHealthState.Normal;
-        RuntimeStatusText = scan.IsMissing ? "缺少 C++ 14.x 运行库，可能导致三角洲无法启动；请进入运行库页安装 14.42 或 14.44" : scan.HasAbnormal ? "14.x 兼容性异常：检测到 14.50、14.51 或 Visual C++ v14 组件，请进入运行库页核对" : scan.HasWarning ? "14.x 版本非 14.42/14.44 或状态待核对，请进入运行库页查看" : status.GuardIssue.Length > 0 ? "防护状态待核对：" + status.GuardIssue : status.IfeoRestorePending || status.Ue4RestorePending ? "旧防护有待恢复记录" : status.IfeoApplied ? $"防护已开启，拦截 {status.ScopeManagedCount}/{status.IfeoTotal} 个安装器" : status.IfeoManagedCount > 0 || status.Ue4PrereqDenied ? "防护部分生效或有残留，可进入防护页核对" : "14.x 未发现版本异常；防护未开启";
+        var guardNeedsReview = status.GuardIssue.Length > 0 || status.IfeoRestorePending || status.Ue4RestorePending
+            || status.Ue4PrereqDenied || status.IfeoManagedCount > 0 && !status.IfeoApplied;
+        RuntimeHealthState = DashboardHealthPresentation.Runtime(scan, guardNeedsReview);
+        RuntimeStatusText = scan.IsMissing ? "缺少 C++ 14.x 运行库，可能导致三角洲无法启动；请进入运行库页安装 14.44"
+            : scan.HasAbnormal ? "14.x 兼容性异常，请进入运行库页核对"
+            : scan.HasWarning ? "14.x 版本非 14.44 或状态待核对，请进入运行库页查看"
+            : status.GuardIssue.Length > 0 ? "防护状态待核对：" + status.GuardIssue
+            : status.IfeoRestorePending || status.Ue4RestorePending ? "旧防护有待恢复记录"
+            : guardNeedsReview ? "防护部分生效或有残留，可进入防护页核对"
+            : scan.HasEvaluation ? "V14 / 14.50 / 14.51：待长期评估；当前版本核对通过"
+            : status.IfeoApplied ? $"防护已开启，拦截 {status.ScopeManagedCount}/{status.IfeoTotal} 个安装器"
+            : "14.x 未发现版本异常；防护未开启";
     }
 
     [RelayCommand]

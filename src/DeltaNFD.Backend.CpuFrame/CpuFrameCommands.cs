@@ -56,19 +56,13 @@ internal static class CpuFrameCommands
             [BackendCommands.CpuFrameMonitorStop] = MonitorStopAsync,
             [BackendCommands.CpuFramePriorityApply] = PriorityApplyAsync,
             [BackendCommands.CpuFrameAffinityApply] = AffinityApplyAsync,
-            [BackendCommands.CpuFrameCcdApply] = CcdApplyAsync,
-            [BackendCommands.CpuFrameCcdRevert] = CcdRevertAsync,
-            [BackendCommands.CpuFrameSingleCcdApply] = SingleCcdApplyAsync,
-            [BackendCommands.CpuFrameSingleCcdRevert] = SingleCcdRevertAsync,
             [BackendCommands.CpuFrameRestore] = RestoreAsync,
             [BackendCommands.CpuFrameDwmRestart] = DwmRestartAsync,
             [BackendCommands.CpuFramePowerLock] = PowerLockAsync,
             [BackendCommands.CpuFramePowerUnlock] = PowerUnlockAsync,
-            [BackendCommands.CpuFrameTimerApply] = TimerApplyAsync,
-            [BackendCommands.CpuFrameTimerRestore] = TimerRestoreAsync,
             [BackendCommands.CpuFrameTweaksApply] = TweaksApplyAsync,
             [BackendCommands.CpuFrameTweaksRevert] = TweaksRevertAsync,
-            [BackendCommands.CpuFrameBoostApply] = BoostApplyAsync,
+            [BackendCommands.CpuFrameGamePowerApply] = GamePowerApplyAsync,
             [BackendCommands.CpuFrameMemoryClean] = MemoryCleanAsync,
             [BackendCommands.CpuFrameTopology] = TopologyAsync,
             [BackendCommands.CpuFrameAffinityCheck] = AffinityCheckAsync,
@@ -136,33 +130,6 @@ internal static class CpuFrameCommands
         return Wrap(context.Command, result);
     }
 
-    private static async Task<BackendResult> CcdApplyAsync(BackendCommandContext context)
-    {
-        var args = context.ArgsAs<CpuFrameCcdArgs>();
-        if (args.GameCcdIndex is < 0 or > 1)
-            return BackendResult.Failed(context.Command, "gameCcdIndex 必须是 0 或 1。");
-        var result = await Engine.ApplyDualCcdAsync(args.GameCcdIndex);
-        return Wrap(context.Command, result);
-    }
-
-    private static async Task<BackendResult> CcdRevertAsync(BackendCommandContext context)
-    {
-        var result = await Engine.RevertDualCcdAsync();
-        return Wrap(context.Command, result);
-    }
-
-    private static async Task<BackendResult> SingleCcdApplyAsync(BackendCommandContext context)
-    {
-        var result = await Engine.ApplySingleCcdAsync();
-        return Wrap(context.Command, result);
-    }
-
-    private static async Task<BackendResult> SingleCcdRevertAsync(BackendCommandContext context)
-    {
-        var result = await Engine.RevertSingleCcdAsync();
-        return Wrap(context.Command, result);
-    }
-
     private static async Task<BackendResult> RestoreAsync(BackendCommandContext context)
     {
         context.ReportProgress("正在还原帧格执行状态…", null, "restore");
@@ -189,19 +156,6 @@ internal static class CpuFrameCommands
         return Wrap(context.Command, result);
     }
 
-    private static async Task<BackendResult> TimerApplyAsync(BackendCommandContext context)
-    {
-        var args = context.ArgsAs<CpuFrameToggleArgs>();
-        var result = await Engine.ApplyTimerAsync(args.Enabled);
-        return Wrap(context.Command, result);
-    }
-
-    private static async Task<BackendResult> TimerRestoreAsync(BackendCommandContext context)
-    {
-        var result = await Engine.ApplyTimerAsync(false);
-        return Wrap(context.Command, result);
-    }
-
     private static async Task<BackendResult> TweaksApplyAsync(BackendCommandContext context)
     {
         var args = context.ArgsAs<CpuFrameTempArgs>();
@@ -217,12 +171,12 @@ internal static class CpuFrameCommands
         return Wrap(context.Command, result);
     }
 
-    private static async Task<BackendResult> BoostApplyAsync(BackendCommandContext context)
+    private static async Task<BackendResult> GamePowerApplyAsync(BackendCommandContext context)
     {
-        var args = context.ArgsAs<CpuFrameBoostArgs>();
+        var args = context.ArgsAs<CpuFrameGamePowerArgs>();
         if (args.CoreParking)
             return Wrap(context.Command, OperationResult.Fail("核心常驻已移除，请使用新版帧格设置。"));
-        var result = await Engine.ApplyBoostAsync(args.Timer, args.EcoQos);
+        var result = await Engine.ApplyGamePowerAsync(args.EcoQos);
         return Wrap(context.Command, result);
     }
 

@@ -5,7 +5,7 @@ namespace DeltaNFD.Services.AlphaRestore;
 
 internal interface IRuntimeBetaRepairEnvironment
 {
-    Vc14Baseline Baseline => Vc14Baseline.V142;
+    Vc14Baseline Baseline => Vc14Baseline.V144;
     void VerifyInstalled();
     Task<RuntimeStepResult> RecoverBaselineFilesAsync(TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
         => Task.FromResult(new RuntimeStepResult(0, "继续实际DLL复检。"));
@@ -19,7 +19,7 @@ internal interface IRuntimeBetaRepairEnvironment
     List<RuntimePackageResult> ReadAioResults();
 }
 
-/// <summary>全量修复：仅 V14 受控卸载，旧 C++ 逐包使用微软原包安装/修复。</summary>
+/// <summary>CPP 全量重装：先受控 MSI 卸载复检，再安装核验过的微软原包。</summary>
 internal sealed class RuntimeBetaRepair(IRuntimeBetaRepairEnvironment environment, RuntimeRepairDiagnostics diagnostics,
     TimeSpan? totalBudget = null)
 {
@@ -60,29 +60,16 @@ internal sealed class RuntimeBetaRepair(IRuntimeBetaRepairEnvironment environmen
                 originalResults.Add(new { Step = step, Result = original });
                 diagnostics.Save("official-cpp-results.json", originalResults);
                 reboot |= original.RequiresReboot;
-                if (!original.Success || original.RequiresReboot) return Stop(original, "微软 C++ 原包安装/修复");
+                if (!original.Success || original.RequiresReboot) return Stop(original, "微软 C++ 受控重装");
             }
-            progress?.Report("正在处理 VSTO 和旧 VC/VB 辅助组件（不运行 C++ 2005–2013 或 V14 的 AIO 安装步骤）…");
-            var aioTimeout = Remaining(TimeSpan.FromMinutes(20));
-            executionStarted = true;
-            var aio = await environment.InstallAioAsync(aioTimeout, progress, deadline.Token);
-            reboot |= aio.RequiresReboot;
-            diagnostics.Save("aio-result.json", aio);
-            if (!aio.Success || aio.RequiresReboot) return Stop(aio, "辅助组件安装");
             var packages = new List<RuntimePackageResult>();
-            try { packages = environment.ReadAioResults(); }
-            catch (Exception ex) { return Stop(new(null, "AIO 逐包结果未确认：" + ex.Message, PostcheckPassed: false), "AIO 复检"); }
-            if (packages.Any(p => !p.Success || p.RequiresReboot))
-                return Stop(new(null, "AIO 包存在失败或重启请求，未继续基线安装。", PostcheckPassed: false), "AIO 复检");
-            // Keep the existing V14 available until every unrelated C++/auxiliary
-            // step has completed. Revalidate the confirmed V14 plan here, then
-            // install its pinned baseline immediately after controlled removal.
+            // CPP-only entry: auxiliary VSTO/VB/AIO steps are not part of this operation.
             var v14 = await environment.PrepareV14Async(progress, deadline.Token);
             reboot |= v14.RequiresReboot;
             if (!v14.Success || v14.RequiresReboot)
                 return new OperationResult { Success = false, IsPartial = executionStarted || v14.IsPartial,
                     RequiresReboot = reboot, OutcomeUnknown = v14.OutcomeUnknown, DiagnosticsDirectory = v14.DiagnosticsDirectory,
-                    Message = "旧版 C++ 和辅助组件步骤已完成；V14 阶段未完成，已停止后续安装。\n" + v14.Message };
+                    Message = "旧版 C++ 重装步骤已完成；V14 阶段未完成，已停止后续安装。\n" + v14.Message };
             foreach (var arch in new[] { "x64", "x86" })
             {
                 progress?.Report("正在安装官方 2015–2022 基线：" + arch);
@@ -98,7 +85,7 @@ internal sealed class RuntimeBetaRepair(IRuntimeBetaRepairEnvironment environmen
             environment.VerifyInstalled();
             var after = await environment.ScanAsync(deadline.Token);
             diagnostics.Save("after-scan.json", after);
-            var outcome = RuntimeRepairDiagnostics.BuildResult(aio.ExitCode ?? -1, packages, issues, after,
+            var outcome = RuntimeRepairDiagnostics.BuildResult(0, packages, issues, after,
                 reboot, diagnostics.DirectoryPath, diagnostics.CollectInstallerEvents());
             if (outcome.Success) environment.CompletePendingInstall();
             diagnostics.Save("summary.json", new { Result = outcome, Packages = packages, Issues = issues });
@@ -106,19 +93,20 @@ internal sealed class RuntimeBetaRepair(IRuntimeBetaRepairEnvironment environmen
         }
         catch (OperationCanceledException)
         {
-            return new() { Success = false, RequiresReboot = reboot, OutcomeUnknown = executionStarted && File.Exists(Path.Combine(AppDataPaths.Root, "runtime-repair-active.json")),
+            return new() { Success = false, IsPartial = executionStarted, RequiresReboot = reboot, OutcomeUnknown = executionStarted && File.Exists(Path.Combine(AppDataPaths.Root, "runtime-repair-active.json")),
                 Message = (executionStarted ? "已取消后续步骤或达到总预算；已调用运行库操作，请核对已执行步骤。" : "检查已取消或达到总预算；未执行 C++ 卸载和后续安装。") + "\n诊断目录：" + diagnostics.DirectoryPath };
         }
         catch (Exception ex)
         {
             diagnostics.Save("fatal-error.json", new { Error = ex.ToString() });
-            return OperationResult.Fail((executionStarted ? "运行库修复未完成，已调用运行库操作：" : "修复前检查失败，未执行 C++ 卸载和后续安装：") + ex.Message + "\n诊断目录：" + diagnostics.DirectoryPath);
+            return new OperationResult { Success = false, IsPartial = executionStarted, RequiresReboot = reboot,
+                Message = (executionStarted ? "运行库修复未完成，已调用运行库操作：" : "修复前检查失败，未执行 C++ 卸载和后续安装：") + ex.Message + "\n诊断目录：" + diagnostics.DirectoryPath };
         }
     }
 }
 
 internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, RuntimeRepairDiagnostics diagnostics,
-    Vc14Baseline baseline = Vc14Baseline.V142, string expectedV14Fingerprint = "") : IRuntimeBetaRepairEnvironment
+    Vc14Baseline baseline = Vc14Baseline.V144, string expectedV14Fingerprint = "", string expectedCppFingerprint = "") : IRuntimeBetaRepairEnvironment
 {
     public Vc14Baseline Baseline { get; } = baseline;
     public void VerifyInstalled() => new Vc14ReinstallEnvironment(baseline: Baseline).VerifyInstalled();
@@ -141,6 +129,7 @@ internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, 
         environment.VerifyInstalled();
         environment.CompletePendingInstall();
     }
+    private readonly Dictionary<string, string> _cppPlans = new(StringComparer.Ordinal);
     private readonly RuntimeRepairProcessRunner _runner = new(AppDataPaths.Root);
     private string Assets => BackendEnvironment.AssetsRoot;
     private string Payload => Path.Combine(Assets, "RuntimeHighFps");
@@ -156,14 +145,19 @@ internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, 
         if (!readiness.CanProceed) return OperationResult.Fail(readiness.Summary + "\n\n" + readiness.Details);
         var pending = _runner.CheckPending(RuntimeRepairPreflight.InstallerBusy());
         if (pending is not null) return OperationResult.Fail(pending);
-        var verified = RuntimeGuardService.VerifyRepairPackage(Assets, Payload, progress);
-        if (verified.Success) RuntimeCppOverwriteEnvironment.VerifyCppPayload(OfficialPayload, token, true);
-        return verified;
+        RuntimeCppOverwriteEnvironment.VerifyCppPayload(OfficialPayload, token, true);
+        var cpp = new CppReinstaller(new CppReinstallEnvironment(OfficialPayload, diagnostics), diagnostics);
+        var plans = OfficialCppCatalog.Packages.Select(package => (package.Id, Plans: cpp.Preview(package))).ToArray();
+        if (CppReinstaller.BatchFingerprint(plans) != expectedCppFingerprint)
+            return OperationResult.Fail("CPP 卸载身份或依赖已变化，请重新预览；未执行卸载。");
+        foreach (var plan in plans) _cppPlans.Add(plan.Id, CppReinstaller.PlanFingerprint(plan.Plans));
+        return OperationResult.Ok("CPP 原包与全部受控卸载计划核验通过。");
     }
     public Task<VcRedistScanReport> ScanAsync(CancellationToken token) => service.ScanVcRedistsAsync().WaitAsync(token);
     public List<RuntimePackageResult> ReadAioResults() => diagnostics.ReadPackageResults();
     public Task<RuntimeStepResult> OverwriteCppAsync(RuntimeRepairStep step, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
-        => new RuntimeCppOverwriteEnvironment(diagnostics).RepairCppAsync(step, timeout, progress, token);
+        => new RuntimeCppOverwriteEnvironment(diagnostics).RepairCppAsync(step, timeout, progress, token,
+            _cppPlans.TryGetValue(step.Id, out var expected) ? expected : throw new IOException("缺少已确认的 CPP 卸载计划。"));
 
     internal static ProcessStartInfo BuildAioCommand(string payload, string diagnosticDirectory)
     {
@@ -219,22 +213,8 @@ internal sealed class RuntimeBetaRepairEnvironment(RuntimeGuardService service, 
         }
         return OperationResult.Ok("无待卸载项或仅续装已核验的部分基线，继续安装/修复。");
     }
-    public async Task<RuntimeStepResult> InstallAioAsync(TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
-    {
-        using var capture = new CancellationTokenSource();
-        Task stdout = Task.CompletedTask, stderr = Task.CompletedTask;
-        var result = await _runner.RunAsync(BuildAioCommand(Payload, diagnostics.DirectoryPath), "VSTO / 旧 VC/VB 辅助组件 /quiet", timeout, progress, token,
-            process =>
-            {
-                stdout = diagnostics.CaptureOutputAsync(process.StandardOutput, "aio-stdout.log", capture.Token);
-                stderr = diagnostics.CaptureOutputAsync(process.StandardError, "aio-stderr.log", capture.Token);
-            });
-        if (result.OutcomeUnknown) File.WriteAllText(Path.Combine(diagnostics.DirectoryPath, "stop-requested"), "stop");
-        capture.CancelAfter(result.OutcomeUnknown ? TimeSpan.Zero : TimeSpan.FromSeconds(5));
-        try { await Task.WhenAll(stdout, stderr).WaitAsync(TimeSpan.FromSeconds(6)); }
-        catch (Exception ex) { diagnostics.Save("aio-output-warning.json", new { Error = ex.Message }); }
-        return result;
-    }
+    public Task<RuntimeStepResult> InstallAioAsync(TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
+        => throw new NotSupportedException("CPP 重装入口不执行 VSTO/VB/AIO；请使用独立非 CPP 入口。");
     public async Task<RuntimeStepResult> InstallBaselineAsync(string arch, TimeSpan timeout, IProgress<string>? progress, CancellationToken token)
     {
         var info = Vc14BaselineInfo.For(Baseline);

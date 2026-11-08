@@ -13,6 +13,7 @@ public sealed class ProcessPropertyGate
         public Claim() { }
         public int GamePid { get; set; }
         public long GameStart { get; set; }
+        public string? GameRole { get; set; }
         public string? Override { get; set; }
     }
     private readonly string _path;
@@ -43,7 +44,7 @@ public sealed class ProcessPropertyGate
         internal bool AuthorizesGameWrite(int pid, string property) => !_disposed && _gameWriteAuthorized
             && _threadId == Environment.CurrentManagedThreadId && Identity.Pid == pid && Property == property;
         public string Owner => _claims.TryGetValue(_key, out var claim)
-            ? claim.Override ?? (GameAlive(claim) ? "game" : "system") : "system";
+            ? claim.Override ?? (GameAlive(claim) ? claim.GameRole ?? "game" : "system") : "system";
         public void SetOwner(string? owner)
         {
             _gameWriteAuthorized = false;
@@ -52,21 +53,21 @@ public sealed class ProcessPropertyGate
             if (owner is null && !GameAlive(claim)) _claims.Remove(_key);
             _store.Save(_claims);
         }
-        internal void Game(bool restore)
+        internal void Game(bool restore, string role = "game")
         {
             _gameWriteAuthorized = false;
             if (!_claims.TryGetValue(_key, out var claim)) _claims[_key] = claim = new();
             if (restore)
             {
-                claim.GamePid = 0; claim.GameStart = 0;
+                claim.GamePid = 0; claim.GameStart = 0; claim.GameRole = null;
                 if (claim.Override is null) _claims.Remove(_key);
             }
             else
             {
                 using var process = System.Diagnostics.Process.GetCurrentProcess();
-                if (claim.GamePid == process.Id && claim.GameStart == process.StartTime.ToUniversalTime().Ticks)
+                if (claim.GamePid == process.Id && claim.GameStart == process.StartTime.ToUniversalTime().Ticks && (claim.GameRole ?? "game") == role)
                 { _gameWriteAuthorized = true; return; }
-                claim.GamePid = process.Id; claim.GameStart = process.StartTime.ToUniversalTime().Ticks;
+                claim.GamePid = process.Id; claim.GameStart = process.StartTime.ToUniversalTime().Ticks; claim.GameRole = role;
             }
             _store.Save(_claims);
             _gameWriteAuthorized = !restore;
@@ -95,9 +96,60 @@ public sealed class ProcessPropertyGate
             SnapshotReadForTests?.Invoke();
             var claims = File.Exists(_path) ? JsonSerializer.Deserialize<Dictionary<string, Claim>>(File.ReadAllText(_path))
                 ?? throw new InvalidDataException("所有权文件为空。") : new();
-            return new Lease(mutex, this, claims, ProcmanChangeLog.ChangeKey(identity.Pid, identity.StartTimeUtcTicks, identity.ExecutablePath, property), identity, property);
+            string Key(string p) => ProcmanChangeLog.ChangeKey(identity.Pid, identity.StartTimeUtcTicks, identity.ExecutablePath, p);
+            var key = Key(property);
+            if (property is "timer-ignore" or "timer-ignore-list")
+            {
+                // Both features write the same native 0x4 bit. Preserve the role (owner),
+                // but never permit independent claims. Also honor pre-upgrade owner keys.
+                key = Key("timer-ignore-bit");
+                var present = new[] { key, Key("timer-ignore"), Key("timer-ignore-list") }
+                    .Where(claims.ContainsKey).ToArray();
+                if (present.Length > 1)
+                    throw new IOException("定时器忽略存在重叠的历史归属记录，已保留责任，未修改进程。");
+                if (present.Length == 1 && present[0] != key)
+                {
+                    claims[key] = claims[present[0]];
+                    claims.Remove(present[0]);
+                }
+            }
+            return new Lease(mutex, this, claims, key, identity, property);
         }
         catch { mutex.ReleaseMutex(); mutex.Dispose(); throw; }
+    }
+
+    // Recovery-only escape from ambiguous upgrade-era owner keys. The caller already
+    // holds its journal mutex; identity confirmation and both cleanup writes stay under
+    // the shared property mutex. Never use this path to admit or modify a live process.
+    internal bool TryCompleteMissingTimerRecovery(ProcmanProcessIdentity identity, string property,
+        Func<string> identityState, Action completeJournal)
+    {
+        if (property is not ("timer-ignore" or "timer-ignore-list"))
+            throw new ArgumentException("Only timer-ignore recovery supports missing-target cleanup.", nameof(property));
+        using var mutex = new Mutex(false, _mutexName);
+        bool entered;
+        try { entered = mutex.WaitOne(TimeSpan.FromSeconds(10)); } catch (AbandonedMutexException) { entered = true; }
+        if (!entered) throw new IOException("进程属性交接锁超时。");
+        try
+        {
+            var claims = File.Exists(_path) ? JsonSerializer.Deserialize<Dictionary<string, Claim>>(File.ReadAllText(_path))
+                ?? throw new InvalidDataException("所有权文件为空。") : new();
+            if (identityState() != "missing") return false;
+            string Key(string p) => ProcmanChangeLog.ChangeKey(identity.Pid, identity.StartTimeUtcTicks, identity.ExecutablePath, p);
+            foreach (var key in new[] { Key(property), Key("timer-ignore-bit") })
+            {
+                if (!claims.TryGetValue(key, out var claim)) continue;
+                // A legacy feature key belongs to that feature unless it explicitly
+                // names another role. A shared key must explicitly name this feature.
+                if (claim.GameRole != property && !(key == Key(property) && claim.GameRole is null)) continue;
+                claim.GamePid = 0; claim.GameStart = 0; claim.GameRole = null;
+                if (claim.Override is null) claims.Remove(key);
+            }
+            Save(claims); // other feature keys and manual/rule overrides are preserved
+            completeJournal();
+            return true;
+        }
+        finally { mutex.ReleaseMutex(); }
     }
     private void Save(Dictionary<string, Claim> claims)
     {

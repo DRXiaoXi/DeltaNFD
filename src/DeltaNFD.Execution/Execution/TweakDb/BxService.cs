@@ -179,7 +179,7 @@ public static class BxBackupStore
 }
 
 
-public sealed class BxService : IBxService
+public sealed partial class BxService : IBxService
 {
     internal const string FullHyperVItemName = BxCatalog.FullHyperVItemName;
     private readonly Lazy<ISystemTweakService> _fullHyperV;
@@ -736,6 +736,8 @@ public sealed class BxService : IBxService
         }
 
         Log.Info($"扩展库应用开始：{item.Name}；目标={(turnOn ? "优化" : "还原")}");
+        var securityItem = DeltaNFD.Inspection.SecurityFeatureInspection.Handles(item.Name);
+        if (securityItem && !turnOn) return RestoreSecurityItem(item);
         // 仅通过带原状态备份的深度后端执行，JSON 的固定 OFF 命令不得用于还原。
         if (item.Name == FullHyperVItemName) return await ApplyFullHyperVAsync(turnOn);
         if (item.Name == "setsaccel") return MouseSettingsMaintenance.ApplyBx(turnOn);
@@ -819,6 +821,10 @@ public sealed class BxService : IBxService
         }
         foreach (var op in regOps)
         {
+            if (securityItem && !BackupSecurityRegistry(op, out var backupError))
+            {
+                failed++; failureDetails.Add(backupError); continue;
+            }
             if (ApplyReg(op, turnOn, out var error))
             {
                 done++;
@@ -862,7 +868,7 @@ public sealed class BxService : IBxService
 
         foreach (var op in svcOps)
         {
-            if (ApplySvc(op, turnOn, out var error))
+            if (ApplySvc(op, turnOn, out var error, securityItem))
             {
                 done++;
             }
@@ -898,6 +904,9 @@ public sealed class BxService : IBxService
 
         foreach (var op in cmdOps)
         {
+            // The fixed Defender service operations above already stop each service separately.
+            // Do not run the legacy compound command whose last optional service exit code masked the real state.
+            if (securityItem && item.Name == "DefenderName") continue;
             if (ApplyCmd(op, item.Name, turnOn, out var error, out var skipped))
             {
                 if (!skipped) done++;
@@ -966,9 +975,32 @@ public sealed class BxService : IBxService
             : BxCatalog.IsHagsItem(item)
                 ? OperationResult.Ok("HAGS 配置已保存，需重启后核实实际生效状态。", requiresReboot: true)
                 : OperationResult.Ok(turnOn ? "已应用。" : "已还原默认。");
+        if (failed == 0 && item.Name == "DisableMPO")
+        {
+            try
+            {
+                using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\Dwm");
+                var value = key?.GetValue("OverlayTestMode", null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+                var kind = value is null ? (RegistryValueKind?)null : key!.GetValueKind("OverlayTestMode");
+                result = MpoValueMatches(value, kind, turnOn)
+                    ? OperationResult.Ok(turnOn ? "禁用 MPO 的配置已保存并回读，需重启后核实生效。" : "MPO 已恢复 Windows 默认策略，需重启后核实生效。", requiresReboot: true)
+                    : new OperationResult { Success = false, IsPartial = true, RequiresReboot = true,
+                        Message = "MPO 配置写入后的回读不匹配，请核对；原状态备份保留。" };
+            }
+            catch (Exception ex)
+            {
+                result = new OperationResult { Success = false, IsPartial = true, RequiresReboot = true,
+                    Message = "MPO 配置已尝试写入，回读未完成；备份保留，请核对：" + ex.Message };
+            }
+        }
+        if (securityItem && turnOn)
+            result = SecurityApplyResult(DeltaNFD.Inspection.SecurityFeatureInspection.Read(item.Name), result, done);
         Log.Info($"扩展库应用完成：{item.Name}；目标={(turnOn ? "优化" : "还原")}；成功={done}；失败={failed}；结果={result.Message}");
         return result;
     });
+
+    internal static bool MpoValueMatches(object? value, RegistryValueKind? kind, bool disabled)
+        => disabled ? kind == RegistryValueKind.DWord && value is int number && number == 5 : value is null;
 
     /// <summary>APPX 操作：移除/恢复 UWP 应用包（含预配置包，避免新建用户重新装回）。</summary>
     private static async Task<OperationResult> ApplyAppxAsync(string pattern, bool turnOn)
@@ -1287,7 +1319,7 @@ public sealed class BxService : IBxService
     }
 
     /// <summary>SVC 操作：控制单项服务的启动模式（ON=禁用 Start 4 并停止，OFF=写回默认值）。</summary>
-    private static bool ApplySvc(BxTweak op, bool turnOn, out string error)
+    private static bool ApplySvc(BxTweak op, bool turnOn, out string error, bool securityItem = false)
     {
         error = "";
         var target = turnOn
@@ -1299,6 +1331,12 @@ public sealed class BxService : IBxService
             return false;
         }
 
+        if (securityItem)
+        {
+            var existing = DeltaNFD.Inspection.SecurityFeatureInspection.ReadService(op.Path);
+            if (existing.Exists == false && op.Path != "WinDefend") return true;
+            if (existing.Exists == true && existing.Start == startValue && (startValue != 4 || existing.RuntimeState == 1)) return true;
+        }
         try
         {
             using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + op.Path, writable: true);
@@ -1329,11 +1367,22 @@ public sealed class BxService : IBxService
                 }
                 else if (stopCode != 0)
                 {
-                    error = $"Start 已写入 {startValue}，但停止服务失败（退出码 {stopCode}）";
-                    return false;
+                    var verified = securityItem ? DeltaNFD.Inspection.SecurityFeatureInspection.ReadService(op.Path) : null;
+                    if (verified is not { Exists: true, Start: 4, RuntimeState: 1 })
+                    {
+                        error = $"Start 已写入 {startValue}，但停止服务未确认（退出码 {stopCode}）；重启后请核对";
+                        return false;
+                    }
+                    Log.Info($"服务停止命令返回 {stopCode}，但独立回读确认 {op.Path} 已禁用并停止。");
                 }
             }
 
+            if (securityItem && (key.GetValue("Start") is not int actual || actual != startValue
+                || startValue == 4 && DeltaNFD.Inspection.SecurityFeatureInspection.ReadService(op.Path).RuntimeState != 1))
+            {
+                error = "服务禁用配置已写入，但运行状态尚未确认停止；请手动重启后核对。";
+                return false;
+            }
             return true;
         }
         catch (Exception ex)
@@ -2158,7 +2207,9 @@ public sealed class BxService : IBxService
             if ((e.Kind == "Bcd" && e.KeyPath is "disabledynamictick" or "useplatformtick")
                 || (e.Kind == "Device" && DeltaNFD.Inspection.TimerConfigurationInspection.IsHpetDevice(e.KeyPath)))
             {
-                errors.Add("旧 HPET 备份已保留，请从主页进入计时器恢复页；不会写回旧优化值。");
+                errors.Add(e.Kind == "Device"
+                    ? "旧 HPET 设备备份仅作历史证据保留；工具已移除设备检测和还原，不会写入设备状态。"
+                    : "旧 HPET 启动项备份保留；请从主页恢复两项启动计时器覆盖，不会写回旧优化值。");
                 continue;
             }
             try

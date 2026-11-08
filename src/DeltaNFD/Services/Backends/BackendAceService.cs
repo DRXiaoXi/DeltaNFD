@@ -129,6 +129,8 @@ internal sealed class BackendAceService : IAceService
     }
 
     public Task<AceCoreCheckResult> CheckCoreFilesAsync() => new DeltaNFD.Inspection.AceInspection().CheckCoreFilesAsync();
+    public Task<AceCoreCheckResult> CheckAllDisksAsync(IProgress<string>? progress, CancellationToken cancellationToken)
+        => new DeltaNFD.Inspection.AceInspection().CheckAllDisksAsync(progress, cancellationToken);
     public async Task<AceVirtualizationCheckResult> CheckVirtualizationAsync()
     {
         await PageBackendSessions.WaitGateAsync(_gate, _owner, CancellationToken.None, BackendModules.Ace);

@@ -83,9 +83,28 @@ internal static class FrameEntryRecoveryChecks
         check(resumed.Success, "恢复后普通帧格开启前的解锁电源和临时优化恢复能够继续执行");
         check((await BackendLifecycle.PrepareHandoverAsync("恢复入口测试收尾", TimeSpan.FromSeconds(5))).Count == 0, "恢复后的会话正常排空，无新自锁");
 
+        foreach (var command in new[] { "cpuframe.boost.apply", "cpuframe.timer.apply", "cpuframe.timer.restore" })
+        {
+            SeedCpuEvidence(path, command);
+            var evidence = File.ReadAllBytes(path);
+            var legacy = BackendUnconfirmedStore.ReviewAll().Single(r => r.Module == BackendModules.CpuFrame);
+            Environment.SetEnvironmentVariable("DELTANFD_TEST_RECOVERY_SCENARIO", "success");
+            try
+            {
+                var snapshot = await BackendRecovery.ReconcileAsync(BackendModules.CpuFrame);
+                check(BackendRecovery.RecoveryChoices(legacy, snapshot) is [{ Id: "all" }], "历史记录仍提供完整恢复：" + command);
+                var restored = await BackendRecovery.RestoreAsync(legacy, "all");
+                check(restored.Verified && !File.Exists(path), "历史记录通过实际恢复协调器与假后端复核：" + command);
+                check(Directory.GetFiles(Path.Combine(AppDataPaths.Root, "official-backend-reviewed"), "cpuframe-restored-*.json")
+                    .Any(p => !p.EndsWith(".outcome.json") && File.ReadAllBytes(p).SequenceEqual(evidence)), "历史证据原字节归档：" + command);
+            }
+            finally { Environment.SetEnvironmentVariable("DELTANFD_TEST_RECOVERY_SCENARIO", null); }
+        }
+
+        foreach (var command in new[] { BackendCommands.CpuFramePowerUnlock, "cpuframe.boost.apply", "cpuframe.timer.apply", "cpuframe.timer.restore" })
         foreach (var scenario in new[] { "failed", "incomplete", "remaining", "wrong-module" })
         {
-            SeedCpuEvidence(path);
+            SeedCpuEvidence(path, command);
             var before = File.ReadAllBytes(path);
             var pending = BackendUnconfirmedStore.ReviewAll().Single(r => r.Module == BackendModules.CpuFrame);
             Environment.SetEnvironmentVariable("DELTANFD_TEST_RECOVERY_SCENARIO", scenario);

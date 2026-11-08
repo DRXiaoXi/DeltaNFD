@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>BackendSmokeTest</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <ProjectReference Include="../../src/DeltaNFD.Contracts/DeltaNFD.Contracts.csproj" />
+    <ProjectReference Include="../../src/DeltaNFD.Shared/DeltaNFD.Shared.csproj" />
+    <ProjectReference Include="../../src/DeltaNFD.Inspection/DeltaNFD.Inspection.csproj" />
+    <Compile Include="../../src/DeltaNFD/ViewModels/NvSettingsViewModel.cs" Link="NvSettingsViewModel.cs" />
+    <Compile Include="../../src/DeltaNFD/ViewModels/ShaderViewModel.cs" Link="ShaderViewModel.cs" />
+    <Compile Include="../../src/DeltaNFD/Services/ShaderCacheStatusPresentation.cs" Link="ShaderCacheStatusPresentation.cs" />
+    <Compile Include="../../src/DeltaNFD.Execution/Native/NvApiDrs.cs" Link="NvApiDrs.cs" />
+  </ItemGroup>
+</Project>

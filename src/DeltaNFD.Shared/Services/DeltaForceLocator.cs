@@ -63,7 +63,11 @@ internal static class DeltaForceLocator
 
     /// <summary>枚举三角洲可能的安装根目录（如 D:\WeGameApps\rail_apps\DeltaForce(2001918)）。
     /// 来源合并去重：用户登记的 GameInstallRoots → 手动指定 GameRootOverride → WeGame 注册表 → 常见路径扫描。</summary>
-    public static IEnumerable<string> FindRoots()
+    public static IEnumerable<string> FindRoots() => FindRootsCore(includeManual: true);
+
+    internal static IEnumerable<string> FindAutomaticRoots() => FindRootsCore(includeManual: false);
+
+    private static IEnumerable<string> FindRootsCore(bool includeManual)
     {
         var roots = new List<string>();
 
@@ -77,13 +81,12 @@ internal static class DeltaForceLocator
         }
 
         // 1) 用户登记的多目录列表
-        foreach (var registered in AppSettingsStore.Read().GameInstallRoots ?? new List<string>())
+        if (includeManual)
         {
-            AddRoot(registered);
+            foreach (var registered in AppSettingsStore.Read().GameInstallRoots ?? new List<string>())
+                AddRoot(registered);
+            AddRoot(ManualRootOverride);
         }
-
-        // 2) 手动指定目录（设置页旧字段，向后兼容）
-        AddRoot(ManualRootOverride);
 
         // 3) WeGame 注册表 + 常见路径扫描（原有自动识别）
         try

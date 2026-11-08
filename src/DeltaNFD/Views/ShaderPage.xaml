@@ -3,8 +3,27 @@
         <StackPanel MaxWidth="1440" Padding="28,20,28,32" Spacing="12">
             <StackPanel Spacing="4">
                 <ui:PageHeader Title="着色器维护"/>
-                <TextBlock Text="N 卡驱动体检与三角洲着色器缓存清理，解决着色器缺失 / 异常问题" Style="{StaticResource NoteStyle}"/>
+                <TextBlock Text="检查驱动与缓存状态，按需清理缓存并重新预热。" Style="{StaticResource NoteStyle}"/>
+                <Button Content="查看游戏版本与更新维护指引" Click="OpenVersionGuide_Click" Style="{StaticResource SecondaryButtonStyle}"/>
             </StackPanel>
+            <Border Style="{StaticResource FeatureCardBorderStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="完整预热启动指令" Style="{StaticResource H2Style}"/>
+                    <TextBlock Text="将指令填入三角洲启动器的「启动命令行」，在重新预热着色器时要求完整预热。" Style="{StaticResource BodyStyle}" TextWrapping="Wrap"/>
+                    <TextBlock Text="完整预热可能耗时更久，请等待进度完成。" Style="{StaticResource NoteStyle}"/>
+                    <TextBox Text="{x:Bind WarmupLaunchArgument}" IsReadOnly="True" FontFamily="Consolas" AutomationProperties.Name="完整预热启动指令，可选择复制"/>
+                    <Button Content="复制启动指令" Click="CopyWarmupArgument_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                    <TextBlock x:Name="WarmupCopyStatus" Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                    <TextBlock Text="1. 复制指令；打开启动器设置，找到「启动命令行」（见下方图示）。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <TextBlock Text="2. 粘贴后保存，再启动游戏；已有其他参数时用空格分隔并保留原参数。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <Expander Header="操作图示一：助手设置 → 启动命令行" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                        <Image Source="ms-appx:///Assets/ShaderGuide/assistant-launch-options.png" Stretch="Uniform" MaxWidth="850" AutomationProperties.Name="助手设置示例：左侧点击启动命令行，在上方输入框粘贴完整预热指令"/>
+                    </Expander>
+                    <Expander Header="操作图示二：启动器设置 → 启动命令行" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                        <Image Source="ms-appx:///Assets/ShaderGuide/launcher-launch-options.png" Stretch="Uniform" MaxWidth="800" AutomationProperties.Name="启动器设置示例：左侧点击启动命令行，在上方输入框粘贴完整预热指令"/>
+                    </Expander>
+                </StackPanel>
+            </Border>
             <!-- N 卡驱动体检 -->
             <Grid RowSpacing="12" ColumnSpacing="12" ui:AdaptiveColumns.Enabled="True" ui:AdaptiveColumns.Threshold="900" ui:AdaptiveColumns.LeftWeight="1" ui:AdaptiveColumns.RightWeight="1">
                 <Border Style="{StaticResource FeatureCardBorderStyle}" ui:AdaptiveColumns.WideRow="0" ui:AdaptiveColumns.WideColumn="0" ui:AdaptiveColumns.WideSpan="1">
@@ -51,9 +70,9 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <StackPanel Spacing="4" Grid.Row="0">
-                            <TextBlock Text="系统级着色器缓存" Style="{StaticResource H2Style}"/>
-                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="清理 Windows / 显卡驱动的系统着色器缓存（%LocalAppData% 下的 D3DSCache、NVIDIA DXCache+GLCache、AMD DxCache+DxcCache+GLCache、Intel ShaderCache，存在时清理），不含游戏目录内的 PSOCache。链接/重解析项会跳过并报告；清理后游戏首次启动会重新编译着色器。"/>
-                            <TextBlock Text="{x:Bind ViewModel.SysCacheText, Mode=OneWay}" Opacity="0.75" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                            <TextBlock Text="系统级着色器缓存" Style="{StaticResource H2Style}" ui:HelpTip.Text="清理 Windows / 显卡驱动的系统着色器缓存（%LocalAppData% 下的 D3DSCache、NVIDIA DXCache+GLCache、AMD DxCache+DxcCache+GLCache、Intel ShaderCache，存在时清理），不含游戏目录内的 PSOCache。链接/重解析项会跳过并报告；清理后游戏首次启动会重新编译着色器。"/>
+                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="清理 Windows 与显卡驱动的系统着色器缓存。"/>
+                            <TextBlock Text="{x:Bind ViewModel.SysCacheText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource CaptionStyle}"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Grid.Row="1">
                             <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.IsCleaningSystem, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}"/>
@@ -69,39 +88,51 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Spacing="4">
-                                <TextBlock Text="着色器健康检测" Style="{StaticResource H2Style}"/>
-                                <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="检测 PSOCache 的 GameVer 版本残留、NVPH 缓存文件缺失 / 损坏（0KB）。仅对 N 卡下结论；A 卡 / I 卡自动跳过判定。"/>
+                                <TextBlock Text="着色器健康检测" Style="{StaticResource H2Style}" ui:HelpTip.Text="检测 PSOCache 版本残留与 NVPH 结构。N 卡 621 系及以上至少两个 NVPH：包含一个 256MB 或 512MB 加另一个非空文件，或至少两个均 ≥256MB。允许额外非零中间文件，空文件或无有效布局仍异常。621.xx 双大文件旧布局黄色提示未激活ASD，无需处理；新版布局绿色提示ASD已激活。ASD仅按布局推断，未验证驱动开关；同时满足时沿用旧布局优先。其他显卡仅检查版本残留。"/>
+                                <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="检测 PSOCache 版本残留；N 卡按驱动版本检查 NVPH 数量与大小。"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                 <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.DiagBusy, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}"/>
                                 <Button Content="{x:Bind ViewModel.DiagButtonText, Mode=OneWay}" IsEnabled="{x:Bind ViewModel.CanDiagnose, Mode=OneWay}" Click="DiagnoseButton_Click" Style="{StaticResource SecondaryButtonStyle}"/>
                             </StackPanel>
                         </Grid>
-                        <TextBlock Text="{x:Bind ViewModel.DiagText, Mode=OneWay}" Style="{StaticResource BodyStyle}" TextWrapping="Wrap" FontFamily="Consolas"/>
+                        <TextBlock Text="{x:Bind ViewModel.DiagText, Mode=OneWay}" Foreground="{x:Bind DiagnosisBrush(ViewModel.DiagLevel), Mode=OneWay}" Style="{StaticResource BodyStyle}" TextWrapping="Wrap" FontFamily="Consolas" AutomationProperties.LiveSetting="Polite"/>
                     </StackPanel>
                 </Border>
             </Grid>
-            <!-- PSOCache 清理 -->
-            <InfoBar IsOpen="{x:Bind ViewModel.ShaderCacheNonDefault, Mode=OneWay}" Severity="Error" IsClosable="False" Title="着色器缓存大小非默认：请改回驱动默认，避免三角洲抽帧" Message="{x:Bind ViewModel.ShaderCacheAdvice, Mode=OneWay}" AutomationProperties.LiveSetting="Polite">
-                <InfoBar.ActionButton>
-                    <Button Content="打开缓存修复与预热" Click="OpenShaderRecovery_Click" Style="{StaticResource SecondaryButtonStyle}"/>
-                </InfoBar.ActionButton>
-            </InfoBar>
-            <InfoBar IsOpen="{x:Bind ViewModel.ShaderCacheCheckFailed, Mode=OneWay}" Severity="Warning" IsClosable="False" Title="着色器缓存大小无法确认" Message="{x:Bind ViewModel.ShaderCacheAdvice, Mode=OneWay}">
-                <InfoBar.ActionButton>
-                    <Button Content="打开缓存处理页" Click="OpenShaderRecovery_Click" Style="{StaticResource SecondaryButtonStyle}"/>
-                </InfoBar.ActionButton>
-            </InfoBar>
+            <!-- 着色器缓存状态与修复入口集中展示；本卡仅查询，不写入驱动。 -->
+            <Border x:Name="ShaderRepairModule" Style="{StaticResource FeatureCardBorderStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="着色器修复" Style="{StaticResource H2Style}" ui:HelpTip.Text="先核对全局及三角洲的缓存大小状态，再按需进入修复与预热页。进入页面只读取状态；改大小、恢复默认和清理缓存仍需分别确认。"/>
+                    <TextBlock Text="着色器缓存大小" Style="{StaticResource H3Style}"/>
+                    <Grid RowSpacing="12" ColumnSpacing="12" ui:AdaptiveColumns.Enabled="True" ui:AdaptiveColumns.Threshold="900" ui:AdaptiveColumns.LeftWeight="1" ui:AdaptiveColumns.RightWeight="1">
+                        <Border Style="{StaticResource FeatureCardBorderStyle}" ui:AdaptiveColumns.WideRow="0" ui:AdaptiveColumns.WideColumn="0" ui:AdaptiveColumns.WideSpan="1">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="全局设置" Style="{StaticResource H3Style}"/>
+                                <TextBlock Text="{x:Bind ViewModel.ShaderCacheGlobalText, Mode=OneWay}" Style="{StaticResource BodyStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource FeatureCardBorderStyle}" ui:AdaptiveColumns.WideRow="0" ui:AdaptiveColumns.WideColumn="1" ui:AdaptiveColumns.WideSpan="1">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="三角洲程序设置" Style="{StaticResource H3Style}"/>
+                                <TextBlock Text="{x:Bind ViewModel.ShaderCacheGameText, Mode=OneWay}" Style="{StaticResource BodyStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                    <InfoBar IsOpen="{x:Bind ViewModel.ShaderCacheNonDefault, Mode=OneWay}" Severity="Error" IsClosable="False" Title="着色器缓存大小非默认：请改回驱动默认，避免三角洲抽帧" Message="{x:Bind ViewModel.ShaderCacheAdvice, Mode=OneWay}" AutomationProperties.LiveSetting="Polite">
+                    </InfoBar>
+                    <InfoBar IsOpen="{x:Bind ViewModel.ShaderCacheCheckFailed, Mode=OneWay}" Severity="Warning" IsClosable="False" Title="着色器缓存大小无法确认" Message="{x:Bind ViewModel.ShaderCacheAdvice, Mode=OneWay}">
+                    </InfoBar>
+                    <Button Content="打开缓存修复与预热" Click="OpenShaderRecovery_Click" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Left"/>
+                </StackPanel>
+            </Border>
             <!-- 系统级着色器缓存 -->
             <!-- 着色器健康检测 -->
             <!-- 说明 -->
             <Border Style="{StaticResource CardBorderStyle}" Padding="20,14">
                 <StackPanel Spacing="6">
-                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="· PSOCache 是三角洲的着色器管线缓存。出现着色器缺失、模型发黑、贴图闪烁等异常时，清除缓存让游戏重新编译通常可以解决。"/>
-                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="· 591 / 610 / 616 系 N 卡驱动存在着色器文件缺失问题；更换驱动后建议清除一次缓存再进游戏。"/>
-                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="· 低于 572.83 的驱动使用旧着色器渲染方法，不适合当前版本三角洲，建议升级驱动后清除旧缓存。"/>
-                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="· 清除后首次进入游戏会重新编译着色器，首局可能出现卡顿 / 掉帧，属正常现象。"/>
-                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="· 游戏运行中缓存文件被锁定，需要完全退出游戏后再清理。"/>
+                    <TextBlock Text="使用说明" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="PSOCache 是三角洲的着色器管线缓存。需完全退出游戏后再清理；清除后首次进入游戏会重新编译，可能暂时卡顿。缓存异常请按检测结果处理，不单凭驱动系列归因。低于 576.88 的驱动请先升级，再按需清理和预热。工具不能确认游戏内预热是否完成。"/>
+                    <TextBlock Style="{StaticResource WarningTextStyle}" Text="需完全退出游戏后再清理；清除后首局会重新编译着色器，可能短暂卡顿。"/>
                 </StackPanel>
             </Border>
         </StackPanel>

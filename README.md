@@ -1,3 +1,11 @@
+# Beta0.931-RC3 / 0.9316
+
+本标签为 RC3 的对应产品源码与固定构建输入。包含运行库判定回退、621+ NVPH 放宽、默认三角洲 ACE 检测、亮度修复、后端中断核对、录制记录核对和独立 ReBAR v2。
+
+621.xx 新旧缓存布局分别提供绿色 ASD已激活、黄色未激活ASD提示，后者无需去处理；该状态按缓存布局推断。
+
+运行库研究策略、退役卡顿检测和私有反馈材料不属于本版本。使用 .NET SDK 8.0.425，先执行 `python tools/prepare-source-assets.py` 校验并恢复未入库的厂商构建依赖（仅下载与哈希校验，不运行安装器），再执行 `installer/publish-selfcontained.ps1` 生成自包含布局；安装包由 `installer/DeltaNFD.iss` 生成。根 update.json 是历史发布样例，实际更新清单由发布工具生成并部署。
+
 # 三角帧不掉洲 / Delta NFD
 
 Windows 10/11 x64 游戏优化工具，基于 .NET 8 / WinUI 3。当前公测版本 **Beta0.93-RC3 / 0.9305**。

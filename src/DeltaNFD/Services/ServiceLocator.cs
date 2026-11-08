@@ -32,6 +32,7 @@ public static class ServiceLocator
     private static readonly Lazy<IRuntimeGuardService> GuardLazy = new(() => new Backends.BackendRuntimeGuardService());
     private static readonly Lazy<IAceService> AceLazy = new(() => new Backends.BackendAceService());
     private static readonly Lazy<IShaderService> ShaderLazy = new(() => new Backends.BackendShaderService());
+    private static readonly Lazy<IGameRecordingService> GameRecordingLazy = new(() => new Backends.BackendGameRecordingService());
     private static readonly Lazy<IAppControlService> AppControlLazy = new(() => new AppControlService());
     private static readonly Lazy<ICpuTopologyService> CpuLazy = new(() => new Backends.BackendCpuTopologyService());
     private static readonly Lazy<TweakDb.IBxService> BxLazy = new(() => new Backends.BackendBxService());
@@ -60,7 +61,6 @@ public static class ServiceLocator
         if (s.GamePriorityEnabled) owners["process.priority"] = "自动优先级";
         if (s.FramePowerRestorePending || (s.FrameModeActive && s.FramePowerLockEnabled)) owners["power.scheme"] = "帧格电源锁定 / 待恢复";
         if (s.FrameModeActive && s.FramePowerSaveLatencyEnabled) owners["power.setting"] = "帧格降低省电延迟";
-        if (s.FrameModeActive && s.FrameResponseBoostEnabled && s.FrameResponseBoostTimerEnabled) owners["timer.resolution"] = "帧格计时器";
         if (s.FrameModeActive && s.DwmRestartOnGameStart) owners["dwm.restart"] = "帧格 DWM";
         if (s.RuntimeGuardEnabled) owners["runtime.redist"] = "运行库防护";
         return owners;
@@ -108,6 +108,7 @@ public static class ServiceLocator
 
     /// <summary>着色器维护：N 卡驱动体检 + PSOCache 旧着色器清理。</summary>
     public static IShaderService Shader => Backends.PageBackendSessions.Service(ShaderLazy, () => new Backends.BackendShaderService(), "shader");
+    public static IGameRecordingService GameRecording => Backends.PageBackendSessions.Service(GameRecordingLazy, () => new Backends.BackendGameRecordingService(), "gamemods");
 
     /// <summary>应用级控制：开机自启、关闭到托盘。</summary>
     public static IAppControlService AppControl => AppControlLazy.Value;

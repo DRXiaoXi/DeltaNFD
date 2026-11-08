@@ -4,7 +4,7 @@ namespace DeltaNFD.Services;
 
 /// <summary>
 /// 工具内置的官方 2015–2022 14.x 基线元数据。载荷来源为微软官方 vc_redist 原包及其
-/// MSI/CAB；各文件固定哈希并在预览/执行前复核。默认 14.42，用户可按需选择 14.44。
+/// MSI/CAB；各文件固定哈希并在预览/执行前复核。新请求仅使用 14.44；14.42 元数据仅用于历史身份识别。
 /// </summary>
 internal sealed class Vc14BaselineInfo
 {
@@ -53,7 +53,7 @@ internal sealed class Vc14BaselineInfo
         });
 
     internal static IReadOnlyList<Vc14BaselineInfo> All { get; } = [V142, V144];
-    internal static Vc14BaselineInfo Default => V142;
+    internal static Vc14BaselineInfo Default => V144;
 
     internal static Vc14BaselineInfo For(Vc14Baseline baseline) => baseline switch
     {

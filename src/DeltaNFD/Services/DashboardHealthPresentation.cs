@@ -7,6 +7,10 @@ public enum DashboardHealthState
 
 public static class DashboardHealthPresentation
 {
+    public static DashboardHealthState Runtime(DeltaNFD.Services.Vc14Scan scan, bool guardNeedsReview = false)
+        => scan.HasAbnormal ? DashboardHealthState.Abnormal
+            : scan.HasWarning || guardNeedsReview ? DashboardHealthState.Warning
+            : scan.HasEvaluation ? DashboardHealthState.Information : DashboardHealthState.Normal;
     public static DashboardHealthState AceCore(DeltaNFD.Services.AceCoreCheckLevel level, bool hasExcessCoreFiles = false) => level switch
     {
         DeltaNFD.Services.AceCoreCheckLevel.Abnormal => DashboardHealthState.Abnormal,

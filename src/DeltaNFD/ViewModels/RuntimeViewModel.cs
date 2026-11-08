@@ -1,10 +1,10 @@
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using DeltaNFD.Services;
 using DeltaNFD.Services.Backends;
 
 namespace DeltaNFD.ViewModels;
 
-/// <summary>运行库防护、14.x 兼容性检测与仅修复 14.x（原全量重装：卸载检测到的 14.x 后安装所选 14.42/14.44 内置基线）。</summary>
+/// <summary>运行库防护、14.x 兼容性检测与仅修复 14.x（固定 14.44 内置基线）。</summary>
 public partial class RuntimeViewModel : ObservableObject
 {
     public Task<RuntimeFileUseScan> ScanFileUseAsync(CancellationToken token, RuntimeFileUseScope scope = RuntimeFileUseScope.Vc14) => _guard.ScanFileUseAsync(token, scope);
@@ -14,13 +14,111 @@ public partial class RuntimeViewModel : ObservableObject
         ? owner.Service(static () => new RuntimeViewModel())
         : throw new PageBackendUnavailableException("运行库栏目会话不可用，请重新进入运行库页。");
     private readonly IRuntimeGuardService _guard = ServiceLocator.Guard;
-    [ObservableProperty] private bool repairIsBusy;
-    [ObservableProperty] private int baselineIndex;
-    [ObservableProperty] private bool baselineDriverChecking = true;
-    [ObservableProperty] private bool hide144Baseline;
-    [ObservableProperty] private string baselineDriverNotice = "正在检查显卡驱动版本…";
-    [ObservableProperty] private string repairStatusText = "修复前将预览全部 14.x 卸载清单；请先关闭运行库防护。";
-    public Vc14Baseline SelectedBaseline => BaselineIndex == 1 && !Hide144Baseline ? Vc14Baseline.V144 : Vc14Baseline.V142;
+    private bool _runtimePolicyChecking;
+    private string _runtimePolicyReason = "";
+    private bool _runtimeDriverUnknown;
+    public bool RuntimePolicyBlocked => _runtimePolicyReason.Length > 0;
+    public string RuntimePolicyReason => _runtimePolicyReason;
+    public bool RuntimeDriverUnknown => _runtimeDriverUnknown;
+    public string RuntimeDriverUnknownText => "无法完整读取显卡驱动，无法判断是否适用运行库紧急策略；请核对驱动版本。当前未因未知版本禁用运行库。";
+    public bool RuntimeOperationsAvailable => !_runtimePolicyChecking && !RuntimePolicyBlocked;
+    public bool CanReviewRuntimeRecovery => !GuardIsBusy && !RepairIsBusy;
+
+    public void SetRuntimePolicyChecking(bool checking)
+    {
+        _runtimePolicyChecking = checking;
+        NotifyRuntimePolicyChanged();
+    }
+
+    public void SetRuntimePolicyReason(string? reason)
+    {
+        _runtimePolicyReason = reason ?? "";
+        if (RuntimePolicyBlocked)
+        {
+            AbnormalText = WarningText = EvaluationText = "";
+            DetectionStatusText = _runtimePolicyReason;
+        }
+        NotifyRuntimePolicyChanged();
+    }
+
+    public void SetRuntimeDriverUnknown(bool unknown)
+    {
+        _runtimeDriverUnknown = unknown;
+        OnPropertyChanged(nameof(RuntimeDriverUnknown));
+    }
+
+    private void NotifyRuntimePolicyChanged()
+    {
+        OnPropertyChanged(nameof(RuntimePolicyBlocked));
+        OnPropertyChanged(nameof(RuntimePolicyReason));
+        OnPropertyChanged(nameof(RuntimeOperationsAvailable));
+        OnPropertyChanged(nameof(CanChangeRuntimeDetection));
+        OnPropertyChanged(nameof(GuardCleanupEnabled));
+        OnPropertyChanged(nameof(CanUseBaselineActions));
+        OnPropertyChanged(nameof(GuardToggleEnabled));
+        OnPropertyChanged(nameof(GuardModeEnabled));
+    }
+    private bool repairIsBusy;
+    public bool RepairIsBusy
+    {
+        get => repairIsBusy;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(repairIsBusy, value)) return;
+            OnPropertyChanging(nameof(RepairIsBusy));
+            repairIsBusy = value;
+            OnRepairIsBusyChanged(value);
+            OnPropertyChanged(nameof(RepairIsBusy));
+        }
+    }
+    partial void OnRepairIsBusyChanged(bool value);
+    private int baselineIndex;
+    public int BaselineIndex
+    {
+        get => baselineIndex;
+        set
+        {
+            if (EqualityComparer<int>.Default.Equals(baselineIndex, value)) return;
+            OnPropertyChanging(nameof(BaselineIndex));
+            baselineIndex = value;
+            OnBaselineIndexChanged(value);
+            OnPropertyChanged(nameof(BaselineIndex));
+        }
+    }
+    partial void OnBaselineIndexChanged(int value);
+    private bool baselineDriverChecking = true;
+    public bool BaselineDriverChecking
+    {
+        get => baselineDriverChecking;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(baselineDriverChecking, value)) return;
+            OnPropertyChanging(nameof(BaselineDriverChecking));
+            baselineDriverChecking = value;
+            OnBaselineDriverCheckingChanged(value);
+            OnPropertyChanged(nameof(BaselineDriverChecking));
+        }
+    }
+    partial void OnBaselineDriverCheckingChanged(bool value);
+    private bool hide144Baseline;
+    public bool Hide144Baseline
+    {
+        get => hide144Baseline;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(hide144Baseline, value)) return;
+            OnPropertyChanging(nameof(Hide144Baseline));
+            hide144Baseline = value;
+            OnHide144BaselineChanged(value);
+            OnPropertyChanged(nameof(Hide144Baseline));
+        }
+    }
+    partial void OnHide144BaselineChanged(bool value);
+    private string baselineDriverNotice = "正在检查显卡驱动版本…";
+    public string BaselineDriverNotice { get => baselineDriverNotice; set => SetProperty(ref baselineDriverNotice, value); }
+    private string repairStatusText = "修复前将预览全部 14.x 卸载清单；请先关闭运行库防护。";
+    public string RepairStatusText { get => repairStatusText; set => SetProperty(ref repairStatusText, value); }
+    public Vc14Baseline SelectedBaseline => Vc14Baseline.V144;
     public bool CanUseBaselineActions => !BaselineDriverChecking && GuardCleanupEnabled;
     public string SelectedBaselineLabel => SelectedBaseline.Label();
     public string SelectedBaselineVersion => SelectedBaseline.FullVersion();
@@ -28,7 +126,6 @@ public partial class RuntimeViewModel : ObservableObject
     public string ContinueInstallLabel => "继续安装 " + SelectedBaseline.Display();
     partial void OnBaselineIndexChanged(int value)
     {
-        if (value != 0 && (value != 1 || Hide144Baseline)) BaselineIndex = 0;
         OnPropertyChanged(nameof(SelectedBaseline));
         OnPropertyChanged(nameof(SelectedBaselineLabel));
         OnPropertyChanged(nameof(SelectedBaselineVersion));
@@ -38,7 +135,6 @@ public partial class RuntimeViewModel : ObservableObject
     partial void OnBaselineDriverCheckingChanged(bool value) => OnPropertyChanged(nameof(CanUseBaselineActions));
     partial void OnHide144BaselineChanged(bool value)
     {
-        if (value && BaselineIndex != 0) BaselineIndex = 0;
         OnPropertyChanged(nameof(SelectedBaseline));
         OnPropertyChanged(nameof(SelectedBaselineLabel));
         OnPropertyChanged(nameof(SelectedBaselineVersion));
@@ -56,18 +152,72 @@ public partial class RuntimeViewModel : ObservableObject
     {
         Hide144Baseline = false;
         BaselineDriverNotice = confirmed596
-            ? "已检测到 NVIDIA 596 系列驱动；14.42 和 14.44 均可自行选择。"
-            : driverUnknown ? "无法完整读取显卡驱动；不影响选择 14.42 或 14.44 基线。" : "";
+            ? "已检测到 NVIDIA 596 系列驱动；使用固定 14.44 基线。"
+            : driverUnknown ? "无法完整读取显卡驱动；不影响使用固定 14.44 基线。" : "";
         BaselineDriverChecking = false;
     }
-    [ObservableProperty] private string abnormalText = "";
-    [ObservableProperty] private string abnormalTitle = "C++ 14.x 运行库异常";
-    [ObservableProperty] private string warningText = "";
-    [ObservableProperty] private string detectionStatusText = "尚未检测。";
-    [ObservableProperty] private string manualRepairGuidanceText = "";
+    private string abnormalText = "";
+    public string AbnormalText
+    {
+        get => abnormalText;
+        set
+        {
+            if (EqualityComparer<string>.Default.Equals(abnormalText, value)) return;
+            OnPropertyChanging(nameof(AbnormalText));
+            abnormalText = value;
+            OnAbnormalTextChanged(value);
+            OnPropertyChanged(nameof(AbnormalText));
+        }
+    }
+    partial void OnAbnormalTextChanged(string value);
+    private string abnormalTitle = "C++ 14.x 运行库异常";
+    public string AbnormalTitle { get => abnormalTitle; set => SetProperty(ref abnormalTitle, value); }
+    private string warningText = "";
+    public string WarningText
+    {
+        get => warningText;
+        set
+        {
+            if (EqualityComparer<string>.Default.Equals(warningText, value)) return;
+            OnPropertyChanging(nameof(WarningText));
+            warningText = value;
+            OnWarningTextChanged(value);
+            OnPropertyChanged(nameof(WarningText));
+        }
+    }
+    partial void OnWarningTextChanged(string value);
+    private string evaluationText = "";
+    public string EvaluationText
+    {
+        get => evaluationText;
+        set
+        {
+            if (EqualityComparer<string>.Default.Equals(evaluationText, value)) return;
+            OnPropertyChanging(nameof(EvaluationText));
+            evaluationText = value;
+            OnPropertyChanged(nameof(HasEvaluation));
+            OnPropertyChanged(nameof(EvaluationText));
+        }
+    }
+    private string detectionStatusText = "尚未检测。";
+    public string DetectionStatusText { get => detectionStatusText; set => SetProperty(ref detectionStatusText, value); }
+    private string manualRepairGuidanceText = "";
+    public string ManualRepairGuidanceText
+    {
+        get => manualRepairGuidanceText;
+        set
+        {
+            if (EqualityComparer<string>.Default.Equals(manualRepairGuidanceText, value)) return;
+            OnPropertyChanging(nameof(ManualRepairGuidanceText));
+            manualRepairGuidanceText = value;
+            OnManualRepairGuidanceTextChanged(value);
+            OnPropertyChanged(nameof(ManualRepairGuidanceText));
+        }
+    }
+    partial void OnManualRepairGuidanceTextChanged(string value);
     public bool HasManualRepairGuidance => ManualRepairGuidanceText.Length > 0;
     public bool RuntimeDetectionEnabled => RuntimeDetectionPreference.Shared.Enabled;
-    public bool CanChangeRuntimeDetection => !RepairIsBusy;
+    public bool CanChangeRuntimeDetection => RuntimeOperationsAvailable && !RepairIsBusy;
     partial void OnManualRepairGuidanceTextChanged(string value) => OnPropertyChanged(nameof(HasManualRepairGuidance));
 
     public void SynchronizeRuntimeDetectionPreference()
@@ -76,13 +226,14 @@ public partial class RuntimeViewModel : ObservableObject
         OnPropertyChanged(nameof(RuntimeDetectionEnabled));
         if (!RuntimeDetectionEnabled)
         {
-            AbnormalText = WarningText = "";
-            DetectionStatusText = "运行库检测已关闭，不再显示兼容性红黄提醒；可随时重新开启。";
+            AbnormalText = WarningText = EvaluationText = "";
+            DetectionStatusText = "运行库检测已关闭，不再显示检测提醒；可随时重新开启。";
         }
     }
 
     public async Task SetRuntimeDetectionEnabledAsync(bool enabled)
     {
+        if (!CanChangeRuntimeDetection) return;
         RuntimeDetectionPreference.Shared.SetEnabled(enabled);
         SynchronizeRuntimeDetectionPreference();
         if (enabled) await RefreshCompatibilityAsync();
@@ -102,10 +253,12 @@ public partial class RuntimeViewModel : ObservableObject
 
     public bool HasAbnormal => AbnormalText.Length > 0;
     public bool HasWarning => WarningText.Length > 0;
+    public bool HasEvaluation => EvaluationText.Length > 0;
     partial void OnAbnormalTextChanged(string value) => OnPropertyChanged(nameof(HasAbnormal));
     partial void OnWarningTextChanged(string value) => OnPropertyChanged(nameof(HasWarning));
     partial void OnRepairIsBusyChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanReviewRuntimeRecovery));
         OnPropertyChanged(nameof(CanChangeRuntimeDetection));
         OnPropertyChanged(nameof(GuardToggleEnabled));
         OnPropertyChanged(nameof(GuardModeEnabled));
@@ -117,6 +270,11 @@ public partial class RuntimeViewModel : ObservableObject
     public Task<RuntimeHighFpsPreview> PreviewHighFpsAsync(bool strongMode) => _guard.PreviewHighFpsAsync(strongMode, SelectedBaseline);
     public Task<OperationResult> RepairHighFpsAsync(string fingerprint, bool strongMode, CancellationToken token)
         => _guard.RepairHighFpsAsync(fingerprint, strongMode, new Progress<string>(s => RepairStatusText = s), token, SelectedBaseline);
+    public Task<NonCppRuntimePreview> PreviewNonCppAsync(CancellationToken token) => _guard.PreviewNonCppAsync(token);
+    public Task<OperationResult> RepairNonCppAsync(string fingerprint, IProgress<string>? progress, CancellationToken token)
+        => _guard.RepairNonCppAsync(fingerprint, progress, token);
+    public Task<OperationResult> RestoreNonCppAsync(IProgress<string>? progress, CancellationToken token)
+        => _guard.RestoreNonCppAsync(progress, token);
     public Task<RuntimeSafeUninstallPreview> PreviewSafeUninstallAsync(CancellationToken token)
         => _guard.PreviewSafeUninstallAsync(token);
     public Task<OperationResult> SafeUninstallAllCppAsync(string fingerprint, bool allowTemporaryInstaller, CancellationToken token)
@@ -127,29 +285,72 @@ public partial class RuntimeViewModel : ObservableObject
     public Task<OperationResult> ForceReplaceAsync(string fingerprint, CancellationToken token)
         => _guard.ForceReplace14Async(fingerprint, new Progress<string>(s => RepairStatusText = s), token, SelectedBaseline);
     public Task<OperationResult> RestoreTemporaryInstallerAsync() => _guard.RestoreTemporaryInstallerAsync();
-    [ObservableProperty] private string installedText = "尚未读取安装登记。";
-    [ObservableProperty] private bool guardIsEnabled;
-    [ObservableProperty] private bool guardIsBusy;
-    [ObservableProperty] private bool guardIsPartial;
-    [ObservableProperty] private string guardStatusText = "正在读取防护状态…";
+    private string installedText = "尚未读取安装登记。";
+    public string InstalledText { get => installedText; set => SetProperty(ref installedText, value); }
+    private bool guardIsEnabled;
+    public bool GuardIsEnabled
+    {
+        get => guardIsEnabled;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(guardIsEnabled, value)) return;
+            OnPropertyChanging(nameof(GuardIsEnabled));
+            guardIsEnabled = value;
+            OnGuardIsEnabledChanged(value);
+            OnPropertyChanged(nameof(GuardIsEnabled));
+        }
+    }
+    partial void OnGuardIsEnabledChanged(bool value);
+    private bool guardIsBusy;
+    public bool GuardIsBusy
+    {
+        get => guardIsBusy;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(guardIsBusy, value)) return;
+            OnPropertyChanging(nameof(GuardIsBusy));
+            guardIsBusy = value;
+            OnGuardIsBusyChanged(value);
+            OnPropertyChanged(nameof(GuardIsBusy));
+        }
+    }
+    partial void OnGuardIsBusyChanged(bool value);
+    private bool guardIsPartial;
+    public bool GuardIsPartial
+    {
+        get => guardIsPartial;
+        set
+        {
+            if (EqualityComparer<bool>.Default.Equals(guardIsPartial, value)) return;
+            OnPropertyChanging(nameof(GuardIsPartial));
+            guardIsPartial = value;
+            OnGuardIsPartialChanged(value);
+            OnPropertyChanged(nameof(GuardIsPartial));
+        }
+    }
+    partial void OnGuardIsPartialChanged(bool value);
+    private string guardStatusText = "正在读取防护状态…";
+    public string GuardStatusText { get => guardStatusText; set => SetProperty(ref guardStatusText, value); }
     private bool _guardStateKnown;
     public bool CanRepairLegacyUe4Acl { get; private set; }
     public string GuardUe4Path { get; private set; } = "";
     public RuntimeGuardMode GuardMode { get; private set; }
     public int GuardModeIndex => GuardMode == RuntimeGuardMode.Full ? 1 : 0;
-    public bool GuardModeEnabled => GuardToggleEnabled && !GuardIsEnabled && _legacyIfeo.Count == 0;
+    public bool GuardModeEnabled => RuntimeOperationsAvailable && GuardToggleEnabled && !GuardIsEnabled && _legacyIfeo.Count == 0;
     private IReadOnlyList<RuntimeGuardLegacyEntry> _legacyIfeo = [];
     public bool CanCleanupLegacyIfeo => _legacyIfeo.Count > 0;
-    public bool GuardCleanupEnabled => !GuardIsBusy && !RepairIsBusy;
+    public bool GuardCleanupEnabled => RuntimeOperationsAvailable && !GuardIsBusy && !RepairIsBusy;
     public string LegacyIfeoNames => string.Join("\n", _legacyIfeo.Select(e => e.Name));
 
-    public bool GuardToggleEnabled => _guardStateKnown && !GuardIsBusy && !RepairIsBusy;
+    public bool GuardToggleEnabled => _guardStateKnown && !GuardIsBusy && !RepairIsBusy
+        && (RuntimeOperationsAvailable || GuardIsEnabled);
 
     public string GuardToggleText => GuardIsBusy ? "切换中…" : GuardIsPartial ? "防护部分生效"
         : GuardIsEnabled ? "防护已开启" : "防护未开启";
 
     partial void OnGuardIsBusyChanged(bool value)
     {
+        OnPropertyChanged(nameof(CanReviewRuntimeRecovery));
         OnPropertyChanged(nameof(GuardToggleEnabled));
         OnPropertyChanged(nameof(GuardModeEnabled));
         OnPropertyChanged(nameof(GuardCleanupEnabled));
@@ -160,6 +361,7 @@ public partial class RuntimeViewModel : ObservableObject
     partial void OnGuardIsEnabledChanged(bool value)
     {
         OnPropertyChanged(nameof(GuardToggleText));
+        OnPropertyChanged(nameof(GuardToggleEnabled));
         OnPropertyChanged(nameof(GuardModeEnabled));
     }
     partial void OnGuardIsPartialChanged(bool value) => OnPropertyChanged(nameof(GuardToggleText));
@@ -220,18 +422,25 @@ public partial class RuntimeViewModel : ObservableObject
         if (GuardIsEnabled && externalOther > 0) GuardStatusText += $"；另有 {externalOther} 项其他程序的 Debugger";
         if (status.CanRepairLegacyUe4Acl) GuardStatusText += "；UE4 前置包残留旧版拒绝执行权限，关闭防护或强制清理时自动移除";
         if (status.GuardIssue.Length > 0) GuardStatusText += "；" + status.GuardIssue + "（可用「强制清理拦截」重置）";
+        if (!RuntimeOperationsAvailable)
+        {
+            AbnormalText = WarningText = EvaluationText = "";
+            DetectionStatusText = RuntimePolicyBlocked ? RuntimePolicyReason : "正在核对运行库紧急策略…";
+            return;
+        }
         await RefreshCompatibilityAsync();
     }
 
     private async Task RefreshCompatibilityAsync()
     {
+        if (!RuntimeOperationsAvailable) return;
         SynchronizeRuntimeDetectionPreference();
         if (RuntimeDetectionEnabled) DetectionStatusText = "正在检测运行库…";
         var read = await RuntimeDetectionPreference.Shared.ReadAsync(() => _guard.Scan14Async());
-        if (!RuntimeDetectionPreference.Shared.IsCurrent(read.Snapshot)) return;
+        if (!RuntimeOperationsAvailable || !RuntimeDetectionPreference.Shared.IsCurrent(read.Snapshot)) return;
         if (read.Error is { } error)
         {
-            AbnormalText = "";
+            AbnormalText = EvaluationText = "";
             WarningText = "14.x 检测未完成，不能视为正常：" + error.Message;
             DetectionStatusText = "检测未完成，可手动刷新重试。";
         }
@@ -241,7 +450,14 @@ public partial class RuntimeViewModel : ObservableObject
             AbnormalTitle = scan.AbnormalTitle;
             AbnormalText = string.Join("\n\n", scan.GetAbnormalNotices().Select(Format));
             WarningText = string.Join("\n\n", scan.Notices.Where(n => n.Severity == Vc14Severity.Warning).Select(Format).Concat(scan.Issues));
+            EvaluationText = scan.HasAbnormal ? "" : string.Join("\n\n", scan.Notices.Where(n => n.Severity == Vc14Severity.Evaluation).Select(Format));
             DetectionStatusText = "最近检测 " + DateTime.Now.ToString("HH:mm:ss");
+        }
+        else
+        {
+            AbnormalText = EvaluationText = "";
+            WarningText = "14.x 检测未完成，未返回检测结果，不能视为正常。";
+            DetectionStatusText = "检测未完成，可手动刷新重试。";
         }
     }
 
@@ -288,7 +504,7 @@ public partial class RuntimeViewModel : ObservableObject
     public async Task<OperationResult?> SetGuardAsync(bool enable)
     {
         // Closing also serves as an explicit retry when the previous status read failed.
-        if (GuardIsBusy || RepairIsBusy || (enable && !_guardStateKnown))
+        if (GuardIsBusy || RepairIsBusy || (enable && (!_guardStateKnown || !RuntimeOperationsAvailable)))
         {
             return null;
         }

@@ -28,7 +28,7 @@ internal static class Vc14DependencyChecks
                         var owners = report.References.Where(r => r.Client.Equals(id, StringComparison.OrdinalIgnoreCase))
                             .SelectMany(r => r.Owners).Distinct().ToArray();
                         return ownershipRoot is null ? owners : Vc14OwnershipOriginals.Resolve(id, report.Product.Architecture, owners, ownershipRoot);
-                    }, _ => true, r => replayed = r);
+                    }, (_, _) => true, r => replayed = r);
             }
             catch (IOException) when (replayed is not null) { }
             var denied = replayed!.References.Where(r => !r.Approved).Select(r => r.Client).Distinct().Order().ToArray();
@@ -60,8 +60,8 @@ internal static class Vc14DependencyChecks
         Vc14DependencyOwner Owner(string version = "14.51.36247") => new("LocalMachine:Registry64:ARP",
             "Microsoft Visual C++ v14 Redistributable (x64) - " + version, version, "Microsoft Corporation", true, true, "registry-and-cache-hash");
         Vc14DependencyApproval Evaluate(Vc14DependencyProvider? p = null, Vc14DependencyOwner[]? owners = null, bool pinned = true)
-            => Vc14DependencyPolicy.Evaluate(product, [p ?? provider], _ => owners ?? [], _ => pinned);
-        var noDependencies = Vc14DependencyPolicy.Evaluate(product, [], _ => throw new Exception("unexpected owner read"), _ => throw new Exception("unexpected package read"));
+            => Vc14DependencyPolicy.Evaluate(product, [p ?? provider], _ => owners ?? [], (_, _) => pinned);
+        var noDependencies = Vc14DependencyPolicy.Evaluate(product, [], _ => throw new Exception("unexpected owner read"), (_, _) => throw new Exception("unexpected package read"));
         Check(noDependencies.Clients.Count == 0 && noDependencies.Argument == "", "no dependencies must not add ignore property");
         var approved = Evaluate();
         Check(approved.Argument == "IGNOREDEPENDENCIES=" + baseline && approved.Clients.Count == 1,
@@ -75,7 +75,7 @@ internal static class Vc14DependencyChecks
                     Name = $"Microsoft Visual C++ 2022 {arch} {role} Runtime - 14.51.36247" };
                 var reference = Vc14Reinstall.BaselineBundles[arch];
                 var dependent = provider with { Key = "Microsoft.VS.VC_Runtime" + role + "VSU_" + (arch == "x64" ? "amd64" : "x86") + ",v14", Clients = [reference] };
-                var result = Vc14DependencyPolicy.Evaluate(p, [dependent], _ => [], a => a == arch);
+                var result = Vc14DependencyPolicy.Evaluate(p, [dependent], _ => [], (_, a) => a == arch);
                 Check(result.Argument == "IGNOREDEPENDENCIES=" + reference, "baseline approval must preserve architecture and role");
             }
         Reject(() => Evaluate(pinned: false), "bad pinned source cannot authorize orphan baseline");
@@ -140,7 +140,7 @@ internal static class Vc14DependencyChecks
         var x86Partial = new Vc14DependencyOwner("LocalMachine:Registry32:ARP", "", "", "", true, false,
             "Installed=1;Resume=3", historicalProof with { BundleId = historicalX86Id, Architecture = "x86", Version = "14.42.34438.0",
                 Name = "Microsoft Visual C++ 2015-2022 Redistributable (x86) - 14.42.34438" });
-        var x86Approval = Vc14DependencyPolicy.Evaluate(x86, [x86Provider], _ => [x86Partial], _ => false);
+        var x86Approval = Vc14DependencyPolicy.Evaluate(x86, [x86Provider], _ => [x86Partial], (_, _) => false);
         Check(x86Approval.Clients.Single() == historicalX86Id && x86Approval.Evidence.Contains("SignedOriginalMissingArpFields")
             && x86Approval.Evidence.Contains("Installed=1;Resume=3"), "logs12 incomplete historical x86 registration uses exact signed cache and preserves raw values");
         foreach (var arch in new[] { "x64", "x86" })
@@ -148,9 +148,9 @@ internal static class Vc14DependencyChecks
             var id = Vc14Reinstall.BaselineBundles[arch];
             var p = product with { Architecture = arch, Name = $"Microsoft Visual C++ 2022 {arch} Minimum Runtime - 14.51.36247" };
             var dependent = provider with { Key = "Microsoft.VS.VC_RuntimeMinimumVSU_" + (arch == "x64" ? "amd64" : "x86") + ",v14", Clients = [id] };
-            var label = $"Microsoft Visual C++ 2015-2022 Redistributable ({arch}) - 14.42.34433";
+            var label = $"Microsoft Visual C++ 2015-2022 Redistributable ({arch}) - 14.44.35211";
             var incomplete = new Vc14DependencyOwner("LocalMachine:Registry32:ARP", label, "", "", false, false, "DisplayName-only");
-            var fixedOwner = Vc14DependencyPolicy.Evaluate(p, [dependent], _ => [incomplete], a => a == arch);
+            var fixedOwner = Vc14DependencyPolicy.Evaluate(p, [dependent], _ => [incomplete], (_, a) => a == arch);
             Check(fixedOwner.Clients.Single() == id && fixedOwner.Evidence.Contains("PinnedOriginalMissingArpFields"),
                 "rar4 missing baseline metadata and cache can use the exact verified pinned original");
             Check(Vc14DependencyPolicy.HasVerifiedBaselineOwners(arch, [incomplete], pinned: true), "the same pinned proof permits subsequent baseline repair");
@@ -158,7 +158,7 @@ internal static class Vc14DependencyChecks
             foreach (var conflict in new[] { incomplete with { Publisher = "Other" }, incomplete with { Version = "14.51.36247" },
                 incomplete with { Name = "Third-party Software" }, incomplete with { CacheExists = true }, incomplete with { ReadIssue = "denied" } })
             {
-                Reject(() => Vc14DependencyPolicy.Evaluate(p, [dependent], _ => [conflict], _ => true), "pinned original must not override conflicting identity or an existing bad cache");
+                Reject(() => Vc14DependencyPolicy.Evaluate(p, [dependent], _ => [conflict], (_, _) => true), "pinned original must not override conflicting identity or an existing bad cache");
                 Check(!Vc14DependencyPolicy.HasVerifiedBaselineOwners(arch, [conflict], pinned: true), "conflicting identity cannot select the repair path");
             }
         }
@@ -181,7 +181,7 @@ internal static class Vc14DependencyChecks
         var thirdParty = "{22222222-2222-2222-2222-222222222222}";
         Reject(() => Vc14DependencyPolicy.Evaluate(product, [provider with { Clients = [unknownClient, thirdParty, own] }],
             c => c == own ? [historicalOwner] : c == thirdParty ? [Owner() with { Name = "Third Party Game" }] : [],
-            _ => true, r => diagnostics = r), "mixed references block the whole removal");
+            (_, _) => true, r => diagnostics = r), "mixed references block the whole removal");
         Check(diagnostics is { References.Count: 3, Issues.Count: 2 }, "diagnostics collect all references after a refusal");
         Check(diagnostics!.References.Single(r => r.Client == unknownClient).Reason.Contains("孤立引用"), "feedback GUID without proof stays unknown, not allowlisted");
         Check(diagnostics.References.Single(r => r.Client == thirdParty).Owners.Single().Name == "Third Party Game",

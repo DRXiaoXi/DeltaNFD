@@ -1,4 +1,4 @@
-﻿using DeltaNFD.Backends;
+using DeltaNFD.Backends;
 using DeltaNFD.Services.Backends;
 
 namespace DeltaNFD.Services;
@@ -27,7 +27,8 @@ internal sealed class DeploymentHandover : IDisposable
             or BackendCommands.CpuFramePriorityApply or BackendCommands.CpuFrameAffinityApply
             or BackendCommands.CpuFrameCcdApply or BackendCommands.CpuFrameCcdRevert
             or BackendCommands.CpuFrameSingleCcdApply or BackendCommands.CpuFrameSingleCcdRevert
-            or BackendCommands.CpuFrameBoostApply or BackendCommands.CpuFrameRestore or BackendCommands.CpuFrameRecover)) return false;
+            or BackendCommands.CpuFrameGamePowerApply or "cpuframe.boost.apply"
+            or BackendCommands.CpuFrameRestore or BackendCommands.CpuFrameRecover)) return false;
         if (Guid.TryParse(review.SessionId, out var session) && BackendSessions.Snapshot().Any(c =>
                 c.ModuleId == BackendModules.CpuFrame && c.SessionId == session && c.ExitConfirmed && c.CpuRestoreConfirmed))
             return false;

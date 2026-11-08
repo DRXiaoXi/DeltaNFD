@@ -43,19 +43,29 @@ internal static class BackendReviewFlow
                 var scopes = BackendRecovery.RecoveryChoices(review, snapshot);
                 var canKeep = BackendRecovery.CanKeepCurrentState(review, snapshot);
                 var installationReview = BackendRecovery.IsRuntimeInstallation(review);
+                var restartCheckpoint = installationReview && scopes.Count == 1 && scopes[0].Id == "repair-restart-checkpoint";
                 if (BackendRecovery.IsRuntimeFileReplacement(review))
                     snapshotNote += "\n\n这是系统 DLL 强制替换记录。上方防护状态不代表 DLL 已还原，不能使用防护恢复处理它。请按本次 Vc14ForceReplace 备份目录中的 README/restore.ps1 手动恢复、核对文件与重启排程，再决定是否保留当前状态；不会重新执行替换。";
                 if (installationReview)
-                    snapshotNote += "\n\n安装/系统修复不能按防护备份回滚。请等待安装进程结束，再点击“核对结束并恢复可用”；会扫描当前组件并归档旧事务，不会重新执行修复。";
+                    snapshotNote += "\n\n安装/系统修复不能按防护备份回滚。请等待安装进程结束，再点击“核对结束并恢复可用”；会扫描当前组件并归档旧事务，不会重新执行修复。"
+                        + "\n若关机中断留下缺少安装器身份的旧记录，可先“建立重启核对点”，保存工作并在方便时使用 Windows 的“重启”，然后回来核对。建立核对点保留全部阻塞，不会自动重启。";
                 if (review.Module == DeltaNFD.Backends.BackendModules.Ace && !canKeep)
                     snapshotNote += "\n\nACE 当前状态尚未完成核对，不能归档旧清理记录；请退出游戏并等待旧清理进程结束后重试。";
                 if (snapshot is { Complete: true } && scopes.Count == 0)
                     snapshotNote += "\n\n这条记录没有可按备份完成的可信恢复路径。请核对当前状态后再决定是否保留；不会重新执行旧请求。";
                 var content = new StackPanel { Spacing = 8 };
+                var frameAdvice = FrameFailureGuidance.ForReview(review);
+                foreach (var advice in frameAdvice)
+                    content.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
+                        Text = advice.Title + "\n" + advice.Explanation + "\n\n" + advice.Steps });
+                if (frameAdvice.Count > 0)
+                    content.Children.Add(new Expander { Header = "原始记录与技术详情（可展开复制）", HorizontalAlignment = HorizontalAlignment.Stretch,
+                        Content = new TextBlock { Text = review.Description, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } });
                 content.Children.Add(new TextBlock
                 {
                     TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
-                    Text = review.Description + "\n\n" + (snapshot is null ? "" : snapshot.Summary + "\n") + snapshotNote +
+                    Text = (frameAdvice.Count == 0 ? review.Description + "\n\n" : "")
+                        + (snapshot is null ? "" : snapshot.Summary + "\n") + snapshotNote +
                         "\n只有在你已核对该模块状态，并确认相关安装/修复程序也已结束后才能处理。" +
                         "「保留当前状态」不还原设置、不重新执行旧请求、不删除原值备份；原始记录会归档。",
                 });
@@ -72,7 +82,8 @@ internal static class BackendReviewFlow
                 {
                     XamlRoot = root, Title = "核对操作：" + BackendLifecycle.ModuleDisplayName(review.Module),
                     Content = new ScrollViewer { MaxHeight = 420, Content = content },
-                    PrimaryButtonText = scopes.Count > 0 ? installationReview ? "核对结束并恢复可用" : "按可信备份恢复" : !canKeep ? "刷新并重新核对" : "",
+                    PrimaryButtonText = scopes.Count > 0 ? restartCheckpoint ? "建立重启核对点"
+                        : installationReview ? "核对结束并恢复可用" : "按可信备份恢复" : !canKeep ? "刷新并重新核对" : "",
                     SecondaryButtonText = canKeep ? "确认保留当前状态" : "",
                     CloseButtonText = "暂不处理", DefaultButton = scopes.Count > 0 ? ContentDialogButton.Primary : ContentDialogButton.Close,
                 };
@@ -89,10 +100,11 @@ internal static class BackendReviewFlow
                         var outcome = await BackendRecovery.RestoreAsync(review, scope.Id);
                         var recoveryChoice = await new ContentDialog
                         {
-                            XamlRoot = root, Title = installationReview ? outcome.Verified ? "安装事务已核对，可重新修复" : "安装事务尚未完成核对"
+                            XamlRoot = root, Title = restartCheckpoint && outcome.Success ? "重启核对点已建立"
+                                : installationReview ? outcome.Verified ? "安装事务已核对，可重新修复" : "安装事务尚未完成核对"
                                 : outcome.Verified ? "恢复已复核通过" : "恢复未通过复核",
                             Content = outcome.Message + (outcome.Verified ? "\n原始证据已归档；原值备份未删除。" : "\n阻塞与原始证据均已保留，可稍后重试。"),
-                            PrimaryButtonText = outcome.Verified ? "" : "重新核对",
+                            PrimaryButtonText = outcome.Verified || restartCheckpoint && outcome.Success ? "" : "重新核对",
                             CloseButtonText = "知道了",
                             DefaultButton = ContentDialogButton.Close,
                         }.ShowAsync();

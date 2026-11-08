@@ -18,17 +18,22 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <StackPanel Spacing="4" Grid.Row="0">
-                                <TextBlock Text="ACE 游戏与 ACE-CORE 检测" Style="{StaticResource SectionTitleStyle}"/>
-                                <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="按自动识别与手动关联的 ACE 游戏数量核对 CORE 文件数，不读取驱动内容。数量未超过游戏数且读取完整时显示正常；CORE 偏多时，未有效手动关联显示黄色，有效手动关联后仍过多显示红色。目录未读全时保留待核对说明。"/>
+                                <TextBlock Text="ACE 游戏与 ACE-CORE 检测" Style="{StaticResource SectionTitleStyle}" ui:HelpTip.Text="默认检查软件已识别的三角洲安装目录；其他 ACE 游戏请手动添加。按检测到的去重游戏数核对共享 CORE 数量，不进行全盘游戏扫描。数量偏多不证明文件是残留或可以删除。"/>
+                                <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="默认检测已识别的三角洲；其他 ACE 游戏请手动添加安装目录。"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Grid.Row="1">
                                 <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.CoreCheckBusy, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}"/>
                                 <Button Content="{x:Bind ViewModel.CoreCheckButtonText, Mode=OneWay}" IsEnabled="{x:Bind ViewModel.CanCheckCore, Mode=OneWay}" Click="CheckCoreButton_Click" Style="{StaticResource SecondaryButtonStyle}"/>
-                                <Button Content="添加游戏目录并检索" IsEnabled="{x:Bind ViewModel.CanManageManualRoots, Mode=OneWay}" Click="AddManualGameButton_Click" Style="{StaticResource SecondaryButtonStyle}"/>
                             </StackPanel>
                         </Grid>
+                        <TextBlock Text="{x:Bind ViewModel.CoreCheckStatusText, Mode=OneWay}" Style="{StaticResource BodyStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite"/>
                         <TextBlock Text="{x:Bind ViewModel.ManualRootCountText, Mode=OneWay}" FontWeight="SemiBold" TextWrapping="Wrap"/>
                         <TextBlock Text="选择具体游戏的安装目录，会检索其中的 ACE 组件并记住该目录。移除仅取消检索记录，不会删除游戏文件。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
+                        <TextBox Text="{x:Bind ViewModel.ManualGamePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="粘贴具体游戏的安装目录，也可点击浏览选择" IsEnabled="{x:Bind ViewModel.CanManageManualRoots, Mode=OneWay}" AutomationProperties.Name="ACE 游戏安装目录"/>
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Content="浏览" IsEnabled="{x:Bind ViewModel.CanManageManualRoots, Mode=OneWay}" Click="BrowseManualGameButton_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                            <Button Content="添加游戏目录并检索" IsEnabled="{x:Bind ViewModel.CanManageManualRoots, Mode=OneWay}" Click="AddManualGameButton_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                        </StackPanel>
                         <ScrollViewer MaxHeight="200" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Stretch">
                         <ItemsControl ItemsSource="{x:Bind ViewModel.ManualGameRoots}" IsEnabled="{x:Bind ViewModel.CanManageManualRoots, Mode=OneWay}" HorizontalContentAlignment="Stretch">
                             <ItemsControl.ItemTemplate>
@@ -45,7 +50,7 @@
                         <TextBlock Text="{x:Bind ViewModel.ManualRootsStatusText, Mode=OneWay}" Style="{StaticResource BodyStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite"/>
                         <InfoBar IsOpen="{x:Bind ViewModel.CoreNeedsAttention, Mode=OneWay}" Severity="{x:Bind CoreAlertSeverity(ViewModel.CoreCheckLevel, ViewModel.CoreHasExcess), Mode=OneWay}" Title="{x:Bind ViewModel.CoreAlertTitle, Mode=OneWay}" Message="{x:Bind ViewModel.CoreCheckSummary, Mode=OneWay}" IsClosable="False"/>
                         <TextBlock Text="{x:Bind ViewModel.CoreCheckText, Mode=OneWay}" Style="{StaticResource BodyStyle}" TextWrapping="Wrap" FontFamily="Consolas"/>
-                        <TextBlock Text="手动清理会删除共享目录内全部 ACE-CORE*.sys，可能影响多款 ACE 游戏。仅在有实际故障时使用，不应因文件数量多而清理；检测新增的其他游戏目录不会加入清理范围。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
+                        <TextBlock Text="清理会删除共享目录内全部 ACE-CORE*.sys，可能影响多款 ACE 游戏；仅在有实际故障时使用。" Style="{StaticResource WarningTextStyle}" TextWrapping="Wrap"/>
                         <Button Content="{x:Bind ViewModel.CoreCleanButtonText, Mode=OneWay}" IsEnabled="{x:Bind ViewModel.CoreCleanEnabled, Mode=OneWay}" Click="CleanCoreFilesButton_Click" Style="{StaticResource DangerButtonStyle}"/>
                         <TextBlock Text="{x:Bind ViewModel.CoreCleanupResultText, Mode=OneWay}" Style="{StaticResource BodyStyle}" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite"/>
                     </StackPanel>
@@ -78,8 +83,8 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
                         <StackPanel Spacing="4" Grid.Row="0">
-                            <TextBlock Text="一键清除 ACE" TextWrapping="Wrap" Style="{StaticResource H2Style}"/>
-                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="等效 ACE 官方卸载程序：结束 ACE 进程 → SDDL 接管并删除全部 ACE 服务 → 清理注册表（卸载项/AppDataLow）→ 删除安装目录与游戏目录内 AntiCheatExpert 文件夹。"/>
+                            <TextBlock Text="一键清除 ACE" TextWrapping="Wrap" Style="{StaticResource H2Style}" ui:HelpTip.Text="等效 ACE 官方卸载程序：结束 ACE 进程 → SDDL 接管并删除全部 ACE 服务 → 清理注册表（卸载项/AppDataLow）→ 删除安装目录与游戏目录内 AntiCheatExpert 文件夹。"/>
+                            <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="等效 ACE 官方卸载：结束进程、删除服务、清理注册表与安装目录。"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Grid.Row="1">
                             <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.IsCleaning, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}"/>
@@ -95,8 +100,8 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Spacing="4">
-                                <TextBlock Text="虚拟化环境检测" Style="{StaticResource H2Style}"/>
-                                <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="检查固件 CPU 虚拟化、Windows 当前内核 DMA 保护和 Hypervisor / VBS 运行状态。组件安装与引导配置单独提醒，无法查询的项目标为未知；检测结果不代表 ACE 通过保证。"/>
+                                <TextBlock Text="虚拟化环境检测" Style="{StaticResource H2Style}" ui:HelpTip.Text="检查固件 CPU 虚拟化、Windows 当前内核 DMA 保护和 Hypervisor / VBS 运行状态。组件安装与引导配置单独提醒，无法查询的项目标为未知；检测结果不代表 ACE 通过保证。"/>
+                                <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="检查 CPU 虚拟化、内核 DMA 保护和 VBS 状态；结果不代表 ACE 通过保证。"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                                 <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.VirtCheckBusy, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}"/>
@@ -135,13 +140,12 @@
                 </InfoBar.ActionButton>
             </InfoBar>
             <!-- 虚拟化环境检测 -->
-            <!-- 说明 -->
-            <Border Style="{StaticResource CardBorderStyle}" Padding="20,14">
+            <!-- 说明：执行前提与清理后操作保留可见，原理收进「ⓘ」 -->
+            <Border Style="{StaticResource CardBorderStyle}" Padding="20,14" ui:HoverLift.Enabled="False">
                 <StackPanel Spacing="6">
-                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="· 三角洲进程运行时，本页的组件扫描与 ACE 游戏与 CORE 数量检测会整体暂停：完全不读取 ACE 服务、目录与注册表项，避免在反作弊运行期间触碰其组件。游戏退出后自动恢复，也可手动点「重新扫描」。"/>
-                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="· sguard64.exe（反作弊守卫）或游戏本体运行时，本功能会拒绝执行——请先完全退出游戏（含后台 sguard64 进程）。"/>
-                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="·「一键清除 ACE」会将被占用的文件登记为重启后删除；「仅清理 ACE-CORE SYS」会保留被占用的文件并显示原因，供退出游戏后重试。"/>
-                    <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="· 清理后请先通过游戏启动器执行普通修复，补齐 ACE 组件，再启动游戏。"/>
+                    <TextBlock Text="使用说明" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="· 三角洲进程运行时，本页的组件扫描与 ACE 游戏与 CORE 数量检测会整体暂停：完全不读取 ACE 服务、目录与注册表项，避免在反作弊运行期间触碰其组件。游戏退出后自动恢复，也可手动点「重新扫描」。&#10;&#10;·「一键清除 ACE」会将被占用的文件登记为重启后删除；「仅清理 ACE-CORE SYS」会保留被占用的文件并显示原因，供退出游戏后重试。"/>
+                    <TextBlock Style="{StaticResource WarningTextStyle}" Text="游戏或 sguard64.exe 运行时清理会被拒绝，请先完全退出游戏。"/>
+                    <TextBlock Style="{StaticResource NoteStyle}" Text="清理后先在游戏启动器执行普通修复，补齐 ACE 组件后再启动游戏。"/>
                 </StackPanel>
             </Border>
         </StackPanel>

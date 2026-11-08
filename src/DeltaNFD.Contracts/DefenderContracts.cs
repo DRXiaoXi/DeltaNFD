@@ -18,6 +18,8 @@ public sealed class DefenderBatchItem
 {
     public string Name { get; set; } = "";
     public string Ops { get; set; } = "";
+    /// <summary>本次用户意图；null 保留旧客户端的预检语义，不授予任何写入能力。</summary>
+    public bool? TurnOn { get; set; }
 }
 
 /// <summary>优化批次的安全软件预检报告。</summary>
@@ -40,6 +42,7 @@ public sealed class DefenderPreflightReport
 
     /// <summary>批次是否包含「关闭 Defender 本体」的条目（应用成功后不做实时保护自动恢复）。</summary>
     public bool DefenderOffTweakInBatch { get; set; }
+    public bool DefenderRestoreTweakInBatch { get; set; }
 
     /// <summary>建议加入排除项的目录（程序目录 + %APPDATA%\Delta NFD）。</summary>
     public List<string> ExclusionPaths { get; set; } = new();
@@ -59,6 +62,7 @@ public sealed class DefenderPostApplyResult
 
     /// <summary>Defender 将按批次条目的选择保持关闭（提醒文案需相应说明）。</summary>
     public bool DefenderLeftOff { get; set; }
+    public bool RequiresReboot { get; set; }
 }
 
 /// <summary>实时保护/篡改防护的即时状态。</summary>

@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>BackendSmokeTest</RootNamespace>
     <!-- 与产品同版本：官方后端客户端（已链接进本测试）按 AppVersion 校验后端版本。 -->
-    <Version>0.9305</Version>
-    <InformationalVersion>Beta0.93-RC3</InformationalVersion>
+    <Version>0.9316</Version>
+    <InformationalVersion>Beta0.931-RC3</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,6 +31,8 @@
     <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\Vc14ForceReplace.catalog.json" LogicalName="Vc14ForceReplace.catalog.json" />
     <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\Vc14ForceReplace14.44.catalog.json" LogicalName="Vc14ForceReplace14.44.catalog.json" />
     <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\Vc14OwnershipOriginals.catalog.json" LogicalName="Vc14OwnershipOriginals.catalog.json" />
+    <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\NonCppRuntime.catalog.json" LogicalName="NonCppRuntime.catalog.json" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\NonCppRuntime*.cs" />
     <Compile Remove="obj\**\*.cs" />
     <Compile Remove="**/obj-*/**/*.cs;**/bin-*/**/*.cs;_buildcheck/**/*.cs" />
   </ItemGroup>
@@ -66,7 +68,6 @@
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\FramePowerLifecycle.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\CpuFrameEngine.cs" />
     <Compile Include="../../src/DeltaNFD.Execution/Execution/CpuFrame/DwmWatchdog.cs" />
-    <Compile Include="../../src/DeltaNFD.Execution/Execution/CpuFrame/FrameTimerResolution.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CpuFrame\GamePowerThrottling.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\OfflineTaskOwnership.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\AceGameSearchSettings.cs" />
@@ -111,6 +112,7 @@
     <Compile Include="..\..\src\DeltaNFD\Services\CpuFrameStatusState.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\GameObservationState.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\FrameStatusPresentation.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\FrameFailureGuidance.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\TimerHealthPresentation.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\AppVersion.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\AdvancedStartupRestart.cs" />
@@ -123,6 +125,7 @@
     <Compile Include="..\..\src\DeltaNFD.Execution\BackendEnvironment.cs" />
     <!-- 官方后端宿主（T5 生命周期检查的临时测试后端夹具）：纯 BCL，无 WinUI 依赖。 -->
     <Compile Include="..\..\src\DeltaNFD.Execution\BackendHost.cs" />
+    <Compile Include="../../src/DeltaNFD.Execution/Execution/RuntimeOperationJournal.cs" />
     <!-- 官方后端客户端（前端侧，WinUI 无关）：合同测试直接驱动真实客户端与后端 EXE。 -->
     <Compile Include="..\..\src\DeltaNFD\Services\Backends\*.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\IUpdateService.cs" />
@@ -167,10 +170,14 @@
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\ProcessMaintenanceService.cs" />
     <!-- 进程管理（procman）引擎与控制权核心：同一份源码编译测试，避免测试和实现各写一份漂移。 -->
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\Procman\*.cs" />
+    <!-- 最优时钟（全局锁定最佳计时器分辨率）：同一份源码编译测试。 -->
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\OptimalClock\*.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Native\*.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\RegistryAclHelper.cs" />
     <!-- BxCatalog 已迁入 Contracts（项目引用）；BxService 执行实现已物理移入执行库。 -->
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\TweakDb\BxService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\TweakDb\BxService.Security.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\PendulumGlobalSettings.cs" />
   </ItemGroup>
 
   <ItemGroup>

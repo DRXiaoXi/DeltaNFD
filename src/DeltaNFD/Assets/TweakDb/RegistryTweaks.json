@@ -604,22 +604,6 @@
       ]
   },
   {
-    "Name": "TimerResolution",
-    "Description": "TimerResolutionMovedDesc",
-    "Type": "DOUBLE",
-    "Tweaks": [
-      {
-        "TweakType": "REG",
-        "Path": "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel",
-        "Key": "GlobalTimerResolutionRequests",
-        "Values": [
-          { "ValueTypes": [ "BEST", "ON" ], "Value": "1" },
-          { "ValueTypes": [ "DEFAULT", "OFF" ], "Value": "Null" }
-        ]
-      }
-    ]
-  },
-  {
     "Name": "StoragePowerSavingOff",
     "Description": "StoragePowerMovedDesc",
     "Type": "DOUBLE",

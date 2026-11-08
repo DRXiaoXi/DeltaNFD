@@ -21,6 +21,7 @@ public static class DefenderGuard
     private sealed record SessionJournal(List<string> Paths, DefenderPreflightReport? Report);
     // Isolated tests replace only the process boundary; production always uses the configured commands.
     internal static Func<string, (int Code, string? StdOut, string? StdErr)>? PowerShellForTests { get; set; }
+    internal static Func<DeltaNFD.Inspection.SecurityFeatureSnapshot>? SecurityFeatureForTests { get; set; }
     public static bool HasPendingSession => File.Exists(JournalPath);
 
     private static SessionJournal ReadJournal()
@@ -132,7 +133,8 @@ public static class DefenderGuard
             report.SecurityItemNames.Add(item.Name);
             if (cfg.DefenderOffTargets.Any(t => text.Contains(t)))
             {
-                report.DefenderOffTweakInBatch = true;
+                if (item.TurnOn == false) report.DefenderRestoreTweakInBatch = true;
+                else report.DefenderOffTweakInBatch = true;
             }
         }
 
@@ -362,6 +364,14 @@ public static class DefenderGuard
             return result;
         }
 
+        // Exclusions have already been independently removed above. A deliberately stopped service can make
+        // the Defender cmdlet unavailable; that does not create a new temporary-session cleanup obligation.
+        if (report.DefenderOffTweakInBatch || report.DefenderRestoreTweakInBatch)
+        {
+            var core = SecurityFeatureForTests?.Invoke() ?? DeltaNFD.Inspection.SecurityFeatureInspection.Read("DefenderName");
+            if (ResolveKnownBatchIntent(report, core) is { } known) { result = known; return result; }
+        }
+
         var status = await QueryStatusAsync();
         if (status is null)
         {
@@ -426,6 +436,18 @@ public static class DefenderGuard
     {
         var result = await PostApplyAsync();
         return result.CleanupSucceeded ? OperationResult.Ok("Defender 临时排除项已复核清理。") : OperationResult.Fail(result.Message);
+    }
+
+    internal static DefenderPostApplyResult? ResolveKnownBatchIntent(DefenderPreflightReport report, DeltaNFD.Inspection.SecurityFeatureSnapshot core)
+    {
+        if (report.DefenderOffTweakInBatch && core.State == BxState.On)
+            return new() { Remind = true, DefenderLeftOff = true,
+                Message = "Defender 核心服务已按本批意图禁用并确认停止；临时排除项已复核清理，可单独恢复 Defender 条目。" };
+        if (report.DefenderRestoreTweakInBatch && !report.DefenderOffTweakInBatch && !core.ConfiguredDisabled
+            && core.State is BxState.Off or BxState.Mixed)
+            return new() { Remind = true, RequiresReboot = true,
+                Message = "Defender 核心服务当前未配置禁用；实际防护仍须手动重启后核对。临时排除项已复核清理，本提示不代替条目原值恢复结果。" };
+        return null;
     }
 
     private static string Describe(DefenderPreflightReport report) =>

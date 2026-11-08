@@ -111,7 +111,7 @@ internal static class Vc14MsiStateChecks
         Check(issues.Count == 4 && dedup.Results.Count == 4 && dedupPlatform.EnumCalls.Count == 20, "duplicate discovery is four problems, one capture per product");
         Check(dedup.Results.All(d => d.Sources.Count == 2), "both discovery sources retained");
         var scan = new Vc14Scan([], [], issues) { MsiStateDiagnostics = dedup.Results };
-        Check(!scan.IsMissing && scan.HasWarning && scan.Products.Count == 0, "diagnostics do not turn uncertain products into installed or missing");
+        Check(!scan.IsMissing && !scan.HasAbnormal && scan.HasWarning && scan.Products.Count == 0, "uncertain diagnostics retain the restored yellow policy without becoming installed or missing");
         var registration = new Vc14MsiRegistration("LocalMachine", "Registry64", Code, "Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.50.35719",
             "14.50.35719", "Microsoft Corporation", 1, "MsiExec.exe /I" + Code, "", true, new string('A', 64));
         var absenceRead = false;

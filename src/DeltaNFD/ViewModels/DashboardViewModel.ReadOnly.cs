@@ -12,7 +12,7 @@ public partial class DashboardViewModel
     private bool? _lastHealthGameState;
     private HealthValues? _healthBefore;
     private sealed record HealthValues(DashboardHealthState Shader, string ShaderText, DashboardHealthState Ace, string AceText,
-        DashboardHealthState Runtime, string RuntimeText, bool CacheAttention);
+        DashboardHealthState Runtime, string RuntimeText, bool CacheAttention, bool ShaderActionAllowed);
     private string HealthPauseReason => PageBackendSessions.Manager.DeltaRunning == true
         ? "三角洲运行中：其他组件体检已暂停，显示最近结果；内存占用持续检测。" : "正在确认三角洲运行状态，组件体检暂未执行；内存等级待确认。";
     private bool CanApplyHealth(int generation) => _healthAttached && generation == _healthGeneration && PageBackendSessions.Manager.DeltaRunning == false;
@@ -69,6 +69,7 @@ public partial class DashboardViewModel
             AceHealthState = saved.Ace; AceStatusText = saved.AceText;
             RuntimeHealthState = saved.Runtime; RuntimeStatusText = saved.RuntimeText;
             ShaderCacheNeedsAttention = saved.CacheAttention;
+            ShaderActionAllowed = saved.ShaderActionAllowed;
             _healthBefore = null;
         }
         if (ShaderHealthState == DashboardHealthState.Checking) { ShaderHealthState = DashboardHealthState.Information; ShaderStatusText = "尚未检测"; }
@@ -93,7 +94,7 @@ public partial class DashboardViewModel
         if (IsHealthScanning)
             return;
         var generation = ++_healthGeneration;
-        _healthBefore = new(ShaderHealthState, ShaderStatusText, AceHealthState, AceStatusText, RuntimeHealthState, RuntimeStatusText, ShaderCacheNeedsAttention);
+        _healthBefore = new(ShaderHealthState, ShaderStatusText, AceHealthState, AceStatusText, RuntimeHealthState, RuntimeStatusText, ShaderCacheNeedsAttention, ShaderActionAllowed);
         _healthRefreshPending = false;
         IsHealthScanning = true;
         try
@@ -123,6 +124,7 @@ public partial class DashboardViewModel
                         return;
                     if (read.Area == "着色器")
                     {
+                        ShaderActionAllowed = true;
                         ShaderHealthState = DashboardHealthState.Failed;
                         ShaderStatusText = "检测失败：" + ex.Message;
                     }

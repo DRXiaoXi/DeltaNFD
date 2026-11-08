@@ -9,7 +9,7 @@ namespace DeltaNFD.Execution.Procman;
 
 /// <summary>
 /// 进程管理专用读者：Windows 核/缓存关系 + CPU Sets + Intel 逐核 CPUID。
-/// 与 CPU 实验室没有服务、模型或识别算法依赖。所有亲和性探测仅作用于专用线程。
+/// 与 调度改善没有服务、模型或识别算法依赖。所有亲和性探测仅作用于专用线程。
 /// </summary>
 public static class ProcmanCpuTopologyReader
 {

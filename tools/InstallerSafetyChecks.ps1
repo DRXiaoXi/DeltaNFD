@@ -28,7 +28,9 @@ Assert-Safety (-not ($control -match 'Stop-Process|\.Kill\(')) 'Deployment canno
 Assert-Safety ($control.Contains('$child.WaitForExit(600000)') -and $control.Contains('$read.Wait(600000)')) 'Standalone and cooperative restore waits are bounded'
 Assert-Safety ($control.Contains('GetNamedPipeServerProcessId') -and $control.Contains('StartTicks')) 'Pipe server matches retained PID and creation time'
 Assert-Safety ($control.Contains('$request + ''|'' + $child.ExitCode')) 'Standalone result must match this request and exit code'
-Assert-Safety ($app.IndexOf('"--prepare-deployment"') -lt $app.IndexOf('SingleInstanceGuard.TryBecomePrimary()')) 'Headless preparation is handled before GUI single-instance logic'
+$prepareIndex = $app.IndexOf('"--prepare-deployment"')
+$singleInstanceIndex = $app.IndexOf('SingleInstanceGuard.TryBecomePrimary(')
+Assert-Safety ($prepareIndex -ge 0 -and $singleInstanceIndex -gt $prepareIndex) 'Headless preparation is handled before GUI single-instance logic'
 Assert-Safety ($app.Contains('DeploymentPipe.Start')) 'Running tray application implements cooperative deployment exit'
 Assert-Safety ($app.Contains('DeploymentInProgress()') -and $source.Contains('ReleaseDeploymentMutex()')) 'Installer mutex blocks new GUI launches and releases on failure or completion'
 $postInstall = [regex]::Match($source, 'procedure CurStepChanged\([\s\S]+?function InitializeUninstall').Value

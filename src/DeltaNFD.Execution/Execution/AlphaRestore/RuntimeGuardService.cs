@@ -256,7 +256,7 @@ internal sealed class RuntimeGuardService
 
     public Task<OperationResult> RepairVcRedistAsync(IProgress<string>? progress = null,
         RuntimeRepairMode mode = RuntimeRepairMode.FullReinstall, CancellationToken cancellationToken = default, bool strongRepairMode = false,
-        string confirmedFingerprint = "", Vc14Baseline baseline = Vc14Baseline.V142) =>
+        string confirmedFingerprint = "", Vc14Baseline baseline = Vc14Baseline.V144) =>
         Task.Run(() => RuntimeGuardProtection.Exclusive(() =>
             RepairVcRedistCoreAsync(progress, mode, cancellationToken, strongRepairMode, confirmedFingerprint, baseline).GetAwaiter().GetResult()));
 
@@ -266,7 +266,7 @@ internal sealed class RuntimeGuardService
         if (strongRepairMode) return OperationResult.Fail("强力修复模式已移除，请使用全量修复重新预览确认。");
         if (!ElevationHelper.IsElevated) return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
         if (!Enum.IsDefined(mode)) return OperationResult.Fail("修复模式无效，未操作运行库。");
-        if (mode != RuntimeRepairMode.FullReinstall) return OperationResult.Fail("运行库修复已恢复 微软原包逐包安装/修复机制；请在新版界面确认完整修复范围，未执行局部分支请求。");
+        if (mode != RuntimeRepairMode.FullReinstall) return OperationResult.Fail("运行库修复使用 CPP 受控卸载后原包重装机制；请在新版界面确认完整修复范围，未执行局部分支请求。");
         if (!baseline.IsSupported()) return OperationResult.Fail("未知的 14.x 安装基线，未执行修复。");
         token.ThrowIfCancellationRequested();
         var preview = await RuntimeHighFpsMaintenance.PreviewAsync(strongRepairMode, baseline);
@@ -281,8 +281,8 @@ internal sealed class RuntimeGuardService
         RuntimeRepairDiagnostics diagnostics;
         try { diagnostics = new RuntimeRepairDiagnostics(Log.LogDirectory); }
         catch (Exception ex) { return OperationResult.Fail("无法创建诊断目录，未更改运行库：" + ex.Message); }
-        Log.Info($"运行库修复：微软 C++ 原包及辅助组件机制；诊断目录={diagnostics.DirectoryPath}");
-        var environment = new RuntimeBetaRepairEnvironment(this, diagnostics, baseline, preview.V14Fingerprint);
+        Log.Info($"运行库修复：CPP 受控卸载后原包重装机制；诊断目录={diagnostics.DirectoryPath}");
+        var environment = new RuntimeBetaRepairEnvironment(this, diagnostics, baseline, preview.V14Fingerprint, preview.CppFingerprint);
         var repair = new RuntimeBetaRepair(environment, diagnostics);
         diagnostics.Save("repair-options.json", new { StrongRepairMode = strongRepairMode, Repair = "full-official-cpp", Baseline = baseline });
         var result = await repair.RunAsync(progress, token);

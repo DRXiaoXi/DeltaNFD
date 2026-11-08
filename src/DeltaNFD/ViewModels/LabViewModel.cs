@@ -10,16 +10,7 @@ public sealed class CcdItemVm
     public string Text { get; init; } = "";
 }
 
-/// <summary>实验室处理器场景切换按钮。</summary>
-public partial class LabScenarioVm : ObservableObject
-{
-    public required int Index { get; init; }
-    public required string Title { get; init; }
-
-    [ObservableProperty] private bool isSelected;
-}
-
-/// <summary>一个异类调度策略的下拉行（CPU实验室）。</summary>
+/// <summary>一个异类调度策略的下拉行（调度改善）。</summary>
 public partial class HeteroPolicyVm : ObservableObject
 {
     public required string SettingGuid { get; init; }
@@ -33,9 +24,26 @@ public partial class HeteroPolicyVm : ObservableObject
     public bool Unsupported { get; set; }
     public int LastReadIndex { get; set; } = -1;
 
-    [ObservableProperty] private int selectedIndex = -1;
-    [ObservableProperty] private string currentText = "";
-    [ObservableProperty] private bool isBusy;
+    private int selectedIndex = -1;
+    public int SelectedIndex
+    {
+        get => selectedIndex;
+        set => SetProperty(ref selectedIndex, value);
+    }
+
+    private string currentText = "";
+    public string CurrentText
+    {
+        get => currentText;
+        set => SetProperty(ref currentText, value);
+    }
+
+    private bool isBusy;
+    public bool IsBusy
+    {
+        get => isBusy;
+        set => SetProperty(ref isBusy, value);
+    }
 }
 
 /// <summary>一个逻辑核心的亲和性勾选行（CPU 亲和性规则）。</summary>
@@ -44,7 +52,12 @@ public partial class AffinityCoreVm : ObservableObject
     public required int Index { get; init; }
     public required string Label { get; init; }
 
-    [ObservableProperty] private bool isChecked;
+    private bool isChecked;
+    public bool IsChecked
+    {
+        get => isChecked;
+        set => SetProperty(ref isChecked, value);
+    }
 }
 
 /// <summary>实验室栏目（CPU 信息与核心调度）的页面状态。</summary>
@@ -56,17 +69,35 @@ public partial class LabViewModel : ObservableObject
 
     public ObservableCollection<CcdItemVm> CcdItems { get; } = new();
 
-    /// <summary>处理器场景切换按钮（0 自动 / 1 Intel / 2 AMD 单CCD / 3 AMD 双CCD）。</summary>
-    public ObservableCollection<LabScenarioVm> Scenarios { get; } = new();
-
     /// <summary>CPU 亲和性规则的核心勾选行（每个逻辑处理器一项）。</summary>
     public ObservableCollection<AffinityCoreVm> AffinityCores { get; } = new();
 
     /// <summary>构建核心勾选期间抑制持久化（避免逐核写设置文件）。</summary>
     private bool _affinitySuppress;
 
-    [ObservableProperty] private bool gameAffinityRuleEnabled;
-    [ObservableProperty] private string gameAffinityStatusText = "";
+    private bool gameAffinityRuleEnabled;
+    public bool GameAffinityRuleEnabled
+    {
+        get => gameAffinityRuleEnabled;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(gameAffinityRuleEnabled, value))
+            {
+                OnPropertyChanging(nameof(GameAffinityRuleEnabled));
+                gameAffinityRuleEnabled = value;
+                OnGameAffinityRuleEnabledChanged(value);
+                OnPropertyChanged(nameof(GameAffinityRuleEnabled));
+            }
+        }
+    }
+    partial void OnGameAffinityRuleEnabledChanged(bool value);
+
+    private string gameAffinityStatusText = "";
+    public string GameAffinityStatusText
+    {
+        get => gameAffinityStatusText;
+        set => SetProperty(ref gameAffinityStatusText, value);
+    }
 
     /// <summary>双CCD 调度的游戏 CCD 下拉选项（如 "CCD0（CPU0–15）"）。</summary>
     public ObservableCollection<string> DualCcdChoices { get; } = new();
@@ -75,27 +106,225 @@ public partial class LabViewModel : ObservableObject
 
     public bool AffinityRuleSupported => _topology?.AllMask != 0;
 
-    [ObservableProperty] private bool isLoading;
-    [ObservableProperty] private bool isApplying;
-    [ObservableProperty] private string cpuNameText = "正在检测处理器…";
-    [ObservableProperty] private string vendorText = "";
-    [ObservableProperty] private string topologyText = "";
-    [ObservableProperty] private string ccdSectionText = "AMD CCD 判定";
-    [ObservableProperty] private string ccdAdvice = "";
-    [ObservableProperty] private bool ccdVisible;
-    [ObservableProperty] private string gameStatusText = "";
-    [ObservableProperty] private bool dualCcdVisible;
-    [ObservableProperty] private bool dualCcdEnabled;
-    [ObservableProperty] private int dualCcdGameCcdIndex;
-    [ObservableProperty] private int dualCcdApplyModeIndex;
-    [ObservableProperty] private string dualCcdStatusText = "";
-    [ObservableProperty] private bool singleCcdVisible;
-    [ObservableProperty] private bool singleCcdBusy;
-    [ObservableProperty] private string singleCcdStatusText = "";
-    [ObservableProperty] private int selectedScenarioIndex;
-    [ObservableProperty] private string schemeStatusText = "正在读取无省电电源计划状态…";
-    [ObservableProperty] private bool schemeBusy;
-    [ObservableProperty] private bool schemeImported;
+    private bool isLoading;
+    public bool IsLoading
+    {
+        get => isLoading;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(isLoading, value))
+            {
+                OnPropertyChanging(nameof(IsLoading));
+                isLoading = value;
+                OnIsLoadingChanged(value);
+                OnPropertyChanged(nameof(IsLoading));
+            }
+        }
+    }
+    partial void OnIsLoadingChanged(bool value);
+
+    private bool isApplying;
+    public bool IsApplying
+    {
+        get => isApplying;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(isApplying, value))
+            {
+                OnPropertyChanging(nameof(IsApplying));
+                isApplying = value;
+                OnIsApplyingChanged(value);
+                OnPropertyChanged(nameof(IsApplying));
+            }
+        }
+    }
+    partial void OnIsApplyingChanged(bool value);
+
+    private string cpuNameText = "正在检测处理器…";
+    public string CpuNameText
+    {
+        get => cpuNameText;
+        set => SetProperty(ref cpuNameText, value);
+    }
+
+    private string vendorText = "";
+    public string VendorText
+    {
+        get => vendorText;
+        set => SetProperty(ref vendorText, value);
+    }
+
+    private string topologyText = "";
+    public string TopologyText
+    {
+        get => topologyText;
+        set => SetProperty(ref topologyText, value);
+    }
+
+    private string ccdSectionText = "AMD CCD 判定";
+    public string CcdSectionText
+    {
+        get => ccdSectionText;
+        set => SetProperty(ref ccdSectionText, value);
+    }
+
+    private string ccdAdvice = "";
+    public string CcdAdvice
+    {
+        get => ccdAdvice;
+        set => SetProperty(ref ccdAdvice, value);
+    }
+
+    private bool ccdVisible;
+    public bool CcdVisible
+    {
+        get => ccdVisible;
+        set => SetProperty(ref ccdVisible, value);
+    }
+
+    private string gameStatusText = "";
+    public string GameStatusText
+    {
+        get => gameStatusText;
+        set => SetProperty(ref gameStatusText, value);
+    }
+
+    private bool dualCcdVisible;
+    public bool DualCcdVisible
+    {
+        get => dualCcdVisible;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(dualCcdVisible, value))
+            {
+                OnPropertyChanging(nameof(DualCcdVisible));
+                dualCcdVisible = value;
+                OnDualCcdVisibleChanged(value);
+                OnPropertyChanged(nameof(DualCcdVisible));
+            }
+        }
+    }
+    partial void OnDualCcdVisibleChanged(bool value);
+
+    private bool dualCcdEnabled;
+    public bool DualCcdEnabled
+    {
+        get => dualCcdEnabled;
+        set => SetProperty(ref dualCcdEnabled, value);
+    }
+
+    private int dualCcdGameCcdIndex;
+    public int DualCcdGameCcdIndex
+    {
+        get => dualCcdGameCcdIndex;
+        set
+        {
+            if (!EqualityComparer<int>.Default.Equals(dualCcdGameCcdIndex, value))
+            {
+                OnPropertyChanging(nameof(DualCcdGameCcdIndex));
+                dualCcdGameCcdIndex = value;
+                OnDualCcdGameCcdIndexChanged(value);
+                OnPropertyChanged(nameof(DualCcdGameCcdIndex));
+            }
+        }
+    }
+    partial void OnDualCcdGameCcdIndexChanged(int value);
+
+    private int dualCcdApplyModeIndex;
+    public int DualCcdApplyModeIndex
+    {
+        get => dualCcdApplyModeIndex;
+        set
+        {
+            if (!EqualityComparer<int>.Default.Equals(dualCcdApplyModeIndex, value))
+            {
+                OnPropertyChanging(nameof(DualCcdApplyModeIndex));
+                dualCcdApplyModeIndex = value;
+                OnDualCcdApplyModeIndexChanged(value);
+                OnPropertyChanged(nameof(DualCcdApplyModeIndex));
+            }
+        }
+    }
+    partial void OnDualCcdApplyModeIndexChanged(int value);
+
+    private string dualCcdStatusText = "";
+    public string DualCcdStatusText
+    {
+        get => dualCcdStatusText;
+        set => SetProperty(ref dualCcdStatusText, value);
+    }
+
+    private bool singleCcdVisible;
+    public bool SingleCcdVisible
+    {
+        get => singleCcdVisible;
+        set => SetProperty(ref singleCcdVisible, value);
+    }
+
+    private bool singleCcdBusy;
+    public bool SingleCcdBusy
+    {
+        get => singleCcdBusy;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(singleCcdBusy, value))
+            {
+                OnPropertyChanging(nameof(SingleCcdBusy));
+                singleCcdBusy = value;
+                OnSingleCcdBusyChanged(value);
+                OnPropertyChanged(nameof(SingleCcdBusy));
+            }
+        }
+    }
+    partial void OnSingleCcdBusyChanged(bool value);
+
+    private string singleCcdStatusText = "";
+    public string SingleCcdStatusText
+    {
+        get => singleCcdStatusText;
+        set => SetProperty(ref singleCcdStatusText, value);
+    }
+
+    private string schemeStatusText = "正在读取无省电电源计划状态…";
+    public string SchemeStatusText
+    {
+        get => schemeStatusText;
+        set => SetProperty(ref schemeStatusText, value);
+    }
+
+    private bool schemeBusy;
+    public bool SchemeBusy
+    {
+        get => schemeBusy;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(schemeBusy, value))
+            {
+                OnPropertyChanging(nameof(SchemeBusy));
+                schemeBusy = value;
+                OnSchemeBusyChanged(value);
+                OnPropertyChanged(nameof(SchemeBusy));
+            }
+        }
+    }
+    partial void OnSchemeBusyChanged(bool value);
+
+    private bool schemeImported;
+    public bool SchemeImported
+    {
+        get => schemeImported;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(schemeImported, value))
+            {
+                OnPropertyChanging(nameof(SchemeImported));
+                schemeImported = value;
+                OnSchemeImportedChanged(value);
+                OnPropertyChanged(nameof(SchemeImported));
+            }
+        }
+    }
+    partial void OnSchemeImportedChanged(bool value);
 
     /// <summary>无省电电源计划 GUID（设置里有缓存时可直接切换）。</summary>
     public string? SchemeGuid { get; private set; }
@@ -107,7 +336,22 @@ public partial class LabViewModel : ObservableObject
     public string ImportSchemeButtonText => SchemeNeedsNameMigration
         ? "修正计划名称" : SchemeImported ? "已导入" : "导入无省电电源计划";
 
-    [ObservableProperty] private bool schemeNeedsNameMigration;
+    private bool schemeNeedsNameMigration;
+    public bool SchemeNeedsNameMigration
+    {
+        get => schemeNeedsNameMigration;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(schemeNeedsNameMigration, value))
+            {
+                OnPropertyChanging(nameof(SchemeNeedsNameMigration));
+                schemeNeedsNameMigration = value;
+                OnSchemeNeedsNameMigrationChanged(value);
+                OnPropertyChanged(nameof(SchemeNeedsNameMigration));
+            }
+        }
+    }
+    partial void OnSchemeNeedsNameMigrationChanged(bool value);
 
     partial void OnSchemeBusyChanged(bool value)
     {
@@ -188,112 +432,33 @@ public partial class LabViewModel : ObservableObject
         s.DualCcdApplyModeIndex = DualCcdApplyModeIndex;
     });
 
-    // ---------------- 处理器场景切换 ----------------
+    // ---------------- 按本机处理器显示卡片 ----------------
 
-    /// <summary>场景与本机硬件不一致时的提示可见性（功能会自行检测并在不适用时拒绝执行）。</summary>
-    public bool ScenarioMismatchVisible => SelectedScenarioIndex != 0 && ScenarioMismatchText.Length > 0;
-
-    public string ScenarioMismatchText { get; private set; } = "";
-
-    /// <summary>各卡片可见性（按所选场景计算；自动模式 = 硬件检测结果）。</summary>
+    /// <summary>各卡片可见性（仅按本机硬件检测结果）。</summary>
     public bool ShowCcdJudge { get; private set; }
     public bool ShowDualCcd { get; private set; }
     public bool ShowSingleCcd { get; private set; }
 
-    partial void OnSelectedScenarioIndexChanged(int value)
+    /// <summary>按检测到的处理器计算卡片可见性：单CCD 卡对全部 AMD 机型显示（含双CCD）。</summary>
+    private void RefreshHardwareVisibility()
     {
-        foreach (var chip in Scenarios)
-        {
-            chip.IsSelected = chip.Index == value;
-        }
-
-        if (value > 0)
-        {
-            AppSettingsStore.Update(s => s.LabScenarioIndex = value);
-        }
-
-        RefreshScenarioVisibility();
-    }
-
-    /// <summary>按场景计算卡片可见性。</summary>
-    private void RefreshScenarioVisibility()
-    {
-        var scenario = SelectedScenarioIndex;
-        var isAmd = CcdVisible;           // 硬件检测：AMD
-        // 型号设计与可执行掩码分开：已知双 CCD 型号不因系统分组未确认而显示“不一致”。
+        // 型号设计与可执行掩码分开：已知双 CCD 型号显示卡片，是否可应用仍由 DualCcdVisible 决定。
         var isDualCcd = _topology?.IsAmd == true &&
             (_topology.ModelCcdCount == 2 || _topology.CcdCount == 2);
-        var isIntel = string.Equals(_topology?.Vendor, "Intel", StringComparison.OrdinalIgnoreCase); // 硬件检测：Intel
-        ShowIntelPcores = scenario == 1 || scenario == 0 && isIntel;
+        ShowIntelPcores = string.Equals(_topology?.Vendor, "Intel", StringComparison.OrdinalIgnoreCase);
+        ShowCcdJudge = CcdVisible;
+        ShowDualCcd = isDualCcd;
+        ShowSingleCcd = SingleCcdVisible;
         OnPropertyChanged(nameof(ShowIntelPcores));
         OnPropertyChanged(nameof(CanPreferIntelPcores));
-
-        if (scenario == 0)
-        {
-            // 自动检测（本机）：沿用硬件检测结果（单CCD 卡对全部 AMD 机型显示，含双CCD）
-            ShowCcdJudge = isAmd;
-            ShowDualCcd = isDualCcd;
-            ShowSingleCcd = SingleCcdVisible;
-            ScenarioMismatchText = "";
-        }
-        else if (scenario == 1)
-        {
-            // Intel 场景
-            ShowCcdJudge = false;
-            ShowDualCcd = false;
-            ShowSingleCcd = false;
-            ScenarioMismatchText = isIntel
-                ? ""
-                : "所选场景为 Intel 处理器，与本机处理器不一致——相关功能会自行检测并在不适用时拒绝执行。";
-        }
-        else if (scenario == 2)
-        {
-            // AMD 单CCD 场景
-            ShowCcdJudge = true;
-            ShowDualCcd = false;
-            ShowSingleCcd = true;
-            ScenarioMismatchText = isAmd
-                ? ""
-                : "所选场景为 AMD 处理器，与本机处理器不一致——相关功能会自行检测并在不适用时拒绝执行。";
-        }
-        else
-        {
-            // AMD 双CCD 场景（单CCD 优化调度「排除 CPU0」同样可用）
-            ShowCcdJudge = true;
-            ShowDualCcd = true;
-            ShowSingleCcd = true;
-            ScenarioMismatchText = isAmd && isDualCcd
-                ? ""
-                : "所选场景为 AMD 双CCD 处理器，与本机不一致——相关功能会自行检测并在不适用时拒绝执行。";
-        }
-
         OnPropertyChanged(nameof(ShowCcdJudge));
         OnPropertyChanged(nameof(ShowDualCcd));
         OnPropertyChanged(nameof(ShowSingleCcd));
-        OnPropertyChanged(nameof(ScenarioMismatchVisible));
-        OnPropertyChanged(nameof(ScenarioMismatchText));
     }
 
     public LabViewModel()
     {
-        foreach (var (index, title) in new[]
-                 {
-                     (0, "自动检测（本机）"),
-                     (1, "Intel"),
-                     (2, "AMD 单CCD"),
-                     (3, "AMD 双CCD"),
-                 })
-        {
-            Scenarios.Add(new LabScenarioVm { Index = index, Title = title });
-        }
-
-        // 场景索引直接读存档（0 自动 / 1 Intel / 2 AMD 单CCD / 3 AMD 双CCD），非法值回退自动检测。
-        // 注意：不要再做任何"旧档归一化"映射——此前的 switch 每次启动都把新格式索引当旧格式
-        // 重映射一遍（3→2→1），导致用户的「AMD 双CCD」选择随启动逐次降级、卡片消失。
-        var settings = AppSettingsStore.Read();
-        SelectedScenarioIndex = Math.Clamp(settings.LabScenarioIndex, 0, 3);
-        gameAffinityRuleEnabled = settings.GameAffinityRuleEnabled;
-
+        gameAffinityRuleEnabled = AppSettingsStore.Read().GameAffinityRuleEnabled;
         _ = LoadAsync();
     }
 
@@ -378,8 +543,8 @@ public partial class LabViewModel : ObservableObject
             //（双CCD 机型不做 CCD 隔离、只想把 CPU0 让给系统时同样适用）
             SingleCcdVisible = topology.IsAmd;
 
-            // 按当前场景（含自动检测）刷新卡片可见性
-            RefreshScenarioVisibility();
+            // 按本机检测到的处理器刷新卡片可见性
+            RefreshHardwareVisibility();
 
             // 异类调度策略状态（后台刷新不阻塞页面）
             _ = RefreshHeteroPoliciesAsync();
@@ -843,7 +1008,7 @@ public partial class LabViewModel : ObservableObject
             SchemeImported = scheme is not null;
             SchemeNeedsNameMigration = schemes.Any(s => PowerSchemes.LegacyNoPowerSaveNames.Contains(s.Name));
 
-            Log.Info($"CPU实验室·电源计划检测：缓存 GUID={(string.IsNullOrWhiteSpace(guid) ? "(空)" : guid)}，识别 GUID={(scheme?.Guid ?? "(无)")}，活动 GUID={(schemes.FirstOrDefault(s => s.IsActive)?.Guid ?? "(未知)")}，已导入={SchemeImported}，帧格激活={settings.FrameModeActive}，帧格电源锁定={settings.FramePowerLockEnabled}，锁定目标={(string.IsNullOrWhiteSpace(settings.FramePowerLockTargetGuid) ? "当前计划" : settings.FramePowerLockTargetGuid)}，锁定原计划={(string.IsNullOrWhiteSpace(settings.FramePowerPreviousSchemeGuid) ? "(空)" : settings.FramePowerPreviousSchemeGuid)}");
+            Log.Info($"调度改善·电源计划检测：缓存 GUID={(string.IsNullOrWhiteSpace(guid) ? "(空)" : guid)}，识别 GUID={(scheme?.Guid ?? "(无)")}，活动 GUID={(schemes.FirstOrDefault(s => s.IsActive)?.Guid ?? "(未知)")}，已导入={SchemeImported}，帧格激活={settings.FrameModeActive}，帧格电源锁定={settings.FramePowerLockEnabled}，锁定目标={(string.IsNullOrWhiteSpace(settings.FramePowerLockTargetGuid) ? "当前计划" : settings.FramePowerLockTargetGuid)}，锁定原计划={(string.IsNullOrWhiteSpace(settings.FramePowerPreviousSchemeGuid) ? "(空)" : settings.FramePowerPreviousSchemeGuid)}");
 
             SchemeStatusText = scheme is null
                 ? "无省电电源计划未导入（导入后可在电源选项中查看）"
@@ -856,7 +1021,7 @@ public partial class LabViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            Log.Error("CPU实验室·电源计划状态读取失败", ex);
+            Log.Error("调度改善·电源计划状态读取失败", ex);
             SchemeGuid = "";
             SchemeImported = false;
             SchemeNeedsNameMigration = false;
@@ -876,10 +1041,10 @@ public partial class LabViewModel : ObservableObject
         SchemeBusy = true;
         try
         {
-            Log.Info("CPU实验室·电源计划：点击导入/修正名称");
+            Log.Info("调度改善·电源计划：点击导入/修正名称");
             var wasImported = SchemeImported;
             var result = await ServiceLocator.Power.ImportNoPowerSaveSchemeAsync();
-            Log.Info($"CPU实验室·电源计划：导入结果={(result.Success ? "成功" : "失败")}，说明={result.Message}");
+            Log.Info($"调度改善·电源计划：导入结果={(result.Success ? "成功" : "失败")}，说明={result.Message}");
             if (!result.Success)
             {
                 SchemeStatusText = result.Message;
@@ -920,7 +1085,7 @@ public partial class LabViewModel : ObservableObject
             }
 
             var activate = await ServiceLocator.Power.SetSchemeAsync(guid);
-            Log.Info($"CPU实验室·电源计划：导入后自动激活结果={(activate.Success ? "成功" : "失败")}，目标 GUID={guid}，说明={activate.Message}");
+            Log.Info($"调度改善·电源计划：导入后自动激活结果={(activate.Success ? "成功" : "失败")}，目标 GUID={guid}，说明={activate.Message}");
             var activateNote = activate.Success
                 ? "导入后已自动激活，立即生效。"
                 : $"自动激活失败：{activate.Message}——可点击「切换到无省电电源计划」重试。";
@@ -933,7 +1098,7 @@ public partial class LabViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            Log.Error("CPU 实验室：导入无省电电源计划失败", ex);
+            Log.Error("调度改善：导入无省电电源计划失败", ex);
             SchemeStatusText = $"导入无省电电源计划失败：{ex.Message}";
         }
         finally
@@ -954,11 +1119,11 @@ public partial class LabViewModel : ObservableObject
         try
         {
             var guid = SchemeGuid;
-            Log.Info($"CPU实验室·电源计划：点击切换，页面 GUID={(string.IsNullOrWhiteSpace(guid) ? "(空)" : guid)}");
+            Log.Info($"调度改善·电源计划：点击切换，页面 GUID={(string.IsNullOrWhiteSpace(guid) ? "(空)" : guid)}");
             if (string.IsNullOrWhiteSpace(guid))
             {
                 var import = await ServiceLocator.Power.ImportNoPowerSaveSchemeAsync();
-                Log.Info($"CPU实验室·电源计划：切换前自动导入结果={(import.Success ? "成功" : "失败")}，说明={import.Message}");
+                Log.Info($"调度改善·电源计划：切换前自动导入结果={(import.Success ? "成功" : "失败")}，说明={import.Message}");
                 if (!import.Success)
                 {
                     SchemeStatusText = import.Message;
@@ -975,7 +1140,7 @@ public partial class LabViewModel : ObservableObject
             }
 
             var result = await ServiceLocator.Power.SetSchemeAsync(guid);
-            Log.Info($"CPU实验室·电源计划：切换结果={(result.Success ? "成功" : "失败")}，目标 GUID={guid}，说明={result.Message}");
+            Log.Info($"调度改善·电源计划：切换结果={(result.Success ? "成功" : "失败")}，目标 GUID={guid}，说明={result.Message}");
             if (result.Success)
             {
                 if (!await RefreshSchemeStatusCoreAsync())
@@ -986,7 +1151,7 @@ public partial class LabViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            Log.Error("CPU 实验室：切换无省电电源计划失败", ex);
+            Log.Error("调度改善：切换无省电电源计划失败", ex);
             SchemeStatusText = $"切换无省电电源计划失败：{ex.Message}";
             return OperationResult.Fail(SchemeStatusText);
         }
@@ -1079,16 +1244,31 @@ public partial class LabViewModel : ObservableObject
 
     public ObservableCollection<HeteroPolicyVm> HeteroItems { get; } = new();
 
-    [ObservableProperty] private string heteroStatusText = "";
+    private string heteroStatusText = "";
+    public string HeteroStatusText
+    {
+        get => heteroStatusText;
+        set => SetProperty(ref heteroStatusText, value);
+    }
 
     public bool HasHeteroItems => HeteroItems.Count > 0;
 
     // ---------------- 帧格「电源计划锁定」冲突提醒 ----------------
 
     /// <summary>帧格「电源计划锁定」开启时，提示用户先关闭它（否则本页对电源计划内容的修改会被改回）。</summary>
-    [ObservableProperty] private bool powerLockNoticeVisible;
+    private bool powerLockNoticeVisible;
+    public bool PowerLockNoticeVisible
+    {
+        get => powerLockNoticeVisible;
+        set => SetProperty(ref powerLockNoticeVisible, value);
+    }
 
-    [ObservableProperty] private string powerLockNoticeText = "";
+    private string powerLockNoticeText = "";
+    public string PowerLockNoticeText
+    {
+        get => powerLockNoticeText;
+        set => SetProperty(ref powerLockNoticeText, value);
+    }
 
     /// <summary>
     /// 帧格「电源计划锁定」会强制并**钉住**电源计划内容，因此本页对异类调度策略 /

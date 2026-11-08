@@ -25,7 +25,7 @@ jobs:
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: '8.0.425'
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -53,7 +53,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: _buildcheck/source-assets-cache
-          key: source-assets-v1-e4d70645be7e0e67
+          key: source-assets-v2-42b69a509db4db6e
+          restore-keys: source-assets-v1-e4d70645be7e0e67
 
       - name: Prepare fixed published build inputs (never execute installers)
         run: python tools/prepare-source-assets.py
@@ -63,7 +64,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: _buildcheck/source-assets-cache
-          key: source-assets-v1-e4d70645be7e0e67
+          key: source-assets-v2-42b69a509db4db6e
 
       - name: Bounded update HTTP response checks
         run: dotnet run --project tools/BackendSmokeTest -c Release -- --update-response-checks
@@ -179,8 +180,6 @@ jobs:
       - name: DWM watchdog checks (fake processes and clock only)
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --dwm-watchdog-checks
 
-      - name: Frame timer ownership and shutdown checks (fake native timer only)
-        run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --frame-timer-checks
 
       - name: GPU spoof driver-change warning checks
         run: dotnet run --project tools/BackendSmokeTest -c Release --nologo -- --gpu-spoof-watch-checks
@@ -278,3 +277,22 @@ jobs:
       - name: Read-only smoke test
         run: dotnet run --project tools/BackendSmokeTest --nologo
         continue-on-error: true
+
+      - name: RC3 cache layouts and recovery checks (isolated)
+        run: |
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --shader-asd-layout-checks
+          if ($LASTEXITCODE -ne 0) { throw "ASD layout regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --shader-nvph-621-checks
+          if ($LASTEXITCODE -ne 0) { throw "621 NVPH regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --backend-native-recovery-checks
+          if ($LASTEXITCODE -ne 0) { throw "Native recovery regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --runtime-shutdown-recovery-checks
+          if ($LASTEXITCODE -ne 0) { throw "Shutdown recovery regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --frame-brightness-checks
+          if ($LASTEXITCODE -ne 0) { throw "Brightness regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --ace-default-delta-checks
+          if ($LASTEXITCODE -ne 0) { throw "Default Delta ACE regression" }
+          dotnet run --project tools/NvSettingsChecks -c Release -p:Platform=x64
+          if ($LASTEXITCODE -ne 0) { throw "NVIDIA settings regression" }
+          dotnet run --project tools/GameModificationChecks -c Release -p:Platform=x64
+          if ($LASTEXITCODE -ne 0) { throw "Recording review regression" }

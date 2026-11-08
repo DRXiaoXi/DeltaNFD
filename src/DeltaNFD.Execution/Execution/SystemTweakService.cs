@@ -1076,9 +1076,9 @@ public sealed partial class SystemTweakService : ISystemTweakService
         return (process.ExitCode, await stdoutTask, await stderrTask);
     }
 
-    private static string FirstLine(string text)
+    private static string FirstLine(string? text)
     {
-        var trimmed = text.Trim();
+        var trimmed = text?.Trim() ?? "";
         var lineBreak = trimmed.IndexOfAny(['\r', '\n']);
         return lineBreak > 0 ? trimmed[..lineBreak] : trimmed;
     }

@@ -11,9 +11,8 @@ public sealed class ShaderInspection
     private readonly GameTargetService _target;
     private readonly Func<ShaderDriverReading> _driverReader;
     private const string DisplayClassPath = @"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
-    private static readonly int[] ProblemDriverMajors = [591, 592, 610, 616, 617];
     private const int MinDriverVersion = 57688;
-    private const int Driver61714Version = 61714;
+    private const int Driver621Version = 62100;
     private const int GameVerAbnormalThreshold = 2;
     public Task<ShaderStatus> GetStatusAsync() => DeltaNFD.Inspection.InspectionScheduler.Run(() =>
     {
@@ -39,13 +38,6 @@ public sealed class ShaderInspection
         }
 
         var(state, advice) = BuildDriverAdvice(gpuState, driverVersion);
-        if (HasProblemDriverCacheSignature(gpuState, driverVersion, psoPath))
-        {
-            state = ShaderDriverState.ProblemSeries;
-            var versionNumber = ToVersionNumber(driverVersion);
-            var reason = versionNumber == Driver61714Version ? "617.14 属于问题驱动" : ProblemDriverMajors.Contains(versionNumber / 100 ?? 0) ? $"{versionNumber / 100} 系驱动存在着色器文件缺失问题" : "驱动高于 617.14，且单版本缓存中 ≥256MB NVPH 文件少于两个";
-            advice = $"⚠ 问题驱动（{driverVersion}）：{reason}。" + "建议更换为其他版本驱动，并一键清除旧着色器文件后重新编译。";
-        }
 
         return new ShaderStatus
         {
@@ -206,7 +198,7 @@ public sealed class ShaderInspection
         return true;
     }
 
-    private static (ShaderDriverState State, string Advice) BuildDriverAdvice(ShaderGpuDetectionState gpuState, string version)
+    internal static (ShaderDriverState State, string Advice) BuildDriverAdvice(ShaderGpuDetectionState gpuState, string version)
     {
         if (gpuState == ShaderGpuDetectionState.Unknown)
         {
@@ -231,12 +223,7 @@ public sealed class ShaderInspection
             return (ShaderDriverState.TooOld, $"⚠ 驱动过老（{version}）：着色器渲染使用旧方法，不适合现在的三角洲。" + "建议升级到 576.88 或更新的驱动，并在升级后一键清除旧着色器文件重新编译。");
         }
 
-        if (ProblemDriverMajors.Contains(major))
-        {
-            return (ShaderDriverState.ProblemSeries, $"⚠ 问题驱动（{version}）：{major} 系驱动存在着色器文件缺失问题，可能导致游戏中着色器异常。" + "建议更换为其他版本驱动，并一键清除旧着色器文件后重新编译。");
-        }
-
-        return (ShaderDriverState.Ok, $"✓ 驱动状态正常（{version}），无已知着色器兼容问题。");
+        return (ShaderDriverState.Ok, $"✓ 已读取驱动版本（{version}），缓存状态请查看着色器健康检测。");
     }
 
     private const long NvphMinBytes = 256L * 1024 * 1024;
@@ -379,7 +366,17 @@ public sealed class ShaderInspection
             {
                 return (Name: f.Name, Size: -1L);
             }
-        }).Where(f => f.Size >= 0).OrderByDescending(f => f.Size).ToList();
+        }).OrderByDescending(f => f.Size).ToList();
+        if (nvphFiles.Any(f => f.Size < 0))
+        {
+            return new ShaderDiagnosis
+            {
+                Level = ShaderDiagLevel.NotApplicable,
+                Summary = "部分 NVPH 文件大小读取失败，暂无法确认缓存结构。",
+                Details = details,
+                Advice = "请退出游戏并检查缓存文件访问权限后重新检测。",
+            };
+        }
         if (nvphFiles.Count == 0)
         {
             return new ShaderDiagnosis
@@ -393,16 +390,37 @@ public sealed class ShaderInspection
 
         foreach (var f in nvphFiles)
         {
-            details.Add($"· {f.Name}（{f.Size / 1024.0 / 1024.0:0.0} MB）");
+            details.Add($"· {f.Name}（{f.Size / 1024.0 / 1024.0:0.0} MB，{f.Size} 字节）");
+        }
+
+        // 621 系及以上只要求包含有效布局；额外非零 NVPH 可能为中间文件，不凭数量判异常。
+        if (versionNumber.Value >= Driver621Version)
+        {
+            var primaryCount = nvphFiles.Count(f => f.Size == NvphMinBytes || f.Size == 2 * NvphMinBytes);
+            var legacyLargeCount = nvphFiles.Count(f => f.Size >= NvphMinBytes);
+            var nonEmptyCount = nvphFiles.Count(f => f.Size > 0);
+            var modernLayout = primaryCount >= 1 && nonEmptyCount >= 2;
+            var legacyLayout = legacyLargeCount >= NvphMinLargeCount;
+            var normal = nonEmptyCount == nvphFiles.Count && (modernLayout || legacyLayout);
+            var asdHint = versionNumber.Value < 62200 && normal;
+            details.Add($"621 系及以上规则：至少 2 个 NVPH；包含一个 256MB 或 512MB（{NvphMinBytes} 或 {2 * NvphMinBytes} 字节）加另一个非空文件，或至少两个均 ≥256MB。允许额外非零 NVPH，不凭文件总数判异常；仍不允许零字节文件。");
+            return new ShaderDiagnosis
+            {
+                Level = !normal ? ShaderDiagLevel.Abnormal : asdHint && legacyLayout ? ShaderDiagLevel.Warning : ShaderDiagLevel.Normal,
+                CacheLayout = !asdHint ? ShaderCacheLayout.Unspecified : legacyLayout ? ShaderCacheLayout.Legacy : ShaderCacheLayout.Asd,
+                Summary = normal
+                    ? (asdHint ? legacyLayout ? "未激活ASD；" : "ASD已激活；" : "") + (legacyLayout
+                        ? $"着色器缓存结构正常（包含旧版布局：{legacyLargeCount} 个 ≥256MB 文件，共 {nvphFiles.Count} 个非空 NVPH）。"
+                        : $"着色器缓存结构正常（包含新版布局：一个 256MB 或 512MB 加另一个非 0KB 文件，共 {nvphFiles.Count} 个非空 NVPH）。")
+                    : $"判定为着色器异常：621 系及以上需包含「一个 256MB 或 512MB 加另一个非空文件」或「至少两个均 ≥256MB」，且所有 NVPH 非空；实际共 {nvphFiles.Count} 个，其中 256/512MB 文件 {primaryCount} 个、≥256MB 文件 {legacyLargeCount} 个、0KB 文件 {nvphFiles.Count - nonEmptyCount} 个。额外非零文件本身不算异常。",
+                Details = details,
+                Advice = normal ? (asdHint ? "ASD 状态按缓存布局推断，未读取驱动开关或验证运行实效。无需为此清理缓存。" : "无需处理。")
+                    : "建议：一键清除旧着色器文件，然后进入游戏重新预热着色器。",
+            };
         }
 
         var zeroFiles = nvphFiles.Where(f => f.Size == 0).ToList();
         var largeFiles = nvphFiles.Where(f => f.Size >= NvphMinBytes).ToList();
-        var missingLargeFileProblemDriver = versionNumber.Value > Driver61714Version && largeFiles.Count < NvphMinLargeCount;
-        if (missingLargeFileProblemDriver)
-        {
-            details.Add($"硬性驱动判定：驱动高于 617.14，且单版本缓存中 ≥256MB NVPH 文件不足 {NvphMinLargeCount} 个（当前 {largeFiles.Count} 个）。");
-        }
 
         // 判定异常的三类特征：0KB 损坏文件 / ≥256MB 大文件不足两个 / ≥256MB 大文件达到 3 个及以上（缓存膨胀异常）
         string reason;
@@ -429,87 +447,13 @@ public sealed class ShaderInspection
             };
         }
 
-        // 异常确认后再分支驱动系列：问题驱动 = 先换驱动；正常驱动 = 直接清理预热
-        var major = versionNumber.Value / 100;
-        var is61714ProblemDriver = versionNumber.Value == Driver61714Version;
-        if (ProblemDriverMajors.Contains(major) || is61714ProblemDriver || missingLargeFileProblemDriver)
-        {
-            var driverIssue = ProblemDriverMajors.Contains(major) ? $"属于问题系列（{major} 系）" : is61714ProblemDriver ? "617.14 属于问题驱动" : $"高于 617.14 且达到缺失判定（≥256MB NVPH 文件仅 {largeFiles.Count} 个，预期至少 {NvphMinLargeCount} 个）";
-            return new ShaderDiagnosis
-            {
-                Level = ShaderDiagLevel.AbnormalDriverIssue,
-                Summary = $"判定为着色器异常：{reason}。你的驱动 {driverVersion}{driverIssue}——这是驱动版本导致的问题。",
-                Details = details,
-                Advice = "建议：① 更换为其他版本的显卡驱动；② 一键清除旧着色器文件；③ 进入游戏重新预热着色器。",
-            };
-        }
-
         return new ShaderDiagnosis
         {
             Level = ShaderDiagLevel.Abnormal,
-            Summary = $"判定为着色器异常：{reason}。驱动 {driverVersion} 非问题系列，缓存文件本身出了问题。",
+            Summary = $"判定为着色器异常：{reason}。",
             Details = details,
             Advice = "建议：一键清除旧着色器文件，然后进入游戏重新预热着色器。",
         };
-    }
-
-    internal static bool HasProblemDriverCacheSignature(ShaderGpuDetectionState gpuState, string driverVersion, string psoCachePath)
-    {
-        var versionNumber = ToVersionNumber(driverVersion);
-        if (gpuState != ShaderGpuDetectionState.Nvidia || versionNumber is null || versionNumber < Driver61714Version || string.IsNullOrWhiteSpace(psoCachePath))
-        {
-            return false;
-        }
-
-        try
-        {
-            if (!Directory.Exists(psoCachePath))
-            {
-                return false;
-            }
-
-            var gameVerDirs = Directory.GetDirectories(psoCachePath);
-            if (gameVerDirs.Length != 1)
-            {
-                return false;
-            }
-
-            var dxCache = FindDxCachePath(gameVerDirs[0]);
-            if (dxCache is null)
-            {
-                return false;
-            }
-
-            var nvphFiles = new DirectoryInfo(dxCache).EnumerateFiles("*.nvph", SearchOption.TopDirectoryOnly).Select(file =>
-            {
-                try
-                {
-                    return file.Length;
-                }
-                catch
-                {
-                    return -1L;
-                }
-            }).Where(size => size >= 0).ToArray();
-            if (nvphFiles.Length == 0)
-            {
-                return false;
-            }
-
-            var zeroFileExists = nvphFiles.Any(size => size == 0);
-            var largeFileCount = nvphFiles.Count(size => size >= NvphMinBytes);
-            if (versionNumber == Driver61714Version)
-            {
-                return zeroFileExists || largeFileCount < NvphMinLargeCount || largeFileCount >= 3;
-            }
-
-            return largeFileCount < NvphMinLargeCount;
-        }
-        catch (Exception ex)
-        {
-            Log.Warn($"着色器驱动硬规则：读取 NVPH 缓存失败：{ex.Message}");
-            return false;
-        }
     }
 
     internal static string? FindDxCachePath(string gameVerDirectory)

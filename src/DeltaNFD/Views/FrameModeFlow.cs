@@ -23,7 +23,7 @@ internal static class FrameModeFlow
                        $"· 显卡伪装为「{frame.GpuSpoofFakeName}」，重启电脑后生效\n" +
                        "· 创建登录自启动任务，重启后本程序自动运行并保持帧格模式开启\n" +
                        "· 已打开功能开关的自动内存回收随帧格启停\n" +
-                       "· 其余功能（电源锁定 / 加速响应 / DWM 监控）按帧格页各自开关执行";
+                       "· 其余功能（电源锁定 / 游戏节能 / 忽略定时器请求 / DWM 监控）按帧格页各自开关执行";
             }
 
             var text = "开启后立即执行：\n" +
@@ -56,7 +56,7 @@ internal static class FrameModeFlow
             return "退出后将还原显卡原始型号、移除登录自启动任务，并需要重启电脑完成还原。";
         }
 
-        return "退出后停止帧格专属功能（电源锁定与加速响应停止，开关设置保留）；「DWM 监控」为独立开关，保持你的设置不变。";
+        return "退出后停止帧格专属功能（电源锁定、游戏节能与忽略定时器请求停止，开关设置保留）；「DWM 监控」为独立开关，保持你的设置不变。";
     }
 
     /// <summary>总开关拨动后的完整流程（调用方负责 suppress 与开关回拨）。</summary>
@@ -133,6 +133,8 @@ internal static class FrameModeFlow
                             Success = result.Success, Message = preserved.Message + "\n降低省电延迟已关闭。\n" + result.Message,
                             RequiresReboot = result.RequiresReboot, RequiresLogoff = result.RequiresLogoff,
                             RequiresDisplayConfirm = result.RequiresDisplayConfirm, IsSkipped = result.IsSkipped,
+                            IsPartial = result.IsPartial, OutcomeUnknown = result.OutcomeUnknown,
+                            DiagnosticsDirectory = result.DiagnosticsDirectory,
                         };
                     }
                 }
@@ -145,24 +147,25 @@ internal static class FrameModeFlow
         }
         if (!result.Success)
         {
-            await ShowMessageAsync(root, "开启失败", result.Message);
+            await ShowResultAsync(root, "开启失败", result, frame.IsGpuSpoofInFrame);
             return;
         }
 
         if (result.RequiresDisplayConfirm)
         {
             // 台式机 + 目标显卡正在驱动显示器：45 秒自动恢复进程已启动，要求 1 分钟内确认亮屏
-            await RunDisplayConfirmCountdownAsync(root, frame);
+            if (await RunDisplayConfirmCountdownAsync(root, frame) && (result.IsPartial || result.OutcomeUnknown))
+                await ShowResultAsync(root, "帧格部分功能仍待处理", result, frame.IsGpuSpoofInFrame);
             return;
         }
 
         if (result.RequiresReboot)
         {
-            await AskRebootAsync(root, frame, "显卡已伪装", result.Message);
+            await AskRebootAsync(root, frame, "显卡已伪装", result);
         }
         else
         {
-            await ShowMessageAsync(root, result.IsPartial ? "帧格已部分开启" : "帧格模式已开启", result.Message);
+            await ShowResultAsync(root, result.IsPartial ? "帧格已部分开启" : "帧格模式已开启", result, frame.IsGpuSpoofInFrame);
         }
     }
 
@@ -184,23 +187,24 @@ internal static class FrameModeFlow
         var result = await frame.DeactivateFrameModeAsync();
         if (!result.Success)
         {
-            await ShowMessageAsync(root, "退出失败", result.Message);
+            await ShowResultAsync(root, "退出失败", result, frame.IsGpuSpoofInFrame);
             return;
         }
 
         if (result.RequiresDisplayConfirm)
         {
-            await RunDisplayConfirmCountdownAsync(root, frame);
+            if (await RunDisplayConfirmCountdownAsync(root, frame) && (result.IsPartial || result.OutcomeUnknown))
+                await ShowResultAsync(root, "帧格退出尚未全部完成", result, frame.IsGpuSpoofInFrame);
             return;
         }
 
         if (result.RequiresReboot)
         {
-            await AskRebootAsync(root, frame, "显卡已还原", result.Message);
+            await AskRebootAsync(root, frame, "显卡已还原", result);
         }
         else
         {
-            await ShowMessageAsync(root, "已退出帧格模式", result.Message);
+            await ShowResultAsync(root, result.IsPartial ? "帧格退出尚未全部完成" : "已退出帧格模式", result, frame.IsGpuSpoofInFrame);
         }
     }
 
@@ -226,7 +230,7 @@ internal static class FrameModeFlow
     private static async Task ReportFailureAsync(XamlRoot root, string action, Exception ex)
     {
         Log.Error("帧格" + action + "界面流程失败", ex);
-        try { await ShowMessageAsync(root, "帧格" + action + "未完成", ex.Message); }
+        try { await ShowResultAsync(root, "帧格" + action + "未完成", OperationResult.Fail(ex.Message), includesGpu: false); }
         catch (Exception dialogError) { Log.Error("帧格失败提示无法显示", dialogError); }
     }
 
@@ -234,7 +238,7 @@ internal static class FrameModeFlow
     /// 台式机重载显卡后的 1 分钟亮屏确认倒计时：
     /// 确认亮屏 → 完成（撤销兜底）；倒计时归零未确认 → 自动重启电脑恢复显示。
     /// </summary>
-    private static async Task RunDisplayConfirmCountdownAsync(XamlRoot root, IFrameService frame)
+    private static async Task<bool> RunDisplayConfirmCountdownAsync(XamlRoot root, IFrameService frame)
     {
         var remaining = 60;
         var dialog = new ContentDialog
@@ -274,11 +278,12 @@ internal static class FrameModeFlow
         {
             // 亮屏确认完成；45 秒兜底进程随后执行 Enable-PnpDevice 时对已启用设备是空操作
             await ShowMessageAsync(root, "确认完成", "显示器状态正常，帧格模式运行中。");
-            return;
+            return true;
         }
 
         // 倒计时超时或用户选择立即重启
         frame.RebootNow();
+        return false;
     }
 
     private static Task<bool> ConfirmAsync(XamlRoot root, string title, string content)
@@ -292,13 +297,17 @@ internal static class FrameModeFlow
             DefaultButton = ContentDialogButton.Primary,
         }.ShowWithBackendRecoveryAsync().ContinueWith(t => t.Result == ContentDialogResult.Primary);
 
-    private static async Task AskRebootAsync(XamlRoot root, IFrameService frame, string title, string message)
+    private static async Task AskRebootAsync(XamlRoot root, IFrameService frame, string title, OperationResult result)
     {
+        var advice = FrameFailureGuidance.ForResult(result);
+        var question = "是否立即重启电脑？（未保存的文件会被强制关闭）";
+        var content = BuildResultContent(result, advice);
+        content.Children.Add(new TextBlock { Text = question, TextWrapping = TextWrapping.Wrap });
         var dialog = new ContentDialog
         {
             XamlRoot = root,
             Title = title,
-            Content = message + "\n\n是否立即重启电脑？（未保存的文件会被强制关闭）",
+            Content = new ScrollViewer { MaxHeight = 420, Content = content },
             PrimaryButtonText = "立即重启",
             CloseButtonText = "稍后自己重启",
             DefaultButton = ContentDialogButton.Primary,
@@ -308,6 +317,45 @@ internal static class FrameModeFlow
         {
             frame.RebootNow();
         }
+    }
+
+    private static async Task ShowResultAsync(XamlRoot root, string title, OperationResult result, bool includesGpu)
+    {
+        var advice = FrameFailureGuidance.ForResult(result);
+        if (advice.Count == 0) { await ShowMessageAsync(root, title, result.Message); return; }
+        Log.Warn(title + "：" + result.Message);
+        var content = BuildResultContent(result, advice);
+        var canReview = false;
+        try { canReview = FrameBackendReadiness.DescribeBlocker(includesGpu).Length > 0; }
+        catch (Exception ex) { Log.Warn("帧格处理建议未能核对旧记录入口：" + ex.Message); }
+        var choice = await new ContentDialog
+        {
+            XamlRoot = root, Title = title, Content = new ScrollViewer { MaxHeight = 420, Content = content },
+            PrimaryButtonText = canReview ? "核对并处理旧操作" : "", CloseButtonText = "知道了",
+            DefaultButton = ContentDialogButton.Close,
+        }.ShowWithBackendRecoveryAsync(hasReviewAction: canReview);
+        if (canReview && choice == ContentDialogResult.Primary)
+            await BackendReviewFlow.RunAsync(root, FrameBackendReadiness.RequiredModules(includesGpu));
+    }
+
+    private static StackPanel BuildResultContent(OperationResult result, IReadOnlyList<FrameFailureAdvice> advice)
+    {
+        var content = new StackPanel { Spacing = 12, MaxWidth = 620 };
+        if (advice.Count == 0)
+        {
+            content.Children.Add(new TextBlock { Text = result.Message, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
+            return content;
+        }
+        content.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap,
+            Text = result.OutcomeUnknown ? "本次操作结果尚未确认，请先核对当前状态。"
+                : result.IsPartial ? "部分功能已经执行，以下项目仍需处理；当前不能视为全部生效。" : "本次操作未完成，请按对应原因处理后重试。" });
+        foreach (var item in advice)
+            content.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
+                Text = item.Title + "\n" + item.Explanation + "\n\n" + item.Steps });
+        content.Children.Add(new Expander { Header = "技术详情（可展开复制）", HorizontalAlignment = HorizontalAlignment.Stretch,
+            Content = new TextBlock { Text = result.Message + (string.IsNullOrWhiteSpace(result.DiagnosticsDirectory) ? "" : "\n诊断目录：" + result.DiagnosticsDirectory),
+                TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } });
+        return content;
     }
 
     private static Task ShowMessageAsync(XamlRoot root, string title, string message)

@@ -1,5 +1,41 @@
 [
   {
+    "Name": "DisableMPO",
+    "Description": "DisableMPODesc",
+    "Level": 2,
+    "Arguments": [
+      "VISIBLETWEAKS",
+      "LEVEL"
+    ],
+    "NoSupport": [],
+    "Type": "DOUBLE",
+    "Tweaks": [
+      {
+        "TweakType": "REG",
+        "Path": "HKLM\\SOFTWARE\\Microsoft\\Windows\\Dwm",
+        "Key": "OverlayTestMode",
+        "Values": [
+          {
+            "ValueTypes": [
+              "BEST",
+              "OPTIMAL",
+              "OFF"
+            ],
+            "Value": "5"
+          },
+          {
+            "ValueTypes": [
+              "DEFAULT",
+              "ON"
+            ],
+            "Value": "Null"
+          }
+        ]
+      }
+    ],
+    "IconPath": "Monitor"
+  },
+  {
     "Name": "setsaccel",
     "Description": "setsacceldesc",
     "Level": 2,

@@ -9,8 +9,29 @@ public partial class LabViewModel
     public bool CanPreferIntelPcores => !IntelPcoresBusy && !IsLoading && !IsApplying && !SchemeBusy
         && HeteroItems.All(i => !i.IsBusy) && string.Equals(_topology?.Vendor, "Intel", StringComparison.OrdinalIgnoreCase);
     public bool IntelPcoreControlsEnabled => !IntelPcoresBusy && !IsLoading && !IsApplying && !SchemeBusy;
-    [ObservableProperty] private bool intelPcoresBusy;
-    [ObservableProperty] private string intelPcoresStatusText = "只修改当前计划的调度偏好，交流与电池同时设置；原值保留以便还原。";
+    private bool intelPcoresBusy;
+    public bool IntelPcoresBusy
+    {
+        get => intelPcoresBusy;
+        set
+        {
+            if (!EqualityComparer<bool>.Default.Equals(intelPcoresBusy, value))
+            {
+                OnPropertyChanging(nameof(IntelPcoresBusy));
+                intelPcoresBusy = value;
+                OnIntelPcoresBusyChanged(value);
+                OnPropertyChanged(nameof(IntelPcoresBusy));
+            }
+        }
+    }
+    partial void OnIntelPcoresBusyChanged(bool value);
+
+    private string intelPcoresStatusText = "只修改当前计划的调度偏好，交流与电池同时设置；原值保留以便还原。";
+    public string IntelPcoresStatusText
+    {
+        get => intelPcoresStatusText;
+        set => SetProperty(ref intelPcoresStatusText, value);
+    }
 
     partial void OnIntelPcoresBusyChanged(bool value)
     {
