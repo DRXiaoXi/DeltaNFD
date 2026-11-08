@@ -6,23 +6,7 @@
 
 运行库研究策略、退役卡顿检测和私有反馈材料不属于本版本。使用 .NET SDK 8.0.425，先执行 `python tools/prepare-source-assets.py` 校验并恢复未入库的厂商构建依赖（仅下载与哈希校验，不运行安装器），再执行 `installer/publish-selfcontained.ps1` 生成自包含布局；安装包由 `installer/DeltaNFD.iss` 生成。根 update.json 是历史发布样例，实际更新清单由发布工具生成并部署。
 
-# 三角帧不掉洲 / Delta NFD
-
-Windows 10/11 x64 游戏优化工具，基于 .NET 8 / WinUI 3。当前公测版本 **Beta0.93-RC3 / 0.9305**。
-
-[Windows x64 安装包](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9305/DeltaNFD_Setup_0.9305_x64.exe) · [国内备用下载](https://deltaxiaoxi.xin/updates/packages/0.9305/DeltaNFD_Setup_0.9305_x64.exe) · [完整发布说明](https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9305) · [源码 ZIP](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9305/DeltaNFD_Source_0.9305.zip)
-
-安装包 297596135 字节，SHA256：`21665edc395c662d898ff69a21af43f554f77d926bb9d376ff2a7e8d06eb7fb0`。JSON 清单和 gzip 对象供自动更新使用，普通用户下载 EXE 即可。
-
-## 本次变化
-
-新增 HPET 与两个启动计时器选项检测及隐藏恢复页，修复帧格定时器维持与释放，加入受控 DWM 持续监测和复查。确认启动覆盖开启时主页红色引导；恢复操作需手动确认和重启。
-
-保留 14.42 默认 / 14.44 可选双基线；NVIDIA 596 系列驱动也可自行选择 14.44。包含 51 个正式基线 DLL 复检、明确缺失后的受控 MSI 恢复、页面会话修复、游戏状态只读兜底、帧格节能参数兼容和 HAGS 布局/刷新意图修复。强制替换继续通过原预览、备份和高风险确认执行。
-
-保留系统优化、显卡型号伪装与恢复、NVIDIA 设置、着色器缓存维护、ACE 检测及受控清理、帧格、CPU 实验室、进程管理、手动日志反馈。默认自建更新服务器和替换变更文件，保留用户选择与整包回退。
-
-本公开源码及安装包只包含六个维护后端，不含卡顿检测、PresentMon 研究、独立预热客户端或私有材料。
+[Windows x64 安装包](https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9316/DeltaNFD_Setup_0.9316_x64.exe) · [国内备用下载](https://deltaxiaoxi.xin/updates/packages/0.9316/DeltaNFD_Setup_0.9316_x64.exe) · [发布说明与对应源码](https://github.com/DRXiaoXi/DeltaNFD/releases/tag/v0.9316)
 
 ## 获取源码与构建
 
@@ -32,7 +16,7 @@ Windows x64 需要 .NET 8 SDK、Python 3.11+，生成安装器还需 Inno Setup 
 git clone https://github.com/DRXiaoXi/DeltaNFD.git
 cd DeltaNFD
 # 复现本版本时，发布后切换到对应标签。
-git switch --detach v0.9305
+git switch --detach v0.9316
 python tools/prepare-source-assets.py
 dotnet build src/DeltaNFD/DeltaNFD.csproj -c Release -p:Platform=x64
 installer/make-installer.cmd
