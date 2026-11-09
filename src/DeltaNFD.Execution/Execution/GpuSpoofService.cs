@@ -173,16 +173,17 @@ public sealed class GpuSpoofService : IGpuSpoofService
 
             key.SetValue("DeviceDesc", fakeName, RegistryValueKind.String);
             if (key.GetValue("DeviceDesc") as string != fakeName) return OperationResult.Fail("伪装名称写后复核失败。");
+            var shaderGuide = GpuShaderGuidance.AfterVerifiedChange(current, fakeName);
             try { GpuSpoofWatch.Record(registryPath, fakeName); }
             catch (Exception ex)
             {
                 Log.Error("伪装已写入，但驱动变化监测登记失败", ex);
-                return OperationResult.Ok("伪装已写入，重启后生效；但监测登记失败，暂不能提醒驱动更新后的失效。原始型号备份仍保留。", requiresReboot: true);
+                return OperationResult.Ok("伪装已写入，重启后生效；但监测登记失败，暂不能提醒驱动更新后的失效。原始型号备份仍保留。" + shaderGuide, requiresReboot: true, suggestShaderMaintenance: shaderGuide.Length > 0);
             }
             Log.Info("显卡伪装：写入成功（重启后生效）");
             return OperationResult.Ok(
-                $"已伪装为「{fakeName}」。重启电脑后生效（设备管理器与游戏读取到的名称将改变）。",
-                requiresReboot: true);
+                $"已伪装为「{fakeName}」。重启电脑后生效（设备管理器与游戏读取到的名称将改变）。" + shaderGuide,
+                requiresReboot: true, suggestShaderMaintenance: shaderGuide.Length > 0);
         }
         catch (UnauthorizedAccessException)
         {
@@ -223,17 +224,20 @@ public sealed class GpuSpoofService : IGpuSpoofService
             }
 
             var pending = GpuSpoofRestoreState.Capture(AppSettingsStore.ReadRequired());
+            var current = key.GetValue("DeviceDesc") as string ?? "";
+            var shaderGuide = "";
             GpuSpoofRestoreState.Finish(() =>
             {
                 key.SetValue("DeviceDesc", backup.Data, RegistryValueKind.String);
                 if (key.GetValue("DeviceDesc") as string != backup.Data) throw new IOException("原始型号恢复复核失败，备份保留。");
+                shaderGuide = GpuShaderGuidance.AfterVerifiedChange(current, backup.Data);
             }, () => GpuSpoofRestoreState.Complete(pending, registryPath), () =>
             {
                 GpuSpoofWatch.Remove(registryPath);
                 _backups.RemoveStrict("HKLM", registryPath, "DeviceDesc");
             });
             Log.Info("显卡伪装：恢复成功");
-            return OperationResult.Ok("已恢复原始显卡型号，重启电脑后生效。", requiresReboot: true);
+            return OperationResult.Ok("已恢复原始显卡型号，重启电脑后生效。" + shaderGuide, requiresReboot: true, suggestShaderMaintenance: shaderGuide.Length > 0);
         }
         catch (UnauthorizedAccessException)
         {

@@ -28,6 +28,7 @@ public static class BackendCommands
     public const string SystemShaderRecoveryClean = "system.shader.recovery-clean";
     public const string SystemPendulumGlobalConfigure = "system.pendulum.global.configure";
     public const string SystemTimerRecover = "system.timer.recover";
+    public const string SystemLowMemoryApply = "system.low-memory.apply";
     public const string GpuReconcile = "gpu.reconcile";
     public const string GpuRecover = "gpu.recover";
 
@@ -385,6 +386,7 @@ public static class BackendModules
                     [BackendCommands.SystemGameRecordingStatus] = TwoMinutes,
                     [BackendCommands.SystemGameRecordingChange] = FiveMinutes,
                     [BackendCommands.SystemTimerRecover] = FiveMinutes,
+                    [BackendCommands.SystemLowMemoryApply] = FiveMinutes,
                     [BackendCommands.SystemPendulumGlobalConfigure] = TwoMinutes,
                     [BackendCommands.SystemPagefileStatus] = TwoMinutes,
                     [BackendCommands.SystemPagefileSet] = FiveMinutes,
@@ -506,7 +508,7 @@ public static class BackendModules
     public static bool RetainsStaticBackup(string moduleId, string command) => moduleId == System && command is
         BackendCommands.SystemBxApply or BackendCommands.SystemBxGearApply or BackendCommands.SystemBxServiceGroupApply
         or BackendCommands.SystemPowerIntelPcores or BackendCommands.SystemTimerRecover or BackendCommands.SystemPendulumGlobalConfigure
-        or BackendCommands.SystemGameRecordingChange;
+        or BackendCommands.SystemGameRecordingChange or BackendCommands.SystemLowMemoryApply;
 
     /// <summary>公开只读集合（只读命令的负向校验用）。</summary>
     public static IReadOnlySet<string> ReadOnly => ReadOnlyCommands;

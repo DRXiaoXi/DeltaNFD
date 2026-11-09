@@ -1,0 +1,33 @@
+<Page x:Class="DeltaNFD.Views.LowMemoryRecoveryPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="16" Padding="24" MaxWidth="1040" HorizontalAlignment="Stretch">
+            <Button x:Name="BackButton" Content="返回主页" Click="Back_Click"/>
+            <TextBlock Text="低内存配置引导" Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap"/>
+            <TextBlock Text="适用于物理总内存不超过 16 GB 的电脑。先核对以下四项，再按建议修正。" TextWrapping="Wrap"/>
+            <InfoBar x:Name="StatusBar" IsOpen="True" IsClosable="False" Severity="Informational" Title="正在检测配置"/>
+            <ProgressRing x:Name="BusyRing" IsActive="False" Width="24" Height="24" HorizontalAlignment="Left" AutomationProperties.Name="正在核对低内存配置"/>
+            <StackPanel Spacing="14" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Padding="18" CornerRadius="8">
+                <TextBlock Text="1. 启用 SysMain" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                <TextBlock x:Name="ServiceText" Text="等待检测…" TextWrapping="Wrap"/>
+                <TextBlock Text="2. 启用内存压缩" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                <TextBlock x:Name="CompressionText" Text="等待检测…" TextWrapping="Wrap"/>
+                <TextBlock Text="3. 启用分页合并" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                <TextBlock x:Name="CombiningText" Text="等待检测…" TextWrapping="Wrap"/>
+                <TextBlock Text="4. 禁用预读取" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                <TextBlock x:Name="PrefetchText" Text="等待检测…" TextWrapping="Wrap"/>
+            </StackPanel>
+            <TextBlock Text="修正前保存原始状态，逐项修改并重新检测。配置读取未完成时暂不执行，请先退出三角洲。" TextWrapping="Wrap"/>
+            <ProgressBar x:Name="Progress" Minimum="0" Maximum="4" Visibility="Collapsed" AutomationProperties.Name="低内存配置处理进度"/>
+            <TextBlock x:Name="ProgressText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button x:Name="RefreshButton" Content="重新检测" Click="Refresh_Click"/>
+                <Button x:Name="ApplyButton" Content="预览并按建议修正" Style="{StaticResource AccentButtonStyle}" Click="Apply_Click" IsEnabled="False"/>
+            </StackPanel>
+            <TextBlock x:Name="ResultText" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+            <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Title="完成后请手动重启"
+                     Message="保存工作后，从 Windows 开始菜单选择“重启”；重启完成后回到本页重新检测。工具不会自动重启电脑。"/>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

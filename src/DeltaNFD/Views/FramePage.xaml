@@ -9,6 +9,7 @@
                 </StackPanel>
             </Grid>
             <!-- 一键帧格模式 -->
+            <ui:GpuShaderGuidanceBar/>
             <Border Style="{StaticResource CardBorderStyle}" ui:AdaptiveColumns.WideRow="0" ui:AdaptiveColumns.WideColumn="0" ui:AdaptiveColumns.WideSpan="1">
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>

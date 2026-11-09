@@ -400,10 +400,15 @@ public sealed class ShaderInspection
             var legacyLargeCount = nvphFiles.Count(f => f.Size >= NvphMinBytes);
             var nonEmptyCount = nvphFiles.Count(f => f.Size > 0);
             var modernLayout = primaryCount >= 1 && nonEmptyCount >= 2;
-            var legacyLayout = legacyLargeCount >= NvphMinLargeCount;
+            // 621.xx 的双精确 256MiB 是新版布局；额外非零文件不取消该布局证据。
+            var dual256AsdLayout = versionNumber.Value < 62200
+                && nvphFiles.Count(f => f.Size == NvphMinBytes) >= NvphMinLargeCount;
+            var legacyLayout = legacyLargeCount >= NvphMinLargeCount && !dual256AsdLayout;
             var normal = nonEmptyCount == nvphFiles.Count && (modernLayout || legacyLayout);
             var asdHint = versionNumber.Value < 62200 && normal;
             details.Add($"621 系及以上规则：至少 2 个 NVPH；包含一个 256MB 或 512MB（{NvphMinBytes} 或 {2 * NvphMinBytes} 字节）加另一个非空文件，或至少两个均 ≥256MB。允许额外非零 NVPH，不凭文件总数判异常；仍不允许零字节文件。");
+            if (versionNumber.Value < 62200)
+                details.Add("621 系包含两个精确 256MB 的有效布局优先判为 ASD已激活；其他双大文件旧布局仍提示未激活ASD。");
             return new ShaderDiagnosis
             {
                 Level = !normal ? ShaderDiagLevel.Abnormal : asdHint && legacyLayout ? ShaderDiagLevel.Warning : ShaderDiagLevel.Normal,
@@ -422,7 +427,7 @@ public sealed class ShaderInspection
         var zeroFiles = nvphFiles.Where(f => f.Size == 0).ToList();
         var largeFiles = nvphFiles.Where(f => f.Size >= NvphMinBytes).ToList();
 
-        // 判定异常的三类特征：0KB 损坏文件 / ≥256MB 大文件不足两个 / ≥256MB 大文件达到 3 个及以上（缓存膨胀异常）
+        // 旧驱动继续检查空文件、大文件缺少或膨胀；双精确 256MiB 不再算合规。
         string reason;
         if (zeroFiles.Count > 0)
         {
@@ -430,11 +435,15 @@ public sealed class ShaderInspection
         }
         else if (largeFiles.Count >= 3)
         {
-            reason = $"检测到 {largeFiles.Count} 个 ≥256MB 的 NVPH 缓存文件（正常应为 2 个：256MB+256MB 或 256MB+更大），缓存出现膨胀异常";
+            reason = $"检测到 {largeFiles.Count} 个 ≥256MB 的 NVPH 缓存文件（正常应为 2 个，且至少一个 >256MB），缓存出现膨胀异常";
         }
         else if (largeFiles.Count < NvphMinLargeCount)
         {
-            reason = $"预期至少 {NvphMinLargeCount} 个 ≥256MB 的 NVPH 缓存文件（常见 256MB+256MB 或 256MB+更大），实际只找到 {largeFiles.Count} 个";
+            reason = $"预期 {NvphMinLargeCount} 个 ≥256MB 的 NVPH 缓存文件，且至少一个 >256MB，实际只找到 {largeFiles.Count} 个";
+        }
+        else if (largeFiles.All(f => f.Size == NvphMinBytes))
+        {
+            reason = "旧版驱动不再将两个均恰好 256MB 的 NVPH 文件判为合规";
         }
         else
         {

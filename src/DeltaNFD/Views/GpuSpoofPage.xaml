@@ -6,6 +6,7 @@
                 <TextBlock Text="修改显卡型号显示（如 1050 Ti / RX 540 / GTX 750），注册表级修改，可随时恢复" Style="{StaticResource PageSubtitleStyle}"/>
             </StackPanel>
             <InfoBar IsOpen="{x:Bind ViewModel.IsResultVisible, Mode=OneWay}" Severity="{x:Bind ViewModel.ResultSeverity, Mode=OneWay}" Title="操作结果" Message="{x:Bind ViewModel.ResultText, Mode=OneWay}" IsClosable="True" CloseButtonClick="ResultInfoBar_CloseButtonClick"/>
+            <ui:GpuShaderGuidanceBar/>
             <!-- 本机显卡列表 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="12">

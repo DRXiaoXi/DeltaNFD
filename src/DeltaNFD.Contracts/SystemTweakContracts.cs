@@ -33,6 +33,9 @@ public enum SystemTweak
 
     /// <summary>Windows Search 服务禁用（不动 SysMain：SysMain 承载内存压缩，禁用会连带关掉内存压缩）。</summary>
     WSearchOff,
+
+    /// <summary>低内存引导使用的 SysMain 备份恢复标识，不作为 UP 推荐关闭项展示。</summary>
+    SysMainMemorySupport,
 }
 
 /// <summary>单个优化项的当前状态。</summary>

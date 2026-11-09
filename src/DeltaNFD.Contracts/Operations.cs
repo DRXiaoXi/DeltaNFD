@@ -41,14 +41,18 @@ public sealed class OperationResult
     /// </summary>
     public bool RequiresDisplayConfirm { get; init; }
 
-    public static OperationResult Ok(string message, bool requiresLogoff = false, bool requiresReboot = false, bool requiresDisplayConfirm = false)
+    /// <summary>本次已核验的型号改写建议手动维护缓存；仅作当次引导，不保存提醒。</summary>
+    public bool SuggestShaderMaintenance { get; init; }
+
+    public static OperationResult Ok(string message, bool requiresLogoff = false, bool requiresReboot = false, bool requiresDisplayConfirm = false, bool suggestShaderMaintenance = false)
         => new()
         {
             Success = true,
             Message = message,
             RequiresLogoff = requiresLogoff,
             RequiresReboot = requiresReboot,
-            RequiresDisplayConfirm = requiresDisplayConfirm
+            RequiresDisplayConfirm = requiresDisplayConfirm,
+            SuggestShaderMaintenance = suggestShaderMaintenance
         };
 
     public static OperationResult Fail(string message)

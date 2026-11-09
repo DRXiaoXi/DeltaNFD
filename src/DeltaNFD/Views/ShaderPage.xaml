@@ -6,6 +6,7 @@
                 <TextBlock Text="检查驱动与缓存状态，按需清理缓存并重新预热。" Style="{StaticResource NoteStyle}"/>
                 <Button Content="查看游戏版本与更新维护指引" Click="OpenVersionGuide_Click" Style="{StaticResource SecondaryButtonStyle}"/>
             </StackPanel>
+            <ui:GpuShaderGuidanceBar MaintenanceMode="True"/>
             <Border Style="{StaticResource FeatureCardBorderStyle}">
                 <StackPanel Spacing="12">
                     <TextBlock Text="完整预热启动指令" Style="{StaticResource H2Style}"/>
@@ -88,7 +89,7 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Spacing="4">
-                                <TextBlock Text="着色器健康检测" Style="{StaticResource H2Style}" ui:HelpTip.Text="检测 PSOCache 版本残留与 NVPH 结构。N 卡 621 系及以上至少两个 NVPH：包含一个 256MB 或 512MB 加另一个非空文件，或至少两个均 ≥256MB。允许额外非零中间文件，空文件或无有效布局仍异常。621.xx 双大文件旧布局黄色提示未激活ASD，无需处理；新版布局绿色提示ASD已激活。ASD仅按布局推断，未验证驱动开关；同时满足时沿用旧布局优先。其他显卡仅检查版本残留。"/>
+                                <TextBlock Text="着色器健康检测" Style="{StaticResource H2Style}" ui:HelpTip.Text="检测 PSOCache 版本残留与 NVPH 结构。N 卡 621 系及以上至少两个 NVPH：包含一个 256MB 或 512MB 加另一个非空文件，或至少两个均 ≥256MB。允许额外非零文件，空文件或无有效布局仍异常。621.xx 包含两个精确256MB时优先绿色提示ASD已激活，其他新版布局同样绿色；其他双大文件旧布局黄色提示未激活ASD，无需处理。低于621不再将双256MB判为合规。ASD按布局推断，未验证驱动开关；其他显卡仅检查版本残留。"/>
                                 <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="检测 PSOCache 版本残留；N 卡按驱动版本检查 NVPH 数量与大小。"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">

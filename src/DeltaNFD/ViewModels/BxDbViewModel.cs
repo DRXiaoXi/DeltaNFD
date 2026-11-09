@@ -423,7 +423,7 @@ public partial class BxDbViewModel : ObservableObject
             Sections.Add(new BxSectionChipVm { Section = section });
         }
 
-        // 「pending」= UP推荐栏目（BxCatalog.Sections 末位）：5 个推荐条目 + 深度优化 20 项并入同一列表，
+        // 「pending」= 第一栏目 UP推荐：推荐条目与适合当前内存容量的深度优化合并，
         // 共用「应用更改」统一应用（HANDOFF §25）
 
         _ = UpdateBackupSummaryAsync();
@@ -641,12 +641,14 @@ public partial class BxDbViewModel : ObservableObject
                 return row;
             }).ToList();
 
-            // UP推荐 栏目：深度优化 20 项并入条目列表（无独立卡片；统一计数与应用）
+            // UP推荐栏目：深度优化并入条目列表，重复入口只保留推荐库中的一项。
             List<TweakStatus>? deepStatuses = null;
             if (section.Id == "pending")
             {
                 deepStatuses = await _tweaks.GetStatusesAsync();
-                foreach (var status in deepStatuses)
+                // UP 推荐已包含关闭 HAGS；不再附加相反方向的深度优化入口。
+                var totalMemory = DeltaNFD.Inspection.PhysicalMemoryInspection.InstalledBytes();
+                foreach (var status in deepStatuses.Where(s => LowMemoryPolicy.ShowUpTweak(s.Tweak, totalMemory)))
                 {
                     itemRows.Add(NewRow(new BxItemVm
                     {

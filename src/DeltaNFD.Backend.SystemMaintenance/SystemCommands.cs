@@ -60,6 +60,11 @@ internal static class SystemCommands
 
             [BackendCommands.SystemPendulumGlobalConfigure] = async c => Wrap(c.Command, await PendulumGlobalSettings.ConfigureAsync(c.ArgsAs<PendulumGlobalArgs>(), c.CancellationToken)),
             [BackendCommands.SystemTimerRecover] = async c => Wrap(c.Command, await TimerConfigurationRecovery.RunAsync(c.ArgsAs<TimerRecoveryArgs>(), c.CancellationToken)),
+            [BackendCommands.SystemLowMemoryApply] = async c =>
+            {
+                var result = await LowMemoryRepair.RunAsync(c.ArgsAs<LowMemoryApplyArgs>(), c.CancellationToken);
+                return Wrap(c.Command, result);
+            },
             [BackendCommands.SystemShaderStatus] = ShaderStatusAsync,
             [BackendCommands.SystemShaderDiagnose] = ShaderDiagnoseAsync,
             [BackendCommands.SystemShaderClear] = ShaderClearAsync,

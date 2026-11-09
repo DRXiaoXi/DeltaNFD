@@ -1,4 +1,6 @@
 using DeltaNFD.Services;
+if (args is ["--gpu-shader-guidance-checks"]) { try { await GpuShaderGuidanceChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--low-memory-support-checks"]) { try { await LowMemorySupportChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--shader-asd-layout-checks"]) { try { ShaderAsdLayoutChecks.Run(); } catch(Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode=1; } return; }
 
 if (args is ["--runtime-shutdown-recovery-checks"] or ["--runtime-shutdown-recovery-checks", "--with-ipc"])

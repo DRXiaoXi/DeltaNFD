@@ -49,6 +49,7 @@ public sealed partial class DashboardPage : Page
         if (_attached) return;
         _attached = true; _timerGeneration++;
         _ = RefreshTimerAsync();
+        _ = RefreshLowMemoryAsync(true);
         ServiceLocator.GameTarget.Changed += OnTargetChanged;
         ViewModel.RefreshTargetDisplay();
         ViewModel.RefreshRuntimeDetectionPreference();
@@ -74,6 +75,7 @@ public sealed partial class DashboardPage : Page
     private async void RefreshHealthButton_Click(object sender, RoutedEventArgs e)
     {
         await RefreshTimerAsync(true);
+        await RefreshLowMemoryAsync(true);
         await ViewModel.RefreshHealthAsync();
     }
 

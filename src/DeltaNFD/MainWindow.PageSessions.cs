@@ -36,7 +36,7 @@ public sealed partial class MainWindow
             PageBackendSessions.Manager.Navigate("");
         };
     }
-    private static string PageRoute(Type? page) => page == typeof(SystemOptimizePage) || page == typeof(TimerRecoveryPage) ? "system"
+    private static string PageRoute(Type? page) => page == typeof(SystemOptimizePage) || page == typeof(TimerRecoveryPage) || page == typeof(LowMemoryRecoveryPage) ? "system"
         : page == typeof(GpuSpoofPage) ? "spoof" : page == typeof(ShaderPage) || page == typeof(ShaderRecoveryPage) ? "shader"
         : page == typeof(AcePage) ? "ace" : page == typeof(RuntimePage) ? "runtime"
         : page == typeof(NvSettingsPage) ? "nvsettings" : page == typeof(GameModificationsPage) ? "gamemods" : "";

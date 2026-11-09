@@ -127,6 +127,7 @@ public static class BxCatalog
 
     public static readonly BxSection[] Sections =
     [
+        new() { Id = "pending", Title = "UP推荐", JsonFile = "UpRecommended" },
         new() { Id = "basic", Title = "基本设置", JsonFile = "BasicSettingsTweaks" },
         new() { Id = "security", Title = "安全性", JsonFile = "Security" },
         new() { Id = "custom", Title = "自定义", JsonFile = "Customization" },
@@ -136,7 +137,6 @@ public static class BxCatalog
         new() { Id = "tweaks", Title = "调整", JsonFile = "RegistryTweaks" },
         new() { Id = "tasks", Title = "任务", JsonFile = "Tasks" },
         new() { Id = "tsx", Title = "启用TSX", JsonFile = "Placebo" },
-        new() { Id = "pending", Title = "UP推荐", JsonFile = "UpRecommended" },
     ];
 
     private static readonly object Gate = new();

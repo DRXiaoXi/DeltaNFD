@@ -122,7 +122,8 @@ public interface IShaderService
     /// ① GameVer 达到 2 个及以上 → AMD / Intel / NVIDIA 通用异常判据；
     /// ② 单版本下 SM6\DXCache（缺少目录时回退 SM5\DXCache）的 NVPH 结构判定（仅 N 卡且驱动 ≥576.88）；
     ///    621.00 起至少两个 NVPH：包含一个 256MiB 或 512MiB 加另一个非零文件，或至少两个均 ≥256MiB；允许额外非零文件，所有 NVPH 须非零。
-    ///    更早驱动沿用两个 ≥256MiB 与非零规则。
+    ///    621.xx 包含两个精确 256MiB 的有效布局优先显示 ASD已激活；其他双大文件旧布局仍提示未激活ASD。
+    ///    更早驱动需恰好两个 ≥256MiB 大文件且无空文件，但不再接受两个大文件均恰好 256MiB。
     ///    无缓存时提示预热；读取失败拒绝下结论。缓存异常不归因驱动版本。
     /// </summary>
     Task<ShaderDiagnosis> DiagnoseAsync();

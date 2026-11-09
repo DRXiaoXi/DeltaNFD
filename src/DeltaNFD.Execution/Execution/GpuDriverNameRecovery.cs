@@ -10,7 +10,8 @@ internal sealed class GpuDriverNameRecovery(
     Func<string, GpuDriverNameSource.Evidence> read,
     Action<GpuDriverNameSource.Evidence> saveEvidence,
     Action<GpuDriverNameSource.Evidence> writeAndVerify,
-    Action<GpuDriverNameSource.Evidence> completePending)
+    Action<GpuDriverNameSource.Evidence> completePending,
+    Func<GpuDriverNameSource.Evidence, string>? maintenanceNotice = null)
 {
     internal sealed class BeforeWriteException(string message) : IOException(message);
     internal GpuDriverNamePreview Preview(string path)
@@ -34,8 +35,9 @@ internal sealed class GpuDriverNameRecovery(
                 return OperationResult.Fail("保存恢复证据期间目标已变化，未写入；证据保留。");
             submitted = true;
             writeAndVerify(current);
+            var shaderGuide = maintenanceNotice?.Invoke(current) ?? "";
             completePending(current);
-            return OperationResult.Ok($"已按当前驱动重建为「{current.DriverDescription}」。这不是找回旧备份，名称可能与旧驱动时期不同；重启电脑后生效。", requiresReboot: true);
+            return OperationResult.Ok($"已按当前驱动重建为「{current.DriverDescription}」。这不是找回旧备份，名称可能与旧驱动时期不同；重启电脑后生效。" + shaderGuide, requiresReboot: true, suggestShaderMaintenance: shaderGuide.Length > 0);
         }
         catch (BeforeWriteException ex)
         {
@@ -87,5 +89,5 @@ internal sealed class GpuDriverNameRecovery(
             GpuSpoofRestoreState.Complete(evidence.Pending, evidence.RegistryPath);
             try { GpuSpoofWatch.Remove(evidence.RegistryPath); }
             catch (Exception ex) { Log.Warn("驱动名称已核验恢复，但旧伪装监测清理失败：" + ex.Message); }
-        });
+        }, evidence => GpuShaderGuidance.AfterVerifiedChange(evidence.CurrentDescription, evidence.Description));
 }

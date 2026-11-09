@@ -84,7 +84,8 @@ internal static class DashboardMemoryHealthChecks
 
         var imports = typeof(PhysicalMemoryInspection).GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
             .Select(m => m.GetCustomAttribute<DllImportAttribute>()).Where(a => a is not null).ToArray();
-        Check(imports.Length == 1 && imports[0]!.EntryPoint == "GlobalMemoryStatusEx", "memory inspection has only the read-only native entry point");
+        Check(imports.Length == 2 && imports.Select(a => a!.EntryPoint).ToHashSet().SetEquals(
+            new[] { "GlobalMemoryStatusEx", "GetPhysicallyInstalledSystemMemory" }), "memory inspection has only the two read-only memory APIs");
         var sessions = BackendSessions.Snapshot().Count;
         var timer = Stopwatch.StartNew(); var live = PhysicalMemoryInspection.Read(); timer.Stop();
         Check(live.Reading is { IsValid: true }, "native physical-memory read is valid");

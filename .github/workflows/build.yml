@@ -296,3 +296,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "NVIDIA settings regression" }
           dotnet run --project tools/GameModificationChecks -c Release
           if ($LASTEXITCODE -ne 0) { throw "Recording review regression" }
+
+      - name: RC4 low-memory and session guidance checks (isolated)
+        run: |
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --low-memory-support-checks
+          if ($LASTEXITCODE -ne 0) { throw "RC4 low-memory-support regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --gpu-shader-guidance-checks
+          if ($LASTEXITCODE -ne 0) { throw "RC4 gpu-shader-guidance regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --ui-density-checks
+          if ($LASTEXITCODE -ne 0) { throw "RC4 ui-density regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --frame-ui-doc-checks
+          if ($LASTEXITCODE -ne 0) { throw "RC4 frame-ui-doc regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --public-release-checks
+          if ($LASTEXITCODE -ne 0) { throw "RC4 public-release regression" }

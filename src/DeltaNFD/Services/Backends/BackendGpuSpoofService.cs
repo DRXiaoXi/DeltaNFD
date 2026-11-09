@@ -63,13 +63,17 @@ internal sealed class BackendGpuSpoofService : IGpuSpoofService
     public async Task<OperationResult> SpoofByPathAsync(string registryPath, string fakeName)
     {
         var result = await InvokeAsync(BackendCommands.GpuSpoofApply, new GpuSpoofApplyArgs { RegistryPath = registryPath, FakeName = fakeName }, null, CancellationToken.None);
-        return ToOperationResult(result, "写入显卡伪装");
+        var operation = ToOperationResult(result, "写入显卡伪装");
+        GpuShaderGuidanceSession.Shared.Observe(operation);
+        return operation;
     }
 
     public async Task<OperationResult> RestoreByPathAsync(string registryPath)
     {
         var result = await InvokeAsync(BackendCommands.GpuSpoofRestore, new GpuSpoofPathArgs { RegistryPath = registryPath }, null, CancellationToken.None);
-        return ToOperationResult(result, "恢复显卡型号");
+        var operation = ToOperationResult(result, "恢复显卡型号");
+        GpuShaderGuidanceSession.Shared.Observe(operation);
+        return operation;
     }
 
     public Task<IReadOnlyList<GpuSpoofInvalidation>> CheckInvalidationAsync() => DeltaNFD.Inspection.InspectionScheduler.Run(() => DeltaNFD.Inspection.GpuSpoofReadWatch.Check());
@@ -83,7 +87,9 @@ internal sealed class BackendGpuSpoofService : IGpuSpoofService
     {
         var result = await InvokeAsync(BackendCommands.GpuDriverNameRestore,
             new GpuDriverNameRestoreArgs { RegistryPath = registryPath, Fingerprint = fingerprint }, null, CancellationToken.None);
-        return MapDriverNameResult(result);
+        var operation = MapDriverNameResult(result);
+        GpuShaderGuidanceSession.Shared.Observe(operation);
+        return operation;
     }
     internal static OperationResult MapDriverNameResult(BackendResult result)
     {
@@ -96,6 +102,7 @@ internal sealed class BackendGpuSpoofService : IGpuSpoofService
                 Message = operation.Message, IsPartial = operation.IsPartial, OutcomeUnknown = operation.OutcomeUnknown || result.PendingRestore,
                 RequiresReboot = operation.RequiresReboot, RequiresLogoff = operation.RequiresLogoff,
                 RequiresDisplayConfirm = operation.RequiresDisplayConfirm, IsSkipped = operation.IsSkipped && result.Status == BackendResultStatuses.Ok,
+                SuggestShaderMaintenance = operation.SuggestShaderMaintenance,
                 DiagnosticsDirectory = operation.DiagnosticsDirectory,
             };
         }

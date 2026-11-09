@@ -91,7 +91,10 @@ public sealed class SystemTweakInspection
         catch (Exception ex) { mouse = MakeStatus(SystemTweak.MouseAccelerationOff, (false, "鼠标运行状态待核对：" + ex.Message), known: false); }
         var hags = SystemSwitchInspection.ReadHags();
         var wSearch = ReadDword(WSearchServicePath, "Start");
+        var sysMain = SecurityFeatureInspection.ReadService("SysMain");
         return[MakeStatus(SystemTweak.HyperVAndVbs, HyperVToState(hypervisor, vbs, hvci, credentialGuard), known: hypervisor != "unknown"), MakeStatus(SystemTweak.MemoryCompression, compressionOn is null ? (false, "状态无法确认") : compressionOn.Value ? (false, "已开启") : (true, "已关闭"), known: compressionOn.HasValue), MakeStatus(SystemTweak.PageCombining, pageCombiningOn is null ? (false, "状态无法确认") : pageCombiningOn.Value ? (false, "已开启") : (true, "已关闭"), known: pageCombiningOn.HasValue), MakeStatus(SystemTweak.Prefetch, PrefetchTrioToState(mmLaunch, prelaunch, operationApi, applicationPreLaunchOn), known: applicationPreLaunchOn.HasValue), // 游戏微调包
+        MakeStatus(SystemTweak.SysMainMemorySupport, (sysMain.Start == 4 || sysMain.RuntimeState == 1, "SysMain 服务状态"),
+            known: sysMain.Exists == true && sysMain.Start is 2 or 3 or 4 && sysMain.RuntimeState is 1 or 4),
         mouse, MakeStatus(SystemTweak.HardwareGpuScheduling, (hags.State == BxState.On, hags.Detail),
             known: hags.State is BxState.On or BxState.Off), MakeStatus(SystemTweak.WSearchOff, wSearch == 4 ? (true, "已禁用 Windows Search") : (false, $"未优化（WSearch={ServiceStartText(wSearch)}）")), ];
     }
@@ -267,6 +270,7 @@ public sealed class SystemTweakInspection
         SystemTweak.HyperVAndVbs => ("关闭 Hyper-V / VBS（含内核隔离）", "等效 HyperV-off：关闭 hypervisor 启动、禁用 Hyper-V 与虚拟机平台功能、关闭内核隔离与 Credential Guard。" + "重启生效。注意：重启后 WSL2、虚拟机、Windows 沙盒将不可用，系统安全性降低"),
         SystemTweak.MemoryCompression => ("关闭内存压缩", "关闭 MemCompression 进程，降低 CPU 占用；可用内存量会略微减少"),
         SystemTweak.PageCombining => ("关闭分页合并", "关闭内存页合并，减少后台 CPU 活动"),
+        SystemTweak.SysMainMemorySupport => ("SysMain 内存支持", "用于低内存引导中的状态核对和按原始备份恢复。"),
         SystemTweak.Prefetch => ("禁用预读取（Prefetch / PreLaunch / OperationAPI）", "关闭应用预读取、MMAgent ApplicationPreLaunch 与 OperationAPI，并保留用户级预启动兼容设置。" + "不停止、不禁用 SysMain；Windows Search 为独立开关。需重启后重新检测"),
         // ---- 游戏微调包 ----
         SystemTweak.MouseAccelerationOff => ("关闭鼠标加速", "关闭 Windows 提高指针精确度，立即生效；不改变 DPI 或指针速度，Raw Input 游戏通常不受此设置影响"),
@@ -283,7 +287,7 @@ public sealed class SystemTweakInspection
         return (compressionOn, pageCombiningOn, hvTask.Result, applicationPreLaunchOn);
     }
 
-    private static async Task<(bool? CompressionOn, bool? PageCombiningOn, bool? ApplicationPreLaunchOn)> QueryMmAgentAsync()
+    internal static async Task<(bool? CompressionOn, bool? PageCombiningOn, bool? ApplicationPreLaunchOn)> QueryMmAgentAsync()
     {
         var command = "$m = Get-MMAgent -ErrorAction Stop; [int]$m.MemoryCompression; [int]$m.PageCombining; if ($m.ApplicationPreLaunch -is [bool]) { [int]$m.ApplicationPreLaunch } else { 'UNKNOWN' }";
         var(exitCode, stdout, _) = await RunPowerShellAsync(command, TimeSpan.FromSeconds(20));
@@ -409,6 +413,8 @@ public sealed class SystemTweakInspection
             result.Add(SystemTweak.HardwareGpuScheduling);
         if (Has("HKLM", WSearchServicePath, "Start"))
             result.Add(SystemTweak.WSearchOff);
+        if (Has("State", "LowMemory", "SysMain"))
+            result.Add(SystemTweak.SysMainMemorySupport);
         return result;
     }
 }

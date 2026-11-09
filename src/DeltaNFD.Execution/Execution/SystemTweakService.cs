@@ -87,6 +87,8 @@ public sealed partial class SystemTweakService : ISystemTweakService
             result.Add(SystemTweak.HardwareGpuScheduling);
         if (Has("HKLM", WSearchServicePath, "Start"))
             result.Add(SystemTweak.WSearchOff);
+        if (Has("State", "LowMemory", "SysMain"))
+            result.Add(SystemTweak.SysMainMemorySupport);
         return result;
     }
 
@@ -213,6 +215,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
                 SystemTweak.MemoryCompression => await RestoreMmAgentAsync("MemoryCompression", "-mc", "内存压缩"),
                 SystemTweak.PageCombining => await RestoreMmAgentAsync("PageCombining", "-pc", "分页合并"),
                 SystemTweak.Prefetch => await RestorePrefetchTrioAsync(),
+                SystemTweak.SysMainMemorySupport => await RestoreSysMainMemoryAsync(),
                 // ---- 游戏微调包（还原 = 写回备份的原始值） ----
                 SystemTweak.MouseAccelerationOff => RestoreMouseAcceleration(),
                 SystemTweak.HardwareGpuScheduling => RestoreValue("HKLM", GraphicsDriversPath, "HwSchMode", "HAGS 硬件加速 GPU 调度"),

@@ -9,9 +9,22 @@ public readonly record struct PhysicalMemoryReading(ulong TotalBytes, ulong Avai
 }
 public sealed record PhysicalMemoryReadResult(PhysicalMemoryReading? Reading, string Error = "");
 
-/// <summary>One query only; no CPU/process sampling, cache purge, allocation pressure or executor.</summary>
+/// <summary>Read-only physical memory queries; no sampling, cache purge, allocation pressure or executor.</summary>
 public static class PhysicalMemoryInspection
 {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetPhysicallyInstalledSystemMemory(out ulong totalKilobytes);
+    public static ulong? InstalledBytes()
+    {
+        try
+        {
+            if (GetPhysicallyInstalledSystemMemory(out var kb) && kb > 0)
+                return checked(kb * 1024);
+        }
+        catch { }
+        return Read().Reading is { IsValid: true } value ? value.TotalBytes : null;
+    }
     [StructLayout(LayoutKind.Sequential)]
     private struct MemoryStatus
     {

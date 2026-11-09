@@ -1,0 +1,10 @@
+<UserControl
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:Class="DeltaNFD.Controls.GpuShaderGuidanceBar">
+    <InfoBar x:Name="Notice" IsOpen="False" IsClosable="True" Severity="Informational" Title="型号调整后请维护着色器缓存" CloseButtonClick="Notice_CloseButtonClick">
+        <InfoBar.ActionButton>
+            <Button x:Name="ActionButton" Content="前往着色器维护" Click="Action_Click"/>
+        </InfoBar.ActionButton>
+    </InfoBar>
+</UserControl>

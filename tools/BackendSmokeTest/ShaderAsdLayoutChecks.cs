@@ -27,8 +27,8 @@ internal static class ShaderAsdLayoutChecks
         NvShaderCacheReport Good() => new() { Scopes = [new("全局设置", "default", null, "fixture"), new("三角洲程序设置", "inherited", null, "fixture")] };
         foreach (var version in new[] { "621.00", "621.14", "621.99" })
         {
-            foreach (var sizes in new long[][] { [256 * mb, 256 * mb], [512 * mb, 1024 * mb],
-                [256 * mb + 1, 256 * mb + 1], [512 * mb, 512 * mb, 1], [1024 * mb, 1024 * mb, mb] })
+            foreach (var sizes in new long[][] { [256 * mb, 512 * mb], [512 * mb, 1024 * mb],
+                [256 * mb + 1, 256 * mb + 1], [256 * mb, 256 * mb + 1], [512 * mb, 512 * mb, 1], [1024 * mb, 1024 * mb, mb] })
             {
                 Fixture(sizes); var diag = Diagnose(version);
                 Check(diag.Level == ShaderDiagLevel.Warning && diag.CacheLayout == ShaderCacheLayout.Legacy && diag.Summary.StartsWith("未激活ASD"),
@@ -37,7 +37,9 @@ internal static class ShaderAsdLayoutChecks
                 Check(health.State == DashboardHealthState.Warning && !health.ShowAction && !health.OpenCacheRecovery && health.Text.Contains("未激活ASD"),
                     "legacy warning stays yellow without go-handle action: " + version);
             }
-            foreach (var sizes in new long[][] { [256 * mb, 1], [512 * mb, mb], [256 * mb, 1, 65536, mb], [512 * mb, 255 * mb, 1] })
+            foreach (var sizes in new long[][] { [256 * mb, 1], [512 * mb, mb], [256 * mb, 1, 65536, mb], [512 * mb, 255 * mb, 1],
+                [256 * mb, 256 * mb], [256 * mb, mb, 256 * mb], [256 * mb, 256 * mb, 256 * mb],
+                [256 * mb, 512 * mb, 256 * mb], [1024 * mb, 256 * mb, 1, 256 * mb] })
             {
                 Fixture(sizes); var diag = Diagnose(version);
                 Check(diag.Level == ShaderDiagLevel.Normal && diag.CacheLayout == ShaderCacheLayout.Asd && diag.Summary.StartsWith("ASD已激活"),
@@ -45,6 +47,16 @@ internal static class ShaderAsdLayoutChecks
                 var health = DashboardShaderHealth.Evaluate(Status(), diag, Good(), true);
                 Check(health.State == DashboardHealthState.Normal && health.Text.Contains("ASD已激活"), "homepage does not replace active ASD text with generic normal");
             }
+        }
+        foreach (var version in new[] { "576.88", "596.49", "620.99" })
+        foreach (var sizes in new long[][] { [256 * mb, 256 * mb], [256 * mb, mb, 256 * mb] })
+        {
+            Fixture(sizes); var diag = Diagnose(version);
+            Check(diag.Level == ShaderDiagLevel.Abnormal && diag.CacheLayout == ShaderCacheLayout.Unspecified && !diag.Summary.Contains("ASD"),
+                "older drivers do not accept a pair of exact 256MB files: " + version);
+            var health = DashboardShaderHealth.Evaluate(Status(), diag, Good(), true);
+            Check(health.State == DashboardHealthState.Abnormal && health.ShowAction,
+                "invalid old-driver pair remains red and actionable: " + version);
         }
         foreach (var version in new[] { "576.88", "620.99", "622.00", "700.00" })
         {
@@ -56,6 +68,9 @@ internal static class ShaderAsdLayoutChecks
         var broken = Diagnose(); var brokenHealth = DashboardShaderHealth.Evaluate(Status(), broken, Good(), true);
         Check(broken.Level == ShaderDiagLevel.Abnormal && broken.CacheLayout == ShaderCacheLayout.Unspecified
             && brokenHealth.State == DashboardHealthState.Abnormal && brokenHealth.ShowAction, "zero-byte NVPH remains red and actionable");
+        Fixture(256 * mb, 256 * mb, 0); var brokenPair = Diagnose();
+        Check(brokenPair.Level == ShaderDiagLevel.Abnormal && brokenPair.CacheLayout == ShaderCacheLayout.Unspecified,
+            "an exact 256MB pair cannot hide an empty intermediate file");
         Directory.CreateDirectory(Path.Combine(root, "GameVer_Old"));
         Check(Diagnose().Level == ShaderDiagLevel.Abnormal && Diagnose().CacheLayout == ShaderCacheLayout.Unspecified,
             "multi-version residue outranks ASD hint");
@@ -63,7 +78,7 @@ internal static class ShaderAsdLayoutChecks
         Fixture(); var empty = Diagnose();
         Check(empty.Level == ShaderDiagLevel.Info && empty.CacheLayout == ShaderCacheLayout.Unspecified && !empty.Summary.Contains("ASD已激活"),
             "no cache never claims active ASD");
-        Fixture(256 * mb, 256 * mb); var legacy = Diagnose();
+        Fixture(512 * mb, 512 * mb); var legacy = Diagnose();
         var custom = new NvShaderCacheReport { Scopes = [new("全局设置", "custom", 10240, "fixture"), new("三角洲程序设置", "default", null, "fixture")] };
         var otherIssue = DashboardShaderHealth.Evaluate(Status(), legacy, custom, true);
         Check(otherIssue.State == DashboardHealthState.Abnormal && otherIssue.ShowAction && otherIssue.OpenCacheRecovery,
@@ -80,6 +95,12 @@ internal static class ShaderAsdLayoutChecks
             "existing shader diagnosis protocol values remain stable");
         var old = JsonSerializer.Deserialize<ShaderDiagnosis>("{\"Level\":2,\"Summary\":\"old\",\"Details\":[],\"Advice\":\"old\"}")!;
         Check(old.CacheLayout == ShaderCacheLayout.Unspecified, "legacy diagnosis payload cannot invent ASD layout");
+        Fixture(256 * mb, 256 * mb); var activePair = Diagnose();
+        var activeWire = JsonSerializer.Deserialize<ShaderDiagnosis>(JsonSerializer.Serialize(activePair))!;
+        Check(activeWire.Level == ShaderDiagLevel.Normal && activeWire.CacheLayout == ShaderCacheLayout.Asd
+            && activeWire.Summary.StartsWith("ASD已激活"), "exact 256MB pair remains active ASD over IPC");
+        Check(DashboardShaderHealth.Evaluate(Status(), activePair, custom, true).State == DashboardHealthState.Abnormal,
+            "active ASD pair does not hide independent driver-cache policy errors");
         var repo = new DirectoryInfo(AppContext.BaseDirectory);
         while (repo is not null && !File.Exists(Path.Combine(repo.FullName, "src/DeltaNFD/Views/DashboardPage.xaml"))) repo = repo.Parent;
         Check(repo is not null, "UI sources found");

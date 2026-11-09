@@ -60,6 +60,7 @@ public sealed partial class GpuSpoofPage : Page
                               + "· 写入伪装型号并创建登录自启动任务\n"
                               + "· 随后立即重启电脑，重启后本工具自动启动并把注册表改回原始型号\n"
                               + "· Windows 可能要在下一次重启后才刷新已加载设备的显示名称\n\n"
+                              + "型号生效后，请手动到「着色器维护」清除旧缓存并完成完整预热。\n\n"
                               + "重启将在 5 秒后强制关闭正在运行的程序，请先保存文件。",
                     PrimaryButtonText = "写入并立即重启",
                     CloseButtonText = "取消",
