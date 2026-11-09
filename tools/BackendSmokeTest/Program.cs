@@ -1,4 +1,10 @@
 using DeltaNFD.Services;
+if (args is ["--runtime-shutdown-owned-child", var shutdownReleaseFile])
+{
+    var deadline = System.Diagnostics.Stopwatch.StartNew();
+    while (!File.Exists(shutdownReleaseFile) && deadline.Elapsed < TimeSpan.FromSeconds(30)) Thread.Sleep(10);
+    return;
+}
 if (args is ["--nv-profile-reset-backend-checks"]) { try { NvProfileResetBackendChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--sysmain-readonly-checks"]) { try { await SysMainReadOnlyChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--gpu-shader-guidance-checks"]) { try { await GpuShaderGuidanceChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }

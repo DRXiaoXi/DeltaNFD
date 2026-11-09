@@ -135,16 +135,32 @@ internal static class RuntimeShutdownRecoveryChecks
         var childRoot = Path.Combine(root, "owned-runner");
         var environment = new Vc14ReinstallEnvironment(dataRoot: childRoot, diagnosticsDirectory: Path.Combine(childRoot, "logs"), installerBusy: () => false);
         var info = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true };
-        foreach (var arg in new[] { "--runtime-reliability-child", "250", "0" }) info.ArgumentList.Add(arg);
-        var step = await environment.RunProcessAsync(info, null, default, TimeSpan.FromMilliseconds(25));
+        var releaseFile = Path.Combine(root, "owned-child-release");
+        foreach (var arg in new[] { "--runtime-shutdown-owned-child", releaseFile }) info.ArgumentList.Add(arg);
         var childRecord = Path.Combine(childRoot, "runtime-repair-active.json");
-        Check(step.Unknown && File.Exists(childRecord), "timeout keeps runner responsibility without killing its child");
-        using (var json = JsonDocument.Parse(File.ReadAllBytes(childRecord)))
+        try
         {
+            // A release signal keeps the owned child alive while slow journal I/O completes.
+            // The product deadline remains 25 ms; no product timeout or assertion is relaxed.
+            var step = await environment.RunProcessAsync(info, null, default, TimeSpan.FromMilliseconds(25));
+            Check(step.Unknown && File.Exists(childRecord), "timeout keeps runner responsibility without killing its child");
+            using var json = JsonDocument.Parse(File.ReadAllBytes(childRecord));
             var row = json.RootElement;
             Check(row.GetProperty("BootId").GetString() == nativeBoot && row.GetProperty("Stage").GetString() == "running", "real runner persists native boot identity with child identity");
-            try { using var child = Process.GetProcessById(row.GetProperty("Pid").GetInt32()); await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)); }
-            catch (ArgumentException) { }
+            using var ownedChild = Process.GetProcessById(row.GetProperty("Pid").GetInt32());
+            Check(!ownedChild.HasExited, "timed-out owned child remains alive until explicitly released by the fixture");
+        }
+        finally
+        {
+            File.WriteAllText(releaseFile, "release owned child");
+            if (File.Exists(childRecord))
+            {
+                using var json = JsonDocument.Parse(File.ReadAllBytes(childRecord));
+                var pid = json.RootElement.GetProperty("Pid").GetInt32();
+                if (pid > 0)
+                    try { using var child = Process.GetProcessById(pid); await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)); }
+                    catch (ArgumentException) { }
+            }
         }
 
         if (withIpc)
