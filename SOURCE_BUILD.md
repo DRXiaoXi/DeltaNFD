@@ -1,6 +1,6 @@
-# Beta0.931-RC4 / 0.9317 构建输入
+# Alpha0.931-RC5 / 0.9318 构建输入
 
-本标签对应发布产品源码。使用 Windows x64、.NET SDK 8.0.425、Python 3.11+；安装器另需 Inno Setup 6。
+本地提交对应内测产品源码；本轮不上传GitHub。使用 Windows x64、.NET SDK 8.0.425、Python 3.11+；安装器另需 Inno Setup 6。
 
 先运行 `python tools/prepare-source-assets.py` 校验并恢复固定厂商依赖，再运行 `installer/publish-selfcontained.ps1` 生成自包含布局，最后使用 `installer/DeltaNFD.iss` 生成安装器。引导只下载并核验资源，不运行厂商安装器。固定清单包括 0.9200 原始资源、0.9299 官方14.44资源及0.9315 DirectX资源，详见引导脚本及其固定哈希。
 

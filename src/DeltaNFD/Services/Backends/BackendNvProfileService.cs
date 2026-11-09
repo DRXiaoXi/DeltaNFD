@@ -16,6 +16,23 @@ internal sealed class BackendNvProfileService : INvProfileService
     private BackendClient? _client { get => _caller.SharedClient; set => _caller.SharedClient = value; }
 
     public IReadOnlyList<NvSettingDef> GetSettingCatalog() => NvSettingsCatalog.Definitions;
+    public async Task<OperationResult> ResetDeltaProfileAsync()
+    {
+        var result = await InvokeAsync(BackendCommands.GpuDriverProfileReset, new { }, CancellationToken.None);
+        return MapProfileResetResult(result);
+    }
+
+    internal static OperationResult MapProfileResetResult(BackendResult result)
+    {
+        if (result.Data is not { } data)
+            return new OperationResult { Success = false, OutcomeUnknown = result.RequiresReview || result.PendingRestore,
+                Message = "防闪屏性重置未确认完成：" + result.Message };
+        var operation = BackendJson.Deserialize<OperationResult>(data);
+        var unknown = operation.OutcomeUnknown || result.RequiresReview || result.PendingRestore;
+        return new OperationResult { Success = result.Status == BackendResultStatuses.Ok && operation.Success && !operation.IsPartial && !unknown,
+            IsSkipped = operation.IsSkipped, OutcomeUnknown = unknown, DiagnosticsDirectory = operation.DiagnosticsDirectory,
+            Message = operation.Message };
+    }
     public async Task<OperationResult> SetShaderCacheSizeAsync(string scope, uint? value) => Map(await InvokeAsync(BackendCommands.GpuShaderCacheApply, new NvShaderCacheApplyArgs { Scope = scope, Value = value }, CancellationToken.None), "设置着色器缓存大小");
     private async Task<BackendClient> EnsureClientAsync(CancellationToken cancellationToken)
     {

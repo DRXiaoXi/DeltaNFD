@@ -36,7 +36,7 @@ public static class SecurityFeatureInspection
     }
     public static SecurityServiceEvidence ReadService(string name)
     {
-        if (name is not ("WinDefend" or "WdNisSvc" or "Sense" or "SecurityHealthService"))
+        if (name is not ("WinDefend" or "WdNisSvc" or "Sense" or "SecurityHealthService" or "SysMain"))
             return new(null, null, null, "服务名不在固定只读范围。");
         int? start = null;
         try

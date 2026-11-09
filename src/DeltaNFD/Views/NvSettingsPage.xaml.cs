@@ -9,6 +9,8 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
 {
     public string TargetLabel => "当前主进程：" + DeltaNFD.Services.GameTargetService.Default.Current.DisplayName;
     public NvSettingsViewModel ViewModel { get; } = new();
+    private bool _active;
+    private int _pageEpoch;
 
     /// <summary>非 N 卡（或 NVAPI 不可用）且检测已完成时显示提示（加载中不闪红）。</summary>
     public bool ShowNoNvidia => !ViewModel.IsLoading && !ViewModel.EnvironmentReady;
@@ -17,7 +19,7 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
     public bool CanLock => ViewModel.CanEditOptions && !ViewModel.DrsFilesLocked && !ViewModel.LockBusy;
 
     /// <summary>解锁按钮可用：已锁定、不忙。</summary>
-    public bool CanUnlock => ViewModel.DrsFilesLocked && !ViewModel.LockBusy && !ViewModel.IsSelectingOption;
+    public bool CanUnlock => ViewModel.DrsFilesLocked && !ViewModel.LockBusy && !ViewModel.IsSelectingOption && !ViewModel.IsApplying && !ViewModel.IsLoading;
 
     public bool CanRefresh => !ViewModel.IsLoading && !ViewModel.IsApplying && !ViewModel.IsSelectingOption;
 
@@ -28,6 +30,8 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
     public NvSettingsPage()
     {
         InitializeComponent();
+        Loaded += (_, _) => { _active = true; _pageEpoch++; };
+        Unloaded += (_, _) => { _active = false; _pageEpoch++; };
 
         ViewModel.PropertyChanged += (_, e) =>
         {
@@ -123,6 +127,28 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
         {
             await ShowErrorAsync(result.Message);
         }
+    }
+
+    private async void ProfileResetButton_Click(object sender, RoutedEventArgs e)
+    {
+        var epoch = _pageEpoch;
+        bool IsCurrent() => _active && epoch == _pageEpoch;
+        var result = await ViewModel.ResetProfileForFlickerAsync(async () =>
+        {
+            var confirm = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "防闪屏性重置？",
+                Content = "请先退出三角洲，并关闭 NVIDIA App、控制面板及其他驱动设置工具。\n\n"
+                    + "将先备份原值，再完整恢复三角洲专用驱动配置，清除全部用户修改，包括本页未列出的项目、DLSS、ReBAR 等覆盖，以及用户添加的程序关联；用户自行建立的配置可能被移除。\n\n"
+                    + "全局设置仍会被继承，其他游戏配置不变。本页尚未应用的选择将丢弃。完成后请重新启动游戏，在原问题位置确认效果；不保证修复所有闪屏。",
+                PrimaryButtonText = "备份并重置",
+                CloseButtonText = "取消",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            return await confirm.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
+        }, IsCurrent);
+        if (IsCurrent() && result is { Success: false }) await ShowErrorAsync(result.Message);
     }
 
     private async void LockButton_Click(object sender, RoutedEventArgs e)

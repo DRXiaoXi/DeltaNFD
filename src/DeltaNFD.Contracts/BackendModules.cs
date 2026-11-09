@@ -23,6 +23,7 @@ public static class BackendCommands
     public const string GpuDriverRead = "gpu.driver.read";
     public const string GpuDriverApply = "gpu.driver.apply";
     public const string GpuDriverRestore = "gpu.driver.restore";
+    public const string GpuDriverProfileReset = "gpu.driver.profile-reset";
     public const string GpuDriverLock = "gpu.driver.lock";
     public const string GpuShaderCacheApply = "gpu.shader-cache.apply";
     public const string SystemShaderRecoveryClean = "system.shader.recovery-clean";
@@ -261,6 +262,7 @@ public static class BackendModules
                     [BackendCommands.GpuDriverRead] = TwoMinutes,
                     [BackendCommands.GpuDriverApply] = FiveMinutes,
                     [BackendCommands.GpuDriverRestore] = FiveMinutes,
+                    [BackendCommands.GpuDriverProfileReset] = FiveMinutes,
                     [BackendCommands.GpuDriverLock] = TwoMinutes,
                     [BackendCommands.GpuShaderCacheApply] = TwoMinutes,
                     [BackendCommands.GpuReconcile] = FiveMinutes,

@@ -37,6 +37,8 @@ internal static class BackendRecovery
         if (IsRuntimeFileReplacement(review)) return []; // Manual DLL restoration is not IFEO/UE4 guard recovery.
         if (module == BackendModules.Runtime && review.Command == BackendCommands.RuntimeFileUseClose) return [];
         if (module == BackendModules.Procman && review.Command == BackendCommands.ProcmanMemoryTrim) return [];
+        // A driver profile reset has no relation to the display-name spoof backup.
+        if (module == BackendModules.Gpu && review.Command == BackendCommands.GpuDriverProfileReset) return [];
         if (snapshot is null || !snapshot.Complete || snapshot.Module != module) return [];
         if (module == BackendModules.Runtime)
             return snapshot.RecoveryScopes.Where(s => s.Available && (IsRuntimeInstallation(review)

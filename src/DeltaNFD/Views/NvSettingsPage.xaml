@@ -41,6 +41,8 @@
                             <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}"/>
                             <Button Content="刷新状态" Click="RefreshButton_Click" IsEnabled="{x:Bind CanRefresh, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch"/>
                             <Button Content="全部恢复默认" Click="ResetButton_Click" IsEnabled="{x:Bind CanReset, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch"/>
+                            <Button Content="防闪屏性重置" Click="ProfileResetButton_Click" IsEnabled="{x:Bind ViewModel.CanResetProfile, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch"/>
+                            <TextBlock Text="针对三角洲模型消失、闪烁：备份并完整清除游戏驱动覆盖。退出游戏后使用；不保证解决所有闪屏原因。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                             <Button Style="{StaticResource PrimaryButtonStyle}" Content="{x:Bind ViewModel.ApplyButtonText, Mode=OneWay}" IsEnabled="{x:Bind ViewModel.ApplyEnabled, Mode=OneWay}" Click="ApplyButton_Click" HorizontalAlignment="Stretch"/>
                         </StackPanel>
                     </StackPanel>

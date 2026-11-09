@@ -175,7 +175,8 @@ public partial class NvSettingsViewModel : ObservableObject
     }
     private readonly Dictionary<uint, uint?> _rebarAcknowledgements = [];
     private uint? _displayedDriverVersion;
-    public bool CanEditOptions => EnvironmentReady && !IsLoading && !IsApplying && !IsSelectingOption;
+    public bool CanEditOptions => EnvironmentReady && !IsLoading && !IsApplying && !IsSelectingOption && !LockBusy;
+    public bool CanResetProfile => CanEditOptions && !DrsFilesLocked && !ServiceLocator.GameTarget.Current.IsCustom;
 
     private bool isLoading;
     public bool IsLoading
@@ -287,7 +288,7 @@ public partial class NvSettingsViewModel : ObservableObject
     public bool LockBusy
     {
         get => lockBusy;
-        set => SetProperty(ref lockBusy, value);
+        set { if (SetProperty(ref lockBusy, value)) RefreshFlags(); }
     }
 
     private bool shaderCacheNonDefault;
@@ -358,6 +359,7 @@ public partial class NvSettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(ApplyEnabled));
         OnPropertyChanged(nameof(ApplyButtonText));
         OnPropertyChanged(nameof(CanEditOptions));
+        OnPropertyChanged(nameof(CanResetProfile));
     }
 
     /// <summary>行选项变化时由页面调用，刷新待应用计数。</summary>
@@ -676,7 +678,51 @@ public partial class NvSettingsViewModel : ObservableObject
         return value; // null=删除覆盖；0=显式关闭/自适应/G-SYNC 等合法驱动值。
     }
 
-    /// <summary>全部恢复默认（删除全部覆盖项，含联动总开关）。</summary>
+    /// <summary>确认后完整重置游戏配置；旧的本页恢复默认仍保留原范围。</summary>
+    public async Task<OperationResult?> ResetProfileForFlickerAsync(Func<Task<bool>> confirm, Func<bool> isCurrent)
+    {
+        if (!CanResetProfile || !isCurrent()) return null;
+        IsApplying = true;
+        var submitted = false;
+        try
+        {
+            if (!await confirm() || !isCurrent()) return null;
+            if (LockBusy || DrsFilesLocked || IsLoading || IsSelectingOption || !EnvironmentReady
+                || ServiceLocator.GameTarget.Current.IsCustom) return null;
+            StatusText = "正在备份并重置三角洲专用驱动配置…";
+            submitted = true;
+            var result = await _nv.ResetDeltaProfileAsync();
+            _rebarAcknowledgements.Clear();
+            if (isCurrent())
+            {
+                // Refresh all rows, even for an unknown outcome; never leave stale enabled values visible.
+                await LoadAsync();
+                if (isCurrent()) StatusText = result.Message;
+            }
+            return result;
+        }
+        catch (Exception ex)
+        {
+            var message = "防闪屏性重置未确认完成：" + ex.Message;
+            if (isCurrent())
+            {
+                if (submitted)
+                {
+                    _rebarAcknowledgements.Clear();
+                    foreach (var row in Rows)
+                    {
+                        if (row.IsScale) row.SetActualScale(false, 0, "未确认，待核对");
+                        else row.SetActual(-1, "未确认，待核对");
+                    }
+                }
+                StatusText = message;
+            }
+            return new OperationResult { Success = false, OutcomeUnknown = submitted, Message = message };
+        }
+        finally { IsApplying = false; }
+    }
+
+    /// <summary>本页管理项恢复默认（含联动总开关）。</summary>
     public async Task<OperationResult?> ResetAllAsync()
     {
         if (IsApplying || IsSelectingOption || !EnvironmentReady)
@@ -711,7 +757,7 @@ public partial class NvSettingsViewModel : ObservableObject
     /// <summary>切换 nvdrsdb 只读锁定。</summary>
     public async Task<OperationResult?> SetLockAsync(bool readOnly)
     {
-        if (LockBusy || IsSelectingOption)
+        if (LockBusy || IsSelectingOption || IsApplying || IsLoading)
         {
             return null;
         }

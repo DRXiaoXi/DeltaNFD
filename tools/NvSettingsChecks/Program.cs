@@ -123,6 +123,7 @@ internal static class Program
         await RetiredSrChecks();
         await ImmediateSelectionChecks();
         await RebarV2Checks();
+        await ProfileResetChecks.RunAsync();
         UiWiringChecks();
         await ShaderCacheViewChecks.RunAsync();
         Console.WriteLine($"TOTAL {_checks} NVIDIA settings checks passed; shader cache/DLSS UI checks also passed; no driver settings written.");

@@ -4,7 +4,7 @@ using System.Text;
 namespace DeltaNFD.Services;
 
 public enum LowMemoryAction { SysMain, MemoryCompression, PageCombining, Prefetch }
-public sealed record LowMemoryApplyArgs(LowMemoryAction Action, string Fingerprint);
+public sealed record LowMemoryApplyArgs(LowMemoryAction Action, string Fingerprint, bool RestorePrefetch = false);
 public sealed record LowMemoryStatus(ulong? TotalBytes, int? SysMainStart = null, bool? SysMainRunning = null,
     bool? CompressionEnabled = null, bool? CombiningEnabled = null, bool? PrefetchDisabled = null, string Error = "")
 {
@@ -24,8 +24,9 @@ public sealed record LowMemoryStatus(ulong? TotalBytes, int? SysMainStart = null
         _ => null,
     };
     public bool NeedsAttention => IsLowCapacity && Enum.GetValues<LowMemoryAction>().Any(a => Needs(a) == true);
-    public bool CanCheckTarget(LowMemoryAction action) => Complete || action == LowMemoryAction.SysMain
-        && SysMainStart is 2 or 3 or 4 && SysMainRunning.HasValue;
+    public bool CanCheckTarget(LowMemoryAction action) => Complete
+        || action == LowMemoryAction.SysMain && SysMainStart is 2 or 3 or 4 && SysMainRunning.HasValue
+        || action == LowMemoryAction.Prefetch && PrefetchDisabled.HasValue;
     public bool CanRepairSysMain => IsLowCapacity && CanCheckTarget(LowMemoryAction.SysMain) && Needs(LowMemoryAction.SysMain) == true;
     public bool Ready => IsLowCapacity && Complete && !NeedsAttention;
     public string Fingerprint => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(

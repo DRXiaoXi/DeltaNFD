@@ -59,6 +59,67 @@ internal static class LowMemorySupportChecks
             "known SysMain can be enabled before unavailable MMAgent without claiming complete repair");
         Check(!(await LowMemoryRepairEngine.RunAsync(new RepairFake(dependency), new(LowMemoryAction.MemoryCompression, dependency.Fingerprint), CancellationToken.None)).Success,
             "unavailable MMAgent original still cannot be overwritten");
+        var independent = healthy with { SysMainStart = null, SysMainRunning = null, CompressionEnabled = null,
+            CombiningEnabled = null, PrefetchDisabled = false, Error = "unrelated service read unavailable" };
+        Check(!independent.Complete && independent.CanCheckTarget(LowMemoryAction.Prefetch), "known prefetch can be operated independently of other three unknowns");
+        var independentEnv = new RepairFake(independent);
+        var independentResult = await LowMemoryRepairEngine.RunAsync(independentEnv, new(LowMemoryAction.Prefetch, independent.Fingerprint), CancellationToken.None);
+        Check(independentResult.Success && independentEnv.Writes == 1 && independentEnv.Status.PrefetchDisabled == true,
+            "independent prefetch disable still uses actual repair engine and post-read");
+        Check(independentEnv.Status.SysMainStart is null && independentEnv.Status.CompressionEnabled is null && independentEnv.Status.CombiningEnabled is null,
+            "independent disable does not modify service or either memory feature");
+        Check(!independentEnv.Status.Ready, "single setting success is not whole-page success");
+        foreach (var restore in new[] { false, true })
+        {
+            var unknownPrefetch = independent with { PrefetchDisabled = null };
+            var unknownEnv = new RepairFake(unknownPrefetch) { HasBackup = true };
+            Check(!(await LowMemoryRepairEngine.RunAsync(unknownEnv, new(LowMemoryAction.Prefetch, unknownPrefetch.Fingerprint, restore), CancellationToken.None)).Success
+                && unknownEnv.Writes == 0 && unknownEnv.Restores == 0, "unknown target cannot disable or restore");
+            var staleEnv = new RepairFake(independent) { HasBackup = true };
+            Check(!(await LowMemoryRepairEngine.RunAsync(staleEnv, new(LowMemoryAction.Prefetch, "old", restore), CancellationToken.None)).Success
+                && staleEnv.Writes == 0 && staleEnv.Restores == 0, "independent disable/restore rejects stale fingerprint");
+            var gameEnv = new RepairFake(independent) { HasBackup = true, BlockOnSecond = true };
+            Check(!(await LowMemoryRepairEngine.RunAsync(gameEnv, new(LowMemoryAction.Prefetch, independent.Fingerprint, restore), CancellationToken.None)).Success
+                && gameEnv.Writes == 0 && gameEnv.Restores == 0, "independent disable/restore rechecks game gate");
+            var cancelEnv = new RepairFake(independent) { HasBackup = true };
+            try { await LowMemoryRepairEngine.RunAsync(cancelEnv, new(LowMemoryAction.Prefetch, independent.Fingerprint, restore), new(true)); Check(false, "independent cancellation missing"); }
+            catch (OperationCanceledException) { Check(cancelEnv.Writes == 0 && cancelEnv.Restores == 0, "cancelled independent action cannot mutate"); }
+            foreach (var total in new ulong?[] { null, 0, 32 * gb })
+            {
+                var wrongCapacity = independent with { TotalBytes = total };
+                var wrongEnv = new RepairFake(wrongCapacity) { HasBackup = true };
+                Check(!(await LowMemoryRepairEngine.RunAsync(wrongEnv, new(LowMemoryAction.Prefetch, wrongCapacity.Fingerprint, restore), CancellationToken.None)).Success
+                    && wrongEnv.Writes == 0 && wrongEnv.Restores == 0, "independent action retains capacity gate");
+            }
+        }
+        foreach (var originalDisabled in new[] { false, true })
+        {
+            var restoreState = independent with { PrefetchDisabled = true };
+            var restoreEnv = new RepairFake(restoreState) { HasBackup = true, OriginalPrefetchDisabled = originalDisabled };
+            var restored = await LowMemoryRepairEngine.RunAsync(restoreEnv, new(LowMemoryAction.Prefetch, restoreState.Fingerprint, true), CancellationToken.None);
+            Check(restored.Success && restored.RequiresReboot && restoreEnv.Restores == 1 && restoreEnv.Writes == 0,
+                "toggle off restores exactly one setting without replaying disable");
+            Check(restoreEnv.Status.PrefetchDisabled == originalDisabled && !restoreEnv.Status.Ready,
+                "restore reflects original including originally-disabled state and preserves other unknowns");
+        }
+        var noBackup = new RepairFake(independent);
+        Check(!(await LowMemoryRepairEngine.RunAsync(noBackup, new(LowMemoryAction.Prefetch, independent.Fingerprint, true), CancellationToken.None)).Success
+            && noBackup.Restores == 0, "no original backup cannot write guessed defaults");
+        foreach (var invalidAction in new[] { LowMemoryAction.SysMain, LowMemoryAction.MemoryCompression, LowMemoryAction.PageCombining, (LowMemoryAction)99 })
+        {
+            var invalidEnv = new RepairFake(healthy) { HasBackup = true };
+            Check(!(await LowMemoryRepairEngine.RunAsync(invalidEnv, new(invalidAction, healthy.Fingerprint, true), CancellationToken.None)).Success
+                && invalidEnv.Restores == 0 && invalidEnv.Writes == 0, "restore option cannot broaden beyond prefetch");
+        }
+        var restoreFailure = new RepairFake(independent) { HasBackup = true, Fail = true };
+        var failedRestore = await LowMemoryRepairEngine.RunAsync(restoreFailure, new(LowMemoryAction.Prefetch, independent.Fingerprint, true), CancellationToken.None);
+        Check(!failedRestore.Success && failedRestore.OutcomeUnknown && restoreFailure.HasBackup,
+            "failed restore retains original and does not become success");
+        var unreadableAfter = new RepairFake(independent) { HasBackup = true, LosePrefetchAfterRestore = true };
+        var unreadableResult = await LowMemoryRepairEngine.RunAsync(unreadableAfter, new(LowMemoryAction.Prefetch, independent.Fingerprint, true), CancellationToken.None);
+        Check(!unreadableResult.Success && unreadableResult.OutcomeUnknown, "restore followed by unknown read needs review");
+        var oldWire = JsonSerializer.Deserialize<LowMemoryApplyArgs>("{\"Action\":3,\"Fingerprint\":\"old-client\"}")!;
+        Check(!oldWire.RestorePrefetch && oldWire.Action == LowMemoryAction.Prefetch, "old request defaults to disable, never restore");
         var stale = new RepairFake(bad);
         Check(!(await LowMemoryRepairEngine.RunAsync(stale, new(LowMemoryAction.SysMain, "stale"), CancellationToken.None)).Success && stale.Writes == 0,
             "stale confirmation cannot write");
@@ -155,6 +216,11 @@ internal static class LowMemorySupportChecks
         Check(home.Descendants().Any(x => (string?)x.Attribute("Click") == "LowMemoryRecovery_Click"), "homepage links hidden recovery page");
         var page = XDocument.Load(Path.Combine(basePath, "src/DeltaNFD/Views/LowMemoryRecoveryPage.xaml"));
         Check(page.Descendants().Any(x => x.Name.LocalName == "ProgressBar") && page.ToString().Contains("手动重启"), "progress and manual restart guidance");
+        Check(page.Descendants().Any(x => x.Name.LocalName == "ToggleSwitch" && (string?)x.Attribute("Toggled") == "Prefetch_Toggled"
+            && (string?)x.Attribute("IsEnabled") == "False"), "direct prefetch toggle starts disabled until read");
+        Check(page.Descendants().Any(x => (string?)x.Attribute("Click") == "PrefetchRestore_Click"), "partial configuration retains an explicit backup restore entrance");
+        var pageCode = File.ReadAllText(Path.Combine(basePath, "src/DeltaNFD/Views/LowMemoryRecoveryPage.xaml.cs"));
+        Check(pageCode.Contains("_syncingPrefetch || !_active") && pageCode.Contains("RestorePrefetch: !disable"), "programmatic toggle sync cannot send write; user choice sent through fingerprinted engine");
         var vm = File.ReadAllText(Path.Combine(basePath, "src/DeltaNFD/ViewModels/BxDbViewModel.cs"));
         Check(vm.Contains("LowMemoryPolicy.ShowUpTweak(s.Tweak, totalMemory)"), "actual UP list uses capacity policy");
         var nav = File.ReadAllText(Path.Combine(basePath, "src/DeltaNFD/MainWindow.PageSessions.cs"));
@@ -171,10 +237,18 @@ internal static class LowMemorySupportChecks
     private sealed class RepairFake(LowMemoryStatus status) : ILowMemoryRepairEnvironment
     {
         public LowMemoryStatus Status = status;
-        public int Writes, Gates;
-        public bool Fail, LeaveUnchanged, BlockOnSecond;
+        public int Writes, Gates, Restores;
+        public bool Fail, LeaveUnchanged, BlockOnSecond, HasBackup, OriginalPrefetchDisabled, LosePrefetchAfterRestore;
         public string? Blocker() => BlockOnSecond && ++Gates == 2 ? "game started" : null;
         public Task<LowMemoryStatus> ReadAsync() => Task.FromResult(Status);
+        public bool HasPrefetchBackup() => HasBackup;
+        public Task<OperationResult> RestorePrefetchAsync()
+        {
+            Restores++;
+            if (Fail) return Task.FromResult(OperationResult.Fail("fixture restore failure"));
+            Status = Status with { PrefetchDisabled = LosePrefetchAfterRestore ? null : OriginalPrefetchDisabled };
+            return Task.FromResult(OperationResult.Ok("fixture restored"));
+        }
         public Task<OperationResult> ApplyAsync(LowMemoryAction action)
         {
             Writes++;

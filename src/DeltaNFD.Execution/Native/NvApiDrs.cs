@@ -83,7 +83,7 @@ public struct NvDrsApplication
 }
 
 /// <summary>nvapi64.dll DRS（驱动配置仓库）互操作封装。线程安全（全局锁）。</summary>
-public static class NvApiDrs
+public static partial class NvApiDrs
 {
     // ---- NVAPI 接口 ID（nvapi_QueryInterface 解析用）----
     private const uint IdNvApiInitialize = 0x0150E828;
@@ -265,6 +265,10 @@ public static class NvApiDrs
             _restoreDefaultSetting = Resolve<DeleteSettingFn>(IdDrsRestoreProfileDefaultSetting, 0);
             _enumIds = Resolve<EnumIdsFn>(IdDrsEnumAvailableSettingIds, IdDrsEnumAvailableSettingIdsOld);
             _nameFromId = Resolve<NameFromIdFn>(IdDrsGetSettingNameFromId, IdDrsGetSettingNameFromIdOld);
+            // Optional: old driver support for existing settings must not depend on full-profile reset.
+            _restoreProfile = Resolve<RestoreProfileFn>(0xFA5F6134, 0);
+            _enumProfileSettings = Resolve<EnumProfileSettingsFn>(0xAE3039DA, 0);
+            _enumProfileApps = Resolve<EnumProfileAppsFn>(0x7FA2173A, 0);
 
             if (_initialize is null || _createSession is null || _destroySession is null ||
                 _loadSettings is null || _saveSettings is null || _findApp is null ||

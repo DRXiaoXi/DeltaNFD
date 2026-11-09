@@ -71,7 +71,7 @@ internal static class ReleaseRc2Checks
             Check(!File.ReadAllText(Path.Combine(app, "DeltaNFD.csproj")).Contains("ShaderStutter"), "no stutter build dependency");
             var ace = File.ReadAllText(Path.Combine(app, "Views", "AcePage.xaml"));
             Check(ace.Contains("默认检测已识别的三角洲") && !ace.Contains("全盘检测"), "known Delta plus manual ACE UI without full disk action");
-            Check(AppVersion.NumericText == "0.9317.0" && AppVersion.Text == "Beta0.931-RC4", "new release and display identities");
+            Check(AppVersion.NumericText == "0.9318.0" && AppVersion.Text == "Alpha0.931-RC5", "new release and display identities");
             Console.WriteLine($"RC2 manual ACE / MPO / retirement: {checks} checks passed; owned fixtures only, no system writes.");
         }
         finally

@@ -15,10 +15,15 @@
                 <TextBlock x:Name="CompressionText" Text="等待检测…" TextWrapping="Wrap"/>
                 <TextBlock Text="3. 启用分页合并" Style="{StaticResource SubtitleTextBlockStyle}"/>
                 <TextBlock x:Name="CombiningText" Text="等待检测…" TextWrapping="Wrap"/>
-                <TextBlock Text="4. 禁用预读取" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                <TextBlock Text="4. 预读取" Style="{StaticResource SubtitleTextBlockStyle}"/>
+                <ToggleSwitch x:Name="PrefetchToggle" Header="禁用预读取" OnContent="已禁用" OffContent="未全部禁用"
+                              IsEnabled="False" Toggled="Prefetch_Toggled" AutomationProperties.Name="禁用预读取"/>
                 <TextBlock x:Name="PrefetchText" Text="等待检测…" TextWrapping="Wrap"/>
+                <TextBlock Text="此开关可单独操作。开启禁用预读取，关闭按本工具保存的原始配置恢复；不会修改其他三项。修改后需手动重启。" TextWrapping="Wrap"/>
+                <TextBlock x:Name="PrefetchHint" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                <Button x:Name="PrefetchRestoreButton" Content="恢复预读取原始配置" Click="PrefetchRestore_Click" Visibility="Collapsed" IsEnabled="False"/>
             </StackPanel>
-            <TextBlock Text="修正前保存原始状态，逐项修改并重新检测。配置读取未完成时暂不执行，请先退出三角洲。" TextWrapping="Wrap"/>
+            <TextBlock Text="修正前保存原始状态，逐项修改并重新检测。单独调整预读取时只需确认该项；批量修正仍需核对四项。请先退出三角洲。" TextWrapping="Wrap"/>
             <ProgressBar x:Name="Progress" Minimum="0" Maximum="4" Visibility="Collapsed" AutomationProperties.Name="低内存配置处理进度"/>
             <TextBlock x:Name="ProgressText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
             <StackPanel Orientation="Horizontal" Spacing="12">

@@ -309,3 +309,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "RC4 frame-ui-doc regression" }
           dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --public-release-checks
           if ($LASTEXITCODE -ne 0) { throw "RC4 public-release regression" }
+
+      - name: RC5 profile reset and SysMain checks (isolated)
+        run: |
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --nv-profile-reset-backend-checks
+          if ($LASTEXITCODE -ne 0) { throw "profile reset regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --sysmain-readonly-checks
+          if ($LASTEXITCODE -ne 0) { throw "SysMain read regression" }

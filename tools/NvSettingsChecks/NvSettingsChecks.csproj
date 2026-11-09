@@ -16,5 +16,6 @@
     <Compile Include="../../src/DeltaNFD/ViewModels/ShaderViewModel.cs" Link="ShaderViewModel.cs" />
     <Compile Include="../../src/DeltaNFD/Services/ShaderCacheStatusPresentation.cs" Link="ShaderCacheStatusPresentation.cs" />
     <Compile Include="../../src/DeltaNFD.Execution/Native/NvApiDrs.cs" Link="NvApiDrs.cs" />
+    <Compile Include="../../src/DeltaNFD.Execution/Native/NvApiDrs.ProfileReset.cs" Link="NvApiDrs.ProfileReset.cs" />
   </ItemGroup>
 </Project>

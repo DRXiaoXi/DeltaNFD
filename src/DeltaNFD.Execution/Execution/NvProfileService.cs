@@ -25,6 +25,41 @@ public sealed class NvProfileService : INvProfileService
 
     public IReadOnlyList<NvSettingDef> GetSettingCatalog() => NvSettingsCatalog.Definitions;
 
+    public Task<OperationResult> ResetDeltaProfileAsync() => Task.Run(() =>
+    {
+        using var targetOperation = GameTargetService.Default.BeginOperation();
+        if (GameTargetService.Default.IsCustom) return OperationResult.Fail(GameTargetService.DeltaOnlyMessage);
+        if (!ElevationHelper.IsElevated) return OperationResult.Fail(ElevationHelper.NotElevatedMessage);
+        var folder = Path.Combine(AppDataPaths.Root, "logs", "nv-profile-reset");
+        var path = Path.Combine(folder, DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N") + ".json");
+        bool CanWrite()
+        {
+            try { return !GameTargetService.Default.IsCustom && !DeltaForceLocator.IsGameRunning()
+                && DrsFiles.All(f => File.Exists(f) && (File.GetAttributes(f) & FileAttributes.ReadOnly) == 0); }
+            catch { return false; }
+        }
+        try
+        {
+            var backedUp = false;
+            var result = NvApiDrs.ResetDeltaProfile(bytes =>
+            {
+                Directory.CreateDirectory(folder);
+                using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
+                { file.Write(bytes); file.Flush(true); }
+                if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                    System.Security.Cryptography.SHA256.HashData(bytes),
+                    System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path))))
+                    throw new IOException("备份写后核对不一致。");
+                backedUp = true;
+            }, CanWrite);
+            Log.Info("NVIDIA防闪屏性重置：" + result.Message + (backedUp ? " 原值备份：" + path : ""));
+            return new OperationResult { Success = result.Success, IsSkipped = result.IsSkipped,
+                OutcomeUnknown = result.OutcomeUnknown, DiagnosticsDirectory = backedUp ? folder : "",
+                Message = result.Message + (backedUp ? "\n原值备份：" + path : "") };
+        }
+        catch (Exception ex) { return OperationResult.Fail("防闪屏性重置未完成：" + ex.Message); }
+    });
+
     public Task<OperationResult> SetShaderCacheSizeAsync(string scope, uint? value) => Task.Run(() =>
     {
         if (!NvShaderCacheChoices.IsValid(scope, value)) return OperationResult.Fail("缓存范围或大小不合法。");

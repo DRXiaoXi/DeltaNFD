@@ -33,6 +33,16 @@ internal static class GpuCommands
             [BackendCommands.GpuDriverRead] = DriverReadAsync,
             [BackendCommands.GpuDriverApply] = DriverApplyAsync,
             [BackendCommands.GpuDriverRestore] = DriverRestoreAsync,
+            [BackendCommands.GpuDriverProfileReset] = async c =>
+            {
+                c.ReportProgress("正在备份并重置三角洲驱动配置…", null, "profile-reset");
+                var result = await new NvProfileService().ResetDeltaProfileAsync();
+                return result.OutcomeUnknown
+                    ? BackendResult.PartialResult(c.Command, result.Message, [], result, requiresReview: true)
+                    : new BackendResult(result.Success ? BackendResultStatuses.Ok : BackendResultStatuses.Failed,
+                        c.Command, result.Message, [], false,
+                        System.Text.Json.JsonSerializer.SerializeToElement(result, BackendJson.SerializerOptions));
+            },
             [BackendCommands.GpuDriverLock] = DriverLockAsync,
             [BackendCommands.GpuShaderCacheApply] = async c => {
                 var args = c.ArgsAs<NvShaderCacheApplyArgs>();

@@ -115,6 +115,9 @@ public sealed class NvSettingChangeDto
 /// </summary>
 public interface INvProfileService
 {
+    /// <summary>用户确认后完整重置三角洲专用配置，包含本页未列出的用户覆盖；原值先备份。</summary>
+    Task<OperationResult> ResetDeltaProfileAsync()
+        => Task.FromResult(OperationResult.Fail("后端未提供防闪屏性重置功能，请更新工具。"));
     /// <summary>用户确认后仅修改缓存大小：global / game；null = 恢复驱动默认。</summary>
     Task<OperationResult> SetShaderCacheSizeAsync(string scope, uint? value)
         => Task.FromResult(OperationResult.Fail("后端未提供着色器缓存处理功能，请更新工具。"));
