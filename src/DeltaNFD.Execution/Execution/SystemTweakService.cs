@@ -30,11 +30,11 @@ public sealed partial class SystemTweakService : ISystemTweakService
     private const string DeviceGuardPath = @"SYSTEM\CurrentControlSet\Control\DeviceGuard";
     private const string HvciPath = DeviceGuardPath + @"\Scenarios\HypervisorEnforcedCodeIntegrity";
     private const string CredentialGuardPath = DeviceGuardPath + @"\Scenarios\CredentialGuard";
-    private const string PrefetchPath = @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters";
+    private const string PrefetchPath = PrefetchConfiguration.PrefetchPath;
     /// <summary>MMAgent 的注册表落点：Disable/Enable-MMAgent 写的是本键下的
      
     /// EnableApplicationLaunchPrefetching / EnableOperationAPI（不是 PrefetchParameters\EnablePrefetcher）。</summary>
-    private const string MemoryManagementPath = @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management";
+    private const string MemoryManagementPath = PrefetchConfiguration.MemoryManagementPath;
     // ---- 游戏微调包键路径（社区同款） ----
     private const string MultimediaProfilePath = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile";
     private const string GameBarPolicyPath = @"SOFTWARE\Policies\Microsoft\GameBar";
@@ -44,7 +44,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
     private const string ControlPath = @"SYSTEM\CurrentControlSet\Control";
     private const string PowerThrottlingPath = @"SYSTEM\CurrentControlSet\Control\Power\PowerThrottling";
     private const string WSearchServicePath = @"SYSTEM\CurrentControlSet\Services\WSearch";
-    private const string ApplicationPreLaunchPath = @"Software\Microsoft\Windows\CurrentVersion\ApplicationPreLaunch";
+    private const string ApplicationPreLaunchPath = PrefetchConfiguration.ApplicationPreLaunchPath;
     // ---- 系统底层调优套件键路径 ----
     private const string KernelSessionPath = @"SYSTEM\CurrentControlSet\Control\Session Manager\kernel";
     private const string PriorityControlPath = @"SYSTEM\CurrentControlSet\Control\PriorityControl";
@@ -130,39 +130,6 @@ public sealed partial class SystemTweakService : ISystemTweakService
         null => "未配置",
         _ => start.ToString() ?? "",
     };
-    /// <summary>原注册表项与实际 MMAgent ApplicationPreLaunch 都关闭才算优化；读取未知不能视为关闭。</summary>
-    private static (bool IsOptimized, string Detail) PrefetchTrioToState(int? mmLaunch, int? prelaunch, int? operationApi, bool? applicationPreLaunchOn)
-    {
-        bool launchOn = mmLaunch != 0; // Memory Management\EnableApplicationLaunchPrefetching：未配置 = 默认开启
-        bool prelaunchOn = prelaunch != 0; // 未配置 = 默认开启
-        bool operationOn = operationApi != 0; // 未配置 = 默认开启
-        if (!launchOn && !prelaunchOn && !operationOn && applicationPreLaunchOn == false)
-        {
-            return (true, "预读取关闭配置已设置，ApplicationPreLaunch 当前已关闭；SysMain 未被此项停止或禁用");
-        }
-
-        var parts = new List<string>();
-        if (applicationPreLaunchOn != false)
-            parts.Add(applicationPreLaunchOn is null ? "ApplicationPreLaunch 状态无法确认" : "ApplicationPreLaunch 开启");
-        if (launchOn)
-        {
-            parts.Add("应用启动预读取开启");
-        }
-
-        if (prelaunchOn)
-        {
-            parts.Add("UWP 预启动开启");
-        }
-
-        if (operationOn)
-        {
-            parts.Add("OperationAPI 开启");
-        }
-
-        return (false, $"未优化（{string.Join("，", parts)}）");
-    }
-
-    /// <summary>值型微调的状态：当前值 == 优化值 → 已优化。</summary>
     private static (bool IsOptimized, string Detail) ValueToState(int? current, int optimized, string defaultText, string optimizedText) => current == optimized ? (true, optimizedText) : (false, $"未优化（{defaultText}）");
     public Task<string> GetVbsRuntimeSummaryAsync() => new DeltaNFD.Inspection.SystemTweakInspection().GetVbsRuntimeSummaryAsync();
     // ---------------- 关闭 ----------------

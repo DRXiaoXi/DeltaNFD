@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
 using DeltaNFD.Native;
 using DeltaNFD.Services;
 using DeltaNFD.Backends;
@@ -103,7 +104,23 @@ internal static class ProfileResetChecks
         native.Scenario = "driver-alias"; native.Database = Snapshot();
         result = NvApiDrs.ResetDeltaProfile(_ => { }, () => true);
         Check(result.Success, "driver-owned game aliases do not depend on editable profile title");
-        foreach (var scenario in new[] { "global", "base", "metadata", "short-settings", "extra-settings", "duplicate-settings",
+        foreach (var scenario in new[] { "reported-extra", "reported-short", "identical-duplicates", "grow-settings" })
+        {
+            native.Scenario = scenario; native.Database = Snapshot(); native.ResetCalls = native.SaveCalls = 0;
+            byte[]? captured = null;
+            result = NvApiDrs.ResetDeltaProfile(bytes => captured = bytes, () => true);
+            Check(result.Success && native.ResetCalls == 1 && native.SaveCalls == 1 && captured is not null,
+                "batch enumeration accepts stable " + scenario + " before normal transactional verification");
+            var original = System.Text.Json.JsonSerializer.Deserialize<NvApiDrs.ProfileResetSnapshot>(captured!, NvApiDrs.ProfileBackupJson)!;
+            Check(original.Settings.Single(s => s.settingType == 1).currentValue[4099] == 123 && original.Settings.Any(s => s.settingType == 3 && s.currentValue[4000] == 88),
+                "batch backup preserves binary tail and wide strings for " + scenario);
+            if (scenario == "identical-duplicates")
+                Check(original.Settings.Length == 6 && original.UserSettingCount == 5, "identical duplicate raw records kept, user count uses unique settings");
+            if (scenario == "grow-settings")
+                Check(original.Settings.Length == 21 && native.LargestCapacity >= 32, "a full first array is reread with more room instead of accepting truncation");
+        }
+        foreach (var scenario in new[] { "global", "base", "metadata", "short-settings", "overflow-settings", "duplicate-settings",
+            "conflicting-current", "conflicting-predefined", "conflicting-source", "count-zero", "limit-settings",
             "short-apps", "shared-app", "shared-user-app", "foreign-driver-profile", "bad-setting", "binary-overflow", "unsupported" })
         {
             native.Scenario = scenario; native.Database = Snapshot(); native.ResetCalls = native.SaveCalls = 0; backedUp = 0;
@@ -122,7 +139,7 @@ internal static class ProfileResetChecks
         private readonly Dictionary<IntPtr, NvApiDrs.ProfileResetSnapshot> _sessions = [];
         public NvApiDrs.ProfileResetSnapshot Database = Snapshot();
         public string Scenario = "none";
-        public int ResetCalls, SaveCalls, Created, Destroyed;
+        public int ResetCalls, SaveCalls, Created, Destroyed, LargestCapacity;
         public NativeFixture()
         {
             Set("_initialized", true); Set("_available", true);
@@ -150,24 +167,56 @@ internal static class ProfileResetChecks
         {
             var ver = info.version; info = _sessions[session].Profile; info.version = ver;
             if (Scenario == "metadata") info.numOfSettings = 4097;
+            if (info.numOfSettings > 0 && Scenario == "reported-extra") info.numOfSettings += 3;
+            if (info.numOfSettings > 0 && Scenario == "reported-short") info.numOfSettings--;
+            if (info.numOfSettings > 0 && Scenario == "grow-settings") info.numOfSettings = 1;
             if (Scenario is "driver-alias" or "shared-user-app" or "foreign-driver-profile")
             { info.numOfApps = 2; info.profileName = "Renamed game profile"; }
             return 0;
         }
         private int Reset(IntPtr session, IntPtr profile) { ResetCalls++; _sessions[session] = Snapshot(false); return 0; }
-        private int Settings(IntPtr session, IntPtr profile, uint index, ref uint count, ref NvDrsSetting setting)
+        private int Settings(IntPtr session, IntPtr profile, uint index, ref uint count, IntPtr buffer)
         {
-            var values = _sessions[session].Settings;
-            if (BitConverter.ToUInt32(setting.currentValue, 0) != 4096 || BitConverter.ToUInt32(setting.predefinedValue, 0) != 4096)
-                throw new Exception("Binary enumeration capacity not provided.");
+            if (index != 0) throw new Exception("Settings enumeration must start from zero; one-item pagination repeats entries on real drivers.");
+            var values = _sessions[session].Settings.ToArray();
+            var capacity = count; LargestCapacity = Math.Max(LargestCapacity, (int)capacity);
+            var stride = Marshal.SizeOf<NvDrsSetting>();
+            for (var i = 0; i < capacity; i++)
+            {
+                var initial = Marshal.PtrToStructure<NvDrsSetting>(buffer + i * stride);
+                if (initial.version != (uint)(stride | (1 << 16)) || BitConverter.ToUInt32(initial.currentValue, 0) != 4096
+                    || BitConverter.ToUInt32(initial.predefinedValue, 0) != 4096)
+                    throw new Exception("Every binary array element requires a version and capacity.");
+            }
             if (Scenario == "unsupported") return -9;
-            if (Scenario == "short-settings" && index == 1) return -7;
-            if (index >= values.Length && Scenario != "extra-settings") return -7;
-            var version = setting.version; setting = values[Math.Min(index, (uint)values.Length - 1)]; setting.version = version;
-            if (Scenario == "duplicate-settings") setting.settingId = 1;
-            if (Scenario == "bad-setting") setting.isCurrentPredefined = 7;
-            if (Scenario == "binary-overflow" && setting.settingType == 1)
-                BitConverter.TryWriteBytes(setting.currentValue.AsSpan(), 4097u);
+            if (Scenario == "short-settings") return -1;
+            if (Scenario == "overflow-settings") { count = capacity + 1; return 0; }
+            if (Scenario == "limit-settings") { count = 4097; return 0; }
+            if (Scenario == "count-zero") { count = 0; return 0; }
+            if (values.Length > 0 && Scenario == "grow-settings")
+                values = values.Concat(Enumerable.Range(0, 16).Select(i => { var s = values[0]; s.settingId = (uint)(0x71000000 + i); return s; })).ToArray();
+            if (values.Length > 0 && Scenario is "identical-duplicates" or "conflicting-current" or "conflicting-predefined" or "conflicting-source")
+            {
+                var duplicate = values[0];
+                duplicate.currentValue = duplicate.currentValue.ToArray(); duplicate.predefinedValue = duplicate.predefinedValue.ToArray();
+                if (Scenario == "conflicting-current") duplicate.currentValue[4099] ^= 1;
+                if (Scenario == "conflicting-predefined") duplicate.predefinedValue[4099] ^= 1;
+                if (Scenario == "conflicting-source") duplicate.isCurrentPredefined ^= 1;
+                values = values.Append(duplicate).ToArray();
+            }
+            count = Math.Min(capacity, (uint)values.Length);
+            for (var i = 0; i < count; i++)
+            {
+                var setting = values[i]; setting.version = (uint)(stride | (1 << 16));
+                if (Scenario == "duplicate-settings") setting.settingId = 1;
+                if (Scenario == "bad-setting") setting.isCurrentPredefined = 7;
+                if (Scenario == "binary-overflow" && setting.settingType == 1)
+                {
+                    setting.currentValue = setting.currentValue.ToArray();
+                    BitConverter.TryWriteBytes(setting.currentValue.AsSpan(), 4097u);
+                }
+                Marshal.StructureToPtr(setting, buffer + i * stride, false);
+            }
             return 0;
         }
         private int Apps(IntPtr session, IntPtr profile, uint index, ref uint count, ref NvDrsApplication app)

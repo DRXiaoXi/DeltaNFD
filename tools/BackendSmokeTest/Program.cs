@@ -1,4 +1,5 @@
 using DeltaNFD.Services;
+if (args is ["--backend-recovery-guidance-checks"]) { try { BackendRecoveryGuidanceChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--runtime-shutdown-owned-child", var shutdownReleaseFile])
 {
     var deadline = System.Diagnostics.Stopwatch.StartNew();

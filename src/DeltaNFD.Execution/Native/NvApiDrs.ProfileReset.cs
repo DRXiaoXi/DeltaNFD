@@ -13,7 +13,7 @@ public static partial class NvApiDrs
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int RestoreProfileFn(IntPtr session, IntPtr profile);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate int EnumProfileSettingsFn(IntPtr session, IntPtr profile, uint index, ref uint count, ref NvDrsSetting setting);
+    private delegate int EnumProfileSettingsFn(IntPtr session, IntPtr profile, uint index, ref uint count, IntPtr settings);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int EnumProfileAppsFn(IntPtr session, IntPtr profile, uint index, ref uint count, ref NvDrsApplication app);
     private static RestoreProfileFn? _restoreProfile;
@@ -23,7 +23,8 @@ public static partial class NvApiDrs
     internal sealed record ProfileResetSnapshot(bool Present, NvDrsProfile Profile,
         NvDrsApplication[] Applications, NvDrsSetting[] Settings)
     {
-        public int UserSettingCount => Settings.Count(s => s.settingLocation == 0 && s.isCurrentPredefined == 0);
+        public int UserSettingCount => Settings.Where(s => s.settingLocation == 0 && s.isCurrentPredefined == 0)
+            .Select(s => s.settingId).Distinct().Count();
         public int UserApplicationCount => Applications.Count(a => a.isPredefined == 0);
     }
 
@@ -134,25 +135,74 @@ public static partial class NvApiDrs
         if (!apps.Any(a => IsDeltaApplication(a.appName)) || apps.Any(a => !IsDeltaApplication(a.appName)
             && !(a.isPredefined == 1 && driverOwnedGameProfile)))
             throw new IOException("此配置还关联了无法确认归属的程序，请先在 NVIDIA 设置工具中拆分游戏配置。");
-        var settings = new List<NvDrsSetting>();
-        for (uint i = 0; i <= info.numOfSettings; i++)
-        {
-            var entry = NewSetting(0); var count = 1u;
-            // NVDRS_BINARY_SETTING requires caller-provided capacity, otherwise the driver may return only the length.
-            BitConverter.TryWriteBytes(entry.currentValue.AsSpan(), 4096u);
-            BitConverter.TryWriteBytes(entry.predefinedValue.AsSpan(), 4096u);
-            status = _enumProfileSettings!(session, profile, i, ref count, ref entry);
-            if (i == info.numOfSettings && (status == StatusEndEnumeration || status == StatusOk && count == 0)) break;
-            if (status != StatusOk || count != 1 || i == info.numOfSettings || entry.settingType is < 0 or > 4
-                || entry.settingLocation is < 0 or > 3 || entry.isCurrentPredefined > 1 || entry.isPredefinedValid > 1
-                || entry.currentValue is not { Length: 4100 } || entry.predefinedValue is not { Length: 4100 }
-                || entry.settingType == 1 && (BitConverter.ToUInt32(entry.currentValue, 0) > 4096
-                    || entry.isPredefinedValid == 1 && BitConverter.ToUInt32(entry.predefinedValue, 0) > 4096)
-                || settings.Any(s => s.settingId == entry.settingId))
-                throw new IOException("游戏设置枚举不完整，未重置。");
-            settings.Add(entry);
-        }
+        var settings = ReadResetSettings(session, profile, info.numOfSettings);
         return new(true, info, apps.OrderBy(a => a.appName, StringComparer.Ordinal).ThenBy(a => a.fileInFolder, StringComparer.Ordinal)
             .ThenBy(a => a.commandLine, StringComparer.Ordinal).ToArray(), settings.OrderBy(s => s.settingId).ToArray());
     }
+
+    private static NvDrsSetting[] ReadResetSettings(IntPtr session, IntPtr profile, uint reportedCount)
+    {
+        const uint limit = 4096;
+        var capacity = Math.Max(16u, reportedCount + 1);
+        var stride = Marshal.SizeOf<NvDrsSetting>();
+        while (true)
+        {
+            var buffer = Marshal.AllocHGlobal(checked((int)capacity * stride));
+            try
+            {
+                for (var i = 0; i < capacity; i++)
+                {
+                    var entry = NewSetting(0);
+                    // Every array element needs a version and complete binary buffers.
+                    BitConverter.TryWriteBytes(entry.currentValue.AsSpan(), 4096u);
+                    BitConverter.TryWriteBytes(entry.predefinedValue.AsSpan(), 4096u);
+                    Marshal.StructureToPtr(entry, buffer + checked(i * stride), false);
+                }
+                var count = capacity;
+                var status = _enumProfileSettings!(session, profile, 0, ref count, buffer);
+                IOException Reject(string reason)
+                {
+                    Log.Warn($"NVIDIA配置枚举拒绝：reason={reason}；reported={reportedCount}；capacity={capacity}；returned={count}；status={status}。");
+                    return new IOException("游戏设置读取未完成，未重置：" + reason + "。请关闭其他驱动设置工具后重试或提交反馈。");
+                }
+                if (status == StatusEndEnumeration && reportedCount == 0) return [];
+                if (status != StatusOk) throw Reject("驱动读取返回 " + DescribeStatus(status));
+                if (count > capacity || count > limit) throw Reject("返回数量超出安全范围");
+                if (count == 0 && reportedCount != 0) throw Reject("有配置记录但未返回设置");
+                if (count == capacity)
+                {
+                    // A full page may be truncated. Re-read from zero with more room; do not paginate
+                    // by setting index: real drivers can repeat entries in one-item enumerations.
+                    capacity = Math.Min(limit + 1, checked(capacity * 2));
+                    continue;
+                }
+                var settings = new NvDrsSetting[count];
+                var seen = new Dictionary<uint, NvDrsSetting>();
+                for (var i = 0; i < count; i++)
+                {
+                    var entry = Marshal.PtrToStructure<NvDrsSetting>(buffer + checked(i * stride));
+                    if (entry.version != (uint)(stride | (1 << 16)) || entry.settingType is < 0 or > 4
+                        || entry.settingLocation is < 0 or > 3 || entry.isCurrentPredefined > 1 || entry.isPredefinedValid > 1
+                        || entry.currentValue is not { Length: 4100 } || entry.predefinedValue is not { Length: 4100 }
+                        || entry.settingType == 1 && (BitConverter.ToUInt32(entry.currentValue, 0) > 4096
+                            || entry.isPredefinedValid == 1 && BitConverter.ToUInt32(entry.predefinedValue, 0) > 4096))
+                        throw Reject($"第 {i + 1} 项格式异常");
+                    if (seen.TryGetValue(entry.settingId, out var previous) && !SameResetSetting(previous, entry))
+                        throw Reject($"设置 {entry.settingId:X8} 存在冲突记录");
+                    seen[entry.settingId] = entry;
+                    settings[i] = entry; // Preserve even identical duplicate records in the raw backup.
+                }
+                Log.Info($"NVIDIA配置枚举完成：reported={reportedCount}；returned={count}；unique={seen.Count}；capacity={capacity}。");
+                return settings;
+            }
+            finally { Marshal.FreeHGlobal(buffer); }
+        }
+    }
+
+    private static bool SameResetSetting(NvDrsSetting left, NvDrsSetting right) =>
+        left.version == right.version && left.settingId == right.settingId && left.settingName == right.settingName
+        && left.settingType == right.settingType && left.settingLocation == right.settingLocation
+        && left.isCurrentPredefined == right.isCurrentPredefined && left.isPredefinedValid == right.isPredefinedValid
+        && left.currentValue.AsSpan().SequenceEqual(right.currentValue)
+        && left.predefinedValue.AsSpan().SequenceEqual(right.predefinedValue);
 }

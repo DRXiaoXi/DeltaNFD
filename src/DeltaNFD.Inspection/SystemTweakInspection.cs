@@ -17,11 +17,11 @@ public sealed class SystemTweakInspection
     private const string DeviceGuardPath = @"SYSTEM\CurrentControlSet\Control\DeviceGuard";
     private const string HvciPath = DeviceGuardPath + @"\Scenarios\HypervisorEnforcedCodeIntegrity";
     private const string CredentialGuardPath = DeviceGuardPath + @"\Scenarios\CredentialGuard";
-    private const string MemoryManagementPath = @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management";
+    private const string MemoryManagementPath = PrefetchConfiguration.MemoryManagementPath;
     private const string MousePath = @"Control Panel\Mouse";
     private const string GraphicsDriversPath = @"SYSTEM\CurrentControlSet\Control\GraphicsDrivers";
     private const string WSearchServicePath = @"SYSTEM\CurrentControlSet\Services\WSearch";
-    private const string ApplicationPreLaunchPath = @"Software\Microsoft\Windows\CurrentVersion\ApplicationPreLaunch";
+    private const string ApplicationPreLaunchPath = PrefetchConfiguration.ApplicationPreLaunchPath;
     private static readonly string[] HyperVFeatures = ["Microsoft-Hyper-V-All", "Microsoft-Hyper-V", "Microsoft-Hyper-V-Hypervisor", "Microsoft-Hyper-V-Services", "Microsoft-Hyper-V-Tools-All", "Microsoft-Hyper-V-Management-Clients", "Microsoft-Hyper-V-Management-PowerShell", "HypervisorPlatform", "VirtualMachinePlatform", ];
     public async Task<bool?> IsHyperVFullyDisabledAsync()
     {
@@ -80,10 +80,8 @@ public sealed class SystemTweakInspection
         var hvci = ReadDword(HvciPath, "Enabled");
         var credentialGuard = ReadDword(CredentialGuardPath, "Enabled");
         // HKCU 兼容值不代表 MMAgent ApplicationPreLaunch；后者通过同一次 Get-MMAgent 查询取得。
-        var mmLaunch = ReadDword("HKLM", MemoryManagementPath, "EnableApplicationLaunchPrefetching");
-        var prelaunch = ReadDword("HKCU", ApplicationPreLaunchPath, "Enabled");
-        var operationApi = ReadDword("HKLM", MemoryManagementPath, "EnableOperationAPI");
         var(compressionOn, pageCombiningOn, hypervisor, applicationPreLaunchOn) = await QueryMmAgentAndHypervisorAsync();
+        var prefetch = PrefetchInspection.Read(applicationPreLaunchOn);
         // 游戏微调包状态
         TweakStatus mouse;
         try { mouse = MakeStatus(SystemTweak.MouseAccelerationOff, SystemSwitchInspection.ReadMouse().Acceleration == 0
@@ -92,7 +90,7 @@ public sealed class SystemTweakInspection
         var hags = SystemSwitchInspection.ReadHags();
         var wSearch = ReadDword(WSearchServicePath, "Start");
         var sysMain = SecurityFeatureInspection.ReadService("SysMain");
-        return[MakeStatus(SystemTweak.HyperVAndVbs, HyperVToState(hypervisor, vbs, hvci, credentialGuard), known: hypervisor != "unknown"), MakeStatus(SystemTweak.MemoryCompression, compressionOn is null ? (false, "状态无法确认") : compressionOn.Value ? (false, "已开启") : (true, "已关闭"), known: compressionOn.HasValue), MakeStatus(SystemTweak.PageCombining, pageCombiningOn is null ? (false, "状态无法确认") : pageCombiningOn.Value ? (false, "已开启") : (true, "已关闭"), known: pageCombiningOn.HasValue), MakeStatus(SystemTweak.Prefetch, PrefetchTrioToState(mmLaunch, prelaunch, operationApi, applicationPreLaunchOn), known: applicationPreLaunchOn.HasValue), // 游戏微调包
+        return[MakeStatus(SystemTweak.HyperVAndVbs, HyperVToState(hypervisor, vbs, hvci, credentialGuard), known: hypervisor != "unknown"), MakeStatus(SystemTweak.MemoryCompression, compressionOn is null ? (false, "状态无法确认") : compressionOn.Value ? (false, "已开启") : (true, "已关闭"), known: compressionOn.HasValue), MakeStatus(SystemTweak.PageCombining, pageCombiningOn is null ? (false, "状态无法确认") : pageCombiningOn.Value ? (false, "已开启") : (true, "已关闭"), known: pageCombiningOn.HasValue), MakeStatus(SystemTweak.Prefetch, (prefetch.Disabled == true, prefetch.Detail), known: prefetch.Disabled.HasValue), // 游戏微调包
         MakeStatus(SystemTweak.SysMainMemorySupport, (sysMain.Start == 4 || sysMain.RuntimeState == 1, "SysMain 服务状态"),
             known: sysMain.Exists == true && sysMain.Start is 2 or 3 or 4 && sysMain.RuntimeState is 1 or 4),
         mouse, MakeStatus(SystemTweak.HardwareGpuScheduling, (hags.State == BxState.On, hags.Detail),
@@ -107,37 +105,6 @@ public sealed class SystemTweakInspection
         null => "未配置",
         _ => start.ToString() ?? "",
     };
-    private static (bool IsOptimized, string Detail) PrefetchTrioToState(int? mmLaunch, int? prelaunch, int? operationApi, bool? applicationPreLaunchOn)
-    {
-        bool launchOn = mmLaunch != 0; // Memory Management\EnableApplicationLaunchPrefetching：未配置 = 默认开启
-        bool prelaunchOn = prelaunch != 0; // 未配置 = 默认开启
-        bool operationOn = operationApi != 0; // 未配置 = 默认开启
-        if (!launchOn && !prelaunchOn && !operationOn && applicationPreLaunchOn == false)
-        {
-            return (true, "预读取关闭配置已设置，ApplicationPreLaunch 当前已关闭；SysMain 未被此项停止或禁用");
-        }
-
-        var parts = new List<string>();
-        if (applicationPreLaunchOn != false)
-            parts.Add(applicationPreLaunchOn is null ? "ApplicationPreLaunch 状态无法确认" : "ApplicationPreLaunch 开启");
-        if (launchOn)
-        {
-            parts.Add("应用启动预读取开启");
-        }
-
-        if (prelaunchOn)
-        {
-            parts.Add("UWP 预启动开启");
-        }
-
-        if (operationOn)
-        {
-            parts.Add("OperationAPI 开启");
-        }
-
-        return (false, $"未优化（{string.Join("，", parts)}）");
-    }
-
     private static (bool IsOptimized, string Detail) ValueToState(int? current, int optimized, string defaultText, string optimizedText) => current == optimized ? (true, optimizedText) : (false, $"未优化（{defaultText}）");
     public async Task<string> GetVbsRuntimeSummaryAsync()
     {
@@ -390,7 +357,7 @@ public sealed class SystemTweakInspection
     }
 
     private static string[] SplitLines(string text) => text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    private const string PrefetchPath = @"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters";
+    private const string PrefetchPath = PrefetchConfiguration.PrefetchPath;
     private const string ServicesRoot = @"SYSTEM\CurrentControlSet\Services";
     private static readonly (string KeyPath, string ValueName, string Label)[] DeviceGuardValues = [(DeviceGuardPath, "EnableVirtualizationBasedSecurity", "VBS（基于虚拟化的安全）"), (HvciPath, "Enabled", "内核隔离（内存完整性 HVCI）"), (CredentialGuardPath, "Enabled", "Credential Guard"), ];
     private readonly TweakBackupStore _backups = TweakBackupStore.Default;

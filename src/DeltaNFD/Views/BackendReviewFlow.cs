@@ -34,11 +34,12 @@ internal static class BackendReviewFlow
                 // 原进程已确认退出时，做一次只读状态核对，并向玩家提供可用恢复范围。
                 ReconcileSnapshot? snapshot = null;
                 var snapshotNote = "";
+                var readError = "";
                 if (review.CanRestore)
                 {
                     try { snapshot = await BackendRecovery.ReconcileAsync(review.Module,
                         scope: BackendRecovery.IsRuntimeInstallation(review) ? "repair-review" : null); }
-                    catch (Exception ex) { snapshotNote = "\n\n只读状态核对未能完成：" + ex.Message; }
+                    catch (Exception ex) { readError = ex.Message; snapshotNote = "\n\n只读状态核对未能完成：" + readError; }
                 }
                 var scopes = BackendRecovery.RecoveryChoices(review, snapshot);
                 var canKeep = BackendRecovery.CanKeepCurrentState(review, snapshot);
@@ -52,23 +53,25 @@ internal static class BackendReviewFlow
                 if (review.Module == DeltaNFD.Backends.BackendModules.Ace && !canKeep)
                     snapshotNote += "\n\nACE 当前状态尚未完成核对，不能归档旧清理记录；请退出游戏并等待旧清理进程结束后重试。";
                 if (snapshot is { Complete: true } && scopes.Count == 0)
-                    snapshotNote += "\n\n这条记录没有可按备份完成的可信恢复路径。请核对当前状态后再决定是否保留；不会重新执行旧请求。";
+                    snapshotNote += canKeep ? "\n\n这条记录没有可按备份完成的可信恢复路径。请核对当前状态后再决定是否保留；不会重新执行旧请求。"
+                        : "\n\n这条记录尚未提供可用恢复方案，当前不能保留状态并归档；请按上方步骤核对或反馈。";
                 var content = new StackPanel { Spacing = 8 };
+                AddAdvice(content, BackendRecoveryGuidance.ForReview(review, snapshot, readError));
                 var frameAdvice = FrameFailureGuidance.ForReview(review);
-                foreach (var advice in frameAdvice)
-                    content.Children.Add(new TextBlock { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
-                        Text = advice.Title + "\n" + advice.Explanation + "\n\n" + advice.Steps });
                 if (frameAdvice.Count > 0)
-                    content.Children.Add(new Expander { Header = "原始记录与技术详情（可展开复制）", HorizontalAlignment = HorizontalAlignment.Stretch,
-                        Content = new TextBlock { Text = review.Description, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } });
+                    content.Children.Add(new Expander { Header = "帧格处理补充", HorizontalAlignment = HorizontalAlignment.Stretch,
+                        Content = new TextBlock { Text = string.Join("\n\n", frameAdvice.Select(advice => advice.Explanation + "\n" + advice.Steps)),
+                            TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } });
+                content.Children.Add(new Expander { Header = "原始记录与技术详情（可展开复制）", HorizontalAlignment = HorizontalAlignment.Stretch,
+                    Content = new TextBlock { Text = review.Description, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } });
                 content.Children.Add(new TextBlock
                 {
                     TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true,
-                    Text = (frameAdvice.Count == 0 ? review.Description + "\n\n" : "")
-                        + (snapshot is null ? "" : snapshot.Summary + "\n") + snapshotNote +
+                    Text = (snapshot is null ? "" : snapshot.Summary + "\n") + snapshotNote +
                         "\n只有在你已核对该模块状态，并确认相关安装/修复程序也已结束后才能处理。" +
                         "「保留当前状态」不还原设置、不重新执行旧请求、不删除原值备份；原始记录会归档。",
                 });
+                AddDiagnostic(content, review, snapshot, readError);
                 RadioButtons? scopePicker = null;
                 if (scopes.Count > 1)
                 {
@@ -103,7 +106,9 @@ internal static class BackendReviewFlow
                             XamlRoot = root, Title = restartCheckpoint && outcome.Success ? "重启核对点已建立"
                                 : installationReview ? outcome.Verified ? "安装事务已核对，可重新修复" : "安装事务尚未完成核对"
                                 : outcome.Verified ? "恢复已复核通过" : "恢复未通过复核",
-                            Content = outcome.Message + (outcome.Verified ? "\n原始证据已归档；原值备份未删除。" : "\n阻塞与原始证据均已保留，可稍后重试。"),
+                            Content = outcome.Verified || restartCheckpoint && outcome.Success
+                                ? outcome.Message + (outcome.Verified ? "\n原始证据已归档；原值备份未删除。" : "\n阻塞与原始证据均已保留，请按提示完成重启核对。")
+                                : UnresolvedContent(outcome.Message, review),
                             PrimaryButtonText = outcome.Verified || restartCheckpoint && outcome.Success ? "" : "重新核对",
                             CloseButtonText = "知道了",
                             DefaultButton = ContentDialogButton.Close,
@@ -113,7 +118,7 @@ internal static class BackendReviewFlow
                     catch (Exception ex)
                     {
                         Log.Error("按备份恢复失败，证据保留", ex);
-                        retry = await ShowRetryAsync(root, "未解除阻塞", ex.Message);
+                        retry = await ShowRetryAsync(root, "未解除阻塞", ex.Message, review);
                     }
                     if (retry) break;
                     continue;
@@ -133,7 +138,7 @@ internal static class BackendReviewFlow
                 catch (Exception ex)
                 {
                     Log.Error("后端核对失败，证据保留", ex);
-                    retry = await ShowRetryAsync(root, "未解除阻塞", ex.Message);
+                    retry = await ShowRetryAsync(root, "未解除阻塞", ex.Message, review);
                 }
                 if (retry) break;
             }
@@ -153,11 +158,60 @@ internal static class BackendReviewFlow
         return retry;
     }
 
-    private static async Task<bool> ShowRetryAsync(XamlRoot root, string title, string message) =>
+    private static void AddAdvice(StackPanel content, BackendRecoveryAdvice advice)
+    {
+        content.Children.Add(new TextBlock { Text = advice.Title, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
+        content.Children.Add(new TextBlock { Text = advice.Explanation + "\n\n" + advice.Steps,
+            TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
+    }
+
+    private static void AddDiagnostic(StackPanel content, BackendUnconfirmedStore.Review? review,
+        ReconcileSnapshot? snapshot, string error)
+    {
+        var diagnostic = BackendRecoveryGuidance.Diagnostic(review, snapshot, error);
+        content.Children.Add(new Expander { Header = "诊断摘要预览（已处理常见路径和凭据）", HorizontalAlignment = HorizontalAlignment.Stretch,
+            Content = new TextBox { Text = diagnostic, IsReadOnly = true, AcceptsReturn = true,
+                TextWrapping = TextWrapping.Wrap, MaxHeight = 220 } });
+        var status = new TextBlock { Text = "复制后可粘贴到反馈中；请预览后决定是否发送。", TextWrapping = TextWrapping.Wrap };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetLiveSetting(status,
+            Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
+        var copy = new Button { Content = "复制诊断摘要" };
+        copy.Click += (_, _) =>
+        {
+            try
+            {
+                var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                data.SetText(diagnostic);
+                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+                status.Text = "诊断摘要已复制。可关闭此窗口，到“设置 → 反馈 BUG”粘贴并附带本次日志；尚未发送。";
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("复制后端诊断摘要失败：" + ex.GetType().Name);
+                status.Text = "复制失败。请展开“诊断摘要预览”，选中文字后手动复制；原操作记录仍保留。";
+            }
+        };
+        content.Children.Add(copy);
+        content.Children.Add(status);
+    }
+
+    private static ScrollViewer UnresolvedContent(string message, BackendUnconfirmedStore.Review? review = null)
+    {
+        var content = new StackPanel { Spacing = 8 };
+        content.Children.Add(new TextBlock { Text = message + "\n原始证据与阻塞仍保留。", TextWrapping = TextWrapping.Wrap,
+            IsTextSelectionEnabled = true });
+        AddAdvice(content, review is null ? BackendRecoveryGuidance.ForUnavailable()
+            : BackendRecoveryGuidance.ForReview(review, null, message));
+        AddDiagnostic(content, review, null, message);
+        return new ScrollViewer { MaxHeight = 420, Content = content };
+    }
+
+    private static async Task<bool> ShowRetryAsync(XamlRoot root, string title, string message,
+        BackendUnconfirmedStore.Review? review = null) =>
         await new ContentDialog
         {
             XamlRoot = root, Title = title,
-            Content = message + "\n原始证据仍保留。若相关安装程序尚未结束，请先等待；结束后可直接重新核对。",
+            Content = UnresolvedContent(message, review),
             PrimaryButtonText = "重新核对", CloseButtonText = "暂不处理", DefaultButton = ContentDialogButton.Close,
         }.ShowAsync() == ContentDialogResult.Primary;
 }

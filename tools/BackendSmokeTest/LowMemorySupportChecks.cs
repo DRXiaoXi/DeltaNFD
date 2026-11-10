@@ -144,6 +144,37 @@ internal static class LowMemorySupportChecks
             var values = new int?[] { 0, 0, 0, 0 }; values[i] = 1;
             Check(LowMemoryInspection.EvaluatePrefetch(values, false) == false, "each prefetch component is checked");
         }
+        // Reproduce the actual reported transition through shared addresses and inspection, rather than
+        // flipping PrefetchDisabled in a fake status: no real registry or MMAgent calls.
+        var registry = new PrefetchRegistryFake();
+        var registryBefore = await registry.ReadAsync();
+        Check(registryBefore.PrefetchDisabled == false, "missing application prelaunch override still needs disable");
+        var registryResult = await LowMemoryRepairEngine.RunAsync(registry,
+            new(LowMemoryAction.Prefetch, registryBefore.Fingerprint), CancellationToken.None);
+        Check(registryResult.Success && !registryResult.OutcomeUnknown && registry.Writes == 1
+            && (await registry.ReadAsync()).PrefetchDisabled == true,
+            "successful simulated writes to actual execution addresses pass low-memory postcheck without false review");
+        Check(PrefetchInspection.Read(false, registry.Get).Disabled == true && registry.ObsoleteValue == 1,
+            "system inspection and low-memory inspection agree while unrelated old Explorer path stays enabled");
+        var correctUser = PrefetchConfiguration.RegistryValues.Single(v => v.Hive == "HKCU");
+        registry.Values.Remove((correctUser.Hive, correctUser.Path, correctUser.Name));
+        Check(PrefetchInspection.Read(false, registry.Get).Disabled == false,
+            "missing actual user override is not replaced with the obsolete path value or guessed zero");
+        registry.Values[(correctUser.Hive, correctUser.Path, correctUser.Name)] = 0;
+        var kernel = PrefetchConfiguration.RegistryValues.Single(v => v.Name == "EnablePrefetcher");
+        registry.Values[(kernel.Hive, kernel.Path, kernel.Name)] = 3;
+        Check(PrefetchInspection.Read(false, registry.Get).Disabled == false,
+            "system page also checks kernel prefetch instead of reporting success for only three overrides");
+        Check(PrefetchInspection.Read(false, (_, _, _) => throw new UnauthorizedAccessException("fixture access denied")).Disabled is null,
+            "registry access failures remain unknown instead of becoming enabled or disabled");
+        Check(PrefetchInspection.Read(false, (_, _, _) => throw new InvalidDataException("fixture non-DWORD")).Disabled is null,
+            "malformed registry values remain unknown on both pages");
+        foreach (var field in new[] { "MemoryManagementPath", "PrefetchPath", "ApplicationPreLaunchPath" })
+        {
+            var actual = (string)typeof(SystemTweakService).GetField(field, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetRawConstantValue()!;
+            var canonical = (string)typeof(PrefetchConfiguration).GetField(field)!.GetRawConstantValue()!;
+            Check(actual == canonical, "execution backup/disable/restore addresses equal shared inspection: " + field);
+        }
         var root = Path.Combine(Path.GetTempPath(), "DeltaNFD-low-memory-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root); File.WriteAllText(Path.Combine(root, "isolated-test.marker"), "owned low-memory fixtures");
         try
@@ -261,6 +292,34 @@ internal static class LowMemorySupportChecks
             };
             return Task.FromResult(Fail ? OperationResult.Fail("fixture failure") : OperationResult.Ok("fixture", requiresReboot: true));
         }
+    }
+    private sealed class PrefetchRegistryFake : ILowMemoryRepairEnvironment
+    {
+        public readonly Dictionary<(string Hive, string Path, string Name), int> Values = [];
+        public int Writes;
+        public int ObsoleteValue => Values[("HKCU", @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\Prelaunch", "Enabled")];
+        public PrefetchRegistryFake()
+        {
+            Values[("HKCU", @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\Prelaunch", "Enabled")] = 1;
+        }
+        public int? Get(string hive, string path, string name) => Values.TryGetValue((hive, path, name), out var value) ? value : null;
+        public string? Blocker() => null;
+        public Task<LowMemoryStatus> ReadAsync() => Task.FromResult(new LowMemoryStatus(
+            16UL * 1024 * 1024 * 1024, 2, true, true, true, PrefetchInspection.Read(false, Get).Disabled));
+        public Task<OperationResult> ApplyAsync(LowMemoryAction action)
+        {
+            if (action != LowMemoryAction.Prefetch) throw new Exception("Unexpected prefetch fixture operation");
+            Writes++;
+            string Path(string field) => (string)typeof(SystemTweakService).GetField(field,
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetRawConstantValue()!;
+            Values[("HKLM", Path("MemoryManagementPath"), "EnableApplicationLaunchPrefetching")] = 0;
+            Values[("HKLM", Path("MemoryManagementPath"), "EnableOperationAPI")] = 0;
+            Values[("HKLM", Path("PrefetchPath"), "EnablePrefetcher")] = 0;
+            Values[("HKCU", Path("ApplicationPreLaunchPath"), "Enabled")] = 0;
+            return Task.FromResult(OperationResult.Ok("Simulated prefetch configuration submitted"));
+        }
+        public bool HasPrefetchBackup() => false;
+        public Task<OperationResult> RestorePrefetchAsync() => throw new Exception("Restore was not requested");
     }
     private sealed class MemoryFake : IMemorySupportIo
     {
