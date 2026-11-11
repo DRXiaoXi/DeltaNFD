@@ -68,14 +68,14 @@
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                     <TextBlock Text="CPU 优先级" TextWrapping="Wrap" VerticalAlignment="Center" ui:HelpTip.Text="实时 CPU 优先级可能影响输入响应；请按实际需要选择。"/>
                                     <ComboBox Grid.Column="1" Tag="cpu" MinWidth="180" AutomationProperties.Name="三角洲 CPU 优先级" SelectedIndex="{x:Bind GameCpuPriorityIndex, Mode=OneWay}" IsEnabled="{x:Bind GamePriorityOptionsEditable, Mode=OneWay}" SelectionChanged="GamePrioritySelectionChanged">
-                                        <ComboBoxItem Content="实时（默认）"/><ComboBoxItem Content="高"/><ComboBoxItem Content="高于正常"/><ComboBoxItem Content="正常"/><ComboBoxItem Content="低于正常"/><ComboBoxItem Content="低"/>
+                                        <ComboBoxItem Content="实时"/><ComboBoxItem Content="高"/><ComboBoxItem Content="高于正常（默认）"/><ComboBoxItem Content="正常"/><ComboBoxItem Content="低于正常"/><ComboBoxItem Content="低"/>
                                     </ComboBox>
                                 </Grid>
                                 <Grid ColumnSpacing="16">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                     <TextBlock Text="IO 优先级" TextWrapping="Wrap" VerticalAlignment="Center" ui:HelpTip.Text="IO 高优先级可能受系统限制而未生效；以应用后的回读结果为准。"/>
                                     <ComboBox Grid.Column="1" Tag="io" MinWidth="180" AutomationProperties.Name="三角洲 IO 优先级" SelectedIndex="{x:Bind GameIoPriorityIndex, Mode=OneWay}" IsEnabled="{x:Bind GamePriorityOptionsEditable, Mode=OneWay}" SelectionChanged="GamePrioritySelectionChanged">
-                                        <ComboBoxItem Content="高（默认）"/><ComboBoxItem Content="正常"/><ComboBoxItem Content="低"/><ComboBoxItem Content="非常低"/>
+                                        <ComboBoxItem Content="高"/><ComboBoxItem Content="正常（默认）"/><ComboBoxItem Content="低"/><ComboBoxItem Content="非常低"/>
                                     </ComboBox>
                                 </Grid>
                                 <Grid ColumnSpacing="16">

@@ -94,8 +94,8 @@ public sealed class AppSettings
 
     /// <summary>提升三角洲进程优先级，默认关闭；保留用户明确保存的选择。</summary>
     public bool FrameGamePriorityEnabled { get; set; } = false;
-    public FrameCpuPriority FrameGameCpuPriority { get; set; } = FrameCpuPriority.RealTime;
-    public FrameIoPriority FrameGameIoPriority { get; set; } = FrameIoPriority.High;
+    public FrameCpuPriority FrameGameCpuPriority { get; set; } = FrameCpuPriority.AboveNormal;
+    public FrameIoPriority FrameGameIoPriority { get; set; } = FrameIoPriority.Normal;
     public FrameMemoryPriority FrameGameMemoryPriority { get; set; } = FrameMemoryPriority.Normal;
 
     // ---- 帧格：内存清理（实验性；清空待备内存列表） ----

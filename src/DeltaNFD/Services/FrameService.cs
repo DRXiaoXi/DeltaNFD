@@ -55,8 +55,8 @@ public sealed class FrameService : IFrameService
     private string _gamePowerStatusText = "";
     private bool _gameTimerIgnoreEnabled;
     private bool _gamePriorityEnabled;
-    private FrameCpuPriority _gameCpuPriority = FrameCpuPriority.RealTime;
-    private FrameIoPriority _gameIoPriority = FrameIoPriority.High;
+    private FrameCpuPriority _gameCpuPriority = FrameCpuPriority.AboveNormal;
+    private FrameIoPriority _gameIoPriority = FrameIoPriority.Normal;
     private FrameMemoryPriority _gameMemoryPriority = FrameMemoryPriority.Normal;
     public string GamePowerStatusText => _gamePowerStatusText;
     public bool GamePowerHasError { get; private set; }

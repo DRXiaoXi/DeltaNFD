@@ -23,7 +23,7 @@ internal static class FrameGamePriorityChecks
             Controller = new(Journal, Owners, Api);
         }
         internal bool Sync(FrameGamePriorityConfig? config = null, Func<ProcmanProcessIdentity, bool>? allow = null) =>
-            Controller.Sync([Id], config ?? new(), allow ?? (_ => true));
+            Controller.Sync([Id], config ?? new() { Cpu = FrameCpuPriority.RealTime, Io = FrameIoPriority.High }, allow ?? (_ => true));
         internal bool Restore() => Controller.Sync([], new(), _ => false);
         public void Dispose() { Directory.Delete(Root, true); }
     }
@@ -57,9 +57,16 @@ internal static class FrameGamePriorityChecks
     {
         _checks = 0;
         var defaults = JsonSerializer.Deserialize<AppSettings>("{}")!;
-        Check(!defaults.FrameGamePriorityEnabled && defaults.FrameGameCpuPriority == FrameCpuPriority.RealTime
-            && defaults.FrameGameIoPriority == FrameIoPriority.High && defaults.FrameGameMemoryPriority == FrameMemoryPriority.Normal,
+        Check(!defaults.FrameGamePriorityEnabled && defaults.FrameGameCpuPriority == FrameCpuPriority.AboveNormal
+            && defaults.FrameGameIoPriority == FrameIoPriority.Normal && defaults.FrameGameMemoryPriority == FrameMemoryPriority.Normal,
             "Old settings must not automatically opt in; configured defaults must match the user request.");
+        var configDefaults = JsonSerializer.Deserialize<FrameGamePriorityConfig>("{}")!;
+        Check(configDefaults.Cpu == FrameCpuPriority.AboveNormal && configDefaults.Io == FrameIoPriority.Normal
+            && configDefaults.Memory == FrameMemoryPriority.Normal && configDefaults.IsValid,
+            "Omitted command fields use the same defaults as saved settings.");
+        var saved = JsonSerializer.Deserialize<AppSettings>("""{"FrameGameCpuPriority":256,"FrameGameIoPriority":3}""")!;
+        Check(saved.FrameGameCpuPriority == FrameCpuPriority.RealTime && saved.FrameGameIoPriority == FrameIoPriority.High,
+            "Explicitly saved choices are preserved when defaults change.");
         foreach (var cpu in Enum.GetValues<FrameCpuPriority>())
         foreach (var io in Enum.GetValues<FrameIoPriority>())
         foreach (var memory in Enum.GetValues<FrameMemoryPriority>())
@@ -199,7 +206,7 @@ internal static class FrameGamePriorityChecks
                 var count = api.Writes.Count;
                 Check(engine.FramePriorityOnceForTests() && api.Writes.Count == count, "The existing loop queries already-matching process values.");
                 api.Values["priority"] = 128;
-                Check(engine.FramePriorityOnceForTests() && api.Values["priority"] == 256, "Procman maintains external drift on its own tick.");
+                Check(engine.FramePriorityOnceForTests() && api.Values["priority"] == (int)FrameCpuPriority.AboveNormal, "Procman maintains external drift on its own tick.");
                 var owners = new ProcessPropertyGate(Path.Combine(root, "procman-owners.json"));
                 using (var lease = owners.Enter(Id, "priority"))
                     Check(lease.Owner == "frame-priority", "Procman publishes distinct property ownership for the frame lock.");
@@ -208,7 +215,7 @@ internal static class FrameGamePriorityChecks
                     && api.Values["ioPriority"] == 2 && api.Values["memoryPriority"] == 3, "Stopping procman monitoring restores all three actual originals.");
                 count = api.Writes.Count;
                 Check(engine.FramePriorityOnceForTests() && api.Writes.Count == count, "A late tick after monitoring stop cannot reapply even if frame remains selected.");
-                Check(engine.SyncFrameBackground().Success && api.Values["priority"] == 256, "Explicit sync may restart the stopped feature.");
+                Check(engine.SyncFrameBackground().Success && api.Values["priority"] == (int)FrameCpuPriority.AboveNormal, "Explicit sync may restart the stopped feature.");
                 engine.FramePriorityTargetsForTests = () => [];
                 Check(engine.FramePriorityOnceForTests() && engine.Snapshot().HeldChangeCount == 0 && api.Values["priority"] == 32,
                     "Loss of the target from the confirmed game snapshot restores the surviving instance before waiting.");
@@ -220,7 +227,7 @@ internal static class FrameGamePriorityChecks
 
                 AppSettingsStore.Update(s => { s.FrameModeActive = true; s.GamePriorityEnabled = true; });
                 Check(!engine.SyncFrameBackground().Success && api.Values["priority"] == 32
-                    && engine.Snapshot().FramePriority.IoAppliedCount == 1, "Legacy High automation is reported as a CPU conflict instead of fighting Realtime.");
+                    && engine.Snapshot().FramePriority.IoAppliedCount == 1, "Legacy High automation is reported as a CPU conflict instead of fighting frame CPU priority.");
                 AppSettingsStore.Update(s => { s.GamePriorityEnabled = false; s.FrameModeActive = false; });
                 Check(engine.SyncFrameBackground().Success, "Partial activation is still reversible.");
 

@@ -7,8 +7,8 @@ public enum FrameMemoryPriority { VeryLow = 1, Low = 2, Medium = 3, BelowNormal 
 /// <summary>Only fixed process-priority values; never accepts paths, scripts or arbitrary native classes.</summary>
 public sealed record FrameGamePriorityConfig
 {
-    public FrameCpuPriority Cpu { get; init; } = FrameCpuPriority.RealTime;
-    public FrameIoPriority Io { get; init; } = FrameIoPriority.High;
+    public FrameCpuPriority Cpu { get; init; } = FrameCpuPriority.AboveNormal;
+    public FrameIoPriority Io { get; init; } = FrameIoPriority.Normal;
     public FrameMemoryPriority Memory { get; init; } = FrameMemoryPriority.Normal;
     public bool IsValid => Enum.IsDefined(Cpu) && Enum.IsDefined(Io) && Enum.IsDefined(Memory);
     public static string CpuLabel(FrameCpuPriority value) => value switch
