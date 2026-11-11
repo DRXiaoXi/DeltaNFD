@@ -323,3 +323,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Generic guidance regression" }
           dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --application-prelaunch-checks
           if ($LASTEXITCODE -ne 0) { throw "Prefetch regression" }
+
+      - name: RC2 session and feedback regressions
+        run: |
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --session-end-drain-checks
+          if ($LASTEXITCODE -ne 0) { throw "Session-end regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --feedback-repair-checks
+          if ($LASTEXITCODE -ne 0) { throw "Feedback regression" }
+
+      - name: Local Agent bridge regression
+        run: |
+          dotnet run --project tools/McpBridgeChecks -c Release
+          if ($LASTEXITCODE -ne 0) { throw "Agent bridge regression" }

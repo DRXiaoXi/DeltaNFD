@@ -9,6 +9,7 @@ namespace DeltaNFD;
 public partial class App : Application
 {
     public static MainWindow? MainWindow { get; private set; }
+    private SessionEndHook? _sessionEndHook;
     internal static bool ExitAlreadyPrepared { get; set; }
     internal static (string Session, string Nonce)? PendingFileFallback { get; private set; }
 
@@ -99,6 +100,22 @@ public partial class App : Application
         Log.Info("主窗口启动");
         var mainWindow = new MainWindow();
         MainWindow = mainWindow;
+        try
+        {
+            _sessionEndHook = new SessionEndHook(WinRT.Interop.WindowNative.GetWindowHandle(mainWindow),
+                new SessionEndDrain(
+                    () => Services.Backends.BackendLifecycle.PrepareHandoverAsync("Windows 注销/关机", TimeSpan.FromSeconds(4)),
+                    Services.Backends.BackendOperationGate.BlockNewOperations, Log.Info),
+                success =>
+                {
+                    // Only a verified drain can suppress the existing exit fallback.
+                    ExitAlreadyPrepared = success;
+                    mainWindow.DispatcherQueue.TryEnqueue(() => Application.Current.Exit());
+                });
+            mainWindow.Closed += (_, _) => _sessionEndHook?.Dispose();
+            Log.Info("Windows 注销/关机收尾通知已登记。");
+        }
+        catch (Exception ex) { Log.Error("Windows 会话收尾通知登记失败，原退出与核对机制仍保留", ex); }
         if (PendingFileFallback is null) _ = ServiceLocator.Frame;
         if (PendingFileFallback is null && AppSettingsStore.Read().GamePriorityEnabled)
         {
@@ -135,6 +152,7 @@ public partial class App : Application
                 _ => ElementTheme.Default,
             });
         SetAccentColor(TryParseColor(s.AccentColor, out var c) ? c : DefaultAccent, persist: false);
+        _ = mainWindow.StartMcpOnStartupAsync();
     }
 
     /// <summary>卸载前恢复的分项报告文件（与卸载日志同目录，供安装器读取并分项列出阻塞子系统）。</summary>

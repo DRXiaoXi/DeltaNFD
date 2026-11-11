@@ -292,10 +292,14 @@ internal static class FramePowerSafetyChecks
         AppSettingsStore.Update(s => { s.FrameModeActive = true; s.FramePowerSaveLatencyEnabled = true; s.FrameForegroundBoostEnabled = true; s.FramePowerLockEnabled = true; });
         using (var engine = new DeltaNFD.Execution.CpuFrame.CpuFrameEngine(new FakePowerService(fake), service))
         {
+            Assert(!(await engine.RecoverPowerReviewAsync(review)).Success && File.Exists(usb),
+                "核对恢复专用入口同样拒绝帧格运行中归档");
             Assert(!(await engine.PreserveCurrentPowerValuesAsync(review)).Success && File.Exists(usb)
                 && AppSettingsStore.Read().FramePowerSaveLatencyEnabled, "帧格运行时仍禁止保留当前值处理，不修改开关或证据");
             AppSettingsStore.Update(s => s.FrameModeActive = false);
-            var result = await engine.PreserveCurrentPowerValuesAsync(review);
+            var result = await engine.RecoverPowerReviewAsync(review);
+            Assert(result.Success && result.Verified && result.Scope == "all",
+                "核对入口归档不可恢复项后必须完成其余全范围恢复和复核");
             var settings = AppSettingsStore.Read();
             Assert(result.Success && !settings.FramePowerSaveLatencyEnabled && result.Message.Contains("不是还原")
                 && result.Message.Contains("降低省电延迟已关闭"), "明确归档后实际关闭省电延迟设置，不只是对话框声称关闭");

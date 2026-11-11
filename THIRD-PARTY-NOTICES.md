@@ -1,5 +1,7 @@
 # 第三方内容与历史授权
 
+- **MCP C# SDK 2.4.0（ModelContextProtocol / ModelContextProtocol.Core）**：本地 Agent 接入辅助程序使用官方 SDK，适用 Apache-2.0；许可证见 `licenses/MCP-SDK-Apache-2.0.txt`。上游为 modelcontextprotocol/csharp-sdk。Microsoft.Extensions.* 等 .NET 组件继续适用各自的 MIT 许可。
+
 自 Alpha0.915 起，Delta NFD 原创代码采用 GPL-3.0-only。本次授权不对第三方材料重新授权，各组件及独立资源继续适用原许可证和声明。
 
 - **Henry++ / Mem Reduct（设计参考）**：https://github.com/henrypp/memreduct 。感谢其内存压力触发、冷却及分类清理的设计参考。新版逐进程内存回收依据 Windows 接口独立实现，未复制、移植或集成 Mem Reduct / routine 的 GPL 源码或二进制；上游原始内容适用 GPLv3，本项目许可证不对其重新授权。

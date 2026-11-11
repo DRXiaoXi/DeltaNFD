@@ -1,0 +1,674 @@
+[
+  {
+    "name": "gpu.spoof.status",
+    "module": "gpu",
+    "description": "查看显示适配器、型号伪装和原值备份状态。",
+    "argumentType": null
+  },
+  {
+    "name": "gpu.spoof.apply",
+    "module": "gpu",
+    "description": "按已识别的显卡路径修改显示型号，先备份原值；通常需要重启才能显示。",
+    "argumentType": "GpuSpoofApplyArgs"
+  },
+  {
+    "name": "gpu.spoof.restore",
+    "module": "gpu",
+    "description": "按软件可信备份还原显卡原始型号，通常需要重启生效。",
+    "argumentType": "GpuSpoofPathArgs"
+  },
+  {
+    "name": "gpu.spoof.driver-name.preview",
+    "module": "gpu",
+    "description": "预览驱动更新后的原始显卡型号及状态指纹。",
+    "argumentType": "GpuSpoofPathArgs"
+  },
+  {
+    "name": "gpu.spoof.driver-name.restore",
+    "module": "gpu",
+    "description": "按新鲜指纹恢复驱动更新后的原始显卡型号。",
+    "argumentType": "GpuDriverNameRestoreArgs"
+  },
+  {
+    "name": "gpu.watch.evaluate",
+    "module": "gpu",
+    "description": "只读检查型号伪装是否因驱动更新而失效。",
+    "argumentType": null
+  },
+  {
+    "name": "gpu.driver.status",
+    "module": "gpu",
+    "description": "查看NVIDIA显卡、驱动版本和配置数据库状态。",
+    "argumentType": null
+  },
+  {
+    "name": "gpu.driver.read",
+    "module": "gpu",
+    "description": "读取三角洲专属NVIDIA设置的当前覆盖值。",
+    "argumentType": "NvDriverRestoreArgs"
+  },
+  {
+    "name": "gpu.driver.apply",
+    "module": "gpu",
+    "description": "应用三角洲专属 NVIDIA 设置；启用 ReBAR 建议621.01及以上，旧版需确认警告。",
+    "argumentType": "NvDriverApplyArgs"
+  },
+  {
+    "name": "gpu.driver.restore",
+    "module": "gpu",
+    "description": "移除指定NVIDIA设置的用户覆盖，恢复驱动默认及继承。",
+    "argumentType": "NvDriverRestoreArgs"
+  },
+  {
+    "name": "gpu.driver.profile-reset",
+    "module": "gpu",
+    "description": "先备份，再完整恢复三角洲专属驱动配置，清除DLSS、ReBAR、隐藏设置和用户程序关联；用户自建配置可能移除。全局仍被继承。请关闭NVIDIA App、控制面板及其他配置工具，重启游戏后确认；不保证解决所有闪屏。",
+    "argumentType": null
+  },
+  {
+    "name": "gpu.driver.lock",
+    "module": "gpu",
+    "description": "修改 NVIDIA 配置数据库只读属性，会影响其他驱动配置工具。",
+    "argumentType": "NvDriverReadOnlyArgs"
+  },
+  {
+    "name": "gpu.shader-cache.apply",
+    "module": "gpu",
+    "description": "修改驱动着色器缓存大小，按指定游戏或全局范围生效。",
+    "argumentType": "NvShaderCacheApplyArgs"
+  },
+  {
+    "name": "runtime.status",
+    "module": "runtime",
+    "description": "读取运行库登记、安装事务和保护状态。",
+    "argumentType": null
+  },
+  {
+    "name": "runtime.file-use.scan",
+    "module": "runtime",
+    "description": "只读检查运行库文件占用。",
+    "argumentType": "RuntimeFileUseScanArgs"
+  },
+  {
+    "name": "runtime.file-use.close",
+    "module": "runtime",
+    "description": "结束预览中确认占用运行库的进程，必须使用新鲜身份参数。",
+    "argumentType": "RuntimeFileUseCloseArgs"
+  },
+  {
+    "name": "runtime.high-fps.preview",
+    "module": "runtime",
+    "description": "只读预览运行库维护方案与新鲜指纹。",
+    "argumentType": "RuntimeHighFpsArgs"
+  },
+  {
+    "name": "runtime.high-fps.repair",
+    "module": "runtime",
+    "description": "按已预览指纹执行运行库维护，可能安装或卸载组件；过程较长，请等待结果。",
+    "argumentType": "RuntimeHighFpsArgs"
+  },
+  {
+    "name": "runtime.non-cpp.preview",
+    "module": "runtime",
+    "description": "只读预览非C++运行库状态。",
+    "argumentType": null
+  },
+  {
+    "name": "runtime.non-cpp.repair",
+    "module": "runtime",
+    "description": "按新鲜预览指纹修复非C++运行库。",
+    "argumentType": "NonCppRuntimeRepairArgs"
+  },
+  {
+    "name": "runtime.safe-uninstall.preview",
+    "module": "runtime",
+    "description": "预览安全模式下的C++运行库卸载范围。",
+    "argumentType": null
+  },
+  {
+    "name": "runtime.safe-uninstall",
+    "module": "runtime",
+    "description": "在后端确认安全模式等条件后，按新鲜指纹卸载预览范围内运行库。",
+    "argumentType": "RuntimeSafeUninstallArgs"
+  },
+  {
+    "name": "runtime.vc14.scan",
+    "module": "runtime",
+    "description": "只读扫描VC14登记与文件状态。",
+    "argumentType": null
+  },
+  {
+    "name": "runtime.vc14.preview",
+    "module": "runtime",
+    "description": "预览指定VC14维护模式、基线及指纹。",
+    "argumentType": "Vc14RepairArgs"
+  },
+  {
+    "name": "runtime.vc14.repair",
+    "module": "runtime",
+    "description": "按新鲜预览指纹修复VC14运行库，保留原安装事务与退出核对。",
+    "argumentType": "Vc14RepairArgs"
+  },
+  {
+    "name": "runtime.vc14.force-replace.preview",
+    "module": "runtime",
+    "description": "预览运行库DLL强制替换范围与原始文件身份。",
+    "argumentType": "Vc14ForceReplaceArgs"
+  },
+  {
+    "name": "runtime.vc14.force-replace",
+    "module": "runtime",
+    "description": "按新鲜预览指纹强制替换运行库DLL；保留原后端的文件归属、安全模式与备份门禁。",
+    "argumentType": "Vc14ForceReplaceArgs"
+  },
+  {
+    "name": "runtime.vc14.legacy-clean",
+    "module": "runtime",
+    "description": "清理原后端认定可处理的旧VC14登记；保留安装事务核对。",
+    "argumentType": null
+  },
+  {
+    "name": "runtime.guard.enable",
+    "module": "runtime",
+    "description": "启用原有运行库保护，可能阻止后续运行库安装。",
+    "argumentType": null
+  },
+  {
+    "name": "runtime.guard.disable",
+    "module": "runtime",
+    "description": "停用运行库保护并按原备份恢复。",
+    "argumentType": null
+  },
+  {
+    "name": "runtime.guard.select-mode",
+    "module": "runtime",
+    "description": "切换运行库保护模式。",
+    "argumentType": "RuntimeSelectModeArgs"
+  },
+  {
+    "name": "runtime.guard.cleanup-legacy",
+    "module": "runtime",
+    "description": "核对并清理原有运行库保护遗留记录。",
+    "argumentType": "RuntimeCleanupLegacyArgs"
+  },
+  {
+    "name": "runtime.ue4.repair-acl",
+    "module": "runtime",
+    "description": "按已识别的UE4前置安装器路径修复执行权限。",
+    "argumentType": "RuntimeUe4RepairArgs"
+  },
+  {
+    "name": "system.cleanup.scan",
+    "module": "system",
+    "description": "只读扫描系统垃圾目录和大小。",
+    "argumentType": null
+  },
+  {
+    "name": "system.tweaks.status",
+    "module": "system",
+    "description": "读取基本系统优化状态，未知值保持未知。",
+    "argumentType": null
+  },
+  {
+    "name": "system.tweaks.backups",
+    "module": "system",
+    "description": "查看可按原值恢复的基本系统优化项目。",
+    "argumentType": null
+  },
+  {
+    "name": "system.tweaks.hyperv",
+    "module": "system",
+    "description": "只读检查Hyper-V组件的禁用状态。",
+    "argumentType": null
+  },
+  {
+    "name": "system.tweaks.vbs",
+    "module": "system",
+    "description": "只读检查VBS当前运行状态。",
+    "argumentType": null
+  },
+  {
+    "name": "system.tweaks.apply",
+    "module": "system",
+    "description": "应用选定的基本系统优化并保存原值；部分项目需要重启生效。",
+    "argumentType": "AgentTweakArgs"
+  },
+  {
+    "name": "system.tweaks.restore",
+    "module": "system",
+    "description": "按原始备份恢复选定基本系统优化；无可信备份时保留后端限制。",
+    "argumentType": "AgentTweakArgs"
+  },
+  {
+    "name": "system.advanced.status",
+    "module": "system",
+    "description": "读取安全与隐私分组状态。",
+    "argumentType": null
+  },
+  {
+    "name": "system.advanced.apply",
+    "module": "system",
+    "description": "应用选定的安全与隐私分组，会改变该分组涉及的系统防护或后台功能。",
+    "argumentType": "AgentGroupArgs"
+  },
+  {
+    "name": "system.advanced.restore",
+    "module": "system",
+    "description": "按原备份恢复选定的安全与隐私分组。",
+    "argumentType": "AgentGroupArgs"
+  },
+  {
+    "name": "system.cleanup.run",
+    "module": "system",
+    "description": "清理扫描范围内的系统垃圾文件，文件删除不能保证可恢复。",
+    "argumentType": null
+  },
+  {
+    "name": "system.cleanup.shader-cache",
+    "module": "system",
+    "description": "清理系统着色器缓存，后续游戏需要重新编译。",
+    "argumentType": null
+  },
+  {
+    "name": "system.power.schemes",
+    "module": "system",
+    "description": "列出电源计划。",
+    "argumentType": null
+  },
+  {
+    "name": "system.power.set-scheme",
+    "module": "system",
+    "description": "切换到指定电源计划，可能改变功耗与性能。",
+    "argumentType": "PowerSetSchemeArgs"
+  },
+  {
+    "name": "system.power.import-nopowersave",
+    "module": "system",
+    "description": "导入软件附带的无省电电源计划。",
+    "argumentType": null
+  },
+  {
+    "name": "system.power.ensure-name",
+    "module": "system",
+    "description": "校正软件自有电源计划的显示名称。",
+    "argumentType": null
+  },
+  {
+    "name": "system.power.hibernate.get",
+    "module": "system",
+    "description": "查询休眠状态。",
+    "argumentType": null
+  },
+  {
+    "name": "system.power.hibernate.set",
+    "module": "system",
+    "description": "启用或关闭Windows休眠，可能改变快速启动与磁盘占用。",
+    "argumentType": "PowerHibernateSetArgs"
+  },
+  {
+    "name": "system.power.hetero.list",
+    "module": "system",
+    "description": "读取异构处理器调度设置。",
+    "argumentType": null
+  },
+  {
+    "name": "system.power.hetero.set",
+    "module": "system",
+    "description": "修改选定的异构处理器调度设置。",
+    "argumentType": "PowerHeteroSetArgs"
+  },
+  {
+    "name": "system.power.intel-pcores.apply",
+    "module": "system",
+    "description": "应用Intel优先性能核电源策略并保留原后端备份。",
+    "argumentType": null
+  },
+  {
+    "name": "system.timer.recover",
+    "module": "system",
+    "description": "按已预览指纹恢复系统计时器配置；可能需要重启，保留原始备份与后端门禁。",
+    "argumentType": "TimerRecoveryArgs"
+  },
+  {
+    "name": "system.low-memory.apply",
+    "module": "system",
+    "description": "按新鲜状态指纹修正低内存配置/恢复预读取；后端仍复核容量、备份、管理员与游戏。",
+    "argumentType": "LowMemoryApplyArgs"
+  },
+  {
+    "name": "system.shader.status",
+    "module": "system",
+    "description": "读取三角洲着色器缓存与驱动状态。",
+    "argumentType": null
+  },
+  {
+    "name": "system.shader.diagnose",
+    "module": "system",
+    "description": "只读诊断三角洲着色器缓存布局；布局推断不代表性能实效。",
+    "argumentType": null
+  },
+  {
+    "name": "system.shader.clear-cache",
+    "module": "system",
+    "description": "清理三角洲 PSOCache，之后需要完整预热。",
+    "argumentType": null
+  },
+  {
+    "name": "system.game-recording.status",
+    "module": "system",
+    "description": "读取icreateDF及recorder替换和备份记录状态。",
+    "argumentType": null
+  },
+  {
+    "name": "system.game-recording.change",
+    "module": "system",
+    "description": "按原文件身份与备份执行指定录制组件替换、恢复或显式旧记录核对。",
+    "argumentType": "GameRecordingArgs"
+  },
+  {
+    "name": "system.shader.recovery-clean",
+    "module": "system",
+    "description": "按指定范围清理游戏/NVIDIA缓存，之后需要完整预热。",
+    "argumentType": "ShaderRecoveryCleanArgs"
+  },
+  {
+    "name": "system.pagefile.status",
+    "module": "system",
+    "description": "读取虚拟内存配置和原始备份。",
+    "argumentType": null
+  },
+  {
+    "name": "system.pagefile.set",
+    "module": "system",
+    "description": "设置指定盘符的虚拟内存范围，可能需要重启。",
+    "argumentType": "PagefileSetArgs"
+  },
+  {
+    "name": "system.pagefile.restore-auto",
+    "module": "system",
+    "description": "将虚拟内存切换为系统自动管理。",
+    "argumentType": null
+  },
+  {
+    "name": "system.pagefile.restore-original",
+    "module": "system",
+    "description": "按可信原始备份恢复虚拟内存。",
+    "argumentType": null
+  },
+  {
+    "name": "system.bx.status",
+    "module": "system",
+    "description": "批量读取优化库项目状态。",
+    "argumentType": "BxStatusArgs"
+  },
+  {
+    "name": "system.bx.gear.info",
+    "module": "system",
+    "description": "读取选定优化库项目的可选档位。",
+    "argumentType": "BxItemArgs"
+  },
+  {
+    "name": "system.bx.apply",
+    "module": "system",
+    "description": "开启或恢复选定优化库条目，影响以条目定义为准。",
+    "argumentType": "BxApplyArgs"
+  },
+  {
+    "name": "system.bx.gear.apply",
+    "module": "system",
+    "description": "切换选定优化库条目的档位。",
+    "argumentType": "BxGearApplyArgs"
+  },
+  {
+    "name": "system.bx.service-group.resolve",
+    "module": "system",
+    "description": "读取服务组定义。",
+    "argumentType": "BxServiceGroupArgs"
+  },
+  {
+    "name": "system.bx.service-group.status",
+    "module": "system",
+    "description": "读取服务组状态。",
+    "argumentType": "BxServiceGroupArgs"
+  },
+  {
+    "name": "system.bx.service-group.apply",
+    "module": "system",
+    "description": "按内置服务组定义修改服务状态，保留原始备份。",
+    "argumentType": "BxServiceGroupApplyArgs"
+  },
+  {
+    "name": "system.bx.backups",
+    "module": "system",
+    "description": "读取优化库可恢复备份条目。",
+    "argumentType": null
+  },
+  {
+    "name": "system.bx.restore-all",
+    "module": "system",
+    "description": "按软件保存的原始备份恢复优化库，保留后端的范围与状态核对。",
+    "argumentType": null
+  },
+  {
+    "name": "system.defender.preflight",
+    "module": "system",
+    "description": "只读核对所选安全防护操作的先决条件。",
+    "argumentType": "DefenderPreflightArgs"
+  },
+  {
+    "name": "system.defender.protection-state",
+    "module": "system",
+    "description": "只读查询Defender实时保护与篡改保护状态。",
+    "argumentType": null
+  },
+  {
+    "name": "system.memory.status",
+    "module": "system",
+    "description": "读取物理内存和可用内存。",
+    "argumentType": null
+  },
+  {
+    "name": "system.memory.purge",
+    "module": "system",
+    "description": "清空待备内存列表，可能引起后续重新读盘。",
+    "argumentType": null
+  },
+  {
+    "name": "system.optimize.run",
+    "module": "system",
+    "description": "按显式选项执行电源、鼠标或待备内存优化，不自动扩大选项。",
+    "argumentType": "OptimizeRunArgs"
+  },
+  {
+    "name": "system.processes.scan",
+    "module": "system",
+    "description": "只读扫描可管理的后台进程及身份。",
+    "argumentType": null
+  },
+  {
+    "name": "system.processes.kill",
+    "module": "system",
+    "description": "结束已核对身份的后台进程，未保存内容可能丢失。",
+    "argumentType": "ProcessMaintenanceArgs"
+  },
+  {
+    "name": "system.processes.trim",
+    "module": "system",
+    "description": "按新鲜身份整理选定进程工作集，可能导致后续重新读取内存。",
+    "argumentType": "ProcessMaintenanceArgs"
+  },
+  {
+    "name": "ace.scan",
+    "module": "ace",
+    "description": "在三角洲退出后只读扫描ACE组件与残留。",
+    "argumentType": null
+  },
+  {
+    "name": "ace.core",
+    "module": "ace",
+    "description": "只读核对ACE核心文件。",
+    "argumentType": null
+  },
+  {
+    "name": "ace.clean",
+    "module": "ace",
+    "description": "清理 ACE；必须退出游戏，下一次启动游戏会重新安装。",
+    "argumentType": null
+  },
+  {
+    "name": "ace.core.clean",
+    "module": "ace",
+    "description": "清理 ACE 核心文件；保留后端的游戏及文件归属门禁。",
+    "argumentType": null
+  },
+  {
+    "name": "ace.vircheck",
+    "module": "ace",
+    "description": "只读检查ACE相关虚拟化环境。",
+    "argumentType": null
+  },
+  {
+    "name": "procman.status",
+    "module": "procman",
+    "description": "读取进程控制会话状态。",
+    "argumentType": null
+  },
+  {
+    "name": "procman.process.list",
+    "module": "procman",
+    "description": "按筛选条件列出进程及身份。",
+    "argumentType": "ProcmanListArgs"
+  },
+  {
+    "name": "procman.process.detail",
+    "module": "procman",
+    "description": "读取选定进程的属性与身份。",
+    "argumentType": "ProcmanDetailArgs"
+  },
+  {
+    "name": "procman.process.capability",
+    "module": "procman",
+    "description": "查询选定进程允许的控制能力。",
+    "argumentType": "ProcmanDetailArgs"
+  },
+  {
+    "name": "procman.cpu.topology",
+    "module": "procman",
+    "description": "读取CPU拓扑、处理器组与可用核心。",
+    "argumentType": null
+  },
+  {
+    "name": "procman.process.set",
+    "module": "procman",
+    "description": "按新鲜身份设置选定进程属性；修改由主程序持有，退出时走原恢复流程。",
+    "argumentType": "ProcmanSetArgs"
+  },
+  {
+    "name": "procman.process.reset",
+    "module": "procman",
+    "description": "按记录恢复选定进程属性。",
+    "argumentType": "ProcmanResetArgs"
+  },
+  {
+    "name": "procman.process.release",
+    "module": "procman",
+    "description": "显式释放选定进程控制；以参数中的原恢复或保留语义为准。",
+    "argumentType": "ProcmanReleaseArgs"
+  },
+  {
+    "name": "procman.restore-all",
+    "module": "procman",
+    "description": "按原恢复范围还原所有通用进程控制。",
+    "argumentType": null
+  },
+  {
+    "name": "procman.rules.list",
+    "module": "procman",
+    "description": "列出进程规则。",
+    "argumentType": null
+  },
+  {
+    "name": "procman.rules.save",
+    "module": "procman",
+    "description": "保存进程规则，后端按原调度机制执行。",
+    "argumentType": "ProcmanRulesSaveArgs"
+  },
+  {
+    "name": "procman.rules.delete",
+    "module": "procman",
+    "description": "删除指定进程规则。",
+    "argumentType": "ProcmanRulesDeleteArgs"
+  },
+  {
+    "name": "procman.memory.preview",
+    "module": "procman",
+    "description": "预览进程内存整理范围。",
+    "argumentType": null
+  },
+  {
+    "name": "procman.memory.trim",
+    "module": "procman",
+    "description": "按预览身份整理进程内存。",
+    "argumentType": "ProcmanMemoryTrimArgs"
+  },
+  {
+    "name": "procman.background.get",
+    "module": "procman",
+    "description": "读取后台进程过滤配置。",
+    "argumentType": null
+  },
+  {
+    "name": "procman.background.save",
+    "module": "procman",
+    "description": "保存后台进程过滤配置。",
+    "argumentType": "ProcmanBackgroundConfig"
+  },
+  {
+    "name": "app.status",
+    "module": "app",
+    "description": "查看应用版本、游戏观测、管理员、接入和待核对状态。",
+    "argumentType": null
+  },
+  {
+    "name": "gpu.settings.catalog",
+    "module": "app",
+    "description": "读取本页 NVIDIA 设置及可选值目录。",
+    "argumentType": null
+  },
+  {
+    "name": "frame.status",
+    "module": "app",
+    "description": "读取当前帧格配置与实际状态；偏好不代表生效。",
+    "argumentType": null
+  },
+  {
+    "name": "frame.activate",
+    "module": "app",
+    "description": "使用现有帧格总开关流程开启，保留全部原确认和重启选择。",
+    "argumentType": null
+  },
+  {
+    "name": "frame.deactivate",
+    "module": "app",
+    "description": "使用现有帧格退出流程还原，保留全部原确认和显示器核对。",
+    "argumentType": null
+  },
+  {
+    "name": "app.review",
+    "module": "app",
+    "description": "打开现有核对与恢复界面；Agent不能自动归档或强制解除阻塞。",
+    "argumentType": null
+  },
+  {
+    "name": "system.optimizations.catalog",
+    "module": "app",
+    "description": "只读列出内置优化条目、服务组和可用基本优化名称；修改仍按原后端定义执行。",
+    "argumentType": null
+  },
+  {
+    "name": "system.low-memory.status",
+    "module": "app",
+    "description": "只读检查低内存配置并返回本次指纹；游戏运行或状态未知时拒绝。",
+    "argumentType": null
+  }
+]

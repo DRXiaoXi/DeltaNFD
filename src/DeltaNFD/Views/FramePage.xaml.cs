@@ -42,7 +42,15 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
             var result = await FrameSrv.PreserveCurrentPowerValuesAsync(unresolved);
             await new ContentDialog { XamlRoot = XamlRoot, Title = result.Success ? "已归档证据" : "未完成", Content = result.Message, CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
         }
-        catch (Exception ex) { Log.Error("电源记录核对失败，证据保留", ex); }
+        catch (Exception ex)
+        {
+            Log.Error("电源记录核对失败，证据保留", ex);
+            if (await new ContentDialog { XamlRoot = XamlRoot, Title = "电源记录尚未处理",
+                Content = ex.Message + "\n\n若已有 CPU/帧格待核对记录，请先进入核对流程。无法恢复的旧电源备份可在其中选择保留当前值并归档，再完整复核其他状态。",
+                PrimaryButtonText = "核对未确认操作", CloseButtonText = "暂不处理", DefaultButton = ContentDialogButton.Close,
+            }.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary)
+                await BackendReviewFlow.RunAsync(XamlRoot, [DeltaNFD.Backends.BackendModules.CpuFrame]);
+        }
     }
     public string TargetLabel => "当前主进程：" + DeltaNFD.Services.GameTargetService.Default.Current.DisplayName;
     public bool NormalModeControlsEnabled => !OfflineModeGuard.BlocksNormalAutomation;

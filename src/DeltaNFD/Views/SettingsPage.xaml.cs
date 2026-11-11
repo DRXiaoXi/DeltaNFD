@@ -49,6 +49,7 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
+        InitializeMcpControls();
         RefreshLegacyRecoveryControls();
 
         // 关于卡 logo：ms-appx 资源加载失败时回退到绝对路径文件

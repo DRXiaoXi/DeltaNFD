@@ -83,6 +83,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        InitializeMcpBridge();
         InitializePageBackendNavigation();
         InitializeGameVersionWatch();
         RuntimeNavigationItem.Visibility = ReleaseFeatures.RuntimeUiEnabled ? Visibility.Visible : Visibility.Collapsed;
@@ -100,7 +101,7 @@ public sealed partial class MainWindow : Window
         Title = "三角帧不掉洲 · 三角洲行动优化工具";
         // 标题栏版本号：唯一来源是程序集 InformationalVersion（csproj 的 <InformationalVersion>，
         // 由 AppVersion 统一读取并截断 SourceLink 的 +提交哈希），不要在 XAML/C# 里写死版本字符串。
-        AppVersionText.Text = AppVersion.Text;
+        RefreshVersionLabel();
         SystemBackdrop = new MicaBackdrop();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
@@ -145,6 +146,7 @@ public sealed partial class MainWindow : Window
 
         // 发现新版本时在「设置」导航项上挂提示徽标（服务可能在后台线程触发）
         ServiceLocator.Update.AvailabilityChanged += OnUpdateAvailabilityChanged;
+        Closed += (_, _) => ServiceLocator.Update.AvailabilityChanged -= OnUpdateAvailabilityChanged;
     }
 
     private void OnGameTargetChanged(GameTarget target) => DispatcherQueue.TryEnqueue(UpdateGameTargetNavigation);
@@ -612,11 +614,19 @@ public sealed partial class MainWindow : Window
         try
         {
             SettingsNavItem.InfoBadge = available ? new InfoBadge { Value = 1 } : null;
+            RefreshVersionLabel();
         }
         catch (Exception ex)
         {
             Services.Log.Warn("更新：刷新导航徽标失败：" + ex.Message);
         }
+    }
+
+    private void RefreshVersionLabel()
+    {
+        var update = ServiceLocator.Update;
+        AppVersionText.Text = AppVersion.Text
+            + (UpdateChannelPolicy.IsNewerBeta(update.LastResult, update.CurrentVersion) ? " · 过时版本" : "");
     }
 
     private async Task EnsureGameDirectoryOnStartupAsync()

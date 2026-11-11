@@ -31,6 +31,13 @@ internal static class BackendReviewFlow
             }
             foreach (var review in reviews)
             {
+                if (review.Module == DeltaNFD.Backends.BackendModules.Runtime && review.Fingerprint.Length == 0
+                    && RuntimeCorruptRecordReview.Inspect() is { } corrupt)
+                {
+                    retry = await ReviewCorruptRuntimeAsync(root, corrupt);
+                    if (retry) break;
+                    continue;
+                }
                 // 原进程已确认退出时，做一次只读状态核对，并向玩家提供可用恢复范围。
                 ReconcileSnapshot? snapshot = null;
                 var snapshotNote = "";
@@ -41,7 +48,15 @@ internal static class BackendReviewFlow
                         scope: BackendRecovery.IsRuntimeInstallation(review) ? "repair-review" : null); }
                     catch (Exception ex) { readError = ex.Message; snapshotNote = "\n\n只读状态核对未能完成：" + readError; }
                 }
-                var scopes = BackendRecovery.RecoveryChoices(review, snapshot);
+                var scopes = BackendRecovery.RecoveryChoices(review, snapshot).ToList();
+                IReadOnlyList<FrameIncompletePowerBackup> powerRecords = [];
+                if (review.Module == DeltaNFD.Backends.BackendModules.CpuFrame && scopes.Count > 0)
+                {
+                    try { powerRecords = await BackendRecovery.ReadPowerReviewAsync(review); }
+                    catch (Exception ex) { snapshotNote += "\n旧电源备份未能读取，未开放归档：" + ex.Message; }
+                    if (powerRecords.Count > 0) scopes.Add(new RecoveryScope { Id = "power-preserve",
+                        Description = "保留当前电源值并归档无法恢复的旧电源备份，再完整复核其他帧格状态", Available = true });
+                }
                 var canKeep = BackendRecovery.CanKeepCurrentState(review, snapshot);
                 var installationReview = BackendRecovery.IsRuntimeInstallation(review);
                 var restartCheckpoint = installationReview && scopes.Count == 1 && scopes[0].Id == "repair-restart-checkpoint";
@@ -86,9 +101,9 @@ internal static class BackendReviewFlow
                     XamlRoot = root, Title = "核对操作：" + BackendLifecycle.ModuleDisplayName(review.Module),
                     Content = new ScrollViewer { MaxHeight = 420, Content = content },
                     PrimaryButtonText = scopes.Count > 0 ? restartCheckpoint ? "建立重启核对点"
-                        : installationReview ? "核对结束并恢复可用" : "按可信备份恢复" : !canKeep ? "刷新并重新核对" : "",
+                        : installationReview ? "核对结束并恢复可用" : powerRecords.Count > 0 ? "处理选中范围" : "按可信备份恢复" : !canKeep ? "刷新并重新核对" : "",
                     SecondaryButtonText = canKeep ? "确认保留当前状态" : "",
-                    CloseButtonText = "暂不处理", DefaultButton = scopes.Count > 0 ? ContentDialogButton.Primary : ContentDialogButton.Close,
+                    CloseButtonText = "暂不处理", DefaultButton = scopes.Count > 0 && powerRecords.Count == 0 ? ContentDialogButton.Primary : ContentDialogButton.Close,
                 };
                 var choice = await dialog.ShowAsync();
 
@@ -100,7 +115,16 @@ internal static class BackendReviewFlow
                     var scope = scopes[scopePicker?.SelectedIndex is int index && index >= 0 ? index : 0];
                     try
                     {
-                        var outcome = await BackendRecovery.RestoreAsync(review, scope.Id);
+                        if (scope.Id == "power-preserve" && await new ContentDialog
+                        {
+                            XamlRoot = root, Title = "保留当前电源值？",
+                            Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
+                                IsTextSelectionEnabled = true, Text = string.Join("\n\n", powerRecords.Select(p => p.Path + "\n" + p.Reason))
+                                    + "\n\n仅将列出的无法恢复备份原样归档，保留当前电源值并关闭降低省电延迟；涉及内容快照时也会关闭电源锁定。不会把旧计划值写入新的平衡计划，也不会重建已删除计划。此步骤不算还原成功；随后必须完整恢复、复核其他帧格状态，全部通过才处理待核对记录。" } },
+                            PrimaryButtonText = "确认保留并继续核对", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
+                        }.ShowAsync() != ContentDialogResult.Primary) continue;
+                        var outcome = await BackendRecovery.RestoreAsync(review, scope.Id == "power-preserve" ? "all" : scope.Id,
+                            confirmedPower: scope.Id == "power-preserve" ? powerRecords : null);
                         var recoveryChoice = await new ContentDialog
                         {
                             XamlRoot = root, Title = restartCheckpoint && outcome.Success ? "重启核对点已建立"
@@ -163,6 +187,29 @@ internal static class BackendReviewFlow
         content.Children.Add(new TextBlock { Text = advice.Title, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
         content.Children.Add(new TextBlock { Text = advice.Explanation + "\n\n" + advice.Steps,
             TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
+    }
+
+    private static async Task<bool> ReviewCorruptRuntimeAsync(XamlRoot root, RuntimeCorruptRecordReview.State state)
+    {
+        var content = new StackPanel { Spacing = 8 };
+        content.Children.Add(new TextBlock { Text = state.Detail + "\n\n损坏原件会逐字保留。保留当前状态不证明安装成功，也不还原 DLL；独立安装事务、防护与替换备份继续保留。",
+            TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
+        var dialog = new ContentDialog { XamlRoot = root, Title = "运行库操作记录损坏",
+            Content = new ScrollViewer { MaxHeight = 420, Content = content },
+            PrimaryButtonText = state.CanPrepare ? "建立重启核对点" : state.CanPreserve ? "确认保留当前状态" : "刷新并重新核对",
+            CloseButtonText = "暂不处理", DefaultButton = ContentDialogButton.Close };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return false;
+        if (!state.CanPrepare && !state.CanPreserve) return true;
+        try
+        {
+            var message = state.CanPrepare ? RuntimeCorruptRecordReview.Prepare(state)
+                : "损坏原件已归档，未认定安装或还原成功。请到运行库页重新检测；独立事务可能仍需核对。\n证据：" + RuntimeCorruptRecordReview.Preserve(state);
+            if (!state.CanPrepare) await BackendLifecycle.ReleaseRecoveredSessionsAsync(DeltaNFD.Backends.BackendModules.Runtime);
+            await new ContentDialog { XamlRoot = root, Title = state.CanPrepare ? "核对点已建立" : "已保留当前状态",
+                Content = message, CloseButtonText = "知道了" }.ShowAsync();
+        }
+        catch (Exception ex) { return await ShowRetryAsync(root, "未解除阻塞", ex.Message); }
+        return false;
     }
 
     private static void AddDiagnostic(StackPanel content, BackendUnconfirmedStore.Review? review,

@@ -872,6 +872,15 @@ public sealed class CpuFrameEngine : IDisposable
         }).ToArray(),
     };
 
+    public async Task<RecoverOutcome> RecoverPowerReviewAsync(IReadOnlyList<FrameIncompletePowerBackup> confirmed)
+    {
+        var preserved = await PreserveCurrentPowerValuesAsync(confirmed).ConfigureAwait(false);
+        if (!preserved.Success) return new RecoverOutcome { Scope = "all", Success = false, Verified = false, Message = preserved.Message };
+        var full = await RecoverAsync("all").ConfigureAwait(false);
+        return new RecoverOutcome { Scope = "all", Success = full.Success, Verified = full.Verified,
+            Message = preserved.Message + "\n" + full.Message, VerifiedSnapshot = full.VerifiedSnapshot };
+    }
+
     public async Task<RecoverOutcome> RecoverAsync(string scope)
     {
         var normalized = (scope ?? "").Trim().ToLowerInvariant();

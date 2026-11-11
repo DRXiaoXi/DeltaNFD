@@ -26,9 +26,9 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 
     <DefaultLanguage>zh-CN</DefaultLanguage>
-    <Version>0.9320</Version>
+    <Version>0.9321</Version>
     <!-- 日志头/程序集读取的显示版本（与关于卡 VersionText 保持一致） -->
-    <InformationalVersion>Beta0.932-RC1</InformationalVersion>
+    <InformationalVersion>Beta0.932-RC2</InformationalVersion>
     <RuntimeUiEnabled Condition="'$(RuntimeUiEnabled)' == ''">true</RuntimeUiEnabled>
     <!-- 应用图标（exe / 任务栏 / 托盘共用；托盘经 ExtractIconExW 从 exe 提取） -->
     <ApplicationIcon>Assets\DeltaNFD.ico</ApplicationIcon>
@@ -49,12 +49,14 @@
     <Content Include="..\..\COPYRIGHT" Link="COPYRIGHT" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\licenses\GPL-3.0.txt" Link="licenses\GPL-3.0.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\licenses\MCP-SDK-Apache-2.0.txt" Link="licenses\MCP-SDK-Apache-2.0.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- 前后端分离 C1：前端只引用无执行实现的合同程序集，绝不引用执行库。 -->
   <!-- T6：共享基础设施（Native/Services）物理移入 DeltaNFD.Shared，前端改为项目引用。 -->
   <ItemGroup>
     <ProjectReference Include="..\DeltaNFD.Contracts\DeltaNFD.Contracts.csproj" />
+    <ProjectReference Include="..\DeltaNFD.AgentBridge\DeltaNFD.AgentBridge.csproj" />
     <ProjectReference Include="..\DeltaNFD.Shared\DeltaNFD.Shared.csproj" />
     <ProjectReference Include="..\DeltaNFD.UpdateCore\DeltaNFD.UpdateCore.csproj" />
   </ItemGroup>
@@ -209,6 +211,45 @@
   </Target>
 
   <!-- Offline mode removed: no helper is built, copied or published. -->
+
+  <!-- Unpackaged WinUI resources are not included by the .NET publish item list.
+       Generate them in this build's paths and publish the exact generated files. -->
+  <Target Name="IncludeWinUiResourcesInPublish" AfterTargets="ComputeResolvedFilesToPublishList"
+          DependsOnTargets="CopyGeneratedXaml;_GenerateProjectPriFile"
+          Condition="'$(UseWinUI)' == 'true' and '$(IsDesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <_WinUiPublishXbf Include="@(GeneratedXamlDest)" Condition="'%(GeneratedXamlDest.Extension)' == '.xbf'" />
+    </ItemGroup>
+    <Error Condition="'@(_WinUiPublishXbf)' == ''" Text="WinUI publish has no generated XBF resources; publication is blocked." />
+    <Error Condition="!Exists('%(_WinUiPublishXbf.Identity)')" Text="WinUI resource missing: %(_WinUiPublishXbf.Identity)" />
+    <Error Condition="'$(ProjectPriFullPath)' == '' or !Exists('$(ProjectPriFullPath)')" Text="WinUI resource index missing: $(ProjectPriFullPath)" />
+    <ItemGroup>
+      <ResolvedFileToPublish Include="@(_WinUiPublishXbf)" Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>$([MSBuild]::MakeRelative('$(TargetDir)', '%(_WinUiPublishXbf.Identity)'))</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+      <ResolvedFileToPublish Include="$(ProjectPriFullPath)" Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>$(ProjectPriFileName)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
+  <Target Name="BuildMcpHostToOutput" AfterTargets="Build"
+          Condition="'$(IsDesignTimeBuild)' != 'true' and '$(BuildMcpHost)' != 'false'">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\DeltaNFD.Mcp\DeltaNFD.Mcp.csproj" Targets="Restore;Publish"
+      Properties="Configuration=$(Configuration);Platform=AnyCPU;RuntimeIdentifier=win-x64;SelfContained=true;PublishDir=$(TargetDir)Tools\Mcp\;NuGetAudit=$(NuGetAudit)"
+      RemoveProperties="TargetFramework;TargetPlatformVersion;TargetPlatformMinVersion;BaseIntermediateOutputPath;BaseOutputPath;MSBuildProjectExtensionsPath;IntermediateOutputPath;OutputPath;OutDir;UseArtifactsOutput;ArtifactsPath" />
+  </Target>
+  <Target Name="PublishMcpHostToOutput" AfterTargets="Publish"
+          Condition="'$(IsDesignTimeBuild)' != 'true' and '$(BuildMcpHost)' != 'false'">
+    <PropertyGroup>
+      <_McpPublishRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(PublishDir)'))</_McpPublishRoot>
+    </PropertyGroup>
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\DeltaNFD.Mcp\DeltaNFD.Mcp.csproj" Targets="Restore;Publish"
+      Properties="Configuration=$(Configuration);Platform=AnyCPU;RuntimeIdentifier=win-x64;SelfContained=true;PublishDir=$(_McpPublishRoot)Tools\Mcp\;NuGetAudit=$(NuGetAudit)"
+      RemoveProperties="TargetFramework;TargetPlatformVersion;TargetPlatformMinVersion;BaseIntermediateOutputPath;BaseOutputPath;MSBuildProjectExtensionsPath;IntermediateOutputPath;OutputPath;OutDir;UseArtifactsOutput;ArtifactsPath" />
+  </Target>
 
   <ItemGroup><ProjectReference Include="../DeltaNFD.Inspection/DeltaNFD.Inspection.csproj" /></ItemGroup>
 </Project>

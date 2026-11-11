@@ -246,6 +246,15 @@ internal static class CpuFrameCommands
     private static async Task<BackendResult> RecoverAsync(BackendCommandContext context)
     {
         var args = context.ArgsAs<RecoverArgs>();
+        if (args.Scope == "power-preserve")
+        {
+            var confirmed = context.ArgsAs<CpuFramePreservePowerArgs>().Confirmed;
+            if (confirmed is null || confirmed.Count is < 1 or > 3)
+                return BackendResult.Failed(context.Command, "缺少有效的电源备份确认清单。");
+            var reviewed = await Engine.RecoverPowerReviewAsync(confirmed);
+            return reviewed.Success ? BackendResult.Ok(context.Command, reviewed.Message, reviewed)
+                : BackendResult.Failed(context.Command, reviewed.Message);
+        }
         context.ReportProgress("正在按记录还原帧格执行状态…", null, "recover");
         var outcome = await Engine.RecoverAsync(args.Scope ?? "");
         return outcome.Success

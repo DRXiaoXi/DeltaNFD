@@ -184,12 +184,15 @@ internal static class BackendHandoverChecks
     {
         var client = await BackendClient.StartAsync(BackendModules.CpuFrame, default);
         await client.InvokeAsync(BackendCommands.CpuFrameMonitorStart, new { }, null, default);
+        await client.InvokeAsync(BackendCommands.CpuFrameMemoryLimitDetect, new { }, null, default);
         var pipe = (IDisposable)typeof(BackendClient).GetField("_pipe", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(client)!;
         pipe.Dispose();
         await WaitUntilAsync(() => client.RequiresAttention && client.ExitConfirmed
             && BackendUnconfirmedStore.PendingModules().Contains(BackendModules.CpuFrame),
             TimeSpan.FromSeconds(15), "空闲监控断线保留证据");
         Check(BackendUnconfirmedStore.PendingModules().Contains(BackendModules.CpuFrame), "无 UI 请求时监控断线仍阻止静默重启");
+        Check(BackendUnconfirmedStore.ReviewAll().Single(r => r.Module == BackendModules.CpuFrame).Command == BackendCommands.CpuFrameMonitorStart,
+            "监控后的只读内存限制检测不覆盖真实恢复义务");
         await AcknowledgeAsync(BackendModules.CpuFrame);
     }
 

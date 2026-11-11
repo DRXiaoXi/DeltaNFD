@@ -5,6 +5,17 @@
                 <ui:PageHeader Title="设置"/>
                 <TextBlock Text="外观与常规选项" Style="{StaticResource NoteStyle}"/>
             </StackPanel>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Agent 接入（MCP）" Style="{StaticResource H2Style}"/>
+                    <TextBlock Text="允许本机 Agent 查询状态并请求操作。修改需要在主窗口确认，沿用原有权限、游戏、备份与核对限制。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
+                    <ToggleSwitch x:Name="McpAccessToggle" Header="开启本次接入" Toggled="McpAccess_Toggled"/>
+                    <TextBlock Text="每次正常启动时自动开启，可手动关闭本次接入。关闭会取消排队请求，已开始的任务继续按原流程收尾。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <Button Content="复制 Agent 配置" Click="CopyMcpConfig_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                    <TextBlock x:Name="McpStatusText" TextWrapping="Wrap" IsTextSelectionEnabled="True" AutomationProperties.LiveSetting="Polite"/>
+                    <TextBox x:Name="McpConfigText" Visibility="Collapsed" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="220" AutomationProperties.Name="MCP 客户端配置"/>
+                </StackPanel>
+            </Border>
             <!-- 外观 -->
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">

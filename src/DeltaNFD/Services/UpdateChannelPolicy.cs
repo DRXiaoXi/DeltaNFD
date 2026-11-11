@@ -43,4 +43,10 @@ internal static class UpdateChannelPolicy
         || Normalize(channel) == UpdateChannel.Internal && kind == UpdateReleaseKind.Alpha;
     internal static bool Allows(UpdateChannel channel, UpdateManifest manifest)
         => Allows(channel, Classify(manifest.Version, manifest.DisplayVersion, manifest.Channel));
+
+    internal static bool IsNewerBeta(UpdateCheckResult? result, Version current)
+        => result is { HasUpdate: true, Manifest: { } manifest }
+            && Classify(manifest.Version, manifest.DisplayVersion, manifest.Channel) == UpdateReleaseKind.Beta
+            && UpdateService.TryParseVersion(manifest.Version, out var remote)
+            && UpdateService.CompareVersions(remote, current) > 0;
 }

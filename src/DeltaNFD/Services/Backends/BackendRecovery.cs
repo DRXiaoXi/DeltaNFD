@@ -70,7 +70,7 @@ internal static class BackendRecovery
     /// 复核失败或执行失败一律保留阻塞，玩家可重试。
     /// </summary>
     public static async Task<RecoverOutcome> RestoreAsync(BackendUnconfirmedStore.Review review, string scope,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, IReadOnlyList<FrameIncompletePowerBackup>? confirmedPower = null)
     {
         if (IsRuntimeFileReplacement(review))
             throw new InvalidOperationException("系统 DLL 替换不能使用运行库防护恢复。请按强制替换备份目录中的 restore.ps1/README 手动恢复并核对文件，再确认保留当前状态；旧记录保留。");
@@ -83,11 +83,15 @@ internal static class BackendRecovery
             throw new InvalidOperationException("运行库安装记录必须核对事务结束；防护记录必须按备份恢复，不能混用解除路径。");
         var command = BackendModules.RecoverCommand(review.Module)
                       ?? throw new InvalidOperationException($"模块 {review.Module} 没有可信备份恢复路径。");
+        if (confirmedPower is not null && (review.Module != BackendModules.CpuFrame || scope != "all" || confirmedPower.Count is < 1 or > 3))
+            throw new InvalidOperationException("电源记录确认范围无效，未处理。");
         var caller = new BackendCaller(review.Module);
         RecoverOutcome outcome;
         try
         {
-            var result = await caller.InvokeReconcileAsync(command, new RecoverArgs { Scope = scope }, null, cancellationToken);
+            object args = confirmedPower is null ? new RecoverArgs { Scope = scope }
+                : new { Scope = "power-preserve", Confirmed = confirmedPower };
+            var result = await caller.InvokeReconcileAsync(command, args, null, cancellationToken);
             outcome = BackendResults.RequireData<RecoverOutcome>(result, "按可信备份恢复");
         }
         finally
@@ -115,5 +119,19 @@ internal static class BackendRecovery
             Message = outcome.Message + (verified || checkpoint ? "" : "\n恢复结果或完整状态未通过复核，旧记录仍保留。"),
             VerifiedSnapshot = outcome.VerifiedSnapshot,
         };
+    }
+
+    internal static async Task<IReadOnlyList<FrameIncompletePowerBackup>> ReadPowerReviewAsync(BackendUnconfirmedStore.Review review)
+    {
+        var current = BackendUnconfirmedStore.ReviewAll().SingleOrDefault(r => r.Module == BackendModules.CpuFrame);
+        if (review.Module != BackendModules.CpuFrame || current is null || !current.CanRestore || current.Fingerprint != review.Fingerprint)
+            throw new InvalidOperationException("原执行者或记录尚未确认，不能读取处理范围。");
+        var caller = new BackendCaller(BackendModules.CpuFrame);
+        try
+        {
+            var result = await caller.InvokeReconcileAsync(BackendCommands.CpuFramePowerIncomplete, new { }, null, CancellationToken.None);
+            return BackendResults.RequireData<List<FrameIncompletePowerBackup>>(result, "读取旧电源备份");
+        }
+        finally { if (!await caller.ResetAsync()) throw new InvalidOperationException("电源核对后端尚未安全退出。"); }
     }
 }

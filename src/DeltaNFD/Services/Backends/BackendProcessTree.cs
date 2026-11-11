@@ -6,9 +6,10 @@ internal static class BackendProcessTree
     internal sealed record Entry(string Name, int Pid, int ParentPid, long StartTicks);
 
     internal static (IReadOnlyList<BackendUnconfirmedStore.ChildProcess> Children, bool Ok) Capture(
-        int rootPid, long rootStartTicks, IReadOnlyList<Entry> snapshot)
+        int rootPid, long rootStartTicks, IReadOnlyList<Entry> snapshot, long? rootExitTicks = null)
     {
         if (rootPid <= 0 || rootStartTicks <= 0) return ([], false);
+        if (rootExitTicks is { } exit && exit < rootStartTicks) return ([], false);
         var children = new List<BackendUnconfirmedStore.ChildProcess>();
         var byPid = snapshot.GroupBy(p => p.Pid).ToDictionary(g => g.Key, g => g.ToArray());
         var byParent = snapshot.ToLookup(p => p.ParentPid);
@@ -30,6 +31,10 @@ internal static class BackendProcessTree
             foreach (var child in byParent[parent.Pid])
             {
                 if (child.Pid <= 0) { complete = false; continue; }
+                // Only direct children are bounded by the original root's confirmed lifetime.
+                // A real orphan child may still create grandchildren after its parent exits.
+                if (parent.Pid == rootPid && rootExitTicks is { } ended && child.StartTicks > 0
+                    && child.StartTicks / 10 > ended / 10) continue;
                 if (child.StartTicks > 0 && (child.StartTicks / 10 < parent.StartTicks / 10
                     || reusedAt is { } limit && child.StartTicks / 10 >= limit / 10)) continue;
                 if (!seen.Add(child.Pid)) continue;

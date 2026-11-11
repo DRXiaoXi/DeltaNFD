@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Version>0.9321</Version>
+    <InformationalVersion>Beta0.932-RC2</InformationalVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../DeltaNFD.Contracts/DeltaNFD.Contracts.csproj" />
+    <EmbeddedResource Include="actions.json" />
+  </ItemGroup>
+</Project>

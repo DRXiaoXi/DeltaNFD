@@ -155,6 +155,7 @@ public static class BackendHost
             !string.Equals(module, options.Module.Id, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(pipeName))
             return ExitUsage;
 
+        ProcessShutdownOrder.Configure(frontend: false);
         Log.Info($"官方后端启动：module={options.Module.Id}, pipe={pipeName}");
         if (options.InitialPriorityClass is { } priority)
         {

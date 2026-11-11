@@ -296,7 +296,7 @@ internal static class BackendUnconfirmedStore
         // Preserve the original failed query as audit evidence, without discarding the blocker.
         var directory = Path.Combine(AppDataPaths.Root, "official-backend-reviewed");
         Directory.CreateDirectory(directory);
-        File.WriteAllBytes(Path.Combine(directory, module + "-children-recheck-" + Guid.NewGuid().ToString("N") + ".json"), bytes);
+        BackendEvidenceFiles.WriteBytes(Path.Combine(directory, module + "-children-recheck-" + Guid.NewGuid().ToString("N") + ".json"), bytes);
         WriteReplace(path, e with { Children = combined, ChildrenUnknown = false });
         return true;
     }
@@ -350,26 +350,20 @@ internal static class BackendUnconfirmedStore
 
     private static void WriteNew(string path, Evidence evidence)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(evidence));
         try
         {
             // 不覆盖既有记录：并发写入时先落盘者获胜，后到者丢弃临时文件。
-            File.Move(temporary, path, overwrite: false);
+            BackendEvidenceFiles.WriteJson(path, evidence);
         }
         catch (IOException) when (File.Exists(path))
         {
-            File.Delete(temporary);
+            // The durable writer has already removed its own unpublished temporary file.
         }
     }
 
     private static void WriteReplace(string path, Evidence evidence)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(evidence));
-        File.Move(temporary, path, overwrite: true);
+        BackendEvidenceFiles.WriteJson(path, evidence, overwrite: true);
     }
 
     private static Evidence? TryRead(string path)
@@ -525,7 +519,7 @@ internal static class BackendUnconfirmedStore
         var stamp = Guid.NewGuid().ToString("N");
         var destination = Path.Combine(directory, $"{module}-{outcomeName}-{stamp}.json");
         if (outcome is not null)
-            File.WriteAllText(Path.Combine(directory, $"{module}-{outcomeName}-{stamp}.outcome.json"), JsonSerializer.Serialize(outcome));
+            BackendEvidenceFiles.WriteJson(Path.Combine(directory, $"{module}-{outcomeName}-{stamp}.outcome.json"), outcome);
         if (!ReadEvidence(RecordPath(module)).SequenceEqual(original)) throw new IOException("记录已变化，请重新核对。");
         File.Move(RecordPath(module), destination);
         if (!ReadEvidence(destination).SequenceEqual(original)) throw new IOException("归档证据已变化，不能宣称核对完成。");
@@ -533,14 +527,15 @@ internal static class BackendUnconfirmedStore
     }
 
     /// <summary>基于实例创建时间枚举子孙；允许真正的孤立安装器，排除 PPID 复用留下的无关分支。</summary>
-    public static (IReadOnlyList<ChildProcess> Children, bool Ok) CaptureDescendants(int rootPid, long rootStartTicks)
+    public static (IReadOnlyList<ChildProcess> Children, bool Ok) CaptureDescendants(int rootPid, long rootStartTicks,
+        long? rootExitTicks = null)
     {
         if (DescendantsForTests is { } capture) return capture(rootPid);
         if (rootPid <= 0 || rootStartTicks <= 0) return ([], false);
         try
         {
             var snapshot = (ProcessSnapshotForTests ?? BackendNativeProcessSnapshot.Read)();
-            return BackendProcessTree.Capture(rootPid, rootStartTicks, snapshot);
+            return BackendProcessTree.Capture(rootPid, rootStartTicks, snapshot, rootExitTicks);
         }
         catch (Exception ex)
         {

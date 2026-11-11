@@ -107,11 +107,21 @@ internal static class TestBackendFixture
                 }
                 if (moduleId == BackendModules.CpuFrame && recoveryScenario is not null)
                 {
+                    if (context.Command == BackendCommands.CpuFramePowerIncomplete && recoveryScenario == "power-review")
+                        return BackendResult.Ok(context.Command, "隔离旧电源备份", new[] {
+                            new DeltaNFD.Services.FrameIncompletePowerBackup("frame_usb_power.json", "owned-fixture", "owned-fingerprint", "owned missing plan") });
                     if (context.Command == BackendCommands.CpuFrameReconcile)
                         return BackendResult.Ok(context.Command, "隔离核对", RecoverySnapshot());
                     if (context.Command == BackendCommands.CpuFrameRecover)
                     {
                         var scope = context.ArgsAs<DeltaNFD.Services.RecoverArgs>().Scope;
+                        if (recoveryScenario == "power-review")
+                        {
+                            var confirmed = context.ArgsAs<DeltaNFD.Services.CpuFramePreservePowerArgs>().Confirmed;
+                            if (scope != "power-preserve" || confirmed is not { Count: 1 } || confirmed[0].Fingerprint != "owned-fingerprint")
+                                return BackendResult.Failed(context.Command, "隔离确认指纹不符，原记录保留。");
+                            scope = "all";
+                        }
                         recovered = recoveryScenario != "failed";
                         var snapshot = RecoverySnapshot();
                         if (recoveryScenario == "remaining") snapshot = new DeltaNFD.Services.ReconcileSnapshot

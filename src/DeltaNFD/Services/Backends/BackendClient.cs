@@ -788,11 +788,16 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
                 Log.Warn($"只读后端请求失败，不建立系统恢复义务：module={ModuleId}；command={command}；reason={reason}");
                 return Task.CompletedTask;
             }
+            // A read-only poll must not replace the outstanding monitor/write obligation.
+            command = EvidenceCommand(ModuleId, command, _lastMutatingCommand,
+                _cpuMayNeedRestore && !_cpuRestoreConfirmed);
             _unconfirmedOperation = true;
             try
             {
                 // 在进程仍存活时枚举它启动的子进程（安装器等），供核对/解除阻塞前确认它们也已结束。
-                var (children, ok) = BackendUnconfirmedStore.CaptureDescendants(_process.Id, _processStartTicks);
+                long? exitTicks = null;
+                try { if (_process.HasExited) exitTicks = _process.ExitTime.ToUniversalTime().Ticks; } catch { }
+                var (children, ok) = BackendUnconfirmedStore.CaptureDescendants(_process.Id, _processStartTicks, exitTicks);
                 BackendUnconfirmedStore.PromoteIntent(_spec.Id, requestId, reason, _process.Id, _processStartTicks,
                     _processImagePath, command, children, childrenUnknown: !ok, sessionId: _sessionId);
                 BackendAttention.Report(ModuleId);
@@ -804,6 +809,10 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
 
     private bool NeedsEvidence(string command) => BackendModules.IsMutating(ModuleId, command)
         || ModuleId == BackendModules.CpuFrame && _cpuMayNeedRestore && !_cpuRestoreConfirmed;
+
+    internal static string EvidenceCommand(string module, string command, string? lastWrite, bool needsRestore) =>
+        module == BackendModules.CpuFrame && needsRestore && BackendModules.IsReadOnly(module, command)
+            ? lastWrite ?? BackendCommands.CpuFrameMonitorStart : command;
 
     private BackendResult FailureResult(string code, string command, string reason) => BackendResult.Failed(code,
         NeedsEvidence(command) ? reason + "，修改结果未知；保留恢复证据，未强杀后端。" : reason + "，只读检测未完成，请重试。");

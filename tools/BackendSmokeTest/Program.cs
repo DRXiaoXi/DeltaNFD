@@ -1,4 +1,6 @@
 using DeltaNFD.Services;
+if (args is ["--feedback-repair-checks"]) { try { await FeedbackRepairChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--session-end-drain-checks"]) { try { await SessionEndDrainChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--backend-recovery-guidance-checks"]) { try { BackendRecoveryGuidanceChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--runtime-shutdown-owned-child", var shutdownReleaseFile])
 {
