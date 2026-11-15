@@ -255,7 +255,10 @@ internal static class LowMemorySupportChecks
         var vm = File.ReadAllText(Path.Combine(basePath, "src/DeltaNFD/ViewModels/BxDbViewModel.cs"));
         Check(vm.Contains("LowMemoryPolicy.ShowUpTweak(s.Tweak, totalMemory)"), "actual UP list uses capacity policy");
         var nav = File.ReadAllText(Path.Combine(basePath, "src/DeltaNFD/MainWindow.PageSessions.cs"));
-        Check(nav.Contains("typeof(LowMemoryRecoveryPage) ? \"system\""), "hidden page owns system backend lease");
+        var systemRoute = System.Text.RegularExpressions.Regex.Match(nav,
+            @"PageRoute\(Type\? page\)\s*=>\s*(.*?)\?\s*""system""", System.Text.RegularExpressions.RegexOptions.Singleline);
+        Check(systemRoute.Success && systemRoute.Groups[1].Value.Contains("page == typeof(LowMemoryRecoveryPage)"),
+            "hidden page owns system backend lease in the shared system route group");
         Console.WriteLine($"Low-memory guidance: {count} checks passed. Native/service/MMAgent writes simulated; own backup stores only.");
     }
     private static LowMemoryStatus Bad(LowMemoryStatus s, LowMemoryAction a) => a switch
