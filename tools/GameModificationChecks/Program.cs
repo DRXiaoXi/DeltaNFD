@@ -428,10 +428,15 @@ internal static class Program
         var page = XDocument.Parse(Read("src/DeltaNFD/Views/GameModificationsPage.xaml"));
         Check(page.Descendants().Any(e => e.Name.LocalName == "ToggleSwitch") && page.Descendants().Count(e => (string?)e.Attribute("Click") is "Replace_Click" or "Restore_Click") == 2, "page exposes fullscreen and separate replace/restore actions");
         var code = Read("src/DeltaNFD/Views/GameModificationsPage.xaml.cs");
-        Check(code.Contains("DefaultButton = ContentDialogButton.Close") && code.Contains("ExpectedFingerprint = item.Fingerprint"), "confirmation defaults to cancel and binds exact inspected state");
+        Check(code.Contains("DefaultButton = ContentDialogButton.Close")
+            && code.Contains("var targets = await RecordingTargetsAsync(item.ComponentId, selection)")
+            && code.Contains("foreach (var target in pending)")
+            && code.Contains("InstallationRoot = target.InstallationRoot, ComponentId = target.ComponentId")
+            && code.Contains("ExpectedFingerprint = target.Fingerprint, Restore = restore")
+            && code.Contains("Selection = selection"), "confirmation defaults to cancel and binds each selected target's inspected state");
         Check(page.Descendants().Any(e => (string?)e.Attribute("Click") == "ReviewRecording_Click"
             && (string?)e.Attribute("IsEnabled") == "{x:Bind NeedsReview}"), "review action remains available for disabled problem cards");
-        Check(code.Contains("item.CanArchiveRecord") && code.Contains("ArchiveRecord = true") && code.Contains("MaxHeight = 420"),
+        Check(code.Contains("targets.All(i => i.CanArchiveRecord)") && code.Contains("ExpectedFingerprint = target.Fingerprint, ArchiveRecord = true") && code.Contains("MaxHeight = 420"),
             "review dialog presents bounded guidance and guarded explicit archive action");
         Check(code.Contains("GameCompatibilityService.DisableFullscreenOptimizations") && code.Contains("GameCompatibilityService.RestoreFullscreenOptimizations"), "fullscreen calls original implementation and backup logic");
         Check(Read("src/DeltaNFD/MainWindow.xaml").Contains("Tag=\"gamemods\"") && Read("src/DeltaNFD/MainWindow.xaml.cs").Contains("\"gamemods\" => typeof(GameModificationsPage)"), "navigation maps to new game modifications page");

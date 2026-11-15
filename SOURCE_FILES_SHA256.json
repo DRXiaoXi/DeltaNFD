@@ -9,7 +9,7 @@
   "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
   "README.md": "a43b259dd26c731b97bd4e37bf4684dd482df536312f55ad36f781ee6f3bb092",
   "SOURCE_BUILD.md": "bb70d3e0b2500adfc147c9d469ffc29b4f8478eed34a28254bf196bb5a0e1d08",
-  "SOURCE_RELEASE.md": "e393dc83a01e4fc0e928eacaa570eb86d7ededd2d93d319c8b75d32df10767dc",
+  "SOURCE_RELEASE.md": "6089cf7b658694c7817d3a7af3831c5b0aa2ad0fa6fcadf42c80473fe39d2ffe",
   "THIRD-PARTY-NOTICES.md": "3ded180189f5585155082df343d07e15e7920ec42883801bdcbf5ff736a83ed2",
   "docs/MCP本地Agent接入.md": "785b9ef68bd06249dd56bc981578429eec329ecbd59cef0c6ad6635f85e3be6d",
   "docs/WORKSPACE-MAINTENANCE.md": "7bef35d4c64a14bbfacc3ad68e63b7240495f37b9cdfa3105a05ae8a28023b20",
@@ -986,7 +986,7 @@
   "tools/FramePacingLab/WinClock.h": "2255515021f102adeaf6979efa4837b21df6ddb4cf6bd1090d96c143160fdae0",
   "tools/FramePacingLab/build.ps1": "1bc56c4e523f79ac7000af12d3902a188d97e527e88d55f7a66a70c60b225cb7",
   "tools/GameModificationChecks/GameModificationChecks.csproj": "312ca809d9dc8629fc72934cff315bd4f902a28d2717b45ad551b5e59adf7de4",
-  "tools/GameModificationChecks/Program.cs": "4854ce0470f3782d24c34da1530978f9a8e4559e53086281ef5ff4efb10febfb",
+  "tools/GameModificationChecks/Program.cs": "9f0aec78989f9fc1db0976475f3458cd05d7024be9cc149774d17200ab46b828",
   "tools/GameVersionChecks/GameVersionChecks.csproj": "4a1d4e810c6da77848bb8364cfaa79f674d63138ac3e144c43b9b229edabf35e",
   "tools/GameVersionChecks/Program.cs": "cfdd1818eb77069f414bf74eb35d1e591109ec17160779b9ba3fd9d8eb3fe535",
   "tools/GpuBackupTool/GpuBackupTool.csproj": "21c39b404d90c6acfba0b9873deaebc77cec9311a9c070322c16b59cece8b306",
@@ -1009,6 +1009,7 @@
   "tools/McpBridgeChecks/winui_publish_checks.py": "3550255a2fd8985b5401a18064a6dc54dc3ea29012b5578792e33daec71cc1a2",
   "tools/NvProbe/NvProbe.csproj": "8dd9608401c404e4cf8d3bf86cab9f8c6d201b44143f70758902ef388e84d2bf",
   "tools/NvProbe/Program.cs": "3376fbe1de7c4d652d0afbb307b87e5745d94562afa5ef252dc43a1c346bc586",
+  "tools/NvSettingsChecks/InfoBarSeverity.cs": "69be6b51bae7ba433c16e9fa44a7b912365475fe19c054960587a32e1fbdc1a0",
   "tools/NvSettingsChecks/NvSettingsChecks.csproj": "59632b5b331303304512aa2820563d980b321a866e271ea07cc746ffef023937",
   "tools/NvSettingsChecks/ProfileResetChecks.cs": "381f5833c9020d585da86ffd7b3fb80c3912c19609115b50cd7af1566b232ead",
   "tools/NvSettingsChecks/Program.cs": "551294506614f2c0a099bbb677b1e0bedabb82b7119ec83e9af047fdcd50ab5b",
@@ -1069,6 +1070,5 @@
   "tools/verify-removal.ps1": "287d13f875fddd155f1a1afa9ae6b39b91846fddf4d4bc726d99463436e76b88",
   "tools/verify-tasks-fix.ps1": "45bd7395b85ea8d9fb60a4ccf36bfa9b8131fa12199001853cb21db66eb2b6e8",
   "tools/verify-uninstall.ps1": "1eb939e3c0b9400e6793242d4b75754fe53a183fb413ad966606ab32cd042b82",
-  "update.json": "0e49972659a71dec8280cf98756fe7ce6171c93dc3be43be2d1d2ba2390a68c0",
-  "tools/NvSettingsChecks/InfoBarSeverity.cs": "69be6b51bae7ba433c16e9fa44a7b912365475fe19c054960587a32e1fbdc1a0"
+  "update.json": "0e49972659a71dec8280cf98756fe7ce6171c93dc3be43be2d1d2ba2390a68c0"
 }
