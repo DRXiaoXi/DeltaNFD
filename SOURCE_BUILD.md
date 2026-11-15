@@ -1,10 +1,10 @@
-# Beta0.939 / 0.9390 构建输入
+# Alpha0.94 / 0.9400 构建输入
 
 ## 第三方驱动源码与载荷边界（2026-11-14）
 
 GitHub 源码不携带 DPC 的 SYS、原始 EXE、私有授权或其压缩副本；公开校验目录和构建工具不等于第三方授权。当前 DPC 目录明确 `not-authorized` / `not-approved`，不会恢复下载、嵌入或发布该驱动。源码、Git 索引和成品布局的边界检查及后续构建输入方法见 [DRIVER_PAYLOADS.md](DRIVER_PAYLOADS.md)。当前产品接入方式未切换，既有 Alpha r3 包也未改变。
 
-本标签对应 Beta0.939，发布到公测通道。使用 Windows x64、.NET SDK 8.0.425、Python 3.11+；安装器另需 Inno Setup 6。
+本标签对应 Alpha0.94，发布到内测通道。使用 Windows x64、.NET SDK 8.0.425、Python 3.11+；安装器另需 Inno Setup 6。
 
 先运行 `python tools/prepare-source-assets.py` 校验并恢复固定厂商依赖，再运行 `installer/publish-selfcontained.ps1` 生成自包含布局，最后使用 `installer/DeltaNFD.iss` 生成安装器。引导只下载并核验资源，不运行厂商安装器。固定清单包括 0.9200 原始资源、0.9299 官方14.44资源及0.9315 DirectX资源，详见引导脚本及其固定哈希。
 

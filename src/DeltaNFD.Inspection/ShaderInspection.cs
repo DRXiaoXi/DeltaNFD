@@ -429,28 +429,71 @@ public sealed class ShaderInspection
             var legacyLargeCount = nvphFiles.Count(f => f.Size >= NvphMinBytes);
             var nonEmptyCount = nvphFiles.Count(f => f.Size > 0);
             var modernLayout = primaryCount >= 1 && nonEmptyCount >= 2;
-            // 621.xx 的双精确 256MiB 是新版布局；额外非零文件不取消该布局证据。
-            var dual256AsdLayout = versionNumber.Value < 62200
-                && nvphFiles.Count(f => f.Size == NvphMinBytes) >= NvphMinLargeCount;
-            var legacyLayout = legacyLargeCount >= NvphMinLargeCount && !dual256AsdLayout;
-            var normal = nonEmptyCount == nvphFiles.Count && (modernLayout || legacyLayout);
-            var asdHint = versionNumber.Value < 62200 && normal;
-            details.Add($"621 系及以上规则：至少 2 个 NVPH；包含一个 256MB 或 512MB（{NvphMinBytes} 或 {2 * NvphMinBytes} 字节）加另一个非空文件，或至少两个均 ≥256MB。允许额外非零 NVPH，不凭文件总数判异常；仍不允许零字节文件。");
-            if (versionNumber.Value < 62200)
-                details.Add("621 系包含两个精确 256MB 的有效布局优先判为 ASD已激活；其他双大文件旧布局仍提示未激活ASD。");
-            return new ShaderDiagnosis
+            var normal = nonEmptyCount == nvphFiles.Count && (modernLayout || legacyLargeCount >= NvphMinLargeCount);
+
+            // 621 系起改用 NVPH 记录结构判定「B 层是否退出」，不再用「双精确 256MiB」推断：
+            // 实测同驱动（621.14）同游戏版本下，Win11 23H2 的双 256MiB 仍在写 B 层
+            // （约 5.4KB/条混合载荷），Win11 25H2 已退出（只剩 A 层约 15.7KB/条与 1MB 级 NVuc 小缓存）。
+            var probes = nvphFiles
+                .Select(f => (f.Name, Probe: NvphLayoutProbe.Read(Path.Combine(dxCache, f.Name))))
+                .ToList();
+            var probed = probes.Where(p => p.Probe.Ok).ToList();
+            var bytecodeLayers = probed.Where(p => p.Probe.Layer == NvphLayoutProbe.NvphLayer.Bytecode).ToList();
+            var psoLayers = probed.Where(p => p.Probe.Layer == NvphLayoutProbe.NvphLayer.Pso).ToList();
+            var auxiliaryLayers = probed.Where(p => p.Probe.Layer == NvphLayoutProbe.NvphLayer.NvucAuxiliary).ToList();
+            var legacyLayout = bytecodeLayers.Count > 0;
+            var unreadableCount = probes.Count - probed.Count;
+            var unclassifiedCount = probed.Count(p => p.Probe.Layer == NvphLayoutProbe.NvphLayer.Unknown);
+            // 已检出的 B 层仍是正向证据；宣告未检出 B 层则必须覆盖所有文件且确有 A 层。
+            // 纯NVuc小缓存须逐条有界解压确认；未知/读取失败仍不能冒充已识别的辅助缓存。
+            var canExcludeBytecode = psoLayers.Count > 0 && !legacyLayout && unreadableCount == 0 && unclassifiedCount == 0;
+            var canJudgeLayout = legacyLayout || canExcludeBytecode;
+            var asdHint = versionNumber.Value < 62200 && normal && canJudgeLayout;
+            details.Add($"621 系及以上规则：所有 NVPH 非空，且包含一个 256MB 或 512MB（{NvphMinBytes} 或 {2 * NvphMinBytes} 字节）加另一个非空文件；B 层是否退出按 NVPH 记录结构判定，不看文件数量。");
+            foreach (var p in probes)
             {
-                Level = !normal ? ShaderDiagLevel.Abnormal : asdHint && legacyLayout ? ShaderDiagLevel.Warning : ShaderDiagLevel.Normal,
+                if (!p.Probe.Ok)
+                {
+                    details.Add($"· {p.Name}：未能完整解析 NVPH 记录结构（读取失败或格式未识别），不能据此认定缓存损坏。");
+                    continue;
+                }
+
+                var layerText = p.Probe.Layer switch
+                {
+                    NvphLayoutProbe.NvphLayer.Pso => "A 层（PSO 对象）",
+                    NvphLayoutProbe.NvphLayer.Bytecode => "B 层（编译字节码）",
+                    NvphLayoutProbe.NvphLayer.NvucAuxiliary => "NVuc 辅助小缓存（全部记录已解压确认）",
+                    _ => p.Probe.Records < 200 ? "结构完整，定层样本不足（至少需200条，或识别为纯NVuc小缓存）" : "结构完整，载荷类型尚未识别",
+                };
+                details.Add($"· {p.Name}：{layerText}，{p.Probe.Records} 条，单条平均 {p.Probe.AverageFootprint / 1024.0:0.0} KB，已用 {p.Probe.UsedBytes / 1024.0 / 1024.0:0.0} MB。");
+            }
+
+            details.Add($"记录结构汇总：A 层 {psoLayers.Count} 个、NVuc 辅助小缓存 {auxiliaryLayers.Count} 个、B 层 {bytecodeLayers.Count} 个、未定层 {unclassifiedCount} 个、无法解析 {unreadableCount} 个。");
+            var osBuild = Environment.OSVersion.Version.Build;
+            details.Add(osBuild < Win11R24H2Build
+                ? $"系统版本 build {osBuild} 低于 24H2（{Win11R24H2Build}）：驱动托管缓存路径不可用，B 层会继续写入。"
+                : $"系统版本 build {osBuild}（24H2 及以上）：驱动托管缓存路径可用。");
+            var diagnosis = new ShaderDiagnosis
+            {
+                Level = !normal ? ShaderDiagLevel.Abnormal
+                    : !canJudgeLayout ? ShaderDiagLevel.Warning
+                    : legacyLayout ? ShaderDiagLevel.Warning : ShaderDiagLevel.Normal,
                 CacheLayout = !asdHint ? ShaderCacheLayout.Unspecified : legacyLayout ? ShaderCacheLayout.Legacy : ShaderCacheLayout.Asd,
+                IsLayoutUncertain = normal && !canJudgeLayout,
                 Summary = normal
                     ? (asdHint ? legacyLayout ? "未激活ASD；" : "ASD已激活；" : "") + (legacyLayout
-                        ? $"着色器缓存结构正常（包含旧版布局：{legacyLargeCount} 个 ≥256MB 文件，共 {nvphFiles.Count} 个非空 NVPH）。"
-                        : $"着色器缓存结构正常（包含新版布局：一个 256MB 或 512MB 加另一个非 0KB 文件，共 {nvphFiles.Count} 个非空 NVPH）。")
+                        ? $"检测到 B 层缓存（{bytecodeLayers.Count} 个字节码容器，共 {nvphFiles.Count} 个非空 NVPH）。"
+                        : canJudgeLayout
+                            ? $"未检出混合 B 层缓存（A 层 {psoLayers.Count} 个、纯 NVuc 辅助小缓存 {auxiliaryLayers.Count} 个，共 {nvphFiles.Count} 个非空 NVPH）。"
+                            : $"缓存容量布局符合规则，但存在未定层或无法解析的文件，ASD 状态待确认（共 {nvphFiles.Count} 个非空 NVPH）。")
                     : $"判定为着色器异常：621 系及以上需包含「一个 256MB 或 512MB 加另一个非空文件」或「至少两个均 ≥256MB」，且所有 NVPH 非空；实际共 {nvphFiles.Count} 个，其中 256/512MB 文件 {primaryCount} 个、≥256MB 文件 {legacyLargeCount} 个、0KB 文件 {nvphFiles.Count - nonEmptyCount} 个。额外非零文件本身不算异常。",
                 Details = details,
-                Advice = normal ? (asdHint ? "ASD 状态按缓存布局推断，未读取驱动开关或验证运行实效。无需为此清理缓存。" : "无需处理。")
-                    : "建议：一键清除旧着色器文件，然后进入游戏重新预热着色器。",
+                Advice = !normal ? "建议：一键清除旧着色器文件，然后进入游戏重新预热着色器。"
+                    : !canJudgeLayout ? "未定层或读取失败不代表缓存损坏，无需仅因此清理；可在退出游戏后重新检测。"
+                    : legacyLayout ? "检测到 B 层数据：按 NVPH 记录结构推断，不能证明它仍在写入；未读取驱动开关，也未验证运行实效。无需仅为此清理缓存。"
+                    : "未检出混合 B 层数据：按 A 层记录特征及已确认的纯 NVuc 小缓存推断，未直接读取驱动开关，也未验证实时写入或运行实效。无需为此清理缓存。",
             };
+            return inspectSystemCache ? D3dsCacheInspection.Combine(diagnosis, D3dsCacheInspection.Read(psoPath, driver.PnpDeviceId)) : diagnosis;
         }
 
         var zeroFiles = nvphFiles.Where(f => f.Size == 0).ToList();
