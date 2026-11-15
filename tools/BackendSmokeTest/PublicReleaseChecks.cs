@@ -10,6 +10,25 @@ internal static class PublicReleaseChecks
     {
         var count = 0;
         void Check(bool ok, string name) { if (!ok) throw new IOException(name); count++; }
+        if (!ReleaseFeaturePolicy.PendulumEnabled)
+        {
+            Check(!ReleaseFeaturePolicy.FrameTimerIgnoreEnabled && !ReleaseFeaturePolicy.DriverPriorityEnabled, "Public experiments stay disabled together");
+            Check(!new AppSettings().FrameGameTimerIgnoreEnabled, "New preferences do not opt into timer ignore");
+            Check(!new AppSettings().FrameGamePriorityEnabled, "Unrelated priority preference remains off");
+            Check(JsonSerializer.Deserialize<AppSettings>("{\"FrameGamePriorityEnabled\":true}")!.FrameGamePriorityEnabled, "Unrelated explicit preference survives public upgrade");
+            var blocked = DriverPriorityService.Change(new DriverPriorityArgs("PCI\\VEN_FIXTURE\\OWNED", new string('a', 64), DriverPriorityAction.Apply, true, Priority: 3), CancellationToken.None);
+            Check(!blocked.Success && blocked.Message.Contains("未开放"), "Hidden driver application refused before native setup");
+            var repo = new DirectoryInfo(Environment.CurrentDirectory);
+            while (repo is not null && !File.Exists(Path.Combine(repo.FullName, "DeltaNFD.sln"))) repo = repo.Parent;
+            Check(repo is not null, "Source tree found");
+            var window = File.ReadAllText(Path.Combine(repo!.FullName, "src/DeltaNFD/MainWindow.xaml.cs"));
+            Check(window.Contains("ClockNavigationItem.Visibility = ReleaseFeaturePolicy.PendulumEnabled"), "Clock navigation uses actual release gate");
+            Check(window.Contains("DriverPriorityNavigationItem.Visibility = ReleaseFeaturePolicy.DriverPriorityEnabled"), "Driver navigation uses actual release gate");
+            var frameService = File.ReadAllText(Path.Combine(repo.FullName, "src/DeltaNFD/Services/FrameService.cs"));
+            Check(frameService.Contains("ReleaseFeaturePolicy.PendulumEnabled && FrameStatusPresentation.PendulumPrepared"), "Frame preparation retains release gate");
+            Console.WriteLine($"Public hidden release: {count} passed; no native timer, registry or game writes.");
+            return;
+        }
         Check(ReleaseFeaturePolicy.PendulumEnabled && ReleaseFeaturePolicy.FrameTimerIgnoreEnabled, "Pendulum and frame timer-ignore restored");
         Check(!new AppSettings().FrameGameTimerIgnoreEnabled, "Restored option is off for new configurations");
         Check(!new AppSettings().FrameGamePriorityEnabled, "New configuration leaves game priority off");
