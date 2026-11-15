@@ -9,7 +9,7 @@
   "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
   "README.md": "a43b259dd26c731b97bd4e37bf4684dd482df536312f55ad36f781ee6f3bb092",
   "SOURCE_BUILD.md": "bb70d3e0b2500adfc147c9d469ffc29b4f8478eed34a28254bf196bb5a0e1d08",
-  "SOURCE_RELEASE.md": "6d556dc8d358901bc698d034cafd788410d0828e30a8da0e28957d44876d809b",
+  "SOURCE_RELEASE.md": "e393dc83a01e4fc0e928eacaa570eb86d7ededd2d93d319c8b75d32df10767dc",
   "THIRD-PARTY-NOTICES.md": "3ded180189f5585155082df343d07e15e7920ec42883801bdcbf5ff736a83ed2",
   "docs/MCP本地Agent接入.md": "785b9ef68bd06249dd56bc981578429eec329ecbd59cef0c6ad6635f85e3be6d",
   "docs/WORKSPACE-MAINTENANCE.md": "7bef35d4c64a14bbfacc3ad68e63b7240495f37b9cdfa3105a05ae8a28023b20",
@@ -1069,5 +1069,6 @@
   "tools/verify-removal.ps1": "287d13f875fddd155f1a1afa9ae6b39b91846fddf4d4bc726d99463436e76b88",
   "tools/verify-tasks-fix.ps1": "45bd7395b85ea8d9fb60a4ccf36bfa9b8131fa12199001853cb21db66eb2b6e8",
   "tools/verify-uninstall.ps1": "1eb939e3c0b9400e6793242d4b75754fe53a183fb413ad966606ab32cd042b82",
-  "update.json": "0e49972659a71dec8280cf98756fe7ce6171c93dc3be43be2d1d2ba2390a68c0"
+  "update.json": "0e49972659a71dec8280cf98756fe7ce6171c93dc3be43be2d1d2ba2390a68c0",
+  "tools/NvSettingsChecks/InfoBarSeverity.cs": "69be6b51bae7ba433c16e9fa44a7b912365475fe19c054960587a32e1fbdc1a0"
 }
