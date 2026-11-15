@@ -140,7 +140,7 @@ internal static class PublicReleaseChecks
             var nav = main.Descendants(ns + "NavigationViewItem").Single(x => (string?)x.Attribute("Tag") == "clock");
             var windowCode = File.ReadAllText(Path.Combine(repo.FullName, "src/DeltaNFD/MainWindow.xaml.cs"));
             Check((string?)nav.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "ClockNavigationItem"
-                && (string?)nav.Attribute("Visibility") == "Collapsed"
+                && (string?)nav.Attribute("Visibility") != "Collapsed"
                 && windowCode.Contains("ClockNavigationItem.Visibility = ReleaseFeaturePolicy.PendulumEnabled ? Visibility.Visible : Visibility.Collapsed;"),
                 "Pendulum navigation becomes visible under the enabled compiled release policy");
             var frame = XDocument.Load(Path.Combine(repo.FullName, "src/DeltaNFD/Views/FramePage.xaml"));
