@@ -119,7 +119,11 @@ internal static class PublicReleaseChecks
             XNamespace ns = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
             var main = XDocument.Load(Path.Combine(repo.FullName, "src/DeltaNFD/MainWindow.xaml"));
             var nav = main.Descendants(ns + "NavigationViewItem").Single(x => (string?)x.Attribute("Tag") == "clock");
-            Check((string?)nav.Attribute("Visibility") != "Collapsed", "Pendulum navigation restored");
+            var windowCode = File.ReadAllText(Path.Combine(repo.FullName, "src/DeltaNFD/MainWindow.xaml.cs"));
+            Check((string?)nav.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "ClockNavigationItem"
+                && (string?)nav.Attribute("Visibility") == "Collapsed"
+                && windowCode.Contains("ClockNavigationItem.Visibility = ReleaseFeaturePolicy.PendulumEnabled ? Visibility.Visible : Visibility.Collapsed;"),
+                "Pendulum navigation becomes visible under the enabled compiled release policy");
             var frame = XDocument.Load(Path.Combine(repo.FullName, "src/DeltaNFD/Views/FramePage.xaml"));
             var ignore = frame.Descendants(ns + "Grid").Single(x => (string?)x.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "PendulumFramePanel");
             Check(((string?)ignore.Attribute("Visibility"))?.Contains("FrameSrv.PendulumPrepared") == true, "Linked tile visible only after current preparation");
