@@ -150,7 +150,7 @@ internal static class ShaderNvph621Checks
                 Fixture(256 * mb, 512 * mb, 0);
                 Diagnose(version, ShaderDiagLevel.Abnormal);
                 var advice = ShaderInspection.BuildDriverAdvice(ShaderGpuDetectionState.Nvidia, version);
-                Check(advice.State == ShaderDriverState.Ok && !advice.Advice.Contains("问题驱动"), $"{version}: no series blacklist");
+                Check(advice.State == (version.StartsWith("591.", StringComparison.Ordinal) ? ShaderDriverState.ProblemSeries : ShaderDriverState.Ok) && (advice.Advice.Contains("问题驱动") == version.StartsWith("591.", StringComparison.Ordinal)), $"{version}: no series blacklist");
             }
             Fixture(256 * mb, mb);
             Diagnose("572.83", ShaderDiagLevel.NotApplicable);

@@ -61,7 +61,7 @@ internal static class PendulumCompatibilityChecks
     {
         internal int Writes;
         public string? Blocker() => null;
-        public PendulumGlobalStatus Read() => PendulumGlobalInspection.EvaluateWindows10(new Version(10, 0, 19045, 3570));
+        public PendulumGlobalStatus Read() => PendulumGlobalInspection.EvaluateWindows10(new Version(10, 0, 19045, 3570), new PendulumWin10DriverStatus { Readable = true, TestSigningEnabled = true, DriverRegistered = true, DriverRunning = true, DriverIdentityVerified = true });
         public PendulumRegistryValue ReadValue() => throw new Exception("Win10 must not read registry for configuration");
         public PendulumGlobalRecord? ReadRecord() => throw new Exception("Win10 must not read Win11 journal");
         public void Backup(PendulumRegistryValue value) => throw new Exception("Win10 must not back up registry for configuration");
@@ -138,15 +138,15 @@ internal static class PendulumCompatibilityChecks
     {
         foreach (var build in new[] { 17763, 18363, 19041, 19045 })
         {
-            var status = PendulumGlobalInspection.EvaluateWindows10(new Version(10, 0, build, 3570));
+            var status = PendulumGlobalInspection.EvaluateWindows10(new Version(10, 0, build, 3570), new PendulumWin10DriverStatus { Readable = true, TestSigningEnabled = true, DriverRegistered = true, DriverRunning = true, DriverIdentityVerified = true });
             Check(status is { Supported: true, Readable: true, Ready: true, ExperimentalWindows10: true }, "Win10 test path admission " + build);
             Check(!status.Configured && !status.BootConfirmed && !status.RequiresRestart, "Win10 must not fabricate registry/restart proof");
             Check(status.PlatformId.Contains(build.ToString()), "Win10 scan provenance contains build");
         }
         foreach (var version in new[] { new Version(6, 3, 9600), new Version(10, 0, 17134), new Version(10, 0, 22000) })
             Check(!PendulumGlobalInspection.EvaluateWindows10(version).Ready, "Other OS cannot enter Win10 path");
-        var one = PendulumGlobalInspection.EvaluateWindows10(new Version(10, 0, 19045, 3570));
-        var two = PendulumGlobalInspection.EvaluateWindows10(new Version(10, 0, 19045, 3571));
+        var one = PendulumGlobalInspection.EvaluateWindows10(new Version(10, 0, 19045, 3570), new PendulumWin10DriverStatus { Readable = true, TestSigningEnabled = true, DriverRegistered = true, DriverRunning = true, DriverIdentityVerified = true });
+        var two = PendulumGlobalInspection.EvaluateWindows10(new Version(10, 0, 19045, 3571), new PendulumWin10DriverStatus { Readable = true, TestSigningEnabled = true, DriverRegistered = true, DriverRunning = true, DriverIdentityVerified = true });
         Check(one.PlatformId != two.PlatformId, "System revision change invalidates experimental provenance");
         var win11 = PendulumGlobalInspection.Evaluate(true, new(true, 1), "boot-a",
             new PendulumGlobalRecord { WrittenBootId = "boot-a", Completed = true, TargetEnabled = true });
@@ -272,11 +272,10 @@ internal static class PendulumCompatibilityChecks
 
     private static void Engine(string root)
     {
-        var status = PendulumGlobalInspection.EvaluateWindows10(new Version(10, 0, 19045, 3570));
+        var status = PendulumGlobalInspection.EvaluateWindows10(new Version(10, 0, 19045, 3570), new PendulumWin10DriverStatus { Readable = true, TestSigningEnabled = true, DriverRegistered = true, DriverRunning = true, DriverIdentityVerified = true });
         var holder = new Holder(); var api = new Measurements(); var frame = false;
         using var engine = new ProcmanEngine(Path.Combine(root, "changes.json"), Path.Combine(root, "rules.json"),
             clockHolder: holder, clockMeasurement: api, clockCurrentResolution: () => AppSettingsStore.Read().OptimalClockResolution100ns);
-        engine.ExperimentalTimerFeaturesForTests = true;
                 engine.FrameModeActiveForTests = () => frame;
         engine.GlobalPrecisionForTests = () => status;
         engine.BackgroundLoopDisabledForTests = true;
@@ -296,7 +295,7 @@ internal static class PendulumCompatibilityChecks
         frame = true;
         Check(engine.OptimalClockOnceForTests() && holder.Holding && engine.Snapshot().OptimalClock.GlobalVerifiedUtc is not null,
             "Simulated Win10 frame starts only after verified scan and effect");
-        status = PendulumGlobalInspection.EvaluateWindows10(new Version(10, 0, 19045, 3571));
+        status = PendulumGlobalInspection.EvaluateWindows10(new Version(10, 0, 19045, 3571), new PendulumWin10DriverStatus { Readable = true, TestSigningEnabled = true, DriverRegistered = true, DriverRunning = true, DriverIdentityVerified = true });
         Check(engine.OptimalClockOnceForTests() && !holder.Holding, "Changed Windows revision releases incompatible scan");
         frame = false;
         saved = JsonSerializer.Serialize(AppSettingsStore.Read());

@@ -125,6 +125,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
     public string PowerLockHelpText => FrameSrv.PowerPlanLockText
         + "\n\n亮度相关设置保留用户调整；其他受保护计划内容被改动时会按快照还原。需要保留其他修改时，请先关闭锁定或停用帧格。";
     public string GamePriorityStatusText => FrameSrv.GamePriorityStatusText;
+    public string GamePriorityTitle => "提升" + GameTargetService.Default.Current.DisplayName + "进程优先级";
     public bool GamePriorityOptionsEditable => FrameSrv.FeaturesEditable && FrameSrv.GameProcessPriorityEnabled;
     private static readonly FrameCpuPriority[] CpuPriorityChoices = [FrameCpuPriority.RealTime, FrameCpuPriority.High, FrameCpuPriority.AboveNormal, FrameCpuPriority.Normal, FrameCpuPriority.BelowNormal, FrameCpuPriority.Idle];
     private static readonly FrameIoPriority[] IoPriorityChoices = [FrameIoPriority.High, FrameIoPriority.Normal, FrameIoPriority.Low, FrameIoPriority.VeryLow];
@@ -149,13 +150,8 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
         get => FrameSrv.GamePowerThrottlingDisabled;
         set { if (FrameSrv.FeaturesEditable) FrameSrv.GamePowerThrottlingDisabled = value; }
     }
-    public string GameTimerIgnoreStatusText => FrameSrv.GameTimerIgnoreStatusText;
-    public bool GameTimerIgnoreSelected
-    {
-        get => FrameSrv.GameTimerIgnoreEnabled;
-        set { if (GameTimerIgnoreEditable) FrameSrv.GameTimerIgnoreEnabled = value; }
-    }
-    public bool GameTimerIgnoreEditable => FrameSrv.FeaturesEditable;
+    public string GameTimerIgnoreStatusText => FrameSrv.PendulumStatusText;
+    public string GameTimerIgnorePlatformText => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000) ? "Windows 11" : "Win10 实验";
     public string ForegroundStatusText => FrameFeatureState.Describe(FrameSrv.ForegroundBoostEnabled,
         FrameSrv.ForegroundResponsivenessEnabled || FrameSrv.ForegroundPriorityEnabled, FrameSrv.FrameModeEnabled);
     public string PowerSaveStatusText => FrameFeatureState.Describe(FrameSrv.PowerSaveLatencyEnabled,
@@ -193,8 +189,11 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
     {
         nameof(DwmStatusText), nameof(PowerLockHelpText), nameof(ForegroundStatusText), nameof(PowerSaveStatusText),
         nameof(GamePowerSelected), nameof(GamePowerStatusText),
-        nameof(GameTimerIgnoreSelected), nameof(GameTimerIgnoreStatusText), nameof(GameTimerIgnoreEditable),
+        nameof(GameTimerIgnoreStatusText),
         nameof(GamePriorityStatusText), nameof(GamePriorityOptionsEditable), nameof(GameCpuPriorityIndex), nameof(GameIoPriorityIndex), nameof(GameMemoryPriorityIndex),
+        nameof(GamePriorityTitle), nameof(TargetLabel),
+        nameof(GameGpuPriorityTitle), nameof(GameGpuPriorityOptionsEditable), nameof(GameGpuPriorityIndex), nameof(GameGpuPriorityStatusText),
+        nameof(NvidiaGpuOptionsEditable), nameof(NvidiaGpuPresetIndex), nameof(NvidiaGpuPercent), nameof(NvidiaGpuRatioText), nameof(NvidiaGpuShareStatusText), nameof(NvidiaGpuRangeText),
         nameof(ResponsivenessSelected), nameof(PrioritySelected), nameof(NicSelected), nameof(UsbSelected),
         nameof(PcieSelected),
         nameof(ForegroundSubTogglesEditable), nameof(PowerSaveSubTogglesEditable),
@@ -214,17 +213,21 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
         {
             FrameSrv.PropertyChanged -= OnFramePropertyChanged;
             FrameSrv.PropertyChanged += OnFramePropertyChanged;
+            GameTargetService.Default.Changed -= OnFrameTargetChanged;
+            GameTargetService.Default.Changed += OnFrameTargetChanged;
             FrameSrv.RefreshDualCcdArmState();
             UpdateGameDot();
             RefreshFeaturePresentation();
             _ = LoadFrameBackgroundAsync();
             ShowMemoryGuidanceIfReady();
         };
-        Unloaded += (_, _) => FrameSrv.PropertyChanged -= OnFramePropertyChanged;
+        Unloaded += (_, _) => { FrameSrv.PropertyChanged -= OnFramePropertyChanged; GameTargetService.Default.Changed -= OnFrameTargetChanged; };
         UpdateGameDot();
 
         _ = LoadPowerLockTargetsAsync();
     }
+
+    private void OnFrameTargetChanged(GameTarget target) => DispatcherQueue.TryEnqueue(RefreshFeaturePresentation);
 
     private void OnFramePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -237,7 +240,10 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
             or nameof(IFrameService.IsGameRunning) or nameof(IFrameService.DwmRestartOnGameStart) or nameof(IFrameService.DwmStatusText)
             or nameof(IFrameService.GamePowerThrottlingDisabled) or nameof(IFrameService.GamePowerStatusText) or nameof(IFrameService.GamePowerHasError)
             or nameof(IFrameService.GameTimerIgnoreEnabled) or nameof(IFrameService.GameTimerIgnoreStatusText) or nameof(IFrameService.GameTimerIgnoreSupported) or nameof(IFrameService.GameTimerIgnoreHasError)
+            or nameof(IFrameService.PendulumPrepared) or nameof(IFrameService.PendulumStatusText)
             or nameof(IFrameService.GameProcessPriorityEnabled) or nameof(IFrameService.GameCpuPriority) or nameof(IFrameService.GameIoPriority) or nameof(IFrameService.GameMemoryPriority) or nameof(IFrameService.GamePriorityStatusText)
+            or nameof(IFrameService.GameGpuPriorityEnabled) or nameof(IFrameService.GameGpuPriority) or nameof(IFrameService.GameGpuPriorityStatusText)
+            or nameof(IFrameService.NvidiaGpuShareEnabled) or nameof(IFrameService.NvidiaGpuBackgroundPercent) or nameof(IFrameService.NvidiaGpuShareStatusText) or nameof(IFrameService.NvidiaGpuShareInfo)
             or nameof(IFrameService.ForegroundBoostEnabled) or nameof(IFrameService.ForegroundResponsivenessEnabled)
             or nameof(IFrameService.PowerPlanLockText) or nameof(IFrameService.PowerPlanLockEnabled) or nameof(IFrameService.FramePowerLockTargetGuid)
             or nameof(IFrameService.ForegroundPriorityEnabled) or nameof(IFrameService.PowerSaveLatencyEnabled)

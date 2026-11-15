@@ -1,10 +1,10 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using DeltaNFD.Services;
 using DeltaNFD.Services.Backends;
 
 namespace DeltaNFD.ViewModels;
 
-/// <summary>运行库防护、14.x 兼容性检测与仅修复 14.x（固定 14.44 内置基线）。</summary>
+/// <summary>运行库防护、14.x 兼容性检测与仅修复 14.x（14.44 / 14.51 内置基线）。</summary>
 public partial class RuntimeViewModel : ObservableObject
 {
     public Task<RuntimeFileUseScan> ScanFileUseAsync(CancellationToken token, RuntimeFileUseScope scope = RuntimeFileUseScope.Vc14) => _guard.ScanFileUseAsync(token, scope);
@@ -36,7 +36,7 @@ public partial class RuntimeViewModel : ObservableObject
         if (RuntimePolicyBlocked)
         {
             AbnormalText = WarningText = EvaluationText = "";
-            DetectionStatusText = _runtimePolicyReason;
+            RuntimeVersionText = _runtimePolicyReason;
         }
         NotifyRuntimePolicyChanged();
     }
@@ -52,7 +52,6 @@ public partial class RuntimeViewModel : ObservableObject
         OnPropertyChanged(nameof(RuntimePolicyBlocked));
         OnPropertyChanged(nameof(RuntimePolicyReason));
         OnPropertyChanged(nameof(RuntimeOperationsAvailable));
-        OnPropertyChanged(nameof(CanChangeRuntimeDetection));
         OnPropertyChanged(nameof(GuardCleanupEnabled));
         OnPropertyChanged(nameof(CanUseBaselineActions));
         OnPropertyChanged(nameof(GuardToggleEnabled));
@@ -78,7 +77,7 @@ public partial class RuntimeViewModel : ObservableObject
         get => baselineIndex;
         set
         {
-            if (EqualityComparer<int>.Default.Equals(baselineIndex, value)) return;
+            if (value is < 0 or > 1 || RepairIsBusy || GuardIsBusy || baselineIndex == value) return;
             OnPropertyChanging(nameof(BaselineIndex));
             baselineIndex = value;
             OnBaselineIndexChanged(value);
@@ -118,7 +117,7 @@ public partial class RuntimeViewModel : ObservableObject
     public string BaselineDriverNotice { get => baselineDriverNotice; set => SetProperty(ref baselineDriverNotice, value); }
     private string repairStatusText = "修复前将预览全部 14.x 卸载清单；请先关闭运行库防护。";
     public string RepairStatusText { get => repairStatusText; set => SetProperty(ref repairStatusText, value); }
-    public Vc14Baseline SelectedBaseline => Vc14Baseline.V144;
+    public Vc14Baseline SelectedBaseline => BaselineIndex == 1 ? Vc14Baseline.V151 : Vc14Baseline.V144;
     public bool CanUseBaselineActions => !BaselineDriverChecking && GuardCleanupEnabled;
     public string SelectedBaselineLabel => SelectedBaseline.Label();
     public string SelectedBaselineVersion => SelectedBaseline.FullVersion();
@@ -152,8 +151,8 @@ public partial class RuntimeViewModel : ObservableObject
     {
         Hide144Baseline = false;
         BaselineDriverNotice = confirmed596
-            ? "已检测到 NVIDIA 596 系列驱动；使用固定 14.44 基线。"
-            : driverUnknown ? "无法完整读取显卡驱动；不影响使用固定 14.44 基线。" : "";
+            ? "已检测到 NVIDIA 596 系列驱动；可选择 14.44 / 14.51 基线。"
+            : driverUnknown ? "无法完整读取显卡驱动；不影响选择 14.44 / 14.51 基线。" : "";
         BaselineDriverChecking = false;
     }
     private string abnormalText = "";
@@ -199,8 +198,8 @@ public partial class RuntimeViewModel : ObservableObject
             OnPropertyChanged(nameof(EvaluationText));
         }
     }
-    private string detectionStatusText = "尚未检测。";
-    public string DetectionStatusText { get => detectionStatusText; set => SetProperty(ref detectionStatusText, value); }
+    private string runtimeVersionText = "尚未读取运行库版本。";
+    public string RuntimeVersionText { get => runtimeVersionText; set => SetProperty(ref runtimeVersionText, value); }
     private string manualRepairGuidanceText = "";
     public string ManualRepairGuidanceText
     {
@@ -216,28 +215,7 @@ public partial class RuntimeViewModel : ObservableObject
     }
     partial void OnManualRepairGuidanceTextChanged(string value);
     public bool HasManualRepairGuidance => ManualRepairGuidanceText.Length > 0;
-    public bool RuntimeDetectionEnabled => RuntimeDetectionPreference.Shared.Enabled;
-    public bool CanChangeRuntimeDetection => RuntimeOperationsAvailable && !RepairIsBusy;
     partial void OnManualRepairGuidanceTextChanged(string value) => OnPropertyChanged(nameof(HasManualRepairGuidance));
-
-    public void SynchronizeRuntimeDetectionPreference()
-    {
-        RuntimeDetectionPreference.Shared.Reload();
-        OnPropertyChanged(nameof(RuntimeDetectionEnabled));
-        if (!RuntimeDetectionEnabled)
-        {
-            AbnormalText = WarningText = EvaluationText = "";
-            DetectionStatusText = "运行库检测已关闭，不再显示检测提醒；可随时重新开启。";
-        }
-    }
-
-    public async Task SetRuntimeDetectionEnabledAsync(bool enabled)
-    {
-        if (!CanChangeRuntimeDetection) return;
-        RuntimeDetectionPreference.Shared.SetEnabled(enabled);
-        SynchronizeRuntimeDetectionPreference();
-        if (enabled) await RefreshCompatibilityAsync();
-    }
 
     public string RecordRepairResult(OperationResult result, bool cancelled = false)
     {
@@ -259,7 +237,6 @@ public partial class RuntimeViewModel : ObservableObject
     partial void OnRepairIsBusyChanged(bool value)
     {
         OnPropertyChanged(nameof(CanReviewRuntimeRecovery));
-        OnPropertyChanged(nameof(CanChangeRuntimeDetection));
         OnPropertyChanged(nameof(GuardToggleEnabled));
         OnPropertyChanged(nameof(GuardModeEnabled));
         OnPropertyChanged(nameof(GuardCleanupEnabled));
@@ -425,39 +402,28 @@ public partial class RuntimeViewModel : ObservableObject
         if (!RuntimeOperationsAvailable)
         {
             AbnormalText = WarningText = EvaluationText = "";
-            DetectionStatusText = RuntimePolicyBlocked ? RuntimePolicyReason : "正在核对运行库紧急策略…";
+            RuntimeVersionText = RuntimePolicyBlocked ? RuntimePolicyReason : "正在核对运行库紧急策略…";
             return;
         }
         await RefreshCompatibilityAsync();
     }
 
+    internal Func<Task<DeltaNFD.Inspection.RuntimeVersionSnapshot>>? VersionReaderForTests { get; set; }
     private async Task RefreshCompatibilityAsync()
     {
         if (!RuntimeOperationsAvailable) return;
-        SynchronizeRuntimeDetectionPreference();
-        if (RuntimeDetectionEnabled) DetectionStatusText = "正在检测运行库…";
-        var read = await RuntimeDetectionPreference.Shared.ReadAsync(() => _guard.Scan14Async());
-        if (!RuntimeOperationsAvailable || !RuntimeDetectionPreference.Shared.IsCurrent(read.Snapshot)) return;
-        if (read.Error is { } error)
+        // Compatibility colors and the old automatic scan preference are retired.
+        AbnormalText = WarningText = EvaluationText = "";
+        try
         {
-            AbnormalText = EvaluationText = "";
-            WarningText = "14.x 检测未完成，不能视为正常：" + error.Message;
-            DetectionStatusText = "检测未完成，可手动刷新重试。";
+            var versions = await (VersionReaderForTests?.Invoke() ?? DeltaNFD.Inspection.RuntimeVersionInspection.ReadAsync());
+            if (!RuntimeOperationsAvailable) return;
+            RuntimeVersionText = versions.Detail + "\n读取时间 " + DateTime.Now.ToString("HH:mm:ss");
         }
-        else if (read.Value is { } scan)
+        catch (Exception ex)
         {
-            string Format(Vc14Notice n) => n.Name + " · " + n.Architecture + " · " + n.Version + "\n" + n.Detail;
-            AbnormalTitle = scan.AbnormalTitle;
-            AbnormalText = string.Join("\n\n", scan.GetAbnormalNotices().Select(Format));
-            WarningText = string.Join("\n\n", scan.Notices.Where(n => n.Severity == Vc14Severity.Warning).Select(Format).Concat(scan.Issues));
-            EvaluationText = scan.HasAbnormal ? "" : string.Join("\n\n", scan.Notices.Where(n => n.Severity == Vc14Severity.Evaluation).Select(Format));
-            DetectionStatusText = "最近检测 " + DateTime.Now.ToString("HH:mm:ss");
-        }
-        else
-        {
-            AbnormalText = EvaluationText = "";
-            WarningText = "14.x 检测未完成，未返回检测结果，不能视为正常。";
-            DetectionStatusText = "检测未完成，可手动刷新重试。";
+            RuntimeVersionText = "运行库版本未能读取，状态未知：" + ex.Message;
+            Log.Warn(RuntimeVersionText);
         }
     }
 

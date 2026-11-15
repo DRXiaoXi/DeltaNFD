@@ -203,10 +203,10 @@ internal static class DeploymentLayoutChecks
 
     internal static void CheckVc14Media(string layoutAssets)
     {
-        // Only the supported 14.44 media may ship; historical 14.42 identities remain readable.
+        // Both supported baselines must ship; historical 14.42 identities remain readable.
         Check(!Directory.Exists(Path.Combine(layoutAssets, "Vc14Baseline14.42")), "发布目录不包含已退休的 14.42 安装基线");
         Check(!Directory.Exists(Path.Combine(layoutAssets, "Vc14FileRepair14.42")), "发布目录不包含已退休的 14.42 MSI/CAB");
-        foreach (var baseline in new[] { DeltaNFD.Services.Vc14Baseline.V144 })
+        foreach (var baseline in new[] { DeltaNFD.Services.Vc14Baseline.V144, DeltaNFD.Services.Vc14Baseline.V151 })
         {
             var directory = DeltaNFD.Services.Vc14FileRepairSource.DirectoryNameFor(baseline);
             var vc14Media = Path.Combine(layoutAssets, directory);

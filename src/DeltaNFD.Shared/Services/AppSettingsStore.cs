@@ -64,6 +64,10 @@ public sealed class AppSettings
 
     /// <summary>锁定的定时器分辨率（100ns；5130 = 0.5130ms，为本机研究结论的临界窗口上沿）。</summary>
     public uint OptimalClockResolution100ns { get; set; } = 5130;
+    public bool OptimalClockUseCustomResolution { get; set; }
+    public uint OptimalClockCustomResolution100ns { get; set; } = 5130;
+    public DateTimeOffset? OptimalClockCustomVerifiedUtc { get; set; }
+    public string OptimalClockCustomPlatform { get; set; } = "";
 
     /// <summary>最近一次扫描得到的「典型延迟最低」分辨率（100ns；0 = 尚未扫描）。</summary>
     public uint OptimalClockBestTypical100ns { get; set; }
@@ -76,6 +80,9 @@ public sealed class AppSettings
 
     /// <summary>实验兼容扫描绑定的系统版本；旧结果不能自动授权 Win10 全局锁定。</summary>
     public string OptimalClockScanPlatform { get; set; } = "";
+    public string OptimalClockDpcExePath { get; set; } = "";
+    public string OptimalClockDpcAcceptedSha { get; set; } = "";
+    public bool OptimalClockDpcWindowHidden { get; set; } = true;
 
     /// <summary>
     /// 最近一次**成功扫描**实际使用的检测模式（由后端在扫描成功后写入，仅用于如实标注历史结果）。
@@ -97,6 +104,10 @@ public sealed class AppSettings
     public FrameCpuPriority FrameGameCpuPriority { get; set; } = FrameCpuPriority.AboveNormal;
     public FrameIoPriority FrameGameIoPriority { get; set; } = FrameIoPriority.Normal;
     public FrameMemoryPriority FrameGameMemoryPriority { get; set; } = FrameMemoryPriority.Normal;
+    public bool FrameGameGpuPriorityEnabled { get; set; }
+    public FrameGpuPriority FrameGameGpuPriority { get; set; } = FrameGpuPriority.High;
+    public bool FrameNvidiaGpuShareEnabled { get; set; }
+    public int FrameNvidiaGpuBackgroundPercent { get; set; } = 10;
 
     // ---- 帧格：内存清理（实验性；清空待备内存列表） ----
     /// <summary>帧格功能：内存清理（standby list 清空），帧格激活时自动触发 + 手动执行；实验性功能默认关。</summary>

@@ -304,6 +304,8 @@ public sealed record ServiceGroupWarning(string RowId, string GroupDisplayName, 
 /// <summary>系统优化页 扩展优化库 子栏目的页面状态。</summary>
 public partial class BxDbViewModel : ObservableObject
 {
+    private readonly Services.Backends.BackendCaller _startupCaller = new(DeltaNFD.Backends.BackendModules.System,
+        Services.Backends.PageBackendSessions.ConstructionOwner);
     private readonly IBxService _bx = ServiceLocator.Bx;
     private readonly ISystemTweakService _tweaks = ServiceLocator.SystemTweaks;
     private readonly IPagefileService _pagefile = ServiceLocator.Pagefile;
@@ -444,9 +446,12 @@ public partial class BxDbViewModel : ObservableObject
         }
 
         var bxCount = bxStatus.Count;
-        BackupSummary = bxCount + otherCount == 0
+        int startupCount;
+        try { startupCount = await Task.Run(() => DeltaNFD.Inspection.StartupItemInspection.Store().ReadAll().Count); }
+        catch (Exception ex) { BackupSummary = "自启动项目备份待核对：" + ex.Message; return; }
+        BackupSummary = bxCount + otherCount + startupCount == 0
             ? "尚未改动任何项——首次改动前会自动备份原始状态；APPX 和 OneDrive 移除不在一键恢复范围"
-            : $"已记录 {bxCount + otherCount} 项原始状态（扩展库 {bxCount}，深度优化/虚拟内存 {otherCount}）；APPX 和 OneDrive 移除需手动重装";
+            : $"已记录 {bxCount + otherCount + startupCount} 项原始状态（扩展库 {bxCount}，深度优化/虚拟内存 {otherCount}，自启动 {startupCount}）；APPX 和 OneDrive 移除需手动重装";
     }
 
     /// <summary>加载序号：切换子栏目时自增，旧一轮加载的结果直接丢弃（修复加载中被切走后新栏目不加载的问题）。</summary>
@@ -1329,6 +1334,14 @@ public partial class BxDbViewModel : ObservableObject
                 else errors.Add("虚拟内存：" + result.Message);
             }
             // 一键恢复后系统回到初始状态，全部栏目的勾选意图随之失效；扫描缓存全部作废
+            if (await Task.Run(() => DeltaNFD.Inspection.StartupItemInspection.Store().ReadAll().Count) > 0)
+            {
+                var startupResponse = await _startupCaller.InvokeAsync(DeltaNFD.Backends.BackendCommands.SystemStartupRestoreAll,
+                    new { }, null, CancellationToken.None);
+                var startup = Services.Backends.BackendResults.Map(startupResponse, "恢复自启动登记");
+                if (!startup.Success) errors.Add(startup.Message);
+                else restored++;
+            }
             foreach (var row in AllRows)
             {
                 row.HasUserIntent = false;

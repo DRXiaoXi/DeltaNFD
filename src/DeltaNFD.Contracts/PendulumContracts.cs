@@ -14,6 +14,8 @@ public sealed record PendulumGlobalRecord
 
 public sealed record PendulumGlobalStatus
 {
+    public PendulumWin10DriverStatus? Win10Driver { get; init; }
+    public DpcPendulumStatus? Win10Dpc { get; init; }
     public bool ExperimentalWindows10 { get; init; }
     public string PlatformId { get; init; } = "";
     public bool Supported { get; init; }
@@ -23,10 +25,23 @@ public sealed record PendulumGlobalStatus
     public bool NeedsRegistration { get; init; }
     public bool PendingRecovery { get; init; }
     public bool RequiresRestart => !ExperimentalWindows10 && Configured && !BootConfirmed;
-    public bool Ready => Supported && Readable && (ExperimentalWindows10 || Configured && BootConfirmed) && !PendingRecovery;
+    public bool Ready => Supported && Readable && (ExperimentalWindows10
+        ? Win10Dpc?.FileVerified == true || Win10Driver?.Ready == true : Configured && BootConfirmed) && !PendingRecovery;
     public string BootId { get; init; } = "";
     public string Fingerprint { get; init; } = "";
     public string Message { get; init; } = "尚未核对全局生效精度。";
+}
+
+/// <summary>Read-only prerequisites. A queued BCD change is not current-boot test mode.</summary>
+public sealed record PendulumWin10DriverStatus
+{
+    public bool Readable { get; init; }
+    public bool TestSigningEnabled { get; init; }
+    public bool DriverRegistered { get; init; }
+    public bool DriverRunning { get; init; }
+    public bool DriverIdentityVerified { get; init; }
+    public bool Ready => Readable && TestSigningEnabled && DriverRegistered && DriverRunning && DriverIdentityVerified;
+    public string Message { get; init; } = "尚未核对测试签名模式和自研驱动。";
 }
 
 public sealed record PendulumGlobalArgs(bool Enabled, string Fingerprint);

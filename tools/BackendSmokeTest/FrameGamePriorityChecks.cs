@@ -84,7 +84,8 @@ internal static class FrameGamePriorityChecks
             Check(lab.Sync(config) && lab.Api.Values["priority"] == (int)cpu, "A changed CPU value is maintained.");
             lab.Api.BeforeWrite = null;
             Check(lab.Restore() && lab.Api.Values["priority"] == 32 && lab.Api.Values["ioPriority"] == 2 && lab.Api.Values["memoryPriority"] == 3,
-                "Disable must restore first-seen originals, not the most recently observed values.");
+                "Disable must restore first-seen originals, not the most recently observed values. " + lab.Controller.Snapshot.Message
+                + " Values=" + JsonSerializer.Serialize(lab.Api.Values));
             Check(lab.Controller.PendingCount == 0 && !lab.Controller.Snapshot.RestorePending, "Verified restoration clears only completed records.");
         }
         using (var lab = new Lab())
@@ -111,7 +112,8 @@ internal static class FrameGamePriorityChecks
             var next = new FrameGamePriority(lab.Journal, lab.Owners, lab.Api);
             Check(next.Snapshot.RestorePending && next.PendingCount == 3, "A new backend must expose old durable recovery responsibility.");
             Check(next.Sync([], new(), _ => false) && lab.Api.Values["priority"] == 32 && next.PendingCount == 0,
-                "A new backend can restore the previous backend's per-property originals.");
+                "A new backend can restore the previous backend's per-property originals. " + next.Snapshot.Message
+                + " Values=" + JsonSerializer.Serialize(lab.Api.Values));
         }
         using (var lab = new Lab())
         {
@@ -186,6 +188,7 @@ internal static class FrameGamePriorityChecks
 
     private static async Task ProcmanIntegrationAsync()
     {
+        var Id = new ProcmanProcessIdentity(12345, DateTime.UtcNow, @"C:\Other\custom.exe");
         var token = Guid.NewGuid();
         var root = Path.Combine(Path.GetTempPath(), "DeltaNFD-priority-engine-" + token.ToString("N"));
         Directory.CreateDirectory(root); File.WriteAllText(Path.Combine(root, "isolated-test.marker"), token.ToString("D"));
@@ -195,12 +198,15 @@ internal static class FrameGamePriorityChecks
             AppSettingsStore.Update(s => { s.FrameModeActive = false; s.FrameAutomaticMemoryEnabled = false; s.FrameGamePriorityEnabled = true; });
             var api = new Api();
             using (var engine = new ProcmanEngine(Path.Combine(root, "changes.json"), Path.Combine(root, "rules.json"), api)
-            { BackgroundLoopDisabledForTests = true, FramePriorityTargetsForTests = () => [Id] })
+            { BackgroundLoopDisabledForTests = true, FramePriorityTargetsForTests = () => [Id],
+                FrameTargetForTests = () => new(true, Id.ExecutablePath, "custom", "custom.exe", 1),
+                FrameCanonicalPathForTests = Path.GetFullPath,
+                GlobalPrecisionForTests = () => new() { Supported = true, Readable = true, Message = "fixture setup off" } })
             {
                 Check(engine.SyncFrameBackground().Success && api.Writes.Count == 0, "The procman command cannot apply without the frame master switch.");
                 AppSettingsStore.Update(s => { s.FrameModeActive = true; s.CustomGameModeEnabled = true; s.CustomGameExecutablePath = @"C:\Other\custom.exe"; });
                 Check(engine.SyncFrameBackground().Success && engine.Snapshot().FramePriority.CpuAppliedCount == 1,
-                    "The actual procman sync starts priority independently of automatic memory and custom game selection.");
+                    "The actual procman sync starts priority for the selected custom game independently of automatic memory.");
                 Check(!engine.BackgroundStatus().AutomaticMemoryActive && engine.Snapshot().HeldChangeCount == 3,
                     "Priority backups enter procman recovery counts without activating memory reclaim.");
                 var count = api.Writes.Count;
@@ -272,9 +278,12 @@ internal static class FrameGamePriorityChecks
             var recoveryRoot = Path.Combine(root, "old-session"); Directory.CreateDirectory(recoveryRoot);
             var journal = Path.Combine(recoveryRoot, "frame-game-priority.json");
             var persisted = new FrameGamePriority(journal, new(Path.Combine(recoveryRoot, "procman-owners.json")), api);
-            Check(persisted.Sync([Id], new(), _ => true), "Persist a prior backend's durable original.");
+            Check(persisted.Sync([FrameGamePriorityChecks.Id], new(), _ => true), "Persist a prior backend's legacy Delta original.");
             using (var restarted = new ProcmanEngine(Path.Combine(recoveryRoot, "changes.json"), Path.Combine(recoveryRoot, "rules.json"), api)
-            { BackgroundLoopDisabledForTests = true, FramePriorityTargetsForTests = () => [Id] })
+            { BackgroundLoopDisabledForTests = true, FramePriorityTargetsForTests = () => [Id],
+                FrameTargetForTests = () => new(true, Id.ExecutablePath, "custom", "custom.exe", 1),
+                FrameCanonicalPathForTests = Path.GetFullPath,
+                GlobalPrecisionForTests = () => new() { Supported = true, Readable = true, Message = "fixture setup off" } })
             {
                 Check(restarted.Snapshot().FramePriority.RestorePending && restarted.Snapshot().HeldChangeCount > 0,
                     "A new procman session exposes prior recovery responsibility before activation.");

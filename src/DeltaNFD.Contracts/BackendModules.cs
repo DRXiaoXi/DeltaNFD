@@ -28,8 +28,15 @@ public static class BackendCommands
     public const string GpuShaderCacheApply = "gpu.shader-cache.apply";
     public const string SystemShaderRecoveryClean = "system.shader.recovery-clean";
     public const string SystemPendulumGlobalConfigure = "system.pendulum.global.configure";
+    public const string SystemPendulumDriverPrepare = "system.pendulum.driver.prepare";
     public const string SystemTimerRecover = "system.timer.recover";
     public const string SystemLowMemoryApply = "system.low-memory.apply";
+    public const string SystemStartupList = "system.startup.list";
+    public const string SystemStartupChange = "system.startup.change";
+    public const string SystemStartupRestoreAll = "system.startup.restore-all";
+    public const string SystemDriverPriorityList = "system.driver-priority.list";
+    public const string SystemDriverPriorityChange = "system.driver-priority.change";
+    public const string SystemDriverPriorityRestoreAll = "system.driver-priority.restore-all";
     public const string GpuReconcile = "gpu.reconcile";
     public const string GpuRecover = "gpu.recover";
 
@@ -130,6 +137,8 @@ public static class BackendCommands
     public const string ProcmanClockApply = "procman.clock.apply";
     public const string ProcmanClockRelease = "procman.clock.release";
     public const string ProcmanClockScan = "procman.clock.scan";
+    public const string ProcmanClockValue = "procman.clock.value";
+    public const string ProcmanClockDpcConfigure = "procman.clock.dpc.configure";
 
     // ---- 系统维护（模块 system）----
     public const string SystemCleanupScan = "system.cleanup.scan";
@@ -354,7 +363,9 @@ public static class BackendModules
                     [BackendCommands.ProcmanSingleCcdRevert] = TwoMinutes,
                     [BackendCommands.ProcmanClockApply] = TwoMinutes,
                     [BackendCommands.ProcmanClockRelease] = TwoMinutes,
+                    [BackendCommands.ProcmanClockDpcConfigure] = TwoMinutes,
                     [BackendCommands.ProcmanClockScan] = FifteenMinutes,
+                    [BackendCommands.ProcmanClockValue] = TwoMinutes,
                 }, TwoMinutes),
 
             [System] = Make(System, "系统维护后端", "DeltaNFD.Backend.SystemMaintenance.exe",
@@ -389,7 +400,14 @@ public static class BackendModules
                     [BackendCommands.SystemGameRecordingChange] = FiveMinutes,
                     [BackendCommands.SystemTimerRecover] = FiveMinutes,
                     [BackendCommands.SystemLowMemoryApply] = FiveMinutes,
+                    [BackendCommands.SystemStartupList] = TwoMinutes,
+                    [BackendCommands.SystemStartupChange] = TwoMinutes,
+                    [BackendCommands.SystemStartupRestoreAll] = FiveMinutes,
+                    [BackendCommands.SystemDriverPriorityList] = TwoMinutes,
+                    [BackendCommands.SystemDriverPriorityChange] = TwoMinutes,
+                    [BackendCommands.SystemDriverPriorityRestoreAll] = FiveMinutes,
                     [BackendCommands.SystemPendulumGlobalConfigure] = TwoMinutes,
+                    [BackendCommands.SystemPendulumDriverPrepare] = TwoMinutes,
                     [BackendCommands.SystemPagefileStatus] = TwoMinutes,
                     [BackendCommands.SystemPagefileSet] = FiveMinutes,
                     [BackendCommands.SystemPagefileRestoreAuto] = FiveMinutes,
@@ -473,6 +491,8 @@ public static class BackendModules
         BackendCommands.SystemPowerHibernateGet, BackendCommands.SystemPowerHeteroList,
         BackendCommands.SystemShaderStatus, BackendCommands.SystemShaderDiagnose,
         BackendCommands.SystemGameRecordingStatus,
+        BackendCommands.SystemStartupList,
+        BackendCommands.SystemDriverPriorityList,
         BackendCommands.SystemPagefileStatus, BackendCommands.SystemReconcile,
         // T3：扩展优化库/Defender/内存的只读命令
         BackendCommands.SystemBxStatus, BackendCommands.SystemBxGearInfo,
@@ -510,7 +530,9 @@ public static class BackendModules
     public static bool RetainsStaticBackup(string moduleId, string command) => moduleId == System && command is
         BackendCommands.SystemBxApply or BackendCommands.SystemBxGearApply or BackendCommands.SystemBxServiceGroupApply
         or BackendCommands.SystemPowerIntelPcores or BackendCommands.SystemTimerRecover or BackendCommands.SystemPendulumGlobalConfigure
-        or BackendCommands.SystemGameRecordingChange or BackendCommands.SystemLowMemoryApply;
+        or BackendCommands.SystemGameRecordingChange or BackendCommands.SystemLowMemoryApply or BackendCommands.SystemPendulumDriverPrepare
+        or BackendCommands.SystemStartupChange or BackendCommands.SystemStartupRestoreAll
+        or BackendCommands.SystemDriverPriorityChange or BackendCommands.SystemDriverPriorityRestoreAll;
 
     /// <summary>公开只读集合（只读命令的负向校验用）。</summary>
     public static IReadOnlySet<string> ReadOnly => ReadOnlyCommands;

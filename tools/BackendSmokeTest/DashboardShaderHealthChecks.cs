@@ -73,9 +73,11 @@ internal static class DashboardShaderHealthChecks
         nv.Report = Report("default", "inherited");
         Check((await DashboardShaderHealth.CheckAsync(shader, nv)).State == DashboardHealthState.Abnormal, "old driver remains abnormal with default cache");
         shader.Driver = ShaderDriverState.ProblemSeries;
-        var retired = await DashboardShaderHealth.CheckAsync(shader, nv);
-        Check(retired.State == DashboardHealthState.Normal && !retired.Text.Contains("问题驱动"), "retired driver-series state no longer marks homepage abnormal");
+        shader.Version = "591.32";
+        var problem = await DashboardShaderHealth.CheckAsync(shader, nv);
+        Check(problem.State == DashboardHealthState.Abnormal && problem.Text.Contains("问题驱动") && problem.Text.Contains("591.32"), "591 problem series remains abnormal even with healthy cache");
         shader.Driver = ShaderDriverState.Ok;
+        shader.Version = "596.49";
         nv.Report = Report("custom", "custom");
         Check((await DashboardShaderHealth.CheckAsync(shader, nv)).OpenCacheRecovery, "override detected before refresh");
         nv.Report = Report("default", "inherited");
@@ -112,10 +114,11 @@ internal static class DashboardShaderHealthChecks
     {
         public bool Nvidia = true, StatusError, DiagnosisError;
         public ShaderDriverState Driver = ShaderDriverState.Ok;
+        public string Version = "596.49";
         public ShaderDiagLevel Level = ShaderDiagLevel.Normal;
         public Task<ShaderStatus> GetStatusAsync() => StatusError ? throw new IOException("fixture status failure")
             : Task.FromResult(new ShaderStatus { IsNvidia = Nvidia, GpuDetectionState = Nvidia ? ShaderGpuDetectionState.Nvidia : ShaderGpuDetectionState.NotPresent,
-                DriverState = Driver, DriverVersion = "596.49", DriverAdvice = "fixture", IsGameRunning = false });
+                DriverState = Driver, DriverVersion = Version, DriverAdvice = "fixture", IsGameRunning = false });
         public Task<ShaderDiagnosis> DiagnoseAsync() => DiagnosisError ? throw new IOException("fixture PSO failure")
             : Task.FromResult(new ShaderDiagnosis { Level = Level, Summary = Level == ShaderDiagLevel.Abnormal ? "PSO异常" : "fixture", Details = [], Advice = "fixture" });
         public Task<OperationResult> ClearPsoCacheAsync() => throw new Exception("Unexpected write");

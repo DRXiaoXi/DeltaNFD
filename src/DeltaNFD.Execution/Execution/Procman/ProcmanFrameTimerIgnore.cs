@@ -10,23 +10,48 @@ public sealed partial class ProcmanEngine
     private DateTime _lastFrameTimerIgnoreTick;
     internal Func<IReadOnlyList<ProcmanProcessIdentity>>? FrameTimerIgnoreTargetsForTests { get; set; }
 
-    /// <summary>PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION 仅 Windows 11 起支持。</summary>
-    internal static bool FrameTimerIgnoreSupported => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
+    /// <summary>Win11 常规路径；Win10 1809+ 仅在隔离自检通过后试用。</summary>
+    internal static bool FrameTimerIgnoreSupported => OperatingSystem.IsWindows() && FrameTimerPolicyProbeHost.Candidate(Environment.OSVersion.Version);
+    internal Func<bool>? FrameTimerIgnoreWindows10ForTests { get; set; }
+    internal Func<FrameTimerPolicyResult>? FrameTimerPolicyProbeForTests { get; set; }
+    private bool FrameTimerIgnoreWindows10 => FrameTimerIgnoreWindows10ForTests?.Invoke()
+        ?? (FrameTimerIgnoreSupported && !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000));
+    private FrameTimerPolicyResult? _frameTimerPolicyResult;
 
+    // The old independent preference is retained in settings for compatibility, but preparation
+    // and a live verified clock now own this part of the frame lifecycle on both platforms.
     private bool FrameTimerIgnoreRequested => (ReleaseFeaturePolicy.FrameTimerIgnoreEnabled || ExperimentalTimerFeaturesForTests)
-        && FrameBackgroundActive && AppSettingsStore.Read().FrameGameTimerIgnoreEnabled;
+        && OptimalClockRequested && PendulumPrepared && PendulumClockReadyForIgnore();
+
+    private bool PendulumClockReadyForIgnore()
+    {
+        try
+        {
+            var state = _optimalClock.State;
+            if (!state.Holding || state.HasError || !_optimalClockHolder.Holding || state.Resolution100ns != OptimalClockResolution) return false;
+            var current = _optimalClockHolder.Current100ns;
+            if (_optimalClockHolder.DpcProcess && !_optimalClockHolder.DpcAssisted)
+                return state.DpcProcessVerified && current is > 0 and <= 10000;
+            return state.VerifiedGlobal && (!_optimalClockHolder.DpcAssisted || state.DpcProcessVerified)
+                && current > 0 && Math.Abs((long)current - state.Resolution100ns) <= 50;
+        }
+        catch { return false; }
+    }
 
     private FrameTimerIgnoreSnapshot FrameTimerIgnoreState
     {
         get
         {
             var state = _frameTimerIgnore.Snapshot;
+            if (FrameTimerIgnoreWindows10)
+                state = state with { ExperimentalWindows10 = true, PolicyAccepted = _frameTimerPolicyResult?.Accepted,
+                    Supported = state.Supported && _frameTimerPolicyResult?.Accepted == true };
             var error = Volatile.Read(ref _frameTimerIgnoreError);
             return error.Length == 0 ? state : state with { HasError = true, Message = error + "；" + state.Message };
         }
     }
 
-    private bool RestoreFrameTimerIgnore(string reason = "三角洲定时器请求忽略状态已恢复")
+    private bool RestoreFrameTimerIgnore(string reason = "游戏定时器请求忽略状态已恢复")
     {
         var ok = _frameTimerIgnore.Sync([], _ => false, reason, FrameTimerIgnoreSupported);
         GameTargetService.Default.SetRestoreFailure("帧格忽略定时器请求", !ok);
@@ -34,40 +59,35 @@ public sealed partial class ProcmanEngine
         return ok;
     }
 
-    private IReadOnlyList<ProcmanProcessIdentity> ReadFrameTimerIgnoreTargets()
-    {
-        if (FrameTimerIgnoreTargetsForTests is { } read) return read();
-        var result = new List<ProcmanProcessIdentity>();
-        foreach (var process in Process.GetProcessesByName("DeltaForceClient-Win64-Shipping"))
-        {
-            using (process)
-            {
-                var identity = ProcmanIdentity.TryIdentify(process.Id);
-                if (identity is null) throw new IOException($"无法核验三角洲 PID {process.Id} 的路径和启动时间。");
-                result.Add(identity);
-            }
-        }
-        return result;
-    }
 
     private bool FrameTimerIgnoreTick(bool force = false)
     {
         lock (_gate)
         {
             if (_frozen || !FrameTimerIgnoreRequested)
-                return RestoreFrameTimerIgnore(_frozen ? "进程管理监控已停止，三角洲定时器请求忽略状态已恢复" : "帧格或该功能未开启，三角洲定时器请求忽略状态已恢复");
+            {
+                _frameTimerPolicyResult = null;
+                return RestoreFrameTimerIgnore(_frozen ? "进程管理监控已停止，游戏定时器请求忽略状态已恢复" : "帧格或该功能未开启，游戏定时器请求忽略状态已恢复");
+            }
             var now = ClockForTests?.Invoke() ?? DateTime.UtcNow;
             if (!force && now - _lastFrameTimerIgnoreTick < TimeSpan.FromSeconds(2)) return !FrameTimerIgnoreState.HasError;
             _lastFrameTimerIgnoreTick = now;
             try
             {
-                var targets = ReadFrameTimerIgnoreTargets();
-                var ok = _frameTimerIgnore.Sync(targets, _ =>
+                using var targetOperation = GameTargetService.Default.BeginOperation();
+                var target = FrameTarget;
+                var targets = ReadFrameGameTargets(target, FrameTimerIgnoreTargetsForTests);
+                if (FrameTimerIgnoreWindows10 && targets.Count > 0)
                 {
-                    var latest = AppSettingsStore.Read();
-                    return !_frozen && FrameTimerIgnoreRequested && (_rulesEngineRunning || BackgroundLoopDisabledForTests)
-                        && latest.FrameGameTimerIgnoreEnabled;
-                }, "等待三角洲启动，未施加定时器请求忽略", FrameTimerIgnoreSupported);
+                    _frameTimerPolicyResult ??= FrameTimerPolicyProbeForTests?.Invoke() ?? FrameTimerPolicyProbeHost.RunIsolated();
+                    if (!_frameTimerPolicyResult.Accepted)
+                        return RestoreFrameTimerIgnore("Win10 实验：本次策略能力自检未通过，未施加忽略位。" + _frameTimerPolicyResult.Error);
+                }
+                var ok = _frameTimerIgnore.Sync(targets, id =>
+                {
+                    return !_frozen && FrameTargetCurrent(target) && IsSelectedFrameTarget(id, target)
+                        && FrameTimerIgnoreRequested && (_rulesEngineRunning || BackgroundLoopDisabledForTests);
+                }, "等待 " + target.DisplayName + " 启动，未施加定时器请求忽略", FrameTimerIgnoreSupported);
                 Volatile.Write(ref _frameTimerIgnoreError, "");
                 GameTargetService.Default.SetRestoreFailure("帧格忽略定时器请求", _frameTimerIgnore.Snapshot.RestorePending);
                 return ok;
@@ -82,4 +102,12 @@ public sealed partial class ProcmanEngine
     }
 
     internal bool FrameTimerIgnoreOnceForTests() => FrameTimerIgnoreTick(force: true);
+
+    private bool FramePendulumTick(bool force = false)
+    {
+        var clock = OptimalClockTick(force);
+        var ignore = FrameTimerIgnoreTick(force);
+        return clock && ignore;
+    }
+    internal bool FramePendulumOnceForTests() => FramePendulumTick(force: true);
 }

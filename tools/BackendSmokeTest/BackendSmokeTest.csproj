@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>BackendSmokeTest</RootNamespace>
     <!-- 与产品同版本：官方后端客户端（已链接进本测试）按 AppVersion 校验后端版本。 -->
-    <Version>0.9321</Version>
-    <InformationalVersion>Beta0.932-RC2</InformationalVersion>
+    <Version>0.9350</Version>
+    <InformationalVersion>Alpha0.935</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,8 +28,10 @@
     <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\AlphaRestore\RuntimeCppOfficial.catalog.json" LogicalName="RuntimeCppOfficial.catalog.json" />
     <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\Vc14FileRepair.catalog.json" LogicalName="Vc14FileRepair.catalog.json" />
     <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\Vc14FileRepair14.44.catalog.json" LogicalName="Vc14FileRepair14.44.catalog.json" />
+    <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\Vc14FileRepair14.51.catalog.json" LogicalName="Vc14FileRepair14.51.catalog.json" />
     <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\Vc14ForceReplace.catalog.json" LogicalName="Vc14ForceReplace.catalog.json" />
     <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\Vc14ForceReplace14.44.catalog.json" LogicalName="Vc14ForceReplace14.44.catalog.json" />
+    <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\Vc14ForceReplace14.51.catalog.json" LogicalName="Vc14ForceReplace14.51.catalog.json" />
     <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\Vc14OwnershipOriginals.catalog.json" LogicalName="Vc14OwnershipOriginals.catalog.json" />
     <EmbeddedResource Include="..\..\src\DeltaNFD.Execution\Execution\NonCppRuntime.catalog.json" LogicalName="NonCppRuntime.catalog.json" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\NonCppRuntime*.cs" />
@@ -48,6 +50,8 @@
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AdvancedTweakService.cs" />
     <Compile Include="../../src/DeltaNFD.Execution/Execution/TimerConfigurationRecovery.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceLocalFileCleanup.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\GameRecordingModification.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceCoreFileCleanup.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceVirtualizationCheck.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\AceCleanupEnvironment.cs" />
@@ -109,10 +113,17 @@
       插件工程与本测试共用这一份实现，避免测试和实现各写一份而漂移。
     -->
     <Compile Include="..\..\src\Plugin.WeakNetBoost\WeakNetBoostProfile.cs" />
+    <!--
+      「DPC 计时器常驻（Win10 研究）」插件本体逻辑：测试链接编译同一份源码，用假进程/假服务/
+      假计时器驱动真实状态机，并把包交给宿主真实解析器/导入器校验。
+    -->
+    <Compile Include="..\..\src\Plugin.DpcTimerHold\DpcTimerCore.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\FrameFeatureState.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\CpuFrameStatusState.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\GameObservationState.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\FrameStatusPresentation.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\FrameGpuPresentation.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\ClockValuePresentation.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\FrameFailureGuidance.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\TimerHealthPresentation.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\AppVersion.cs" />
@@ -142,6 +153,8 @@
     <Compile Include="..\..\src\DeltaNFD\Services\UpdateChannelInstallation.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\UpdateUrlRewriter.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CleanupService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\StartupItemService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\DriverPriorityService.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\ShaderCacheCleanup.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\DefenderGuard.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\GpuSpoofService.cs" />
@@ -185,6 +198,8 @@
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\TweakDb\BxService.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\TweakDb\BxService.Security.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\PendulumGlobalSettings.cs" />
+    <Compile Include="../../src/DeltaNFD.Execution/Execution/PendulumDriverPreparation.cs" />
+    <Compile Include="../../src/DeltaNFD.Execution/Execution/WindowsPendulumPreparationEnvironment.cs" />
   </ItemGroup>
 
   <ItemGroup>

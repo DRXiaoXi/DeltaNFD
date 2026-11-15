@@ -9,7 +9,7 @@ public enum ShaderDriverState
     /// <summary>驱动过老（低于 576.88）：着色器渲染使用旧方法。</summary>
     TooOld,
 
-    /// <summary>已退休，仅保留协议数值兼容；当前检测不再产生此状态。</summary>
+    /// <summary>按项目兼容性策略标记的问题驱动系列（当前为591.xx）。</summary>
     ProblemSeries,
 
     /// <summary>驱动状态正常。</summary>
@@ -86,11 +86,22 @@ public enum ShaderDiagLevel
 /// <summary>621.xx 的文件布局提示，不是驱动 ASD 开关或运行实效的读取结果。</summary>
 public enum ShaderCacheLayout { Unspecified = 0, Legacy = 1, Asd = 2 }
 
+public sealed record D3dsCacheEntry(string FileName, string Executable, bool HasDriverData, string Format, string Detail, bool? MatchesAdapter = null);
+public sealed record D3dsCacheEvidence(IReadOnlyList<D3dsCacheEntry> Entries, IReadOnlyList<string> Errors)
+{
+    public bool Complete => Errors.Count == 0;
+    public bool HasOwnedDriverData => Entries.Any(e => e.HasDriverData && e.MatchesAdapter != false);
+}
+
 /// <summary>着色器健康检测结果（纯只读）。</summary>
 public sealed class ShaderDiagnosis
 {
     public required ShaderDiagLevel Level { get; init; }
     public ShaderCacheLayout CacheLayout { get; init; }
+    /// <summary>容量规则合规但无法完整定层；这是只读识别限制，不建议仅因此清理缓存。</summary>
+    public bool IsLayoutUncertain { get; init; }
+    /// <summary>按当前游戏完整exe路径核对的系统缓存证据；不等同当前驱动开关或实时写入证明。</summary>
+    public D3dsCacheEvidence? SystemCache { get; init; }
 
     /// <summary>一句话结论。</summary>
     public required string Summary { get; init; }
@@ -122,7 +133,9 @@ public interface IShaderService
     /// ① GameVer 达到 2 个及以上 → AMD / Intel / NVIDIA 通用异常判据；
     /// ② 单版本下 SM6\DXCache（缺少目录时回退 SM5\DXCache）的 NVPH 结构判定（仅 N 卡且驱动 ≥576.88）；
     ///    621.00 起至少两个 NVPH：包含一个 256MiB 或 512MiB 加另一个非零文件，或至少两个均 ≥256MiB；允许额外非零文件，所有 NVPH 须非零。
-    ///    621.xx 包含两个精确 256MiB 的有效布局优先显示 ASD已激活；其他双大文件旧布局仍提示未激活ASD。
+    ///    621.xx 起「B 层是否退出」按 NVPH 记录结构判定（单条平均占用：A 层约 15.7KB，B 层约 5.4–8.0KB），
+    ///    不再用「双精确 256MiB」推断——实测 Win11 23H2 + 621.14 的双 256MiB 仍在写 B 层，25H2 同驱动已退出。
+    ///    存在 A 层、其余均为 A 或经有界解压确认的纯 NVuc 小缓存且未检出 B 时给出 ASD 布局提示；读取失败/未知保留待确认，B 证据优先。
     ///    更早驱动需恰好两个 ≥256MiB 大文件且无空文件，但不再接受两个大文件均恰好 256MiB。
     ///    无缓存时提示预热；读取失败拒绝下结论。缓存异常不归因驱动版本。
     /// </summary>

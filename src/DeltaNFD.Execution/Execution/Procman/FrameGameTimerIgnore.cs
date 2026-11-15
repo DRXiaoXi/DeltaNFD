@@ -40,6 +40,7 @@ internal interface IFrameTimerIgnoreApi
     // Admission is deliberately separate from recovery. Fake APIs can inject this policy
     // without consulting real process identities for isolated test PIDs.
     IFrameTimerIgnoreHandle OpenForApply(ProcmanProcessIdentity identity) => Open(identity);
+    IFrameTimerIgnoreHandle OpenForRestore(ProcmanProcessIdentity identity, bool customTarget) => Open(identity);
 }
 
 /// <summary>
@@ -49,11 +50,13 @@ internal interface IFrameTimerIgnoreApi
 /// </summary>
 internal sealed class FrameGameTimerIgnore
 {
-    internal sealed record Backup(ProcmanProcessIdentity Identity, uint OriginalControl, uint OriginalState, uint AppliedControl, uint AppliedState);
+    internal sealed record Backup(ProcmanProcessIdentity Identity, uint OriginalControl, uint OriginalState, uint AppliedControl, uint AppliedState,
+        string? CustomTargetPath = null);
     internal const string Capability = "timer-ignore";
 
     private readonly Func<ProcmanProcessIdentity, bool> _accept;
     private readonly Func<ProcmanProcessIdentity, bool> _validate;
+    private readonly Func<ProcmanProcessIdentity, string?>? _customScope;
     private readonly string _capability;
     private readonly string _label;
     private readonly string? _peerJournalPath;
@@ -77,10 +80,11 @@ internal sealed class FrameGameTimerIgnore
     internal FrameGameTimerIgnore(string path, ProcessPropertyGate ownership, IFrameTimerIgnoreApi? api = null,
         FrameTimerLegacyProbe? probe = null, Func<ProcmanProcessIdentity, bool>? accept = null,
         Func<ProcmanProcessIdentity, bool>? validate = null, string capability = Capability, string label = "三角洲",
-        string? peerJournalPath = null)
+        string? peerJournalPath = null, Func<ProcmanProcessIdentity, string?>? customScope = null)
     {
         _accept = accept ?? IsDelta;
         _validate = validate ?? IsDelta;
+        _customScope = customScope;
         _capability = capability;
         _label = label;
         _path = path;
@@ -91,7 +95,7 @@ internal sealed class FrameGameTimerIgnore
             _ => null,
         });
         _ownership = ownership;
-        _api = api ?? new NativeFrameTimerIgnoreApi(requireOrdinaryUser: capability == "timer-ignore-list");
+        _api = api ?? new NativeFrameTimerIgnoreApi(requireOrdinaryUser: capability == "timer-ignore-list", selectedGame: customScope is not null);
         _probe = probe ?? new FrameTimerLegacyProbe();
         _mutexName = @"Global\DeltaNFD.FrameTimerIgnore." + Convert.ToHexString(SHA256.HashData(
             Encoding.UTF8.GetBytes(Path.GetFullPath(path).ToUpperInvariant())));
@@ -119,7 +123,9 @@ internal sealed class FrameGameTimerIgnore
         && Path.IsPathFullyQualified(identity.ExecutablePath)
         && Path.GetFileName(identity.ExecutablePath).Equals("DeltaForceClient-Win64-Shipping.exe", StringComparison.OrdinalIgnoreCase);
 
-    private bool Valid(Backup backup) => backup is not null && backup.Identity is not null && _validate(backup.Identity)
+    private bool Valid(Backup backup) => backup is not null && backup.Identity is not null
+        && (backup.CustomTargetPath is null ? _validate(backup.Identity) : _customScope is not null
+            && _capability == Capability && FrameGameTargetPolicy.CustomBackup(backup.Identity, backup.CustomTargetPath))
         && (backup.AppliedControl & FrameTimerPowerState.IgnoreTimer) != 0
         && (backup.AppliedState & FrameTimerPowerState.IgnoreTimer) != 0;
 
@@ -210,7 +216,7 @@ internal sealed class FrameGameTimerIgnore
                         RestorePending = records.Count > 0,
                         BackupCount = records.Count,
                         SystemCurrentMilliseconds = ProcessPerf.QueryTimerResolutionMs(),
-                        Message = records.Count > 0 ? "本系统不支持该功能（仅 Windows 11 起），存在未恢复的原值记录" : "本系统不支持该功能（仅 Windows 11 起）",
+                        Message = records.Count > 0 ? "本系统未通过进程策略支持检查，存在未恢复的原值记录" : "本系统未通过进程策略支持检查",
                         UpdatedUtc = DateTimeOffset.UtcNow,
                     });
                     return records.Count == 0;
@@ -259,7 +265,7 @@ internal sealed class FrameGameTimerIgnore
                         }
                         if (state != "same") throw new IOException("原进程身份无法确认，保留原值记录");
                         RejectPeerResponsibility(saved.Identity);
-                        using var handle = _api.Open(saved.Identity);
+                        using var handle = _api.OpenForRestore(saved.Identity, saved.CustomTargetPath is not null);
                         var current = handle.Read();
                         var original = new FrameTimerPowerState(saved.OriginalControl, saved.OriginalState);
                         if (!current.SameTimerBit(original))
@@ -294,7 +300,7 @@ internal sealed class FrameGameTimerIgnore
                             throw new IOException("该属性已由其他自动功能或进程管理手动/规则设置接管，未覆盖");
                         using var handle = _api.OpenForApply(identity);
                         var current = handle.Read();
-                        if (!allowed(identity)) throw new IOException("帧格、三角洲状态或恢复门禁已变化，未写入");
+                        if (!allowed(identity) || !_accept(identity)) throw new IOException("帧格、游戏目标或恢复门禁已变化，未写入");
                         if (_blocked.TryGetValue(key, out var blocked))
                             throw new IOException(blocked + "（本次进程不再重复写入；关闭并重新开启功能后可重试）");
 
@@ -302,14 +308,17 @@ internal sealed class FrameGameTimerIgnore
                         var saved = records.FirstOrDefault(b => b.Identity == identity);
                         if (saved is null || saved.AppliedControl != desired.Control || saved.AppliedState != desired.State)
                         {
-                            var next = new Backup(identity, saved?.OriginalControl ?? current.Control, saved?.OriginalState ?? current.State, desired.Control, desired.State);
+                            var scope = _customScope?.Invoke(identity);
+                            if (_customScope is not null && (scope is null ? !IsDelta(identity) : !FrameGameTargetPolicy.CustomBackup(identity, scope)))
+                                throw new IOException("当前游戏目标的恢复范围未确认，未写入。");
+                            var next = new Backup(identity, saved?.OriginalControl ?? current.Control, saved?.OriginalState ?? current.State, desired.Control, desired.State, scope);
                             var updated = records.Where(b => b != saved).Append(next).ToList();
                             Save(updated); records = updated; // 落盘先于任何原生写入
                         }
 
                         if (!current.Forced)
                         {
-                            if (!allowed(identity)) throw new IOException("提交前执行条件已失效，未写入");
+                            if (!allowed(identity) || !_accept(identity)) throw new IOException("提交前执行条件已失效，未写入");
                             try
                             {
                                 handle.Write(desired);
@@ -383,13 +392,15 @@ internal sealed class FrameGameTimerIgnore
     }
 }
 
-internal sealed class NativeFrameTimerIgnoreApi(bool requireOrdinaryUser = false) : IFrameTimerIgnoreApi
+internal sealed class NativeFrameTimerIgnoreApi(bool requireOrdinaryUser = false, bool selectedGame = false) : IFrameTimerIgnoreApi
 {
     public string IdentityState(ProcmanProcessIdentity identity) => ProcmanIdentity.State(identity);
     public IFrameTimerIgnoreHandle Open(ProcmanProcessIdentity identity) => new Handle(identity.Pid,
         ProcmanCapabilities.Pin(identity));
     public IFrameTimerIgnoreHandle OpenForApply(ProcmanProcessIdentity identity) => new Handle(identity.Pid,
-        ProcmanCapabilities.Pin(identity, requireOrdinaryUser: requireOrdinaryUser));
+        ProcmanCapabilities.Pin(identity, requireOrdinaryUser: requireOrdinaryUser || selectedGame && GameTargetService.Default.IsCustom));
+    public IFrameTimerIgnoreHandle OpenForRestore(ProcmanProcessIdentity identity, bool customTarget) => new Handle(identity.Pid,
+        ProcmanCapabilities.Pin(identity, requireOrdinaryUser: customTarget));
 
     private sealed class Handle(int pid, IDisposable pin) : IFrameTimerIgnoreHandle
     {

@@ -29,8 +29,8 @@ internal static class Vc14BaselineChecks
         // 1) 元数据与展示。
         Check(Vc14BaselineOption.Default == Vc14Baseline.V144 && Vc14Baseline.V142.FullVersion() == "14.42.34433.0"
             && Vc14Baseline.V144.FullVersion() == "14.44.35211.0", "current and historical version metadata");
-        Check(!Vc14Baseline.V142.IsSupported() && Vc14Baseline.V144.IsSupported() && !((Vc14Baseline)9).IsSupported(), "only 144 supported");
-        Check(Vc14BaselineInfo.All.Count == 2 && Vc14BaselineInfo.Default.Id == Vc14Baseline.V144
+        Check(!Vc14Baseline.V142.IsSupported() && Vc14Baseline.V144.IsSupported() && Vc14Baseline.V151.IsSupported() && !((Vc14Baseline)9).IsSupported(), "144 and 151 supported; retired and unknown rejected");
+        Check(Vc14BaselineInfo.All.Count == 3 && Vc14BaselineInfo.Default.Id == Vc14Baseline.V144
             && Vc14BaselineInfo.V144.Version == "14.44.35211.0"
             && Vc14BaselineInfo.V144.ShortVersion == "14.44.35211"
             && Vc14BaselineInfo.V144.BaselineDirectory == "Vc14Baseline14.44"
@@ -38,7 +38,7 @@ internal static class Vc14BaselineChecks
         Check(Vc14BaselineInfo.FromVersion("14.42.34433.0")?.Id == Vc14Baseline.V142
             && Vc14BaselineInfo.FromVersion("14.44.35211.0")?.Id == Vc14Baseline.V144
             && Vc14BaselineInfo.FromVersion("14.42.34438.0") is null
-            && Vc14BaselineInfo.FromVersion("14.51.36247.0") is null, "only pinned baseline versions map to a baseline");
+            && Vc14BaselineInfo.FromVersion("14.51.36247.0")?.Id == Vc14Baseline.V151, "only pinned baseline versions map to a baseline");
         Check(Vc14BaselineInfo.FromBundle("x64", "{804e7d66-ccc2-4c12-84ba-476da31d103d}")?.Id == Vc14Baseline.V142
             && Vc14BaselineInfo.FromBundle("x86", "{0b5169e3-39da-4313-808e-1f9c0407f3bf}")?.Id == Vc14Baseline.V144
             && Vc14BaselineInfo.FromBundle("x64", "{0b5169e3-39da-4313-808e-1f9c0407f3bf}") is null,

@@ -33,7 +33,12 @@ public sealed partial class AcePage : Page
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
+        => await GameInstallationPicker.RunAsync(XamlRoot, RefreshSelectedAsync);
+    private async Task RefreshSelectedAsync()
     {
+        var selection = await GameInstallationPicker.PickAsync(XamlRoot, "刷新 ACE 状态");
+        if (selection is null) return;
+        using var scope = GameInstallationScope.Enter(selection);
         await ViewModel.LoadAsync();
     }
 
@@ -77,11 +82,17 @@ public sealed partial class AcePage : Page
             await ReviewCleanupAsync();
             if (AceCleanupReadiness.RequiresReview) return;
         }
+        var selection = await GameInstallationPicker.PickAsync(XamlRoot, coreOnly ? "清理共享 ACE-CORE" : "清理 ACE", sharedOnly: coreOnly);
+        if (selection is null) return;
+        var localOnly = !selection.AllInstallations;
         var confirm = new ContentDialog
         {
             XamlRoot = XamlRoot,
             Title = coreOnly ? "仅清理 ACE-CORE SYS 文件？" : "一键清除 ACE？",
-            Content = coreOnly
+            Content = localOnly ? GameInstallationPicker.Describe(selection)
+                + "仅删除此安装目录内的 AntiCheatExpert 文件夹。共享 ACE 进程、服务、驱动、注册表和系统安装目录均保留，不安排重启删除。\n\n"
+                + "请先退出游戏与反作弊守卫；被占用或无法删除的文件会报告。删除不可撤销，完成后请用所选游戏启动器执行普通修复。"
+                : GameInstallationPicker.Describe(selection) + (coreOnly
                 ? "仅删除 C:\\Program Files\\AntiCheatExpert 及其子目录中，文件名以 ACE-CORE 开头的 .sys 文件。\n\n"
                     + "保留 ACE 服务、注册表、其他文件及游戏目录；不会结束进程或安排重启删除。\n"
                     + "多款 ACE 游戏可正常共存，文件数量多不是清理依据。此操作可能影响所有使用共享组件的 ACE 游戏。\n"
@@ -91,10 +102,10 @@ public sealed partial class AcePage : Page
                       + "· 多款 ACE 游戏可正常共存，此操作会影响共享组件，不应因文件数量多而清理\n"
                       + "· 请确认已完全退出游戏（含 sguard64 后台进程）\n"
                       + "· 被占用的文件会在重启电脑后自动删除\n"
-                      + "· 下次启动游戏时 ACE 会自动重新安装",
+                      + "· 下次启动游戏时 ACE 会自动重新安装"),
             PrimaryButtonText = coreOnly ? "清理 SYS 文件" : "清除",
             CloseButtonText = "取消",
-            DefaultButton = coreOnly ? ContentDialogButton.Close : ContentDialogButton.Primary,
+            DefaultButton = ContentDialogButton.Close,
         };
 
         if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary)
@@ -102,6 +113,7 @@ public sealed partial class AcePage : Page
             return;
         }
 
+        using var scope = GameInstallationScope.Enter(GameInstallationPicker.ConfirmShared(selection));
         var result = coreOnly ? await ViewModel.CleanCoreFilesAsync() : await ViewModel.CleanAsync();
         if (result is { Success: false })
         {
@@ -146,10 +158,17 @@ public sealed partial class AcePage : Page
     }
 
     private async void CheckCoreButton_Click(object sender, RoutedEventArgs e)
+        => await GameInstallationPicker.RunAsync(XamlRoot, CheckCoreSelectedAsync);
+    private async Task CheckCoreSelectedAsync()
     {
         if (!ManualGameAdmissionAvailable())
         { ViewModel.CoreCheckStatusText = "检测未开始：栏目正在收尾或游戏状态尚未确认，请完全退出三角洲后重试。"; return; }
+        var selection = await GameInstallationPicker.PickAsync(XamlRoot, "检测 ACE 游戏与 CORE");
+        if (selection is null || !ManualGameAdmissionAvailable()) return;
+        using var scope = GameInstallationScope.Enter(selection);
         await ViewModel.CheckCoreFilesAsync(cancellationToken: _pageOwner!.QueueToken);
+        ViewModel.CoreCheckText = GameInstallationPicker.Describe(selection)
+            + "共享 CORE 文件与其他手动关联游戏仅作数量核对参考，不代表可单独清理共享驱动。\n" + ViewModel.CoreCheckText;
     }
 
     private void CancelCoreCheckButton_Click(object sender, RoutedEventArgs e) => ViewModel.CancelCoreCheck();

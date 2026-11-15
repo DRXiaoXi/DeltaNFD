@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "payloads": {
+    "dpc-latency-checker-x64": {
+      "vendor": "Thesycon",
+      "version": "1.4.0.0",
+      "bytes": 21232,
+      "sha256": "636519d3293feb6779f089865c8c59a0763e720afefbad46fdb164fc06b9127e",
+      "installRelativePath": "Drivers/DpcTimer/dpclat_x64.sys",
+      "redistribution": {
+        "status": "not-authorized",
+        "authorizationEvidenceSha256": null
+      },
+      "securityReview": {
+        "status": "not-approved",
+        "knownVulnerabilities": ["CVE-2025-51619"],
+        "antiCheatCompatibilityVerified": false
+      }
+    }
+  }
+}

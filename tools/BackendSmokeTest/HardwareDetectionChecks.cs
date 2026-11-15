@@ -136,24 +136,24 @@ internal static class HardwareDetectionChecks
     }
 
     /// <summary>
-    /// 问题驱动系列回归：591/592/610/616 均判为 ProblemSeries，其余版本不判。
+    /// 问题驱动系列回归：当前仅591.xx判为ProblemSeries。
     /// 抽成独立方法是为了用反射/私有方法访问锁死 BuildDriverAdvice 的行为，
     /// 不依赖本机实际安装的驱动。
     /// </summary>
     private static void VerifyProblemDriverMajors()
     {
         // 使用反射调用 private static BuildDriverAdvice(ShaderGpuDetectionState, string)
-        var method = typeof(ShaderService).GetMethod("BuildDriverAdvice",
+        var method = typeof(DeltaNFD.Inspection.ShaderInspection).GetMethod("BuildDriverAdvice",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
         if (method is null) throw new Exception("BuildDriverAdvice 方法未找到，测试夹具损坏。");
 
         (string Version, ShaderDriverState Expected)[] cases =
         [
             ("591.32", ShaderDriverState.ProblemSeries),
-            ("592.71", ShaderDriverState.ProblemSeries),
-            ("610.03", ShaderDriverState.ProblemSeries),
-            ("616.24", ShaderDriverState.ProblemSeries),
-            ("617.14", ShaderDriverState.ProblemSeries),     // 617 全系已在问题驱动列表（与 ShaderService 策略一致）
+            ("592.71", ShaderDriverState.Ok),
+            ("610.03", ShaderDriverState.Ok),
+            ("616.24", ShaderDriverState.Ok),
+            ("617.14", ShaderDriverState.Ok),
             ("572.83", ShaderDriverState.TooOld),           // 低于 576.88，过老
             ("576.88", ShaderDriverState.Ok),               // 恰好是下限，正常
             ("596.36", ShaderDriverState.Ok),               // 正常系列
@@ -167,7 +167,7 @@ internal static class HardwareDetectionChecks
             if (tuple.State != expected)
                 throw new Exception($"{ver} 预期 {expected}，实际 {tuple.State}（{tuple.Advice}）");
         }
-        Console.WriteLine("  Problem-driver majors: 591/592/610/616/617 ProblemSeries, 572.83 TooOld, 576.88/596.36 OK");
+        Console.WriteLine("  Problem-driver major: 591 only; 572.83 TooOld; other listed supported series OK");
     }
 
     /// <summary>

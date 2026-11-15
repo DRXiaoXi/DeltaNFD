@@ -33,6 +33,8 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private int _dead;
     private volatile bool _readerEnded;
+    private int _gameInstallationScopeVersion;
+    private int _clockValueVersion;
     private string? _lastCommand;
     private DateTimeOffset? _lastStatusUtc;
     /// <summary>最近一次带写前意图的写入命令；收尾失败时用它建立正确的恢复证据（而不是被只读轮询覆盖）。</summary>
@@ -488,6 +490,8 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
         if (!SamePath(ready.ImagePath, executable))
             throw new BackendContractException($"官方后端映像路径与预期不符：{ready.ImagePath}。");
         EnsureImageHashMatches(ready.ImageSha256, expectedHash);
+        _gameInstallationScopeVersion = ready.GameInstallationScopeVersion;
+        _clockValueVersion = ready.ClockValueVersion;
     }
 
     /// <summary>
@@ -541,6 +545,10 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
             var requestId = Guid.NewGuid();
             _lastCommand = command;
             var argsElement = System.Text.Json.JsonSerializer.SerializeToElement(args, BackendJson.SerializerOptions);
+            if (!GameInstallationProtocol.IsSupported(argsElement, _gameInstallationScopeVersion))
+                return BackendResult.Failed("backend.installation-scope-unsupported", "此后端不支持安装目录范围，未发送操作。请使用完整新版安装包并重新打开工具，勿混用旧版后端。");
+            if (command == BackendCommands.ProcmanClockValue && _clockValueVersion != 1)
+                return BackendResult.Failed("backend.clock-value-unsupported", "此后端不支持自定义分辨率和 Sleep 测试，未发送操作。请使用完整新版程序。");
             var invoke = new BackendInvoke(command, argsElement);
             var invokeFrame = BackendMessages.EncodeInvoke(_spec.Id, _sessionId, requestId, invoke);
             using var sending = BackendOperationGate.EnterStart();

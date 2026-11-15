@@ -11,7 +11,7 @@ internal static class Vc14InstalledFileChecks
         AppDataPaths.ConfigureIsolatedDataRoot(root, id);
         var count = 0;
         void Check(bool ok, string why) { if (!ok) throw new Exception(why); count++; }
-        foreach (var baseline in new[] { Vc14Baseline.V144 })
+        foreach (var baseline in new[] { Vc14Baseline.V144, Vc14Baseline.V151 })
         {
             var info = Vc14BaselineInfo.For(baseline);
             var folder = Path.Combine(root, baseline.ToString()); var windows = Path.Combine(folder, "Windows");

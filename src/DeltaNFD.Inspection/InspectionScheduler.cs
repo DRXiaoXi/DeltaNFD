@@ -20,7 +20,9 @@ public static class InspectionScheduler
             Name = "DeltaNFD.ReadOnlyInspection",
             Priority = ThreadPriority.BelowNormal
         };
-        worker.Start();
+        // The long-lived worker must not inherit the first caller's installation selection.
+        if (ExecutionContext.IsFlowSuppressed()) worker.Start();
+        else using (ExecutionContext.SuppressFlow()) worker.Start();
     }
 
     public static Task<T> Run<T>(Func<T> read)
@@ -38,16 +40,16 @@ public static class InspectionScheduler
         }
 
         var result = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var context = ExecutionContext.Capture();
         Queue.Add(() =>
         {
-            try
+            void Read()
             {
-                result.SetResult(read());
+                try { result.SetResult(read()); }
+                catch (Exception ex) { result.SetException(ex); }
             }
-            catch (Exception ex)
-            {
-                result.SetException(ex);
-            }
+            if (context is null) Read();
+            else ExecutionContext.Run(context, _ => Read(), null);
         });
         return result.Task;
     }

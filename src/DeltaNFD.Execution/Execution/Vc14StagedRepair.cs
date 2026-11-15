@@ -109,7 +109,7 @@ internal sealed class Vc14ContinuationStore(string root)
         if (new FileInfo(PathName).Length > 4096) throw new IOException("14.x 待安装记录异常，保留记录，请人工核对。");
         var record = JsonSerializer.Deserialize<Vc14Continuation>(File.ReadAllText(PathName));
         if (record is null || !Guid.TryParseExact(record.Id, "D", out _) || record.CreatedUtc == default
-            || record.Baseline is not (Vc14Baseline.V142 or Vc14Baseline.V144))
+            || record.Baseline is not (Vc14Baseline.V142 or Vc14Baseline.V144 or Vc14Baseline.V151))
             throw new IOException("14.x 待安装记录损坏，保留记录，请人工核对。");
         return record;
     }

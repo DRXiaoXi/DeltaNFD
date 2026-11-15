@@ -1,5 +1,6 @@
 <Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="using:DeltaNFD.Controls" xmlns:vm="using:DeltaNFD.ViewModels" x:Class="DeltaNFD.Views.NvSettingsPage">
     <ScrollViewer HorizontalContentAlignment="Stretch" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <Grid HorizontalAlignment="Stretch">
         <StackPanel MaxWidth="1440" Padding="28,20,28,32" Spacing="12">
             <StackPanel Spacing="4">
                 <ui:PageHeader Title="NVIDIA显卡设置"/>
@@ -90,5 +91,6 @@
             </Grid>
             <!-- 说明 -->
         </StackPanel>
+        </Grid>
     </ScrollViewer>
 </Page>

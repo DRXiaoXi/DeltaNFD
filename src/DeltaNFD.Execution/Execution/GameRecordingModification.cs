@@ -98,9 +98,11 @@ public sealed class GameRecordingModification
             }
             var knownRecords = items.Select(i => RecordPath(i.FilePath)).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var unmatched = recordFiles.Count(p => !knownRecords.Contains(p));
-            if (unmatched > 0) complete = false;
+            var scoped = GameInstallationScope.CurrentSelection is { AllInstallations: false };
+            if (unmatched > 0 && !scoped) complete = false;
             return new() { Items = items, Complete = complete, UnmatchedRecords = unmatched, RecordCount = recordFiles.Length,
-                Message = (unmatched > 0 ? $"另有 {unmatched} 份恢复记录未关联当前安装，请在设置中重新登记原游戏目录。 " : "")
+                Message = (unmatched > 0 ? scoped ? $"另有 {unmatched} 份恢复记录不在本次所选范围内展示，原记录保留。 "
+                    : $"另有 {unmatched} 份恢复记录未关联当前安装，请在设置中重新登记原游戏目录。 " : "")
                     + (blocker ?? (items.Count == 0 ? "未找到三角洲主程序，请先在设置中登记游戏安装目录。" : "已读取文件和备份的实际状态。")) };
         }
         catch (Exception ex) { return new() { Items = items, Complete = false, RecordCount = recordFiles.Length,

@@ -3,8 +3,10 @@ namespace DeltaNFD.Services;
 /// <summary>「让系统忽略三角洲定时器分辨率请求」的实际状态；计数来自回读确认，不是用户偏好。</summary>
 public sealed record FrameTimerIgnoreSnapshot
 {
-    /// <summary>本系统是否支持该位（Windows 11 起；无法确认按不支持处理）。</summary>
+    /// <summary>本系统是否已通过进程策略支持检查；Win10 必须先完成隔离自检。</summary>
     public bool Supported { get; init; }
+    public bool ExperimentalWindows10 { get; init; }
+    public bool? PolicyAccepted { get; init; }
 
     /// <summary>是否正在维持（有经核验的三角洲进程已被施加该位）。</summary>
     public bool Maintaining { get; init; }

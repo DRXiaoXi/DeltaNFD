@@ -60,6 +60,9 @@ public sealed class BackendCommandContext
 /// <summary>后端启动配置：模块规格 + 命令处理器表（即白名单的实际实现）。</summary>
 public sealed class BackendHostOptions
 {
+    /// <summary>仅已实现安装范围校验的命令模块声明；旧模块默认不支持。</summary>
+    public int GameInstallationScopeVersion { get; init; }
+    public int ClockValueVersion { get; init; }
     public required BackendModuleSpec Module { get; init; }
 
     /// <summary>命令 → 处理器。键必须全部位于 <see cref="BackendModuleSpec.Commands"/> 白名单内。</summary>
@@ -247,7 +250,7 @@ public static class BackendHost
             Environment.ProcessId,
             ProcessStartTicks(),
             Environment.ProcessPath ?? "",
-            SelfSha256());
+            SelfSha256(), options.GameInstallationScopeVersion, options.ClockValueVersion);
         await writer.WriteAsync(BackendMessages.EncodeReady(options.Module.Id, sessionId, hello.RequestId, ready));
         Log.Info($"官方后端就绪：pid={ready.Pid}, version={ready.ModuleVersion}, session={sessionId:D}");
 

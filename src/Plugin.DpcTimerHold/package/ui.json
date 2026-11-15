@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "controls": [
+    { "id": "title", "type": "text", "text": "DPC 计时器常驻（Windows 10 研究插件）" },
+    { "id": "intro", "type": "text", "text": "复现「保持原版 DPC Latency Checker 1.4.0 运行」的 4.1 方法：由玩家自备的原版 DPC 自行加载其签名驱动并持有 1.0000ms 系统计时器精度请求，本插件只负责启动、核验与释放，不附带、不提取、不直接加载任何驱动。仅支持 Windows 10 x64 1809–21H2；Win11 请用宿主内置钟摆路径。该版本 DPC 存在 CVE-2025-51619（本地低权限可触发蓝屏），加载其驱动会扩大攻击面；本插件不保证 Sleep、帧时间、游戏收益或反作弊兼容。" },
+    { "id": "exePath", "type": "input", "label": "原版 DPC 1.4.0 EXE 完整路径（留空则读取插件数据目录 input\\DPCLatencyChecker_V1.4.exe）", "default": "" },
+    { "id": "risk", "type": "toggle", "label": "我已了解：会启动玩家自备的第三方 DPC，其签名驱动会加载内核并持有系统计时器请求；该版本存在已知内核漏洞；本插件不提供任何反作弊或游戏收益保证", "default": false },
+    { "id": "probe", "type": "button", "label": "检查环境与状态", "operationId": "probe" },
+    { "id": "start", "type": "button", "label": "启动 DPC 常驻（释放：插件管理页→恢复备份）", "operationId": "start" },
+    { "id": "progress", "type": "progress" },
+    { "id": "result", "type": "result" }
+  ]
+}

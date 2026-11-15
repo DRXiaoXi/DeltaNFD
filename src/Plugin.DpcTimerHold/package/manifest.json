@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "id": "io.github.drxiaoxi.dpc-timer-hold",
+  "name": "DPC 计时器常驻（Win10 研究）",
+  "author": "DRXiaoXi",
+  "version": "1.0.0",
+  "protocolVersion": "1.0",
+  "hostCompatibility": { "minInclusive": "0.9350.0", "maxExclusive": "1.0.0" },
+  "backend": { "entry": "backend/Plugin.DpcTimerHold.exe", "architecture": "x64" },
+  "permissions": [
+    { "id": "process.launch", "purpose": "启动玩家自备的原版 DPC Latency Checker 1.4.0 EXE（路径由玩家在插件页填写，SHA256 必须匹配原件；不下载、不附带、不复制该程序）" },
+    { "id": "system.modify", "purpose": "该原版 DPC 会按其自身流程创建并按需启动 dpclat_driver 内核服务、调用 ExSetTimerResolution 持有 1.0000ms 系统计时器精度请求；本插件只启动/正常关闭该进程并只读核验服务与分辨率，不直接写注册表、BCD、证书或驱动" }
+  ],
+  "capabilities": { "continuous": false, "offlineAutonomous": false },
+  "operations": [
+    { "id": "probe", "title": "检查环境与状态", "mutating": false, "reversible": false,
+      "targetScoped": false, "timeoutSeconds": 45 },
+    { "id": "start", "title": "启动 DPC 常驻", "mutating": true, "reversible": true,
+      "targetScoped": false, "timeoutSeconds": 120, "resourceIds": ["timer.resolution"] }
+  ],
+  "navigation": { "label": "DPC计时器常驻", "icon": "tools", "pageId": "main" }
+}

@@ -93,7 +93,7 @@ internal static class FrameTimerIgnoreChecks
         {
             Check(lab.Sync(supported: false), "不支持时无记录应安全返回");
             Check(lab.Api.Writes.Count == 0, "不支持时不写入任何进程");
-            Check(!lab.Controller.Snapshot.Supported && lab.Controller.Snapshot.Message.Contains("Windows 11"),
+            Check(!lab.Controller.Snapshot.Supported && lab.Controller.Snapshot.Message.Contains("策略"),
                 "不支持时快照标记不支持并说明原因");
         }
 
@@ -243,7 +243,7 @@ internal static class FrameTimerIgnoreChecks
             UpdatedUtc = now,
             FrameTimerIgnore = new FrameTimerIgnoreSnapshot { Supported = false, UpdatedUtc = now },
         };
-        Check(FrameStatusPresentation.TimerIgnore(true, true, unsupported, now, "").Contains("Windows 11"), "不支持的快照显示原因");
+        Check(FrameStatusPresentation.TimerIgnore(true, true, unsupported, now, "").Contains("策略"), "不支持的快照显示原因");
         var stale = new ProcmanStatusSnapshot
         {
             Module = BackendModules.Procman,

@@ -9,6 +9,7 @@ namespace DeltaNFD.Views;
 
 public sealed partial class SystemOptimizePage : Page
 {
+    private void StartupItems_Click(object sender, RoutedEventArgs e) => Frame.Navigate(typeof(StartupItemsPage));
     private readonly DeltaNFD.Services.Backends.PageBackendLease? _pageOwner = DeltaNFD.Services.Backends.PageBackendSessions.Manager.Current;
     private readonly IDefenderGuardService _pageDefender = ServiceLocator.DefenderGuard;
     public void RefreshGameReadOnlyState()
@@ -35,7 +36,7 @@ public sealed partial class SystemOptimizePage : Page
                 XamlRoot = XamlRoot,
                 Title = "确认操作",
                 Content = name == "一键恢复全部备份"
-                    ? "将按现有备份尽可能恢复扩展库、深度优化和虚拟内存设置。失败项会列出；已移除的 APPX 无法自动重装。部分设置需要重启。确定继续？"
+                    ? "将按现有备份尽可能恢复扩展库、深度优化、虚拟内存和自启动登记。失败项会列出；已移除的 APPX 无法自动重装。部分设置需要重启。确定继续？"
                     : $"「{name}」会降低系统安全防护或影响系统功能，确定要应用吗？（可通过备份尽可能恢复）",
                 PrimaryButtonText = "确定",
                 CloseButtonText = "取消",

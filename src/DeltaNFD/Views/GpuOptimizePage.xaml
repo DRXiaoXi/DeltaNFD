@@ -1,5 +1,6 @@
 <Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="using:DeltaNFD.Controls" x:Class="DeltaNFD.Views.GpuOptimizePage">
     <ScrollViewer HorizontalContentAlignment="Stretch" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <Grid HorizontalAlignment="Stretch">
         <StackPanel MaxWidth="1440" Padding="28,20,28,32" Spacing="12">
             <StackPanel Spacing="4">
                 <ui:PageHeader Title="显卡优化"/>
@@ -141,5 +142,6 @@
                 <TextBlock Text="演示说明：当前版本的显卡设置为模拟应用，正式版将通过显卡驱动接口（NVIDIA App / AMD Adrenalin）写入真实配置。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
             </Border>
         </StackPanel>
+        </Grid>
     </ScrollViewer>
 </Page>

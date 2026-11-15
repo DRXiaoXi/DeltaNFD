@@ -1,0 +1,53 @@
+<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="using:DeltaNFD.Controls" xmlns:local="using:DeltaNFD.Views" x:Class="DeltaNFD.Views.StartupItemsPage">
+    <Grid Padding="28,20,28,28" RowSpacing="12" MaxWidth="1440" HorizontalAlignment="Stretch">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <StackPanel Spacing="6">
+            <ui:PageHeader Title="自启动项目优化"/>
+            <TextBlock Text="按需停用登录时的启动登记，减少不需要的后台应用。" Style="{StaticResource PageSubtitleStyle}" TextWrapping="Wrap"/>
+            <TextBlock Text="管理 Run 注册表和启动目录快捷方式；仅改变以后登录，不关闭正在运行的程序。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+        </StackPanel>
+        <InfoBar Grid.Row="1" x:Name="GateNotice" IsOpen="False" IsClosable="False" Severity="Informational" Title="当前仅供查看"/>
+        <ScrollViewer Grid.Row="2" MaxHeight="180" VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+            <InfoBar x:Name="ResultBar" IsOpen="False" IsClosable="True" Severity="Informational" Title="操作结果"/>
+        </ScrollViewer>
+        <StackPanel Grid.Row="3" Spacing="10">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBox x:Name="SearchBox" PlaceholderText="搜索名称、启动命令或来源" TextChanged="Search_Changed" AutomationProperties.Name="搜索自启动项目"/>
+                <ProgressRing Grid.Column="1" x:Name="BusyRing" Width="24" Height="24" IsActive="False"/>
+            </Grid>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button x:Name="BackButton" Content="返回系统优化" Click="Back_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                <Button x:Name="RefreshButton" Content="刷新列表" Click="Refresh_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                <Button Content="Windows启动设置" Click="WindowsSettings_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+            </StackPanel>
+            <Button x:Name="RestoreAllButton" Content="恢复本工具停用的全部项目" Click="RestoreAll_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+            <TextBlock x:Name="SummaryText" Text="正在读取启动登记…" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+            <TextBlock Text="“登记存在”不等于实际启用；Windows或应用自身可能另行禁用。备份保存在软件数据目录。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+        </StackPanel>
+        <ListView Grid.Row="4" x:Name="StartupList" ItemsSource="{x:Bind Rows}" SelectionMode="None" HorizontalContentAlignment="Stretch">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="local:StartupItemRow">
+                    <Border Style="{StaticResource CardBorderStyle}" Margin="0,0,0,10" HorizontalAlignment="Stretch">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="{x:Bind Info.Name}" Style="{StaticResource H3Style}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{x:Bind Info.Source}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{x:Bind Info.State}" Style="{StaticResource BodyStyle}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{x:Bind Info.Command}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" IsTextSelectionEnabled="True"/>
+                            <TextBlock Text="{x:Bind Info.Detail}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="停用此项" IsEnabled="{x:Bind CanDisable, Mode=OneWay}" Click="Disable_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                                <Button Content="按备份恢复" Visibility="{x:Bind RestoreVisibility}" IsEnabled="{x:Bind CanRestore, Mode=OneWay}" Click="Restore_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                                <Button Content="保留当前并归档旧备份" Visibility="{x:Bind KeepCurrentVisibility}" IsEnabled="{x:Bind CanKeepCurrent, Mode=OneWay}" Click="KeepCurrent_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</Page>

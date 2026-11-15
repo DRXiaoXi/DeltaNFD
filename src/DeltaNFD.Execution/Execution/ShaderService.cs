@@ -9,7 +9,7 @@ namespace DeltaNFD.Services;
 /// 供界面同时显示两种格式并写入只读反馈诊断（避免“设备管理器/工具版本不一致”的误判）。
 /// </summary>
 internal sealed record ShaderDriverReading(
-    ShaderGpuDetectionState State, string Version, string Raw = "", string Source = "", string Adapter = "");
+    ShaderGpuDetectionState State, string Version, string Raw = "", string Source = "", string Adapter = "", string PnpDeviceId = "");
 
 /// <summary>着色器维护的真实实现。</summary>
 public sealed class ShaderService : IShaderService
@@ -40,7 +40,8 @@ public sealed class ShaderService : IShaderService
         if (_target.IsCustom) return OperationResult.Fail(GameTargetService.DeltaOnlyMessage);
         using var shaderGate = ShaderCacheOperationGate.Acquire();
         var driver = _driverReader();
-        var includeSystem = ShaderCacheCleanupPolicy.IncludesSystemD3DCache(driver.State, driver.Version);
+        var includeSystem = GameInstallationScope.AllowsSharedCleanup &&
+            ShaderCacheCleanupPolicy.IncludesSystemD3DCache(driver.State, driver.Version);
         var local = _localAppData();
         if (includeSystem && !Path.IsPathFullyQualified(local))
             return OperationResult.Fail("当前用户系统缓存目录无法确认，未执行清理。");
@@ -145,7 +146,7 @@ public sealed class ShaderService : IShaderService
             if (chosen == default)
                 chosen = present.OrderByDescending(p => ToVersionNumber(p.Version) ?? 0).First();
             return LogDriverReading(new ShaderDriverReading(
-                ShaderGpuDetectionState.Nvidia, chosen.Version, chosen.Raw, "WMI", chosen.Name));
+                ShaderGpuDetectionState.Nvidia, chosen.Version, chosen.Raw, "WMI", chosen.Name, chosen.Pnp));
         }
 
         // WMI 可用且明确列出了显示适配器、但没有 NVIDIA：不采用注册表里的残留/旧卡条目。
@@ -254,7 +255,7 @@ public sealed class ShaderService : IShaderService
     private DeltaNFD.Inspection.ShaderInspection CreateInspection() => new(_target, () =>
     {
         var reading = _driverReader();
-        return new(reading.State, reading.Version, reading.Raw, reading.Source, reading.Adapter);
+        return new(reading.State, reading.Version, reading.Raw, reading.Source, reading.Adapter, reading.PnpDeviceId);
     });
 
     /// <summary>"596.36" → 59636（与 MinDriverVersion 同构）；解析失败为 null。</summary>

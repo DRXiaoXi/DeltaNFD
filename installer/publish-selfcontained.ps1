@@ -25,7 +25,9 @@ $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 $frontendProject = Join-Path $repo "src/DeltaNFD/DeltaNFD.csproj"
 & (Join-Path $repo 'tools/Check-DeploymentScript.ps1') -ScriptPath (Join-Path $PSScriptRoot 'DeploymentControl.ps1')
-if ($LASTEXITCODE -ne 0) { throw 'Installer deployment script validation failed before build.' }
+# 调用同会话 PowerShell 脚本时 $LASTEXITCODE 可能是上一次原生命令的旧值（新进程里还是 $null），
+# 不能用它判断脚本结果；$? 才反映刚才这条命令是否成功（脚本内 exit 非零时为 False）。
+if (-not $?) { throw 'Installer deployment script validation failed before build.' }
 $out = [IO.Path]::GetFullPath($(if ([IO.Path]::IsPathRooted($OutDir)) { $OutDir } else { Join-Path $repo $OutDir }))
 if (Test-Path -LiteralPath $out) { throw "Output must be a new directory: $out" }
 $componentLayout = $out + '.components-' + [Guid]::NewGuid().ToString('N')
@@ -74,6 +76,8 @@ $required = @(
     "Assets/UpdateConfig.json",
     "Assets/Vc14Baseline14.44/vc_redist.x64.exe",
     "Assets/Vc14Baseline14.44/vc_redist.x86.exe",
+    "Assets/Vc14Baseline14.51/vc_redist.x64.exe",
+    "Assets/Vc14Baseline14.51/vc_redist.x86.exe",
     "Assets/RuntimeHighFps/Installer.cmd",
     "Assets/RuntimeHighFps/payload_manifest_sha256.csv",
     "Assets/TweakDb/RegistryTweaks.json"
@@ -105,7 +109,8 @@ foreach ($retired in @('Assets/DotNetRepair', 'Assets/VCRedistRepair', 'Assets/V
 }
 $officialCatalog = Get-Content -LiteralPath (Join-Path $repo 'src/DeltaNFD.Execution/Execution/AlphaRestore/RuntimeCppOfficial.catalog.json') -Raw | ConvertFrom-Json
 $fileRepairCatalogs = @(
-    @{ Version = '14.44'; Directory = 'Assets/Vc14FileRepair14.44'; Catalog = 'src/DeltaNFD.Execution/Execution/Vc14FileRepair14.44.catalog.json' }
+    @{ Version = '14.44'; Directory = 'Assets/Vc14FileRepair14.44'; Catalog = 'src/DeltaNFD.Execution/Execution/Vc14FileRepair14.44.catalog.json' },
+    @{ Version = '14.51'; Directory = 'Assets/Vc14FileRepair14.51'; Catalog = 'src/DeltaNFD.Execution/Execution/Vc14FileRepair14.51.catalog.json' }
 )
 $ownershipCatalog = @(Get-Content -LiteralPath (Join-Path $repo 'src/DeltaNFD.Execution/Execution/Vc14OwnershipOriginals.catalog.json') -Raw | ConvertFrom-Json)
 if ($ownershipCatalog.Count -ne 1) { throw 'Expected the pinned historical ownership original' }
@@ -151,6 +156,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Build-only runtime layout checker failed to bu
 if ($LASTEXITCODE -ne 0) { throw "Published .NET dependency check failed; installer generation is blocked." }
 
 & (Join-Path $repo 'tools/Check-DeploymentScript.ps1') -ScriptPath (Join-Path $out 'Tools/DeploymentControl.ps1')
-if ($LASTEXITCODE -ne 0) { throw 'Published deployment script is not compatible with Windows PowerShell 5.1.' }
+if (-not $?) { throw 'Published deployment script is not compatible with Windows PowerShell 5.1.' }
 if ((Get-FileHash -LiteralPath (Join-Path $out 'Tools/DeploymentControl.ps1')).Hash -ne (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'DeploymentControl.ps1')).Hash) { throw 'Published and installer-embedded deployment scripts differ.' }
+python (Join-Path $repo 'tools/driver_payloads.py') audit-layout --root $repo --layout $out
+if ($LASTEXITCODE -ne 0) { throw 'Vendor driver redistribution/security boundary rejected the installer layout.' }
 Write-Host "Publish layout complete: $out"

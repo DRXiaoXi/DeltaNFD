@@ -121,7 +121,6 @@ public sealed partial class RuntimePage : Page
     public RuntimePage()
     {
         if (!ReleaseFeatures.RuntimeUiEnabled) throw new InvalidOperationException("此测试版未开放运行库，请更新到完整版。");
-        ViewModel.SynchronizeRuntimeDetectionPreference();
         InitializeComponent();
         Loaded += RuntimePage_Loaded;
         Unloaded += RuntimePage_Unloaded;
@@ -352,7 +351,7 @@ public sealed partial class RuntimePage : Page
                 var stageDialog = new ContentDialog
                 {
                     XamlRoot = XamlRoot, Title = "完整重装 C++：安全模式卸载阶段",
-                    Content = "安全模式下可选择只卸载 V14，或显式确认“卸载全部 C++（高风险）”。卸载全部 C++ 会处理检测到的 2005–2013、2015–2022 和 14.x 运行库；依赖阻塞、身份变化或结果未知时停止。2005–2013 与 14.44 安装步骤仍需回正常模式手动继续。\n\n临时启用 Installer 必须单独确认；若系统仍禁止启动 Windows Installer（如 1084），会停止并提示回正常模式；不会自动重启或执行安装。",
+                    Content = "安全模式下可选择只卸载 V14，或显式确认“卸载全部 C++（高风险）”。卸载全部 C++ 会处理检测到的 2005–2013、2015–2022 和 14.x 运行库；依赖阻塞、身份变化或结果未知时停止。2005–2013 与所选 14.x 安装步骤仍需回正常模式手动继续。\n\n临时启用 Installer 必须单独确认；若系统仍禁止启动 Windows Installer（如 1084），会停止并提示回正常模式；不会自动重启或执行安装。",
                     PrimaryButtonText = "预览 V14 卸载阶段",
                     SecondaryButtonText = "卸载全部 C++（高风险）",
                     CloseButtonText = "取消",

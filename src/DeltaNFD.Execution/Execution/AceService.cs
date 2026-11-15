@@ -225,6 +225,46 @@ private Task<AceScanResult> ScanAsyncFixtureAsync() => Task.Run(() =>
     public async Task<OperationResult> CleanCoreFilesAsync(IProgress<string>? progress = null) =>
         AceCleanupResults.ToOperationResult(await CleanCoreFilesPhasedAsync(progress, CancellationToken.None));
 
+    public Task<BackendResult> CleanLocalPhasedAsync(IProgress<string>? progress, CancellationToken token) =>
+        CleanLocalPhasedAsync(progress, token, DeltaForceLocator.FindGameAceDirectories());
+
+    internal Task<BackendResult> CleanLocalPhasedAsync(IProgress<string>? progress, CancellationToken token, IEnumerable<string> directories) => Task.Run(() =>
+    {
+        using var operation = _target.BeginOperation();
+        var done = new List<BackendResultItem>();
+        var problems = new List<string>();
+        var guard = new AceCleanupGuard(() => _target.IsCustom, () => _environment.IsElevated, () =>
+        {
+            if (!TryGetBlockers(out var blockers, out var error)) throw new IOException(error);
+            return blockers;
+        });
+        foreach (var path in directories.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (guard.Check("local-files", done, token) is { } blocked) return blocked;
+            if (!IsAllowedAceDirectory(path) || string.Equals(Path.GetFullPath(path), Path.GetFullPath(_environment.AceInstallDirectory), StringComparison.OrdinalIgnoreCase))
+                return BackendResult.Failed("ace.local-scope", "本地 ACE 清理范围无效，未执行共享清理。");
+            if (!_environment.DirectoryExists(path)) continue;
+            if (_environment.IsReparsePoint(path)) { problems.Add(path + "：链接目录已跳过"); continue; }
+            progress?.Report("仅清理所选安装内 ACE：" + path);
+            BackendResult? interrupted = null;
+            var result = _environment.DeleteLocalDirectoryTree(path, () =>
+            {
+                interrupted = guard.Check("local-file", done, token);
+                if (interrupted is not null) throw new IOException(interrupted.Message);
+            });
+            if (result.DeletedFiles > 0) done.Add(new(path, BackendResultStatuses.Ok, $"已删除 {result.DeletedFiles} 个本地 ACE 文件"));
+            problems.AddRange(result.Problems);
+            if (interrupted is not null) { problems.Add(interrupted.Message); break; }
+        }
+        var message = "仅处理所选目录内的 AntiCheatExpert；共享 ACE 进程、服务、驱动、注册表和系统安装目录保持。未安排重启删除。" +
+            (problems.Count == 0 ? "本地文件清理完成或原本不存在。" : "部分文件未完成：" + string.Join("；", problems.Take(8))) +
+            "\n请用所选游戏的启动器执行普通修复后再启动游戏。";
+        var outcome = new OperationResult { Success = problems.Count == 0, IsPartial = problems.Count > 0 && done.Count > 0, Message = message };
+        return problems.Count == 0 ? BackendResult.Ok("ace.local-clean", message, outcome)
+            : done.Count > 0 ? BackendResult.PartialResult("ace.local-clean", message, done, outcome)
+            : BackendResult.Failed("ace.local-clean", message);
+    });
+
     public async Task<BackendResult> CleanCoreFilesPhasedAsync(IProgress<string>? progress, CancellationToken token)
     {
         using var operation = _target.BeginOperation();

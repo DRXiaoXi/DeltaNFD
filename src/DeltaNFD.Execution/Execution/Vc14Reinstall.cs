@@ -219,7 +219,7 @@ public static partial class Vc14Reinstall
                 if (pending is not null && pending.Baseline != environment.Baseline
                     && !(pending.Baseline == Vc14Baseline.V142 && environment.Baseline == Vc14Baseline.V144
                         && pending.UninstallVerified && scan.IsMissing))
-                    blocker ??= "历史待安装记录与当前 14.44 不符；请先核对原卸载结果，再重新预览完整修复 14.x。记录保留，不恢复 14.42 安装。";
+                    blocker ??= "历史待安装记录与当前所选 " + info.Label + " 不符；请先核对原卸载结果，再重新预览完整修复 14.x。记录保留，不恢复 14.42 安装。";
                 if (scan.Products.Any(p => !Vc14Catalog.SameVersion(p.Version, info.Version)))
                     blocker ??= "旧 14.x 组件仍在，不能跳过卸载直接安装。请核对或继续卸载阶段。";
             }

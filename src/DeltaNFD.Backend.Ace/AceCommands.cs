@@ -12,6 +12,7 @@ internal static class AceCommands
     public static readonly BackendHostOptions Options = new()
     {
         Module = BackendModules.Require(BackendModules.Ace),
+        GameInstallationScopeVersion = GameInstallationProtocol.Version,
         Handlers = new Dictionary<string, Func<BackendCommandContext, Task<BackendResult>>>(StringComparer.Ordinal)
         {
             [BackendCommands.AceScan] = ScanAsync,
@@ -70,6 +71,7 @@ internal static class AceCommands
 
     private static async Task<BackendResult> ScanAsync(BackendCommandContext context)
     {
+        using var scope = GameInstallationScope.Enter(context.ArgsAs<GameInstallationArgs>().Selection);
         context.ReportProgress("正在扫描 ACE 组件…", null, "scan");
         var service = new AceService();
         var scan = await service.ScanAsync();
@@ -83,6 +85,7 @@ internal static class AceCommands
 
     private static async Task<BackendResult> CoreCheckAsync(BackendCommandContext context)
     {
+        using var scope = GameInstallationScope.Enter(context.ArgsAs<GameInstallationArgs>().Selection);
         context.ReportProgress("正在检测 ACE-CORE 冗余文件…", null, "core");
         var service = new AceService();
         var core = await service.CheckCoreFilesAsync();
@@ -91,13 +94,21 @@ internal static class AceCommands
 
     private static async Task<BackendResult> CleanAsync(BackendCommandContext context)
     {
+        using var scope = GameInstallationScope.Enter(context.ArgsAs<GameInstallationArgs>().Selection, requireChoice: true);
         var service = new AceService();
         var progress = new RelayProgress(context);
-        return await service.CleanPhasedAsync(progress, context.CancellationToken);
+        return GameInstallationScope.AllowsSharedCleanup
+            ? await service.CleanPhasedAsync(progress, context.CancellationToken)
+            : await service.CleanLocalPhasedAsync(progress, context.CancellationToken);
     }
 
-    private static Task<BackendResult> CleanCoreFilesAsync(BackendCommandContext context) =>
-        new AceService().CleanCoreFilesPhasedAsync(new RelayProgress(context), context.CancellationToken);
+    private static async Task<BackendResult> CleanCoreFilesAsync(BackendCommandContext context)
+    {
+        using var scope = GameInstallationScope.Enter(context.ArgsAs<GameInstallationArgs>().Selection, requireChoice: true);
+        if (!GameInstallationScope.AllowsSharedCleanup)
+            return BackendResult.Failed(context.Command, "ACE-CORE SYS 属于共享组件，请选择全部目录并确认共享清理。");
+        return await new AceService().CleanCoreFilesPhasedAsync(new RelayProgress(context), context.CancellationToken);
+    }
 
     /// <summary>虚拟化环境检测（纯只读，不触碰 ACE 组件，游戏运行中也可用）。</summary>
     private static async Task<BackendResult> VirtCheckAsync(BackendCommandContext context)

@@ -3,6 +3,9 @@ namespace DeltaNFD.Execution.OptimalClock;
 /// <summary>可注入的持有进程接口（测试用假实现）。</summary>
 internal interface IOptimalClockHolderApi
 {
+    bool KernelRequest => false;
+    bool DpcProcess => false;
+    bool DpcAssisted => false;
     bool Holding { get; }
     uint Resolution100ns { get; }
     uint Granted100ns { get; }
@@ -35,6 +38,8 @@ internal sealed record OptimalClockState
     public uint Current100ns { get; init; }
     /// <summary>实测确认「不请求的进程也获得该时钟」（全局计时器语义生效）。</summary>
     public bool VerifiedGlobal { get; init; }
+    public bool KernelResolutionVerified { get; init; }
+    public bool DpcProcessVerified { get; init; }
     public DateTimeOffset? GlobalVerifiedUtc { get; init; }
     public double? RequestlessMilliseconds { get; init; }
     public OptimalClockMode Mode { get; init; }
@@ -81,15 +86,22 @@ internal sealed class OptimalClockController(IOptimalClockHolderApi holder, IOpt
     private readonly Func<DateTimeOffset> _clock = clock ?? (() => DateTimeOffset.UtcNow);
     private DateTimeOffset _lastVerification, _retryAfter, _lastHeartbeat;
     private uint _lastObserved;
+    private bool _dpcFailureLatched;
     internal static readonly TimeSpan VerificationInterval = TimeSpan.FromMinutes(1);
 
     internal OptimalClockState State { get { lock (_gate) return _state; } }
+    private bool _customResolution;
+    internal bool CustomResolution
+    {
+        get => _customResolution;
+        set { _customResolution = value; if (holder is DpcCombinedHolder combined) combined.CustomResolution = value; }
+    }
 
     // 只清本次运行状态，扫描记录继续保留。
     private OptimalClockState IdleState() => _state with
     {
         Enabled = false, Holding = false, Resolution100ns = 0, Granted100ns = 0,
-        Current100ns = 0, VerifiedGlobal = false, GlobalVerifiedUtc = null, RequestlessMilliseconds = null,
+        Current100ns = 0, VerifiedGlobal = false, KernelResolutionVerified = false, DpcProcessVerified = false, GlobalVerifiedUtc = null, RequestlessMilliseconds = null,
         Mode = OptimalClockMode.Unknown, HasError = false, UpdatedUtc = DateTimeOffset.UtcNow,
     };
 
@@ -98,11 +110,14 @@ internal sealed class OptimalClockController(IOptimalClockHolderApi holder, IOpt
     {
         lock (_gate)
         {
+            if (holder.DpcProcess) return ApplyDpc(resolution100ns, supported);
+            if (holder.KernelRequest) return ApplyKernel(resolution100ns, supported);
+            if (holder.DpcAssisted) _dpcFailureLatched = false;
             try
             {
                 PendulumDiagnosticLog.Emit(diagnostics, "lock-start", new { resolution100ns, supported });
                 if ((api.HasPendingCleanup || (_state.HasError && _state.Holding)) && !Stop()) return false;
-                if (!supported || resolution100ns < OptimalClockScanner.CriticalFloor100ns || resolution100ns > 156_250)
+                if (!supported || resolution100ns < (CustomResolution ? 5000u : OptimalClockScanner.CriticalFloor100ns) || resolution100ns > 156_250)
                 {
                     if (!Stop()) return false;
                     _state = IdleState() with
@@ -110,13 +125,13 @@ internal sealed class OptimalClockController(IOptimalClockHolderApi holder, IOpt
                         Supported = supported,
                         HasError = supported,
                         Message = !supported ? "此系统尚不能使用钟摆计划（Windows 11 常规路径 / Windows 10 实验路径）"
-                            : "分辨率超出允许范围（0.5100~15.625ms），未锁定",
+                            : CustomResolution ? "自定义分辨率超出允许范围（0.5000~15.625ms），未锁定" : "分辨率超出允许范围（0.5100~15.625ms），未锁定",
                     };
                     return false;
                 }
                 uint current100ns = 0;
                 bool verified = false;
-                for (var attempt = 0; attempt < 2 && !verified; attempt++)
+                for (var attempt = 0; attempt < (holder.DpcAssisted ? 1 : 2) && !verified; attempt++)
                 {
                     if (!holder.Ensure(resolution100ns))
                         throw new InvalidOperationException("无法启动时钟持有进程：" + holder.Error);
@@ -125,6 +140,9 @@ internal sealed class OptimalClockController(IOptimalClockHolderApi holder, IOpt
                     PendulumDiagnosticLog.Emit(diagnostics, "lock-readback", new { resolution100ns, current100ns, holder.Granted100ns, attempt });
                     observe?.Invoke(resolution100ns, current100ns);
                     verified = current100ns > 0 && current100ns <= resolution100ns + ResolutionTolerance100ns;
+                    if (holder.DpcAssisted)
+                        verified = holder.Holding && Math.Abs((long)current100ns - resolution100ns) <= 50
+                            && holder.Granted100ns > 0 && Math.Abs((long)holder.Granted100ns - resolution100ns) <= 50;
                     if (!verified && attempt == 0 && !Stop()) return false;
                 }
                 if (!verified)
@@ -155,15 +173,18 @@ internal sealed class OptimalClockController(IOptimalClockHolderApi holder, IOpt
                     };
                     return false;
                 }
+                if (holder.DpcAssisted && (!holder.Holding || Math.Abs((long)_currentResolution() - resolution100ns) > 50))
+                    throw new IOException("联合持有在独立等待复验后已失效，未确认锁定。");
                 _lastVerification = _clock();
                 _retryAfter = default;
                 _state = IdleState() with
                 {
                     Supported = true, Enabled = true, Holding = true, Resolution100ns = resolution100ns,
                     Granted100ns = holder.Granted100ns, Current100ns = current100ns, VerifiedGlobal = true,
+                    DpcProcessVerified = holder.DpcAssisted,
                     GlobalVerifiedUtc = _lastVerification,
                     RequestlessMilliseconds = measured, Mode = OptimalClockMode.Global,
-                    Message = $"已全局锁定钟摆计划 {resolution100ns / 10000.0:0.0000} ms（系统当前 {current100ns / 10000.0:0.0000} ms，无请求进程实测 {(measured.HasValue ? measured.Value.ToString("0.##") + " ms" : "不可用")}）",
+                    Message = (holder.DpcAssisted ? "DPC基底1ms配合候选请求；" : "") + $"已全局锁定钟摆计划 {resolution100ns / 10000.0:0.0000} ms（系统当前 {current100ns / 10000.0:0.0000} ms，无请求进程实测 {(measured.HasValue ? measured.Value.ToString("0.##") + " ms" : "不可用")}）",
                 };
                 PendulumDiagnosticLog.Emit(diagnostics, "lock-confirmed", _state);
                 return true;
@@ -187,7 +208,11 @@ internal sealed class OptimalClockController(IOptimalClockHolderApi holder, IOpt
     {
         lock (_gate)
         {
-            var hadResponsibility = holder.Holding || _state.Holding || api.HasPendingCleanup;
+            var hadResponsibility = _state.Holding || api.HasPendingCleanup;
+            // A failed status query must not skip normal close or the other cleanup path.
+            // Completion is decided by Stop plus the subsequent readback below.
+            try { hadResponsibility |= holder.Holding; }
+            catch { hadResponsibility = true; }
             var failures = new List<string>();
             // 两类责任都必须尝试；一方失败不能跳过另一方的清理。
             try
@@ -204,6 +229,7 @@ internal sealed class OptimalClockController(IOptimalClockHolderApi holder, IOpt
             catch (Exception ex) { failures.Add(ex.Message); }
             if (failures.Count == 0)
             {
+                _dpcFailureLatched = false;
                 _retryAfter = default;
                 _state = IdleState() with { Message = "钟摆计划已释放" };
                 if (hadResponsibility) PendulumDiagnosticLog.Emit(diagnostics, "release-confirmed", new { });
@@ -227,6 +253,40 @@ internal sealed class OptimalClockController(IOptimalClockHolderApi holder, IOpt
         lock (_gate)
         {
             if (!enabled || !supported) return false;
+            if (holder.DpcAssisted) return EnsureDpcAssisted(resolution100ns, supported);
+            if (holder.DpcProcess)
+            {
+                if (_dpcFailureLatched) return false;
+                if (!_state.Enabled) return ApplyDpc(resolution100ns, supported);
+                try
+                {
+                    var current = _currentResolution();
+                    if (!holder.Holding || resolution100ns != 10000 || !DpcProcessHolder.DpcReadbackAccepted(current))
+                        throw new IOException("DPC 已退出、服务身份变化或分辨率变粗；已停止本次自动重启。关闭帧格后重新检测再开启。");
+                    _state = _state with { Current100ns = current, Holding = true, DpcProcessVerified = true, HasError = false, UpdatedUtc = _clock() };
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Stop(); _dpcFailureLatched = true;
+                    _state = _state with { HasError = true, DpcProcessVerified = false, Message = ex.Message + "；" + _state.Message, UpdatedUtc = _clock() };
+                    return false;
+                }
+            }
+            if (holder.KernelRequest)
+            {
+                var current = _currentResolution();
+                if (holder.Holding && holder.Resolution100ns == resolution100ns
+                    && KernelReadbackAccepted(resolution100ns, holder.Granted100ns, current))
+                {
+                    observe?.Invoke(resolution100ns, current);
+                    _state = _state with { Current100ns = current, Granted100ns = holder.Granted100ns,
+                        Enabled = true, Holding = true, KernelResolutionVerified = true, VerifiedGlobal = false,
+                        RequestlessMilliseconds = null, HasError = false, UpdatedUtc = _clock() };
+                    return true;
+                }
+                return ApplyKernel(resolution100ns, supported);
+            }
             if (api.HasPendingCleanup)
             {
                 if (!Stop()) return false;
@@ -288,6 +348,41 @@ internal sealed class OptimalClockController(IOptimalClockHolderApi holder, IOpt
         }
     }
 
+    private bool EnsureDpcAssisted(uint requested, bool supported)
+    {
+        if (_dpcFailureLatched) return false;
+        if (!_state.Enabled)
+        {
+            var applied = Apply(requested, supported);
+            if (!applied) _dpcFailureLatched = true;
+            return applied;
+        }
+        try
+        {
+            var current = _currentResolution();
+            if (!holder.Holding || holder.Resolution100ns != requested || current == 0 || current > (ulong)requested + 50)
+                throw new IOException("DPC或候选持有进程已退出，或当前值不符合目标；本次不自动重拉DPC。");
+            if (_clock() - _lastVerification >= VerificationInterval)
+            {
+                var measured = MeasureEffect(requested);
+                if (!EffectIsConfirmed(requested, measured)) throw new IOException("DPC辅助锁定的独立等待复验未通过。");
+                _lastVerification = _clock();
+                _state = _state with { RequestlessMilliseconds = measured, GlobalVerifiedUtc = _lastVerification };
+            }
+            observe?.Invoke(requested, current);
+            _state = _state with { Current100ns = current, Holding = true, Enabled = true, DpcProcessVerified = true,
+                VerifiedGlobal = true, HasError = false, UpdatedUtc = _clock() };
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Stop(); _dpcFailureLatched = true;
+            _state = _state with { HasError = true, DpcProcessVerified = false, VerifiedGlobal = false,
+                Message = ex.Message + "；" + _state.Message, UpdatedUtc = _clock() };
+            return false;
+        }
+    }
+
     private double? MeasureEffect(uint resolution100ns)
     {
         var values = new List<double>();
@@ -305,9 +400,88 @@ internal sealed class OptimalClockController(IOptimalClockHolderApi holder, IOpt
         return values[1];
     }
 
+    private bool ApplyDpc(uint requested, bool supported)
+    {
+        _dpcFailureLatched = false;
+        try
+        {
+            if (!supported || requested != 10000) throw new IOException("自备原版 DPC EXE 路径只申请 1.0000ms。");
+            if (!holder.Ensure(requested)) throw new IOException(holder.Error);
+            uint current = 0;
+            for (var i = 0; i < 3; i++)
+            {
+                current = _currentResolution();
+                if (!holder.Holding || !DpcProcessHolder.DpcReadbackAccepted(current)) throw new IOException("DPC 进程、已核验服务及分辨率回读未同时通过。");
+            }
+            _state = IdleState() with { Supported = true, Enabled = true, Holding = true,
+                Resolution100ns = 10000, Granted100ns = 0, Current100ns = current, DpcProcessVerified = true,
+                Mode = OptimalClockMode.DpcProcess, UpdatedUtc = _clock(),
+                Message = $"自备 DPC 已常驻；原版目标 1.0000ms，当前 {current / 10000.0:0.0000}ms。进程与服务已核对，未验证 Sleep 或游戏效果。" };
+            PendulumDiagnosticLog.Emit(diagnostics, "dpc-process-confirmed", _state);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            var released = Stop(); _dpcFailureLatched = true;
+            _state = _state with { Supported = supported, HasError = true, DpcProcessVerified = false,
+                Mode = OptimalClockMode.DpcProcess, Message = "DPC 未确认：" + ex.Message + (released ? "；本工具启动的进程已释放。" : "；释放未确认，记录保留。"), UpdatedUtc = _clock() };
+            return false;
+        }
+    }
+
     internal static bool EffectIsConfirmed(uint resolution100ns, double? measured)
         => measured is { } value && double.IsFinite(value) && value > 0
             && value <= Math.Max(2.5, resolution100ns / 10000.0 * 2.5);
+
+    // Win10 driver path deliberately verifies only the timer request and numerical readback.
+    // It never calls MeasureRequestlessMs, starts load, or sets VerifiedGlobal.
+    internal static bool KernelReadbackAccepted(uint requested, uint granted, uint current)
+        => requested is >= 5000 and <= 10000 && granted is > 0 and <= 10000
+            && current > 0 && granted <= requested + 50 && current <= requested + 50;
+
+    private bool ApplyKernel(uint requested, bool supported)
+    {
+        try
+        {
+            if (!supported || requested is < 5000 or > 10000)
+                throw new InvalidOperationException("Win10 驱动请求范围为 0.5000～1.0000ms。");
+            if (api.HasPendingCleanup && !Stop()) return false;
+            if (!holder.Ensure(requested)) throw new InvalidOperationException(holder.Error);
+            uint current = 0;
+            for (var i = 0; i < 3; i++)
+            {
+                current = _currentResolution();
+                if (!holder.Holding || !KernelReadbackAccepted(requested, holder.Granted100ns, current))
+                    throw new InvalidOperationException($"分辨率回读未达标：请求 {requested / 10000.0:0.0000}ms，驱动授予 {holder.Granted100ns / 10000.0:0.0000}ms，系统当前 {current / 10000.0:0.0000}ms。");
+                observe?.Invoke(requested, current);
+            }
+            _state = IdleState() with { Supported = true, Enabled = true, Holding = true,
+                Resolution100ns = requested, Granted100ns = holder.Granted100ns, Current100ns = current,
+                KernelResolutionVerified = true, VerifiedGlobal = false, RequestlessMilliseconds = null,
+                Mode = OptimalClockMode.KernelResolution,
+                Message = $"Win10 驱动正在持有 {requested / 10000.0:0.0000}ms（授予 {holder.Granted100ns / 10000.0:0.0000}ms，当前 {current / 10000.0:0.0000}ms）；分辨率已确认，未测试 Sleep 或游戏效果。",
+                UpdatedUtc = _clock() };
+            PendulumDiagnosticLog.Emit(diagnostics, "kernel-resolution-confirmed", _state);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            PendulumDiagnosticLog.Emit(diagnostics, "kernel-resolution-error", new { error = ex.ToString() });
+            if (!Stop()) return false;
+            _state = IdleState() with { Supported = supported, HasError = true,
+                Mode = OptimalClockMode.KernelResolution, Message = "Win10 驱动精度未确认，已释放请求：" + ex.Message,
+                UpdatedUtc = _clock() };
+            return false;
+        }
+    }
+
+    internal void RecordKernelSelection(uint requested, DateTimeOffset completed)
+    {
+        lock (_gate) _state = _state with { BestLock100ns = requested, BestTypical100ns = null,
+            BestStable100ns = null, BestTypicalMedianMs = null, BestStableMedianMs = null,
+            ScanRequestlessBaselineMs = null, ScanLoadThreads = 0, SafetyMarginMs = 0,
+            StableConditions = holder.DpcProcess ? "原版DPC固定1ms；核对进程、服务与当前值，未测量Sleep" : "仅驱动授予与分辨率回读，不检测 Sleep", ScanUtc = completed, UpdatedUtc = _clock() };
+    }
 
     /// <summary>记录一次扫描结论（供状态展示；不改变当前持有值）。</summary>
     internal void RecordScan(OptimalClockScanResult result)

@@ -39,6 +39,13 @@ internal static class AceDefaultGameInspection
         {
             var manual = AceManualGameInspection.ReadRoots(manualRoots(), notes, blocked);
             AceGameDiscovery.MergeManual(candidates, manual);
+            if (GameInstallationScope.CurrentSelection is { AllInstallations: false } selection &&
+                GameInstallationScope.CurrentInventory is { } inventory)
+            {
+                var excluded = inventory.Where(p => !selection.Roots.Contains(p, StringComparer.OrdinalIgnoreCase))
+                    .Select(GameInstallationScope.PayloadKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                candidates.RemoveAll(c => excluded.Contains(GameInstallationScope.PayloadKey(c.Root)));
+            }
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex) { notes.Add("手动 ACE 检索目录配置无法读取，待核对：" + ex.Message); }

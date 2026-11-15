@@ -135,8 +135,9 @@ public partial class DashboardViewModel
                     }
                     else
                     {
-                        RuntimeHealthState = DashboardHealthState.Failed;
-                        RuntimeStatusText = "检测失败：" + ex.Message;
+                        RuntimeHealthState = DashboardHealthState.Normal;
+                        RuntimeStatusText = "";
+                        Log.Warn("主页运行库版本未能读取：" + ex.Message);
                     }
                 }
             }

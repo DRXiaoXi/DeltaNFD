@@ -51,6 +51,7 @@ public sealed class NvShaderCacheApplyArgs
 
 public sealed class ShaderRecoveryCleanArgs
 {
+    public Services.GameInstallationSelection? Selection { get; set; }
     public bool GameCache { get; set; }
     public bool NvidiaCache { get; set; }
 }

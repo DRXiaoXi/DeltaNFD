@@ -1,4 +1,24 @@
 using DeltaNFD.Services;
+if (args is ["--driver-priority-checks"]) { try { DriverPriorityChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--memory-improvement-checks"]) { try { await MemoryImprovementChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--procman-memory-simulated-checks"]) { try { await ProcmanMemoryChecks.RunAsync(nativeChild: false); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--custom-frame-target-checks"]) { try { CustomFrameTargetChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--custom-frame-live-identity-checks"]) { try { await CustomFrameTargetChecks.RunLiveAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--frame-pendulum-checks"]) { try { FramePendulumChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--dpc-window-checks"]) { try { DpcWindowChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--dpc-algorithm-checks"]) { try { DpcAlgorithmChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--dpc-pendulum-checks"]) { try { DpcPendulumChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--pendulum-driver-preparation-checks"]) { try { PendulumDriverPreparationChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--frame-timer-policy-checks"]) { try { FrameTimerPolicyChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--game-installation-scope-checks"]) { try { await GameInstallationScopeChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--frame-gpu-checks"]) { try { await BackendSmokeTest.FrameGpuChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (DeltaNFD.Execution.Procman.FrameTimerPolicyProbeHost.TryRun(args, out var policyProbeExit)) { Environment.ExitCode = policyProbeExit; return; }
+if (args is ["--alpha935-pendulum-checks"]) { try { Alpha935PendulumChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--d3ds-association-live-readonly", var d3dsLayout]) { try { await D3dsAssociationChecks.RunLiveAsync(d3dsLayout); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--d3ds-association-checks"]) { try { D3dsAssociationChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--startup-item-ipc-readonly-checks", var startupLayout]) { try { await StartupItemChecks.RunIpcReadOnlyAsync(startupLayout); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--startup-item-checks"]) { try { StartupItemChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--nvph-layout-probe-checks"]) { try { NvphLayoutProbeChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--feedback-repair-checks"]) { try { await FeedbackRepairChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--session-end-drain-checks"]) { try { await SessionEndDrainChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--backend-recovery-guidance-checks"]) { try { BackendRecoveryGuidanceChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
@@ -61,6 +81,12 @@ if (args is ["--public-release-checks"])
     return;
 }
 
+if (args is ["--pendulum-kernel-checks"])
+{
+    try { PendulumKernelChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
 if (args is ["--pendulum-compatibility-checks"] or ["--pendulum-environment-readonly"])
 {
     try { if (args[0] == "--pendulum-environment-readonly") PendulumCompatibilityChecks.ReadOnly(); else PendulumCompatibilityChecks.Run(); }
@@ -505,6 +531,20 @@ if (args is ["--vc14-dependency-log-replay", var logReplayRoot])
 if (args is ["--vc14-force-replace-checks", var forceReplaceRoot])
 {
     try { await Vc14ForceReplaceChecks.RunAsync(forceReplaceRoot); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--clock-value-checks"])
+{
+    try { await ClockValueChecks.RunAsync(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args is ["--runtime-1451-checks", var runtime1451Assets])
+{
+    try { await Runtime1451Checks.RunAsync(runtime1451Assets); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
@@ -1185,6 +1225,13 @@ if (args.Contains("--plugin-runtime-checks", StringComparer.OrdinalIgnoreCase))
 if (args.Contains("--plugin-weaknet-checks", StringComparer.OrdinalIgnoreCase))
 {
     try { BackendSmokeTest.PluginWeakNetBoostChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
+
+if (args.Contains("--plugin-dpc-timer-checks", StringComparer.OrdinalIgnoreCase))
+{
+    try { BackendSmokeTest.PluginDpcTimerHoldChecks.Run(); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }

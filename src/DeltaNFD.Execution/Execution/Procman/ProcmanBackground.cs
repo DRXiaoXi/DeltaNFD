@@ -12,6 +12,7 @@ public sealed partial class ProcmanEngine
     private bool _automaticMemoryActive;
     private DateTime? _lastAutomaticCheck;
     private DateTime? _lastAutomaticRound;
+    private DateTime? _lastAutomaticCandidateScan;
     private DateTime? _memoryHighSince;
     private string _memoryFeedback = "";
     private ProcmanMemoryTrimReport? _automaticMemoryReport;
@@ -59,9 +60,12 @@ public sealed partial class ProcmanEngine
         OperationResult legacyRecovery;
         lock (_gate)
         {
+            if (_memoryStopping > 0 || _memoryDisposed) return OperationResult.Fail("回收正在停止或引擎已关闭，参数尚未保存。");
             _backgroundStore.Save(config);
             if (_backgroundConfig.MemoryBatchLimit != config.MemoryBatchLimit || _backgroundConfig.MemoryMode != config.MemoryMode) _memoryPreview = null;
             _backgroundConfig = config;
+            Interlocked.Increment(ref _memoryRevision); // In-flight work cannot resume under a later configuration.
+            _lastAutomaticCandidateScan = null;
             _backgroundLoadError = "";
             _automaticMemoryActive = config.AutomaticMemoryEnabled && FrameAutomaticMemoryActive;
             _memoryHighSince = null;
@@ -70,7 +74,7 @@ public sealed partial class ProcmanEngine
             if (!legacyRecovery.Success) _automaticMemoryActive = false;
         }
         var stopped = OperationResult.Ok("");
-        if (_automaticMemoryActive || _rules.EnabledRules().Count > 0 || FramePriorityRequested || FrameTimerIgnoreRequested || TimerIgnoreListRequested || OptimalClockRequested) _ = StartRulesEngine();
+        if (_automaticMemoryActive || _rules.EnabledRules().Count > 0 || FramePriorityRequested || FrameNvidiaGpuRequested || FrameTimerIgnoreRequested || TimerIgnoreListRequested || OptimalClockRequested) _ = StartRulesEngine();
         else
         {
             stopped = StopRulesEngineAsync().GetAwaiter().GetResult();
@@ -108,28 +112,27 @@ public sealed partial class ProcmanEngine
         catch (InvalidDataException ex)
         {
             lock (_gate) { _backgroundLoadError = ex.Message; _automaticMemoryActive = false; }
-            if (FramePriorityRequested || FrameTimerIgnoreRequested || TimerIgnoreListRequested || OptimalClockRequested) _ = StartRulesEngine();
+            if (FramePriorityRequested || FrameNvidiaGpuRequested || FrameTimerIgnoreRequested || TimerIgnoreListRequested || OptimalClockRequested) _ = StartRulesEngine();
             FramePriorityTick(force: true);
-            FrameTimerIgnoreTick(force: true);
+            FramePendulumTick(force: true);
             TimerIgnoreListTick(force: true);
-            OptimalClockTick(force: true);
-            return OperationResult.Fail(ex.Message + "；" + FramePriorityState.Message + " " + FrameTimerIgnoreState.Message + " " + TimerIgnoreListState.Message + " " + OptimalClockState.Message);
+            return OperationResult.Fail(ex.Message + "；" + FramePriorityState.Message + " " + _frameNvidiaGpuShare.Snapshot.Message + " " + FrameTimerIgnoreState.Message + " " + TimerIgnoreListState.Message + " " + OptimalClockState.Message);
         }
         var memory = SaveBackgroundConfig(config with { AutomaticMemoryEnabled = memoryActive });
         var priorityOk = FramePriorityTick(force: true);
-        var timerIgnoreOk = FrameTimerIgnoreTick(force: true);
+        var clockAndIgnoreOk = FramePendulumTick(force: true);
         var timerListOk = TimerIgnoreListTick(force: true);
-        var clockOk = OptimalClockTick(force: true);
-        if (!memory.Success || !priorityOk || !timerIgnoreOk || !timerListOk || !clockOk)
-            return OperationResult.Fail(memory.Message + "；" + FramePriorityState.Message + " " + FrameTimerIgnoreState.Message + " " + TimerIgnoreListState.Message + " " + OptimalClockState.Message);
+        if (!memory.Success || !priorityOk || !clockAndIgnoreOk || !timerListOk)
+            return OperationResult.Fail(memory.Message + "；" + FramePriorityState.Message + " " + _frameNvidiaGpuShare.Snapshot.Message + " " + FrameTimerIgnoreState.Message + " " + TimerIgnoreListState.Message + " " + OptimalClockState.Message);
         var status = BackgroundStatus();
         if (memoryActive && !status.AutomaticMemoryActive)
             return OperationResult.Fail("帧格后台功能同步后，自动内存回收当前暂停：" + status.Note);
         return OperationResult.Ok((active
             ? $"帧格自动内存回收{(memoryActive ? "已启用" : "未选择")}。"
             : "自动内存回收已随帧格停用，功能选项和详细参数保留。")
-            + (AppSettingsStore.Read().FrameGamePriorityEnabled || FramePriorityState.RestorePending ? "；" + FramePriorityState.Message : "")
-            + (AppSettingsStore.Read().FrameGameTimerIgnoreEnabled || FrameTimerIgnoreState.RestorePending ? "；" + FrameTimerIgnoreState.Message : "")
+            + (AppSettingsStore.Read().FrameGamePriorityEnabled || AppSettingsStore.Read().FrameGameGpuPriorityEnabled || FramePriorityState.RestorePending ? "；" + FramePriorityState.Message : "")
+            + (AppSettingsStore.Read().FrameNvidiaGpuShareEnabled || _frameNvidiaGpuShare.Snapshot.RestorePending ? "；" + _frameNvidiaGpuShare.Snapshot.Message : "")
+            + (FrameTimerIgnoreRequested || FrameTimerIgnoreState.RestorePending ? "；" + FrameTimerIgnoreState.Message : "")
             + (TimerIgnoreListRequested || TimerIgnoreListState.RestorePending || TimerIgnoreListState.HasError ? "；" + TimerIgnoreListState.Message : "")
             + (OptimalClockRequested || OptimalClockState.Holding ? "；" + OptimalClockState.Message : ""));
     }
@@ -137,53 +140,51 @@ public sealed partial class ProcmanEngine
     private uint? MemoryPressure()
     {
         if (MemoryPressureForTests is { } read) return read();
-        return ReadMemoryTelemetry()?.LoadPercent;
+        return MemoryTelemetryForTests is { } telemetry ? telemetry()?.LoadPercent : ProcmanMemoryTelemetryReader.ReadPressure();
     }
 
     private ProcmanMemoryTelemetry? ReadMemoryTelemetry() => MemoryTelemetryForTests is { } read ? read()
         : MemoryPressureForTests is not null ? null : ProcmanMemoryTelemetryReader.Read();
 
-    internal void AutomaticMemoryOnceForTests(CancellationToken token = default) => AutomaticMemoryTick(token);
-    private void AutomaticMemoryTick(CancellationToken token)
+    private void AutomaticMemoryTick(MemoryWork work, DateTime now)
     {
+        if (!MemoryOperationAllowed(work))
+        { lock (_gate) { if (work.Revision == _memoryRevision) _memoryHighSince = null; } return; }
         lock (_gate)
         {
-            if (!_automaticMemoryActive || !FrameAutomaticMemoryActive || _frozen || token.IsCancellationRequested || OfflineModeGuard.BlocksNormalAutomation)
-            { _memoryHighSince = null; return; }
-            var now = ClockForTests?.Invoke() ?? DateTime.UtcNow;
-            if (_lastAutomaticCheck is { } check && now - check < TimeSpan.FromSeconds(30)) return;
-            _lastAutomaticCheck = now;
-            var policy = MemoryPolicy();
-            if (policy.ManualMemoryCleanOnly || policy.BlockReason(BackendCommands.CpuFrameMemoryClean) is not null)
-            { _memoryHighSince = null; return; }
-            if (MemoryPressure() is not { } pressure || pressure > 100 || pressure < policy.MemoryThreshold(_backgroundConfig.MemoryPressurePercent))
-            { _memoryHighSince = null; return; }
-            if (_lastAutomaticRound is { } round && now - round < TimeSpan.FromSeconds(policy.MemoryCooldown(_backgroundConfig.MemoryCooldownSeconds))) return;
+            if (!MemoryWorkCurrent(work)) return;
+            var cooldown = TimeSpan.FromSeconds(MemoryPolicy().MemoryCooldown(work.Config.MemoryCooldownSeconds));
+            if (_lastAutomaticRound is { } round && now - round < cooldown) return;
             _memoryHighSince ??= now;
-            if (now - _memoryHighSince < MemoryPressureWindowForTests) { _memoryFeedback = "内存压力达到阈值，正在确认是否持续高压。"; return; }
-            var mode = _backgroundConfig.MemoryMode;
-            var candidates = mode == ProcmanMemoryModes.Aggressive ? [] : MemoryCandidates(ReadMemorySample());
+            if (now - _memoryHighSince < MemoryPressureWindowForTests)
+            { _memoryFeedback = "内存压力达到阈值，正在确认是否持续高压。"; return; }
+            if (_lastAutomaticCandidateScan is { } scan && now - scan < cooldown) return;
+            _lastAutomaticCandidateScan = now;
+        }
+        using var targetLease = GameTargetService.Default.BeginOperation();
+        var mode = work.Config.MemoryMode;
+        var target = mode == ProcmanMemoryModes.Aggressive ? null : CaptureMemoryTarget();
+        var sample = mode == ProcmanMemoryModes.Aggressive ? [] : ReadMemorySample(() => MemoryWorkCurrent(work));
+        var candidates = mode == ProcmanMemoryModes.Aggressive ? []
+            : MemoryCandidates(sample, work.Config, target!, () => MemoryWorkCurrent(work) && MemoryTargetCurrent(target!));
+        lock (_gate)
+        {
+            if (!MemoryWorkCurrent(work)) return;
             if (mode != ProcmanMemoryModes.Aggressive && candidates.Length == 0)
-            { _memoryFeedback = "没有当前可回收的进程；仍按用户设置的间隔检查，不追加无效或回涨退避。"; return; }
-            _lastAutomaticRound = now;
-            if (mode != ProcmanMemoryModes.Aggressive)
             {
-                _automaticMemoryReport = TrimMemoryBatch(candidates.Select(c => c.Identity).ToList(), token, automatic: true);
-                FinishAutomaticRound();
+                _memoryFeedback = "没有当前可回收的进程；压力每 30 秒检查，候选扫描沿用设置间隔，不追加无效或回涨退避。";
                 return;
             }
+            _lastAutomaticRound = now;
         }
-        // 全局回收在 _gate 之外执行，避免系统调用阻塞预览和设置等操作；结果回写时再加锁。
-        var report = TrimGlobalMemory(token, automatic: true);
+        var report = mode == ProcmanMemoryModes.Aggressive ? TrimGlobalMemory(work)
+            : TrimMemoryBatch(candidates.Select(c => c.Identity).ToList(), sample, target!, work);
         lock (_gate)
         {
+            if (work.Revision != _memoryRevision) return;
             _automaticMemoryReport = report;
-            FinishAutomaticRound();
+            _memoryHighSince = null;
+            _memoryFeedback = "本轮已处理；下一轮沿用用户设置的最短间隔，不因无明显效果或快速回涨额外延长。";
         }
-    }
-    private void FinishAutomaticRound()
-    {
-        _memoryHighSince = null;
-        _memoryFeedback = "本轮已处理；下一轮沿用用户设置的最短间隔，不因无明显效果或快速回涨额外延长。";
     }
 }

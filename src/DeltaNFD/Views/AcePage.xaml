@@ -1,5 +1,6 @@
 <Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="using:DeltaNFD.Controls" x:Class="DeltaNFD.Views.AcePage">
     <ScrollViewer HorizontalContentAlignment="Stretch" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <Grid HorizontalAlignment="Stretch">
         <StackPanel MaxWidth="1440" Padding="28,20,28,32" Spacing="12">
             <StackPanel Spacing="4">
                 <ui:PageHeader Title="ACE 相关"/>
@@ -149,5 +150,6 @@
                 </StackPanel>
             </Border>
         </StackPanel>
+        </Grid>
     </ScrollViewer>
 </Page>

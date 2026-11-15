@@ -1,7 +1,9 @@
 """Check source repository boundaries without building or changing Git's index."""
 import argparse
 import subprocess
+import zipfile
 from pathlib import Path, PurePosixPath
+from driver_payloads import public_issues
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCAL_ROOTS = {
@@ -59,6 +61,11 @@ def main():
         size = path.stat().st_size
         total += size
         failures.extend(f"{name}: {issue}" for issue in violations(name, size))
+        if size < 100 * 1024 * 1024:
+            try:
+                failures.extend(f"{name}: {issue}" for issue in public_issues(name, path.read_bytes()))
+            except (ValueError, OSError, zipfile.BadZipFile) as ex:
+                failures.append(f"{name}: driver payload inspection failed: {ex}")
         if 50 * 1024 * 1024 <= size < 100 * 1024 * 1024:
             warnings.append(f"{name}: {size / 1024**2:.1f} MiB; prefer verified external inputs or Release assets")
     for message in warnings:

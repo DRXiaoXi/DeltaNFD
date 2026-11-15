@@ -1,6 +1,7 @@
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DeltaNFD.Services;
+using Microsoft.UI.Xaml.Controls;
 
 namespace DeltaNFD.ViewModels;
 
@@ -49,6 +50,8 @@ public partial class ShaderViewModel : ObservableObject
     partial void OnIsClearingChanged(bool value);
 
     private string driverAdvice = "正在体检驱动…";
+    private InfoBarSeverity driverAdviceSeverity = InfoBarSeverity.Informational;
+    public InfoBarSeverity DriverAdviceSeverity { get => driverAdviceSeverity; set => SetProperty(ref driverAdviceSeverity, value); }
     public string DriverAdvice
     {
         get => driverAdvice;
@@ -247,6 +250,8 @@ public partial class ShaderViewModel : ObservableObject
         {
             var status = await _shader.GetStatusAsync();
             DriverAdvice = status.DriverAdvice;
+            DriverAdviceSeverity = status.DriverState == ShaderDriverState.ProblemSeries ? InfoBarSeverity.Error
+                : status.DriverState == ShaderDriverState.TooOld ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
             if (status.IsNvidia)
             {
                 try
@@ -297,6 +302,7 @@ public partial class ShaderViewModel : ObservableObject
         catch (Exception ex)
         {
             DriverAdvice = "检测未完成：" + ex.Message;
+            DriverAdviceSeverity = InfoBarSeverity.Warning;
             CacheText = "PSOCache 状态未确认，请重新检测。";
             DiagText = "检测未完成，请重新检测：" + ex.Message;
             CanClear = false;

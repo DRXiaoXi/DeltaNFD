@@ -76,7 +76,7 @@ public partial class DashboardViewModel : ObservableObject
     partial void OnAceHealthStateChanged(DashboardHealthState value);
     private string runtimeStatusText = "检测中…";
     public string RuntimeStatusText { get => runtimeStatusText; set => SetProperty(ref runtimeStatusText, value); }
-    private DashboardHealthState runtimeHealthState = DashboardHealthState.Checking;
+    private DashboardHealthState runtimeHealthState = DashboardHealthState.Normal;
     public DashboardHealthState RuntimeHealthState
     {
         get => runtimeHealthState;
@@ -121,10 +121,11 @@ public partial class DashboardViewModel : ObservableObject
     public bool CanRefreshHealth => !IsHealthScanning && Services.Backends.PageBackendSessions.Manager.DeltaRunning == false;
     public bool RuntimeUiEnabled => ReleaseFeatures.RuntimeUiEnabled;
     public bool IsLimitedTestBuild => !RuntimeUiEnabled;
-    public string RuntimeActionText => RuntimePolicyBlocked ? "查看原因" : RuntimeHealthState == DashboardHealthState.Disabled ? "检测设置" : "去处理";
+    public bool RuntimeAlertVisible => RuntimeUiEnabled && RuntimeHealthState == DashboardHealthState.Warning;
+    public string RuntimeActionText => "查看运行库";
     public string HealthSummary => Services.Backends.PageBackendSessions.Manager.DeltaRunning != false
         ? DashboardMemoryHealth.PausedSummary(MemoryHealthState, HealthPauseReason)
-        : DashboardHealthPresentation.Summary(IsHealthScanning, ShaderHealthState, AceHealthState, RuntimeHealthState, MemoryHealthState);
+        : DashboardHealthPresentation.Summary(IsHealthScanning, ShaderHealthState, AceHealthState, RuntimeAlertVisible ? RuntimeHealthState : DashboardHealthState.Normal, MemoryHealthState);
 
     private string targetName = "三角洲";
     public string TargetName { get => targetName; set => SetProperty(ref targetName, value); }
@@ -164,6 +165,7 @@ public partial class DashboardViewModel : ObservableObject
     partial void OnAceHealthStateChanged(DashboardHealthState value) => OnPropertyChanged(nameof(HealthSummary));
     partial void OnRuntimeHealthStateChanged(DashboardHealthState value)
     {
+        OnPropertyChanged(nameof(RuntimeAlertVisible));
         OnPropertyChanged(nameof(HealthSummary));
         OnPropertyChanged(nameof(RuntimeActionText));
     }
@@ -171,20 +173,9 @@ public partial class DashboardViewModel : ObservableObject
 
     public void RefreshRuntimeDetectionPreference()
     {
-        RuntimeDetectionPreference.Shared.Reload();
-        if (!RuntimeUiEnabled)
-            return;
-        if (RuntimePolicyBlocked) return;
-        if (!RuntimeDetectionPreference.Shared.Enabled)
-        {
-            RuntimeHealthState = DashboardHealthState.Disabled;
-            RuntimeStatusText = "运行库检测已关闭，可在运行库页重新开启。";
-        }
-        else if (RuntimeHealthState == DashboardHealthState.Disabled)
-        {
-            RuntimeHealthState = DashboardHealthState.Information;
-            RuntimeStatusText = "运行库检测已开启，等待重新检测。";
-        }
+        // Retired preference cannot suppress the new minimum-version reminder.
+        if (RuntimeHealthState is DashboardHealthState.Disabled or DashboardHealthState.Checking)
+            RuntimeHealthState = DashboardHealthState.Normal;
     }
 
     partial void OnIsHealthScanningChanged(bool value)
@@ -318,47 +309,13 @@ public partial class DashboardViewModel : ObservableObject
 
     private async Task LoadRuntimeHealthAsync(int generation)
     {
-        var preference = RuntimeDetectionPreference.Shared;
-        var read = await preference.ReadAsync(async () =>
-        {
-            var snapshot = preference.Capture();
-            var status = await ServiceLocator.Guard.GetStatusAsync();
-            if (!preference.IsCurrent(snapshot))
-                throw new OperationCanceledException();
-            if (!CanApplyHealth(generation))
-                throw new OperationCanceledException();
-            var scan = await ServiceLocator.Guard.Scan14Async();
-            return (Status: status, Scan: scan);
-        });
-        if (!CanApplyHealth(generation))
-            return;
-        if (!preference.IsCurrent(read.Snapshot))
-        {
-            RefreshRuntimeDetectionPreference();
-            if (preference.Enabled)
-            {
-                RuntimeHealthState = DashboardHealthState.Information;
-                RuntimeStatusText = "检测设置已变化，请刷新组件状态重新检测。";
-            }
-
-            return;
-        }
-
-        if (read.Error is { } error)
-            throw error;
-        var(status, scan) = read.Value;
-        var guardNeedsReview = status.GuardIssue.Length > 0 || status.IfeoRestorePending || status.Ue4RestorePending
-            || status.Ue4PrereqDenied || status.IfeoManagedCount > 0 && !status.IfeoApplied;
-        RuntimeHealthState = DashboardHealthPresentation.Runtime(scan, guardNeedsReview);
-        RuntimeStatusText = scan.IsMissing ? "缺少 C++ 14.x 运行库，可能导致三角洲无法启动；请进入运行库页安装 14.44"
-            : scan.HasAbnormal ? "14.x 兼容性异常，请进入运行库页核对"
-            : scan.HasWarning ? "14.x 版本非 14.44 或状态待核对，请进入运行库页查看"
-            : status.GuardIssue.Length > 0 ? "防护状态待核对：" + status.GuardIssue
-            : status.IfeoRestorePending || status.Ue4RestorePending ? "旧防护有待恢复记录"
-            : guardNeedsReview ? "防护部分生效或有残留，可进入防护页核对"
-            : scan.HasEvaluation ? "V14 / 14.50 / 14.51：待长期评估；当前版本核对通过"
-            : status.IfeoApplied ? $"防护已开启，拦截 {status.ScopeManagedCount}/{status.IfeoTotal} 个安装器"
-            : "14.x 未发现版本异常；防护未开启";
+        var versions = await DeltaNFD.Inspection.RuntimeVersionInspection.ReadAsync();
+        if (!CanApplyHealth(generation)) return;
+        RuntimeHealthState = versions.RequiresUpdate ? DashboardHealthState.Warning : DashboardHealthState.Normal;
+        RuntimeStatusText = versions.RequiresUpdate
+            ? "C++ 运行库低于 14.44：" + versions.OlderVersions + "；可在运行库页选择 14.44 / 14.51 基线。"
+            : "";
+        if (versions.Issues.Count > 0) Log.Warn("运行库版本读取：" + string.Join("；", versions.Issues));
     }
 
     [RelayCommand]

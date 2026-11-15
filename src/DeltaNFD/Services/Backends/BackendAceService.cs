@@ -95,7 +95,8 @@ internal sealed class BackendAceService : IAceService
             if (blocker.Length > 0)
                 return OperationResult.Fail(blocker);
             var client = await EnsureClientAsync(CancellationToken.None);
-            var result = await client.InvokeAsync(command, new { }, progress, CancellationToken.None);
+            var result = await client.InvokeAsync(command,
+                new GameInstallationArgs { Selection = GameInstallationScope.CurrentSelection }, progress, CancellationToken.None);
             var mapped = AceCleanupResults.ToOperationResult(result);
             outcome = mapped;
             await client.QuiesceAsync(BackendSessions.StopTimeoutFor(BackendModules.Ace));

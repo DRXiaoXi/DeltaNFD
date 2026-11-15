@@ -248,6 +248,7 @@ public sealed class ProcmanReleaseArgs
 public sealed class ProcmanStatusSnapshot
 {
     public FrameGamePrioritySnapshot FramePriority { get; init; } = new();
+    public FrameNvidiaGpuShareSnapshot FrameNvidiaGpuShare { get; init; } = new();
 
     /// <summary>帧格：让系统忽略三角洲定时器分辨率请求的实际状态。</summary>
     public FrameTimerIgnoreSnapshot FrameTimerIgnore { get; init; } = new();

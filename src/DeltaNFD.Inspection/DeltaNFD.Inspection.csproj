@@ -3,12 +3,14 @@
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework><Platforms>x64</Platforms><PlatformTarget>x64</PlatformTarget>
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><LangVersion>latest</LangVersion>
-    <Version>0.9321</Version><InformationalVersion>Beta0.932-RC2</InformationalVersion>
+    <Version>0.9390</Version><InformationalVersion>Beta0.939</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../DeltaNFD.Contracts/DeltaNFD.Contracts.csproj" />
     <ProjectReference Include="../DeltaNFD.Shared/DeltaNFD.Shared.csproj" />
     <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />
+    <Content Include="../../licenses/ZstdSharp-MIT.txt" Link="licenses/ZstdSharp-MIT.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <InternalsVisibleTo Include="DeltaNFD.Execution" /><InternalsVisibleTo Include="DeltaNFD" /><InternalsVisibleTo Include="BackendSmokeTest" />
   </ItemGroup>
   <ItemGroup><Compile Remove="obj/**/*.cs" /></ItemGroup>

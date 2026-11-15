@@ -183,7 +183,8 @@ public sealed class AceCoreCheckResult
     public List<AceCoreAssociation> Associations { get; init; } = [];
     public List<string> Notes { get; init; } = [];
     public int ManuallyAssociatedGameCount { get; init; }
-    public bool HasExcessCoreFiles => SysCount > Games.Count;
+    public bool HasExcessCoreFiles => !InstallationScopeLimited && SysCount > Games.Count;
+    public bool InstallationScopeLimited { get; init; }
     public int AceDirectoryCount => Games.SelectMany(g => g.AceDirectories).Distinct(StringComparer.OrdinalIgnoreCase).Count();
     public bool CoreInventoryComplete { get; init; } = true;
     /// <summary>仅用户主动全盘检测时返回；快速检查为 null。</summary>

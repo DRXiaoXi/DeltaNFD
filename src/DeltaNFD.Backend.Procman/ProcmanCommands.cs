@@ -42,6 +42,7 @@ internal static class ProcmanCommands
 
     public static readonly BackendHostOptions Options = new()
     {
+        ClockValueVersion = 1,
         Module = BackendModules.Require(BackendModules.Procman),
         InitialPriorityClass = System.Diagnostics.ProcessPriorityClass.BelowNormal,
         OnStopping = StopAsync,
@@ -88,14 +89,18 @@ internal static class ProcmanCommands
             },
             [BackendCommands.ProcmanClockRelease] = context =>
                 Task.FromResult(Wrap(context.Command, Engine.ReleaseOptimalClock())),
+            [BackendCommands.ProcmanClockDpcConfigure] = context =>
+                Task.FromResult(Wrap(context.Command, Engine.ConfigureDpcPendulum(context.ArgsAs<DpcPendulumConfigureArgs>()))),
             [BackendCommands.ProcmanClockScan] = async context =>
             {
                 var args = context.ArgsAs<OptimalClockArgs>();
                 var scanKind = args.ScanMode == OptimalClockScanMode.StableLatency
                 ? OptimalClockScanKind.StableLatency : OptimalClockScanKind.LowestLatency;
-                var result = await Engine.ScanOptimalClockAsync(args.Quick, scanKind, context.CancellationToken, args.CompatibilityOnly);
+                var result = await Engine.ScanOptimalClockAsync(args.Quick, scanKind, context.CancellationToken, args.CompatibilityOnly, args.DpcAlgorithmScan);
                 return Wrap(context.Command, result);
             },
+            [BackendCommands.ProcmanClockValue] = async context =>
+                Wrap(context.Command, await Engine.ClockValueAsync(context.ArgsAs<ClockValueArgs>(), context.CancellationToken)),
         },
     };
 
@@ -201,13 +206,13 @@ internal static class ProcmanCommands
     {
         Module = BackendModules.Procman, Summary = snapshot.Summary,
         Complete = !snapshot.Entries.Any(e => e.Message.Contains("无法读取") || e.Message.Contains("身份未知"))
-            && !Engine.Snapshot().FramePriority.HasError,
+            && !Engine.Snapshot().FramePriority.HasError && Engine.DpcJournalReadable && Engine.Snapshot().OptimalClock?.HasError != true,
         Items = snapshot.Entries.Select(e => new ReconcileItem { Id = e.Pid + ":" + e.Capability, Kind = "procman", State = e.Status, HasBackup = true, Detail = e.Message })
             .Append(new ReconcileItem { Id = "frame-priority", Kind = "procman", State = Engine.Snapshot().FramePriority.Message,
                 HasBackup = Engine.Snapshot().FramePriority.BackupCount > 0 }).ToArray(),
         RecoveryScopes = [new() { Id = "all", Description = "停止规则、撤销 CCD 调度并按日志恢复全部进程和应用设置",
-            Available = Engine.Snapshot().HeldChangeCount > 0 || ProcmanCcdScheduler.Active,
-            AffectedCount = Engine.Snapshot().HeldChangeCount + (ProcmanCcdScheduler.Active ? 1 : 0) }],
+            Available = Engine.Snapshot().HeldChangeCount > 0 || ProcmanCcdScheduler.Active || Engine.DpcCleanupPending,
+            AffectedCount = Engine.Snapshot().HeldChangeCount + (ProcmanCcdScheduler.Active ? 1 : 0) + (Engine.DpcCleanupPending ? 1 : 0) }],
     };
 
     private static Task<BackendResult> SetAsync(BackendCommandContext context)
@@ -274,7 +279,7 @@ internal static class ProcmanCommands
             : OperationResult.Fail(string.Join("；", new[] { ccd, generic }.Where(r => !r.Success).Select(r => r.Message)));
         var snapshot = BuildRecoverySnapshot(Engine.Reconcile());
         var result = new RecoverOutcome { Scope = string.IsNullOrEmpty(args.Scope) ? "all" : args.Scope,
-            Success = outcome.Success, Verified = outcome.Success && snapshot.Complete && Engine.Snapshot().HeldChangeCount == 0 && !ProcmanCcdScheduler.Active,
+            Success = outcome.Success, Verified = outcome.Success && snapshot.Complete && Engine.Snapshot().HeldChangeCount == 0 && !ProcmanCcdScheduler.Active && !Engine.DpcCleanupPending,
             Message = outcome.Message, VerifiedSnapshot = snapshot };
         return outcome.Success ? BackendResult.Ok(context.Command, outcome.Message, result)
             : BackendResult.PartialResult(context.Command, outcome.Message, [], result);

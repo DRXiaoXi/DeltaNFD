@@ -51,11 +51,15 @@ public interface IAceCleanupEnvironment
 
     /// <summary>递归删除目录内容；被占用文件注册为重启后删除。返回 (释放 MB, 待重启删除数)。</summary>
     (double FreedMb, int RebootPending) DeleteDirectoryTree(string path);
+
+    AceLocalDeleteResult DeleteLocalDirectoryTree(string path, Action checkpoint) =>
+        throw new NotSupportedException("当前环境不支持独立本地 ACE 清理。");
 }
 
 /// <summary>真实系统实现（生产路径）。</summary>
 internal sealed class RealAceCleanupEnvironment : IAceCleanupEnvironment
 {
+    public AceLocalDeleteResult DeleteLocalDirectoryTree(string path, Action checkpoint) => AceLocalFileCleanup.Delete(path, checkpoint);
     private const int MoveFileDelayUntilReboot = 0x4;
 
     public bool IsElevated => ElevationHelper.IsElevated;

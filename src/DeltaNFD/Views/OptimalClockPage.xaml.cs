@@ -30,10 +30,20 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
     public bool Editable => Supported && !Experimental && !_applying && _global.Readable && PageBackendSessions.SystemWriteBlocker is null;
     public Visibility GlobalSettingsVisibility => Experimental ? Visibility.Collapsed : Visibility.Visible;
     public Visibility ExperimentalVisibility => Experimental ? Visibility.Visible : Visibility.Collapsed;
+    public string PageDescription => Experimental
+        ? "玩家自备DPC提供1ms基底，算法1、2扫描额外请求的最优值；随帧格持有与释放。"
+        : "扫描本机最佳计时器精度；全局锁定随帧格开启，并持续核对实际生效状态。";
+    public string SelectionTitle => Experimental ? "DPC 辅助算法 1、2" : "扫描本机最佳精度";
+    public string SelectionHelp => Experimental
+        ? "DPC固定申请1ms，额外候选由工具自己的全新进程请求；复用Win11算法与独立Sleep测量、CPU负载。只有候选读数和联合持有复验都通过才保存，失败保留已有基础1ms结果。"
+        : "粗扫、细扫与稳定性复测都使用 CPU 负载；每个候选用全新子进程测量。只保存通过安全侧复测的值；没有合格结果时不回退到默认值。扫描期间暂停锁定，完成后由帧格恢复监督。";
+    public string ProbeLabel => Experimental ? "仅检测 DPC（不保存）" : "仅检测兼容性（无 CPU 负载）";
+    public string SelectLabel => Experimental ? "扫描并保存最优值" : "扫描本机最佳值";
     public string ScanPrerequisiteText => Experimental
-        ? "先用无 CPU 负载的兼容检测确认本机能力；扫描会再次检测，通过后才保存全局锁定值。"
+        ? "先关闭帧格、退出三角洲并核验原版DPC。算法扫描会测量Sleep并施加CPU负载，结束后释放。只需基础1ms时，可使用上方“检测并保存基础1ms”。"
         : "完成全局精度设置与重启后，再扫描本机最佳值。";
-    public bool CanScan => Supported && !_applying && _global.Ready;
+    public bool CanScan => Supported && !Busy && _global.Ready;
+    public bool CanCancelScan => _applying && !_clockValueBusy && _scanCancellation is not null;
     /// <summary>检测模式下拉：0 = 算法1（更稳定），1 = 算法2（更激进）。</summary>
     public int ScanModeIndex
     {
@@ -48,15 +58,27 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
             Raise(nameof(DetailText));
         }
     }
-    public bool CanRefresh => Supported && !_applying;
+    public bool CanRefresh => Supported && !Busy;
+    public bool DpcWindowHidden => AppSettingsStore.Read().OptimalClockDpcWindowHidden;
+    private void DpcWindowHidden_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_loaded || _refreshing || _applying || sender is not ToggleSwitch toggle || toggle.IsOn == DpcWindowHidden) return;
+        try { AppSettingsStore.UpdateRequired(s => s.OptimalClockDpcWindowHidden = toggle.IsOn); _operationText = toggle.IsOn ? "已启用隐藏，核验成功的自有DPC窗口会持续隐藏。" : "已关闭隐藏，自有DPC窗口将在下一次核对时显示。"; }
+        catch (Exception ex) { _operationText = "窗口设置未保存：" + ex.Message; }
+        RaiseAll();
+    }
+    public bool CanPrepareDriver => Experimental && !_applying && PageBackendSessions.SystemWriteBlocker is null;
     public bool Busy => _applying;
     public bool GlobalIsOn => _global.Configured;
     public bool CanRegister => Editable && (_global.NeedsRegistration || _global.PendingRecovery);
     public string GlobalStatusText => _global.Message;
     public string OperationText => _operationText;
-    public string FrameLinkText => AppSettingsStore.Read().FrameModeActive
-        ? "帧格已开启：满足全局精度前置条件并完成本机扫描后，自动锁定并每两秒核对。"
-        : "锁定随帧格总开关开启、关闭；此页用于设置全局前提、扫描最佳值和查看提醒。";
+    public string DpcPathText => _global.Win10Dpc?.ExePath is { Length: > 0 } path ? "已核验原件：" + path : "尚未选择原版 DPC EXE；工具不会自动下载或复制第三方原件。";
+    public string FrameLinkText => Experimental
+        ? "保存后随帧格开启与释放：基础方式只运行DPC；算法或自定义方式同时运行DPC和额外请求。DPC退出后不反复自动拉起。"
+        : AppSettingsStore.Read().FrameModeActive
+        ? "帧格已开启：满足全局精度前提，并完成扫描或自定义验证后，自动锁定并每两秒核对。"
+        : "锁定随帧格总开关开启、关闭；此页可扫描、验证自定义值、测试 Sleep 和查看提醒。";
     public string StatusText
     {
         get
@@ -67,7 +89,18 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
             if (!Backend.HasCurrentStatus || State is not { } state || !BackendProcmanService.IsFresh(state.UpdatedUtc))
                 return "当前锁定状态尚未确认，请刷新；历史快照不能代表当前状态。";
             if (state.HasError) return "锁定未确认：" + state.Message;
-            if (state.Holding && (state.Resolution100ns is < 5100 or > 156250 || state.Current100ns is < 1 or > 156250))
+            if (state.Holding && state.DpcProcessVerified && state.VerifiedGlobal)
+                return $"DPC辅助持有：DPC基底1ms，额外目标{Ms(state.Resolution100ns):0.0000}ms，当前{Ms(state.Current100ns):0.0000}ms；独立等待{state.RequestlessMilliseconds:0.####}ms。";
+            if (state.Holding && state.DpcProcessVerified)
+                return state.Current100ns is > 0 and <= 10000
+                    ? $"自备 DPC 正在常驻：原版目标1.0000ms，当前{Ms(state.Current100ns):0.0000}ms；进程和服务已核验，未验证Sleep或游戏效果。"
+                    : "DPC 当前分辨率读数无效。";
+            if (state.Holding && state.KernelResolutionVerified)
+                return state.Resolution100ns is >= 5000 and <= 10000 && state.Granted100ns is > 0 and <= 10000
+                    && state.Current100ns > 0 && state.Current100ns <= (ulong)state.Resolution100ns + 50
+                    ? $"Win10 驱动分辨率已确认：请求 {Ms(state.Resolution100ns):0.0000}ms，授予 {Ms(state.Granted100ns):0.0000}ms，当前 {Ms(state.Current100ns):0.0000}ms。"
+                    : "驱动分辨率读数无效，无法确认请求。";
+            if (state.Holding && (state.Resolution100ns < (state.CustomResolutionActive ? 5000u : 5100u) || state.Resolution100ns > 156250 || state.Current100ns is < 1 or > 156250))
                 return "计时器读数无效，无法确认锁定。";
             if (state.Holding && (ulong)state.Current100ns + 10 < state.Resolution100ns)
                 return $"精度被更细请求覆盖：目标 {Ms(state.Resolution100ns):0.0000} ms，系统当前 {Ms(state.Current100ns):0.0000} ms；提醒已记录于下方。";
@@ -86,6 +119,8 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
             if (state is null || !Backend.HasCurrentStatus || !BackendProcmanService.IsFresh(state.UpdatedUtc))
                 return "等待后端当前状态；关闭页面后，帧格仍按已有后台循环持续核对。";
             var parts = new List<string>();
+            if (Experimental && !IsDpcAlgorithmSaved)
+                return "仅核对本工具启动的DPC、原版驱动服务和系统读数；没有直接读取其授予值，不保证反作弊兼容。不会关闭外部DPC或研究插件的实例。";
             if (state.BestLock100ns is { } best) parts.Add($"稳定侧锁定值 {Ms(best):0.0000} ms");
             if (state.BestTypical100ns is { } typical) parts.Add($"典型值 {Ms(typical):0.0000} ms，等待 {state.BestTypicalMedianMs:0.###} ms");
             if (state.BestStable100ns is { } stable) parts.Add($"更稳值 {Ms(stable):0.0000} ms，等待 {state.BestStableMedianMs:0.###} ms");
@@ -100,6 +135,12 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
         }
     }
     public string ScanText => _applying ? "操作进行中，请稍候…"
+        : Experimental ? (AppSettingsStore.Read().OptimalClockScanUtc is { } kernelUtc
+                && (AppSettingsStore.Read().OptimalClockScanPlatform == _global.PlatformId || IsDpcAlgorithmSaved)
+            ? IsDpcAlgorithmSaved
+                ? $"最近算法保存：{kernelUtc.ToLocalTime():yyyy-MM-dd HH:mm}（{ModeLabel(AppSettingsStore.Read().OptimalClockScanMode)}），目标{Ms(AppSettingsStore.Read().OptimalClockResolution100ns):0.0000}ms，DPC基底1ms。"
+                : $"最近基础DPC保存：{kernelUtc.ToLocalTime():yyyy-MM-dd HH:mm}；目标1.0000ms。"
+            : "尚未保存当前来源。仅检测不会保存；可保存基础1ms，或选择算法扫描并保存最优值。")
         : AppSettingsStore.Read().OptimalClockScanUtc is { } utc
             ? $"最近扫描：{utc.ToLocalTime():yyyy-MM-dd HH:mm}（{ModeLabel(AppSettingsStore.Read().OptimalClockScanMode)}，为上次实际扫描模式）；保存值 {Ms(AppSettingsStore.Read().OptimalClockResolution100ns):0.0000} ms"
             : "尚未扫描。" + ScanPrerequisiteText;
@@ -108,7 +149,8 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
         get
         {
             var state = State;
-            var text = "Win10 实验路径与 Win11 路径均保存本地钟摆日志：兼容检测、算法与负载、候选统计、锁定复验、精度变化及释放结果。\n"
+            var text = (Experimental ? "Win10日志记录基础DPC检测、算法候选/Sleep/CPU负载、联合持有与释放；基础1ms检测不测Sleep。\n"
+                : "Win11 日志记录兼容检测、算法与负载、候选统计、锁定复验、精度变化及释放结果。\n")
                 + (state?.DiagnosticLogPath is { Length: > 0 } path ? path : Log.LogDirectory)
                 + "\n日志有大小和数量上限；可打开文件夹复制 pendulum_ 开头的文件反馈。";
             if (state?.DiagnosticLogError is { Length: > 0 } error) text += "\n" + error;
@@ -127,13 +169,19 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
         }
     }
     private static double Ms(uint value) => value / 10000.0;
+    private bool IsDpcAlgorithmSaved => AppSettingsStore.Read().OptimalClockScanPlatform == _global.PlatformId + DpcPendulumSource.AlgorithmProfileSuffix;
     private void RaiseAll()
     {
+        RaiseCustom();
         foreach (var name in new[] { nameof(Editable), nameof(CanScan), nameof(CanRefresh), nameof(Busy), nameof(GlobalIsOn),
             nameof(CanRegister), nameof(GlobalStatusText), nameof(StatusText), nameof(DetailText), nameof(FrameLinkText),
             nameof(ScanText), nameof(HistoryText), nameof(OperationText) }) Raise(name);
         Raise(nameof(GlobalSettingsVisibility)); Raise(nameof(ExperimentalVisibility));
         Raise(nameof(ScanPrerequisiteText)); Raise(nameof(DiagnosticText));
+        Raise(nameof(CanPrepareDriver));
+        Raise(nameof(CanCancelScan));
+        Raise(nameof(DpcWindowHidden));
+        Raise(nameof(DpcPathText));
     }
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -197,16 +245,71 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
     private async void Scan_Click(object sender, RoutedEventArgs e) => await ScanAsync(false);
     private async void QuickScan_Click(object sender, RoutedEventArgs e) => await ScanAsync(true);
     private async void Compatibility_Click(object sender, RoutedEventArgs e) => await ScanAsync(true, true);
-    private async Task ScanAsync(bool quick, bool compatibilityOnly = false)
+    private async void DriverGuide_Click(object sender, RoutedEventArgs e)
+    {
+        await new ContentDialog { XamlRoot = XamlRoot, Title = "准备 Win10 钟摆驱动",
+            Content = "玩家自行准备原版DPC Latency Checker 1.4.0 EXE（306928字节）。工具仅记录并核验本地原件，不提供下载、嵌入或提取驱动。\n\n选择并同意使用后，先检测并保存；开启帧格运行DPC，关闭帧格或退出工具时正常关闭。原版自行加载其驱动并固定申请1ms。DPC已知有CVE-2025-51619蓝屏缺陷，有签名不代表反作弊兼容。系统阻止时不会关闭安全保护。\n\n先前研究插件或外部DPC应自行释放，本工具不会接管。释放未确认会保留专用记录；请关闭帧格后点“释放并核对DPC”。\n\n旧自研驱动、测试证书与TESTSIGNING不会被自动改动。恢复旧环境的方法见程序目录Docs/Pendulum/Win10-DPC.md。",
+            CloseButtonText = "知道了" }.ShowAsync();
+    }
+    private async void PrepareDriver_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanPrepareDriver) return;
+        try
+        {
+            if (App.MainWindow is null) return;
+            var path = DeltaNFD.Native.FolderPickerDialog.PickExecutable(WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow), AppSettingsStore.Read().OptimalClockDpcExePath, "选择原版 DPC EXE");
+            if (path is null) return;
+            if (await new ContentDialog { XamlRoot = XamlRoot, Title = "记录并使用自备 DPC？",
+                Content = "将核验所选原版1.4.0文件（306928字节），只保存路径，不复制或运行原件。\n\n之后检测/帧格会启动该程序，它会自行加载旧内核驱动并申请1ms。存在CVE-2025-51619蓝屏缺陷，反作弊兼容性未验收；文件有签名不等于安全保证。工具不修改证书、TESTSIGNING或启动保护。\n\n请仅在已接受这些限制的Win10环境使用，并先退出游戏。",
+                PrimaryButtonText = "同意并核验", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close }.ShowAsync() != ContentDialogResult.Primary) return;
+            await ConfigureDpcAsync(path);
+        }
+        catch (Exception ex) { _operationText = "DPC 文件选择未完成：" + ex.Message; RaiseAll(); }
+    }
+    private async Task ConfigureDpcAsync(string path)
+    {
+        _applying = true; _operationText = "正在核验原件，请稍候…"; RaiseAll();
+        try { var result = await Backend.InvokeAsync(BackendCommands.ProcmanClockDpcConfigure, new DpcPendulumConfigureArgs(path, true));
+            _operationText = result.Message; }
+        catch (Exception ex) { _operationText = "DPC 配置未完成：" + ex.Message; }
+        finally { _applying = false; await RefreshAsync(); RaiseAll(); }
+    }
+    private async void ClearDpc_Click(object sender, RoutedEventArgs e) { if (CanPrepareDriver) await ConfigureDpcAsync(""); }
+    private async void ReleaseDpc_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanRefresh) return; _applying = true; RaiseAll();
+        try { _operationText = (await Backend.ReleaseClockAsync()).Message; }
+        catch (Exception ex) { _operationText = "DPC 释放核对未完成：" + ex.Message; }
+        finally { _applying = false; await RefreshAsync(); }
+    }
+    private async void DriverFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var folder = System.IO.Path.Combine(AppContext.BaseDirectory, "Docs", "Pendulum");
+        try
+        {
+            if (!System.IO.Directory.Exists(folder)) throw new System.IO.DirectoryNotFoundException("随包驱动文件夹缺失，请重新获取完整的 Alpha0.935 安装包。");
+            if (!await Windows.System.Launcher.LaunchFolderPathAsync(folder)) throw new System.IO.IOException("未能打开驱动文件夹。");
+        }
+        catch (Exception ex) { _operationText = ex.Message; Raise(nameof(OperationText)); }
+    }
+    private async void BasicDpcSave_Click(object sender, RoutedEventArgs e) => await ScanAsync(false, basicDpc: true);
+    private void CancelScan_Click(object sender, RoutedEventArgs e) { _scanCancellation?.Cancel(); _operationText = "正在取消并释放临时请求，请稍候…"; RaiseAll(); }
+    private async Task ScanAsync(bool quick, bool compatibilityOnly = false, bool basicDpc = false)
     {
         if (!CanScan) return;
         _applying = true; _scanCancellation = new(); RaiseAll();
         try
         {
+            if (Experimental && await new ContentDialog { XamlRoot = XamlRoot, Title = "临时运行自备 DPC 检测？",
+                Content = compatibilityOnly || basicDpc
+                    ? "将临时运行原版DPC并核对1ms，结束后正常关闭；不测量Sleep或施加CPU负载。" + (compatibilityOnly ? "本次只检测，不保存。" : "通过后保存基础1ms方式。")
+                    : "将运行原版DPC保持1ms，并由工具子进程申请候选值。算法扫描会测量独立进程Sleep、施加CPU负载，可能耗时数分钟。结束后释放DPC和请求，通过联合持有复验才保存；未通过保留旧结果。",
+                PrimaryButtonText = "开始检测", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close }.ShowAsync() != ContentDialogResult.Primary) return;
             var mode = AppSettingsStore.Read().OptimalClockPreferredScanMode;
+            _operationText = Experimental && !compatibilityOnly && !basicDpc ? "正在准备DPC、扫描候选并复验，完成后核对释放…" : "正在检测，请稍候…"; RaiseAll();
             var result = compatibilityOnly
                 ? await Backend.ProbeClockCompatibilityAsync(_scanCancellation.Token)
-                : await Backend.ScanClockAsync(quick, mode, _scanCancellation.Token);
+                : await Backend.ScanClockAsync(quick, mode, _scanCancellation.Token, dpcAlgorithmScan: Experimental && !basicDpc);
             _operationText = result.Message;
         }
         catch (Exception ex) { _operationText = "钟摆计划扫描未完成：" + ex.Message; Log.Warn(_operationText); }

@@ -14,8 +14,10 @@ public static class ShaderRecoveryCleanup
         var roots = new List<string>();
         if (gameCache) roots.AddRange(DeltaForceLocator.FindPsoCachePaths());
         var driver = gameCache && !nvidiaCache ? ShaderService.ReadNvidiaDriver() : null;
-        var system = SystemRoots(gameCache, nvidiaCache, driver,
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+        if (nvidiaCache && !GameInstallationScope.AllowsSharedCleanup)
+            return OperationResult.Fail("系统/驱动缓存由所有游戏共享，请选择全部目录并确认共享清理。");
+        var system = GameInstallationScope.AllowsSharedCleanup ? SystemRoots(gameCache, nvidiaCache, driver,
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)) : [];
         return CleanRoots(roots, DeltaForceLocator.IsGameRunning, token, gameCache, system);
     });
 

@@ -36,7 +36,7 @@ public sealed partial class MainWindow
             PageBackendSessions.Manager.Navigate("");
         };
     }
-    private static string PageRoute(Type? page) => page == typeof(SystemOptimizePage) || page == typeof(TimerRecoveryPage) || page == typeof(LowMemoryRecoveryPage) ? "system"
+    private static string PageRoute(Type? page) => page == typeof(SystemOptimizePage) || page == typeof(DriverPriorityPage) || page == typeof(TimerRecoveryPage) || page == typeof(LowMemoryRecoveryPage) || page == typeof(StartupItemsPage) ? "system"
         : page == typeof(GpuSpoofPage) ? "spoof" : page == typeof(ShaderPage) || page == typeof(ShaderRecoveryPage) ? "shader"
         : page == typeof(AcePage) ? "ace" : page == typeof(RuntimePage) ? "runtime"
         : page == typeof(NvSettingsPage) ? "nvsettings" : page == typeof(GameModificationsPage) ? "gamemods" : "";
@@ -44,6 +44,9 @@ public sealed partial class MainWindow
         || PageBackendSessions.Manager.DeltaRunning == false;
     private void PageFrameNavigating(object sender, NavigatingCancelEventArgs e)
     {
+        if (e.SourcePageType == typeof(OptimalClockPage) && !ReleaseFeaturePolicy.PendulumEnabled
+            || e.SourcePageType == typeof(DriverPriorityPage) && !ReleaseFeaturePolicy.DriverPriorityEnabled)
+        { e.Cancel = true; return; }
         var route = PageRoute(e.SourcePageType);
         if (route == "gamemods" && ServiceLocator.GameTarget.IsCustom)
         { e.Cancel = true; ReportPageOperationResult("游戏改动仅适用于三角洲", GameTargetService.DeltaOnlyMessage); return; }
@@ -100,10 +103,10 @@ public sealed partial class MainWindow
             var tag = item.Tag?.ToString() ?? "";
             var targetAllowed = !(ServiceLocator.GameTarget.IsCustom && tag is "shader" or "ace" or "gamemods");
             item.IsEnabled = targetAllowed && CanEnterGamePage(tag);
-            if (GameLockedPages.Contains(tag) || tag == "system")
+            if (GameLockedPages.Contains(tag) || tag is "system" or "driverpriority")
             {
                 var help = !targetAllowed ? GameTargetService.DeltaOnlyMessage : running == false ? ""
-                    : tag == "system" ? PageBackendSessions.SystemWriteBlocker! : running == true
+                    : tag is "system" or "driverpriority" ? PageBackendSessions.SystemWriteBlocker! : running == true
                         ? "三角洲运行中，请退出游戏后使用。" : "无法确认三角洲运行状态，请等待监控恢复。";
                 ToolTipService.SetToolTip(item, help); AutomationProperties.SetHelpText(item, help);
             }
@@ -111,8 +114,8 @@ public sealed partial class MainWindow
         GamePageRestriction.IsOpen = running != false;
         GamePageRestriction.Title = running == true ? "三角洲运行期间的功能限制" : "三角洲运行状态待确认";
         GamePageRestriction.Message = running == true
-            ? "游戏改动、显卡伪装、着色器、ACE相关和运行库暂不可用；系统优化仅供查看。完全退出三角洲后恢复。"
-            : ServiceLocator.GameMonitor.StatusDetail + " 系统优化暂时仅供查看，其他维护栏目确认后开放。";
+            ? "游戏改动、显卡伪装、着色器、ACE相关和运行库暂不可用；系统优化、驱动优先级仅供查看。完全退出三角洲后恢复。"
+            : ServiceLocator.GameMonitor.StatusDetail + " 系统优化、驱动优先级暂时仅供查看，其他维护栏目确认后开放。";
         GameStateRetryButton.Visibility = running is null ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
         GameStateRetryButton.IsEnabled = !ServiceLocator.GameMonitor.IsConnecting;
         ShaderCacheButton.IsEnabled = !ServiceLocator.GameTarget.IsCustom && CanEnterGamePage("shader");

@@ -11,7 +11,8 @@ internal sealed class BackendShaderService : IShaderService
 
     public async Task<OperationResult> ClearPsoCacheAsync()
     {
-        var result = await _caller.InvokeAsync(BackendCommands.SystemShaderClear, new { }, null, CancellationToken.None);
+        var result = await _caller.InvokeAsync(BackendCommands.SystemShaderClear,
+            new GameInstallationArgs { Selection = GameInstallationScope.CurrentSelection }, null, CancellationToken.None);
         return BackendResults.Map(result, "清理着色器缓存");
     }
 

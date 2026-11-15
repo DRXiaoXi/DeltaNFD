@@ -91,9 +91,12 @@ internal static class FrameFeatureChecks
             .Select(e => (string?)e.Attribute("IsOn")).ToArray();
         Assert(!texts.Any(t => t is not null && t.Contains("核心常驻")),
             "帧格页面不再显示退休功能及其说明");
-        foreach (var option in new[] { "GamePowerSelected", "GameTimerIgnoreSelected", "ResponsivenessSelected",
+        foreach (var option in new[] { "GamePowerSelected", "ResponsivenessSelected",
             "PrioritySelected", "NicSelected", "UsbSelected" })
             Assert(toggles.Contains($"{{x:Bind {option}, Mode=TwoWay}}"), "缺少父子有效状态绑定：" + option);
+        Assert(!toggles.Any(t => t?.Contains("GameTimerIgnoreSelected") == true)
+            && doc.Descendants().Any(e => ((string?)e.Attribute("Visibility"))?.Contains("FrameSrv.PendulumPrepared") == true),
+            "钟摆在准备完成后自动联动，不保留独立忽略开关");
         Console.WriteLine("帧格独立状态检查通过：8 组父开关组合、子项关闭、配置/激活区分、DWM 单项持久化、偏好保留、旧配置退休字段清理、XAML 绑定。");
     }
 

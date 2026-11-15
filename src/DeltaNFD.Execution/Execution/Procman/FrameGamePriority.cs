@@ -15,26 +15,32 @@ internal interface IFramePriorityApi
 {
     string IdentityState(ProcmanProcessIdentity identity);
     IFramePriorityHandle Open(ProcmanProcessIdentity identity);
+    IFramePriorityHandle OpenForApply(ProcmanProcessIdentity identity) => Open(identity);
+    IFramePriorityHandle OpenForRestore(ProcmanProcessIdentity identity, bool customTarget) => Open(identity);
 }
 
 /// <summary>Durable per-property originals, fixed Delta identity, and shared procman ownership.</summary>
 internal sealed class FrameGamePriority
 {
-    internal sealed record Backup(ProcmanProcessIdentity Identity, string Property, int Original, int Applied);
-    private static readonly string[] Properties = ["priority", "ioPriority", "memoryPriority"];
+    internal sealed record Backup(ProcmanProcessIdentity Identity, string Property, int Original, int Applied, string? CustomTargetPath = null);
+    private static readonly string[] Properties = ["priority", "ioPriority", "memoryPriority", "gpuPriority"];
     private readonly object _gate = new();
     private readonly string _path;
     private readonly string _mutexName;
     private readonly ProcessPropertyGate _ownership;
     private readonly IFramePriorityApi _api;
+    private readonly Func<ProcmanProcessIdentity, bool> _accept;
+    private readonly Func<ProcmanProcessIdentity, string?>? _customScope;
     private readonly Dictionary<string, string> _blocked = [];
     private List<Backup> _known = [];
     private FrameGamePrioritySnapshot _snapshot = new();
     internal Action? BeforeSaveForTests { get; set; }
     internal FrameGamePrioritySnapshot Snapshot => Volatile.Read(ref _snapshot);
-    internal FrameGamePriority(string path, ProcessPropertyGate ownership, IFramePriorityApi? api = null)
+    internal FrameGamePriority(string path, ProcessPropertyGate ownership, IFramePriorityApi? api = null,
+        Func<ProcmanProcessIdentity, bool>? accept = null, Func<ProcmanProcessIdentity, string?>? customScope = null)
     {
         _path = path; _ownership = ownership; _api = api ?? new NativeFramePriorityApi();
+        _accept = accept ?? IsDelta; _customScope = customScope;
         _mutexName = @"Global\DeltaNFD.FramePriority." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(path).ToUpperInvariant())));
         if (File.Exists(path))
@@ -42,7 +48,7 @@ internal sealed class FrameGamePriority
             try
             {
                 var count = Load().Count;
-                _snapshot = new() { RestorePending = count > 0, BackupCount = count,
+                _snapshot = new() { RestorePending = count > 0, BackupCount = count, GpuBackupCount = _known.Count(b => b.Property == "gpuPriority"),
                     Message = count > 0 ? "存在三角洲优先级恢复记录，等待核对原值" : "未持有三角洲优先级恢复记录", UpdatedUtc = DateTimeOffset.UtcNow };
             }
             catch (Exception ex)
@@ -55,7 +61,7 @@ internal sealed class FrameGamePriority
     private static bool Valid(string property, int value) => property switch
     {
         "priority" => Enum.IsDefined((FrameCpuPriority)value), "ioPriority" => value is >= 0 and <= 3,
-        "memoryPriority" => value is >= 1 and <= 5, _ => false,
+        "memoryPriority" => value is >= 1 and <= 5, "gpuPriority" => value is >= 0 and <= 4, _ => false,
     };
     private List<Backup> Load()
     {
@@ -68,7 +74,9 @@ internal sealed class FrameGamePriority
         if (info.Length > 1024 * 1024 || (info.Attributes & FileAttributes.ReparsePoint) != 0)
             throw new IOException("优先级恢复记录大小或文件类型异常。");
         var records = JsonSerializer.Deserialize<List<Backup>>(File.ReadAllText(_path)) ?? throw new IOException("优先级恢复记录为空。");
-        if (records.Any(b => b is null || b.Identity is null || !IsDelta(b.Identity) || !Valid(b.Property, b.Original) || !Valid(b.Property, b.Applied))
+        if (records.Any(b => b is null || b.Identity is null || !(b.CustomTargetPath is null ? IsDelta(b.Identity)
+                : _customScope is not null && FrameGameTargetPolicy.CustomBackup(b.Identity, b.CustomTargetPath))
+                || !Valid(b.Property, b.Original) || !Valid(b.Property, b.Applied))
             || records.Select(b => (b.Identity, b.Property)).Distinct().Count() != records.Count)
             throw new IOException("优先级恢复记录包含无效或重复项。");
         _known = records; return records.ToList();
@@ -103,13 +111,15 @@ internal sealed class FrameGamePriority
                 try { entered = mutex.WaitOne(TimeSpan.FromSeconds(10)); } catch (AbandonedMutexException) { entered = true; }
                 if (!entered) throw new IOException("优先级原值记录交接超时。");
                 var records = Load();
-                if (wanted.Any(id => !IsDelta(id))) throw new IOException("只允许操作经核验的三角洲主进程，未操作其他进程。");
+                if (wanted.Any(id => !_accept(id))) throw new IOException("只允许操作经核验的当前游戏目标，未操作其他进程。");
                 if (!config.IsValid && wanted.Count > 0) throw new IOException("优先级档位无效，未修改进程。");
-                var targets = wanted.Distinct().ToArray();
+                bool Enabled(string property) => property == "gpuPriority" ? config.GpuEnabled : config.ProcessEnabled;
+                var properties = Properties.Where(Enabled).ToArray();
+                var targets = properties.Length > 0 ? wanted.Distinct().ToArray() : [];
                 var failures = new List<string>();
-                var counts = new Dictionary<string, int> { ["priority"] = 0, ["ioPriority"] = 0, ["memoryPriority"] = 0 };
+                var counts = new Dictionary<string, int> { ["priority"] = 0, ["ioPriority"] = 0, ["memoryPriority"] = 0, ["gpuPriority"] = 0 };
                 // Finish restoration before admitting a different process/configuration.
-                foreach (var saved in records.Where(b => !targets.Contains(b.Identity)).ToArray())
+                foreach (var saved in records.Where(b => !targets.Contains(b.Identity) || !Enabled(b.Property)).ToArray())
                 {
                     try
                     {
@@ -117,7 +127,7 @@ internal sealed class FrameGamePriority
                         var state = _api.IdentityState(saved.Identity);
                         if (state == "missing") { lease.Game(true); var next = records.Where(b => b != saved).ToList(); Save(next); records = next; continue; }
                         if (state != "same") throw new IOException("原进程身份无法确认，保留原值记录");
-                        using var handle = _api.Open(saved.Identity);
+                        using var handle = _api.OpenForRestore(saved.Identity, saved.CustomTargetPath is not null);
                         var current = handle.Read(saved.Property);
                         if (current != saved.Original)
                         {
@@ -130,33 +140,37 @@ internal sealed class FrameGamePriority
                     }
                     catch (Exception ex) { failures.Add($"PID {saved.Identity.Pid} {saved.Property} 恢复失败：{ex.Message}"); }
                 }
-                var restorePending = records.Any(b => !targets.Contains(b.Identity));
+                var restorePending = records.Any(b => !targets.Contains(b.Identity) || !Enabled(b.Property));
                 if (!restorePending)
                 foreach (var identity in targets)
-                foreach (var property in Properties)
+                foreach (var property in properties)
                 {
-                    var desired = property == "priority" ? (int)config.Cpu : property == "ioPriority" ? (int)config.Io : (int)config.Memory;
+                    var desired = property switch { "priority" => (int)config.Cpu, "ioPriority" => (int)config.Io,
+                        "memoryPriority" => (int)config.Memory, _ => (int)config.Gpu };
                     var key = Key(identity, property, desired);
                     try
                     {
                         using var lease = _ownership.Enter(identity, property);
                         if (lease.Owner is not ("system" or "frame-priority")) throw new IOException("该属性已由其他自动功能或进程管理手动/规则设置接管，未覆盖");
                         if (propertyAllowed?.Invoke(identity, property) == false) throw new IOException("该属性已有启用的自动设置或进程规则，帧格未覆盖");
-                        using var handle = _api.Open(identity);
+                        using var handle = _api.OpenForApply(identity);
                         var current = handle.Read(property);
                         if (!Valid(property, current)) throw new IOException("当前优先级不在可恢复范围，未修改");
-                        if (!allowed(identity)) throw new IOException("帧格、三角洲状态或恢复门禁已变化，未写入");
+                        if (!allowed(identity) || !_accept(identity)) throw new IOException("帧格、游戏目标或恢复门禁已变化，未写入");
                         var saved = records.FirstOrDefault(b => b.Identity == identity && b.Property == property);
                         if (_blocked.TryGetValue(key, out var blocked)) throw new IOException(blocked + "（本次进程不再重复写入；关闭并重新开启功能后可重试）");
                         if (saved is null || saved.Applied != desired)
                         {
-                            var next = new Backup(identity, property, saved?.Original ?? current, desired);
+                            var scope = _customScope?.Invoke(identity);
+                            if (scope is not null && !FrameGameTargetPolicy.CustomBackup(identity, scope) || scope is null && !IsDelta(identity))
+                                throw new IOException("当前游戏目标的恢复范围未确认，未写入。");
+                            var next = new Backup(identity, property, saved?.Original ?? current, desired, scope);
                             var updated = records.Where(b => b != saved).Append(next).ToList();
                             Save(updated); records = updated; // durable before any native write
                         }
                         if (current != desired)
                         {
-                            if (!allowed(identity)) throw new IOException("提交前执行条件已失效，未写入");
+                            if (!allowed(identity) || !_accept(identity)) throw new IOException("提交前执行条件已失效，未写入");
                             try
                             {
                                 handle.Write(property, desired);
@@ -170,18 +184,20 @@ internal sealed class FrameGamePriority
                 }
                 if (targets.Length == 0) _blocked.Clear();
                 var message = targets.Length == 0 ? (records.Count == 0 ? idle : "优先级恢复尚未完成，已保留原值记录。") : restorePending ? "旧优先级恢复未完成，未开始新的锁定。"
-                    : $"CPU {FrameGamePriorityConfig.CpuLabel(config.Cpu)} {counts["priority"]}/{targets.Length}；IO {FrameGamePriorityConfig.IoLabel(config.Io)} {counts["ioPriority"]}/{targets.Length}；内存 {FrameGamePriorityConfig.MemoryLabel(config.Memory)} {counts["memoryPriority"]}/{targets.Length}（回读确认）";
+                    : (config.ProcessEnabled ? $"CPU {FrameGamePriorityConfig.CpuLabel(config.Cpu)} {counts["priority"]}/{targets.Length}；IO {FrameGamePriorityConfig.IoLabel(config.Io)} {counts["ioPriority"]}/{targets.Length}；内存 {FrameGamePriorityConfig.MemoryLabel(config.Memory)} {counts["memoryPriority"]}/{targets.Length}（回读确认）" : "")
+                        + (config.GpuEnabled ? $"；GPU {FrameGamePriorityConfig.GpuLabel(config.Gpu)} {counts["gpuPriority"]}/{targets.Length}（回读确认）" : "");
                 if (failures.Count > 0) message = string.Join("；", failures) + "；" + message;
                 Volatile.Write(ref _snapshot, new() { Maintaining = targets.Length > 0 && !restorePending,
                     HasError = failures.Count > 0, RestorePending = restorePending, BackupCount = records.Count, InstanceCount = targets.Length,
                     CpuAppliedCount = counts["priority"], IoAppliedCount = counts["ioPriority"], MemoryAppliedCount = counts["memoryPriority"],
+                    GpuAppliedCount = counts["gpuPriority"], GpuProtocolVersion = 1, GpuBackupCount = records.Count(b => b.Property == "gpuPriority"),
                     Message = message, UpdatedUtc = DateTimeOffset.UtcNow });
                 return failures.Count == 0;
             }
             catch (Exception ex)
             {
                 Volatile.Write(ref _snapshot, new() { HasError = true, RestorePending = true, BackupCount = Math.Max(1, _known.Count),
-                    Message = "三角洲优先级未完成：" + ex.Message, UpdatedUtc = DateTimeOffset.UtcNow });
+                    Message = "游戏优先级未完成：" + ex.Message, UpdatedUtc = DateTimeOffset.UtcNow });
                 return false;
             }
             finally { if (entered) mutex.ReleaseMutex(); }
@@ -193,12 +209,17 @@ internal sealed class NativeFramePriorityApi : IFramePriorityApi
 {
     public string IdentityState(ProcmanProcessIdentity identity) => ProcmanIdentity.State(identity);
     public IFramePriorityHandle Open(ProcmanProcessIdentity identity) => new Handle(identity, ProcmanCapabilities.Pin(identity));
+    public IFramePriorityHandle OpenForApply(ProcmanProcessIdentity identity) => new Handle(identity,
+        ProcmanCapabilities.Pin(identity, requireOrdinaryUser: GameTargetService.Default.IsCustom));
+    public IFramePriorityHandle OpenForRestore(ProcmanProcessIdentity identity, bool customTarget) => new Handle(identity,
+        ProcmanCapabilities.Pin(identity, requireOrdinaryUser: customTarget));
     private sealed class Handle(ProcmanProcessIdentity identity, IDisposable pin) : IFramePriorityHandle
     {
         public int Read(string property)
         {
             var result = property switch { "priority" => ProcmanCapabilities.ReadPriority(identity.Pid),
                 "ioPriority" => ProcmanCapabilities.ReadIoPriority(identity.Pid), "memoryPriority" => ProcmanCapabilities.ReadMemoryPriority(identity.Pid),
+                "gpuPriority" => ProcmanCapabilities.ReadGpuPriority(identity.Pid),
                 _ => throw new IOException("未知优先级属性") };
             if (!result.Ok) throw new IOException(result.Error);
             if (property == "priority" && Enum.TryParse<ProcessPriorityClass>(result.Value, out var cpu)) return (int)cpu;
@@ -212,6 +233,7 @@ internal sealed class NativeFramePriorityApi : IFramePriorityApi
                 ? FramePriorityPrivilege.Acquire() : null;
             var result = property switch { "priority" => ProcmanCapabilities.SetPriority(identity.Pid, (ProcessPriorityClass)value),
                 "ioPriority" => ProcmanCapabilities.SetIoPriority(identity.Pid, value), "memoryPriority" => ProcmanCapabilities.SetMemoryPriority(identity.Pid, value),
+                "gpuPriority" => ProcmanCapabilities.SetGpuPriority(identity.Pid, value),
                 _ => throw new IOException("未知优先级属性") };
             if (!result.Ok) throw new IOException(result.Error);
         }

@@ -7,6 +7,11 @@ namespace DeltaNFD.Execution.Procman;
 // Independent implementation using Windows memory statistics. No Mem Reduct code is included.
 internal static class ProcmanMemoryTelemetryReader
 {
+    internal static uint? ReadPressure()
+    {
+        var memory = MemoryPurge.QueryMemory();
+        return memory.TotalPhys > 0 && memory.AvailPhys <= memory.TotalPhys && memory.LoadPercent <= 100 ? memory.LoadPercent : null;
+    }
     internal static ProcmanMemoryTelemetry? Read()
     {
         var memory = MemoryPurge.QueryMemory();

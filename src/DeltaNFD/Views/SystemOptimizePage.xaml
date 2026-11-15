@@ -1,5 +1,6 @@
 <Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="using:DeltaNFD.Controls" xmlns:vm="using:DeltaNFD.ViewModels" x:Class="DeltaNFD.Views.SystemOptimizePage">
     <ScrollViewer HorizontalContentAlignment="Stretch" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <Grid HorizontalAlignment="Stretch">
         <StackPanel MaxWidth="1440" Padding="28,20,28,32" Spacing="12">
             <StackPanel Spacing="4">
                 <ui:PageHeader Title="系统优化"/>
@@ -7,6 +8,13 @@
             </StackPanel>
             <!-- 子栏目选择 + 全局备份 -->
             <InfoBar x:Name="SystemReadOnlyNotice" IsOpen="True" IsClosable="False" Severity="Informational" Title="系统优化仅供查看" Message="正在确认三角洲运行状态。"/>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="自启动项目优化" Style="{StaticResource H3Style}" TextWrapping="Wrap"/>
+                    <TextBlock Text="查看登录启动登记，按需停用；原始备份支持单项或全部恢复。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <Button Content="管理自启动项目" Click="StartupItems_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                </StackPanel>
+            </Border>
             <StackPanel Spacing="12">
                 <ItemsControl ItemsSource="{x:Bind ViewModel.Bx.Sections}">
                     <ItemsControl.ItemsPanel>
@@ -150,5 +158,6 @@
                 </StackPanel>
             </Border>
         </StackPanel>
+        </Grid>
     </ScrollViewer>
 </Page>

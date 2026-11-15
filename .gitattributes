@@ -44,3 +44,13 @@ tools/Repair-GpuSpoofPending.ps1 -text
 retired/** -text linguist-vendored
 tools/**/vendor/** -text linguist-vendored
 notes/** linguist-documentation
+
+# Source exports never carry private vendor driver inputs or original DPC binaries.
+**/private-driver-payloads/** export-ignore
+**/_private-driver-payloads/** export-ignore
+**/Drivers/DpcTimer/** export-ignore
+**/DpcTimer/package/** export-ignore
+**/dpclat*.sys export-ignore
+**/dpc.sys export-ignore
+**/dpclat*.exe export-ignore
+**/DPCLatencyChecker*.exe export-ignore

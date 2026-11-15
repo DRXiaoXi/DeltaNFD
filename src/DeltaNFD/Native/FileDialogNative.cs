@@ -17,8 +17,8 @@ internal static class FolderPickerDialog
     /// <summary>弹出文件夹选择框。返回所选目录全路径；用户取消返回 null。</summary>
     public static string? Pick(nint ownerHwnd, string? initialFolder) => PickCore(ownerHwnd, initialFolder, true);
 
-    public static string? PickExecutable(nint ownerHwnd, string? initialFile) =>
-        PickCore(ownerHwnd, File.Exists(initialFile) ? Path.GetDirectoryName(initialFile) : null, false);
+    public static string? PickExecutable(nint ownerHwnd, string? initialFile, string? title = null) =>
+        PickCore(ownerHwnd, File.Exists(initialFile) ? Path.GetDirectoryName(initialFile) : null, false, executableTitle: title);
 
     public static string? PickPluginPackage(nint ownerHwnd)
     {
@@ -35,7 +35,7 @@ internal static class FolderPickerDialog
         return path;
     }
 
-    private static string? PickCore(nint ownerHwnd, string? initialFolder, bool folderOnly, bool pluginPackage = false)
+    private static string? PickCore(nint ownerHwnd, string? initialFolder, bool folderOnly, bool pluginPackage = false, string? executableTitle = null)
     {
         var ownerWasEnabled = ownerHwnd != nint.Zero && IsWindowEnabled(ownerHwnd);
         var dialog = (IFileOpenDialog)new FileOpenDialogCom();
@@ -48,7 +48,7 @@ internal static class FolderPickerDialog
             {
                 dialog.SetFileTypes(1, [new FilterSpec { Name = pluginPackage ? "插件包 (*.dnfdplugin)" : "应用程序 (*.exe)", Pattern = pluginPackage ? "*.dnfdplugin" : "*.exe" }]);
                 dialog.SetDefaultExtension(pluginPackage ? "dnfdplugin" : "exe");
-                dialog.SetTitle(pluginPackage ? "选择拓展插件包" : "选择主进程 EXE");
+                dialog.SetTitle(pluginPackage ? "选择拓展插件包" : executableTitle ?? "选择主进程 EXE");
             }
 
             if (!string.IsNullOrEmpty(initialFolder) && Directory.Exists(initialFolder))

@@ -69,8 +69,11 @@ public sealed partial class ProcmanEngine : IDisposable
         try { _backgroundConfig = _backgroundStore.Load(); }
         catch (InvalidDataException ex) { _backgroundLoadError = ex.Message; }
         _properties = new ProcessPropertyGate(Path.Combine(Path.GetDirectoryName(logPath)!, "procman-owners.json"));
-        _framePriority = new(Path.Combine(Path.GetDirectoryName(logPath)!, "frame-game-priority.json"), _properties, priorityApi);
-        _frameTimerIgnore = new(Path.Combine(Path.GetDirectoryName(logPath)!, "frame-game-timer-ignore.json"), _properties, timerIgnoreApi, timerProbe);
+        _framePriority = new(Path.Combine(Path.GetDirectoryName(logPath)!, "frame-game-priority.json"), _properties, priorityApi,
+            accept: IsSelectedFrameTarget, customScope: FrameCustomBackupPath);
+        _frameNvidiaGpuShare = new(Path.Combine(Path.GetDirectoryName(logPath)!, "frame-nvidia-gpu-share.json"));
+        _frameTimerIgnore = new(Path.Combine(Path.GetDirectoryName(logPath)!, "frame-game-timer-ignore.json"), _properties, timerIgnoreApi, timerProbe,
+            accept: IsSelectedFrameTarget, label: "目标游戏", customScope: FrameCustomBackupPath);
         _timerIgnoreList = new(Path.Combine(Path.GetDirectoryName(logPath)!, "timer-ignore-list.json"), _properties, timerIgnoreApi, timerProbe,
             accept: IsTimerIgnoreListTarget, validate: IsTimerIgnoreListIdentityAllowed,
             capability: "timer-ignore-list", label: "忽略列表");
@@ -78,11 +81,20 @@ public sealed partial class ProcmanEngine : IDisposable
         _pendulumLog = new(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(logPath))!, "logs"));
         _optimalClockMeasurement = clockMeasurement ?? new NativeOptimalClockMeasurementApi(executable, diagnostics: _pendulumLog.Write);
         _pendulumHistory = new(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(logPath))!, "pendulum-clock-notices.json"));
-        _optimalClock = new(clockHolder ?? new NativeOptimalClockHolder(executable, _pendulumLog.Write),
+        _optimalClockHolder = clockHolder ?? (DeltaNFD.Inspection.PendulumGlobalInspection.ExperimentalWindows10
+            ? new DpcCombinedHolder(new DpcProcessHolder(new NativeDpcSessionApi(_pendulumLog.Write), () => AppSettingsStore.ReadRequired().OptimalClockDpcExePath, _pendulumLog.Write),
+                new NativeOptimalClockHolder(executable, _pendulumLog.Write))
+            : new NativeOptimalClockHolder(executable, _pendulumLog.Write));
+        _optimalClock = new(_optimalClockHolder,
             _optimalClockMeasurement, clockCurrentResolution, _pendulumHistory.Observe, _pendulumLog.Write);
     }
 
-    public void Dispose() => _ = StopRulesEngineAsync().GetAwaiter().GetResult();
+    public void Dispose()
+    {
+        lock (_gate) _memoryDisposed = true;
+        try { _ = StopRulesEngineAsync().GetAwaiter().GetResult(); }
+        finally { _frameNvidiaGpuShare.Dispose(); }
+    }
 
     // ---------------- 状态 ----------------
 
@@ -93,9 +105,10 @@ public sealed partial class ProcmanEngine : IDisposable
         RulesEngineRunning = _rulesEngineRunning,
         ResponsivenessEnabled = false, // Legacy wire fields: suppression has been retired.
         ResponsivenessConfig = null,
-        HeldChangeCount = _changeLog.Records.Count + _framePriority.Snapshot.BackupCount + _frameTimerIgnore.Snapshot.BackupCount + _timerIgnoreList.Snapshot.BackupCount,
-        UnreconciledCount = _changeLog.Records.Count + _framePriority.Snapshot.BackupCount + _frameTimerIgnore.Snapshot.BackupCount + _timerIgnoreList.Snapshot.BackupCount,
+        HeldChangeCount = _changeLog.Records.Count + _framePriority.Snapshot.BackupCount + NvidiaGpuShareHeldCount + _frameTimerIgnore.Snapshot.BackupCount + _timerIgnoreList.Snapshot.BackupCount,
+        UnreconciledCount = _changeLog.Records.Count + _framePriority.Snapshot.BackupCount + NvidiaGpuShareHeldCount + _frameTimerIgnore.Snapshot.BackupCount + _timerIgnoreList.Snapshot.BackupCount,
         FramePriority = FramePriorityState,
+        FrameNvidiaGpuShare = _frameNvidiaGpuShare.Snapshot,
         FrameTimerIgnore = FrameTimerIgnoreState,
         TimerIgnoreList = TimerIgnoreListState,
         OptimalClock = OptimalClockState,
@@ -672,7 +685,7 @@ public sealed partial class ProcmanEngine : IDisposable
         var timerIgnoreRestored = RestoreFrameTimerIgnore();
         timerIgnoreRestored &= RestoreTimerIgnoreList("全部还原：忽略列表的定时器请求已恢复");
         var clockRestored = StopOptimalClock("全部还原：钟摆计划已释放");
-        message += " " + FramePriorityState.Message + " " + FrameTimerIgnoreState.Message + " " + OptimalClockState.Message;
+        message += " " + FramePriorityState.Message + " " + _frameNvidiaGpuShare.Snapshot.Message + " " + FrameTimerIgnoreState.Message + " " + OptimalClockState.Message;
         if (failed > 0 || conflict > 0 || !frameRestored || !timerIgnoreRestored || !clockRestored) { SetError(message); return OperationResult.Fail(message); }
         SetAction(message);
         return OperationResult.Ok(message);
@@ -746,6 +759,7 @@ public sealed partial class ProcmanEngine : IDisposable
     {
         lock (_gate)
         {
+            if (_memoryStopping > 0 || _memoryDisposed) return OperationResult.Fail("规则引擎正在停止或已关闭，未重新启动。");
             if (BackgroundLoopDisabledForTests) { _frozen = false; return OperationResult.Ok("隔离测试手动驱动循环。"); }
             if (_rulesEngineRunning) return OperationResult.Ok("规则引擎已在运行。");
             _frozen = false;
@@ -760,31 +774,47 @@ public sealed partial class ProcmanEngine : IDisposable
 
     public async Task<OperationResult> StopRulesEngineAsync()
     {
+        CancellationTokenSource? clockCancellation;
+        Task clockExperiment;
         CancellationTokenSource? cts;
         Task? loop;
+        Task memory;
         lock (_gate)
         {
+            clockCancellation = _clockValueCancellation;
+            clockExperiment = _clockValueFinished?.Task ?? Task.CompletedTask;
             cts = _rulesCts;
             loop = _rulesLoop;
             _rulesCts = null;
             _rulesLoop = null;
             _rulesEngineRunning = false;
             _frozen = true;
+            Interlocked.Increment(ref _memoryRevision);
+            _memoryStopping++;
+            _memoryWork?.Cancel.Cancel();
+            memory = _memoryWork?.Finished.Task ?? Task.CompletedTask;
         }
-        if (cts is not null)
+        try
         {
-            try { cts.Cancel(); } catch (ObjectDisposedException) { }
-            if (loop is not null) { try { await loop; } catch (OperationCanceledException) { } }
-            cts.Dispose();
+            try { clockCancellation?.Cancel(); } catch (ObjectDisposedException) { }
+            await clockExperiment.ConfigureAwait(false);
+            if (cts is not null)
+            {
+                try { cts.Cancel(); } catch (ObjectDisposedException) { }
+                if (loop is not null) { try { await loop; } catch (OperationCanceledException) { } }
+                cts.Dispose();
+            }
+            await memory.ConfigureAwait(false);
+            SetAction("规则引擎已停止。");
+            var priorities = RestoreFramePriorities("进程管理监控已停止，三角洲优先级原值已恢复");
+            var timerIgnore = RestoreFrameTimerIgnore("进程管理监控已停止，三角洲定时器请求忽略状态已恢复");
+            timerIgnore &= RestoreTimerIgnoreList("进程管理监控已停止，忽略列表的定时器请求已恢复");
+            var clock = StopOptimalClock("进程管理监控已停止，钟摆计划已释放");
+            return priorities && timerIgnore && clock
+                ? OperationResult.Ok("规则引擎已停止，帧格进程优先级、定时器忽略状态与钟摆计划均已恢复。")
+                : OperationResult.Fail(FramePriorityState.Message + " " + _frameNvidiaGpuShare.Snapshot.Message + " " + FrameTimerIgnoreState.Message + " " + OptimalClockState.Message);
         }
-        SetAction("规则引擎已停止。");
-        var priorities = RestoreFramePriorities("进程管理监控已停止，三角洲优先级原值已恢复");
-        var timerIgnore = RestoreFrameTimerIgnore("进程管理监控已停止，三角洲定时器请求忽略状态已恢复");
-        timerIgnore &= RestoreTimerIgnoreList("进程管理监控已停止，忽略列表的定时器请求已恢复");
-        var clock = StopOptimalClock("进程管理监控已停止，钟摆计划已释放");
-        return priorities && timerIgnore && clock
-            ? OperationResult.Ok("规则引擎已停止，帧格进程优先级、定时器忽略状态与钟摆计划均已恢复。")
-            : OperationResult.Fail(FramePriorityState.Message + " " + FrameTimerIgnoreState.Message + " " + OptimalClockState.Message);
+        finally { lock (_gate) _memoryStopping--; }
     }
 
     private async Task RunRulesLoopAsync(CancellationToken token)
@@ -795,10 +825,9 @@ public sealed partial class ProcmanEngine : IDisposable
             {
                 await RulesTickAsync(token).ConfigureAwait(false);
                 FramePriorityTick();
-                FrameTimerIgnoreTick();
+                FramePendulumTick();
                 TimerIgnoreListTick();
-                OptimalClockTick();
-                AutomaticMemoryTick(token);
+                _ = ScheduleAutomaticMemory(token);
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
@@ -1035,7 +1064,7 @@ public sealed partial class ProcmanEngine : IDisposable
         try { _rules.Save(rule); }
         catch (Exception ex) { return OperationResult.Fail("规则保存失败：" + ex.Message); }
         // 有启用规则时保证引擎在跑（关窗驻留/最小化时规则仍在后台执行）。
-        if (_rules.EnabledRules().Count > 0 || _automaticMemoryActive || FramePriorityRequested || FrameTimerIgnoreRequested || TimerIgnoreListRequested || OptimalClockRequested) _ = StartRulesEngine();
+        if (_rules.EnabledRules().Count > 0 || _automaticMemoryActive || FramePriorityRequested || FrameNvidiaGpuRequested || FrameTimerIgnoreRequested || TimerIgnoreListRequested || OptimalClockRequested) _ = StartRulesEngine();
         else lock (_gate) _frozen = false;
         SetAction($"规则已保存：{rule.ExecutablePath} {rule.Capability}={rule.Value}" + (rule.Enabled ? "（启用）" : "（停用）"));
         return OperationResult.Ok("规则已保存。");
@@ -1059,7 +1088,7 @@ public sealed partial class ProcmanEngine : IDisposable
         if (!_rules.Delete(executablePath, capability))
             return OperationResult.Fail("规则删除失败：未找到或文件被占用。");
         SetAction($"规则已删除并恢复其修改：{executablePath} {capability}");
-        if (_rules.EnabledRules().Count > 0 || _automaticMemoryActive || FramePriorityRequested || FrameTimerIgnoreRequested || TimerIgnoreListRequested || OptimalClockRequested) _ = StartRulesEngine();
+        if (_rules.EnabledRules().Count > 0 || _automaticMemoryActive || FramePriorityRequested || FrameNvidiaGpuRequested || FrameTimerIgnoreRequested || TimerIgnoreListRequested || OptimalClockRequested) _ = StartRulesEngine();
         else lock (_gate) _frozen = false;
         await Task.CompletedTask;
         return OperationResult.Ok("规则已删除，其拥有的修改已还原。");

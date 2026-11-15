@@ -77,8 +77,7 @@ internal static class PendulumPlanChecks
             using var engine = new ProcmanEngine(Path.Combine(root, "changes.json"), Path.Combine(root, "rules.json"),
                 clockHolder: holder, clockMeasurement: measurement, clockCurrentResolution: () => current);
             engine.BackgroundLoopDisabledForTests = true;
-            engine.ExperimentalTimerFeaturesForTests = true;
-                engine.FrameModeActiveForTests = () => frame;
+            engine.FrameModeActiveForTests = () => frame;
             engine.GlobalPrecisionForTests = () => global;
             AppSettingsStore.Update(s => { s.OptimalClockEnabled = true; s.OptimalClockResolution100ns = 5150; s.OptimalClockScanUtc = DateTimeOffset.UtcNow; });
             Check(engine.OptimalClockOnceForTests() && !holder.Holding, "Retired independent enable flag cannot hold clock with frame off");

@@ -95,6 +95,7 @@ internal sealed class BackendProcmanService
         if (!File.Exists(Path.Combine(AppDataPaths.Root, "procman-rules.json")) && !File.Exists(Path.Combine(AppDataPaths.Root, "procman-changes.json"))
             && !File.Exists(Path.Combine(AppDataPaths.Root, "procman-background.json"))
             && !File.Exists(Path.Combine(AppDataPaths.Root, "frame-game-priority.json"))
+            && !File.Exists(Path.Combine(AppDataPaths.Root, "frame-nvidia-gpu-share.json"))
             && !File.Exists(Path.Combine(AppDataPaths.Root, "frame-game-timer-ignore.json"))
             && !File.Exists(Path.Combine(AppDataPaths.Root, "timer-ignore-list.json"))
             && !settings.FrameModeActive
@@ -211,11 +212,13 @@ internal sealed class BackendProcmanService
         => await ClockCommandAsync(BackendCommands.ProcmanClockRelease, new { }, "钟摆计划", ct);
 
     /// <summary>扫描本机最佳分辨率（可能耗时数十秒到数分钟）。</summary>
-    internal async Task<OperationResult> ScanClockAsync(bool quick, OptimalClockScanMode scanMode, CancellationToken ct = default)
-        => await ClockCommandAsync(BackendCommands.ProcmanClockScan, new OptimalClockArgs { Quick = quick, ScanMode = scanMode }, "钟摆计划扫描", ct);
+    internal async Task<OperationResult> ScanClockAsync(bool quick, OptimalClockScanMode scanMode, CancellationToken ct = default, bool dpcAlgorithmScan = false)
+        => await ClockCommandAsync(BackendCommands.ProcmanClockScan, new OptimalClockArgs { Quick = quick, ScanMode = scanMode, DpcAlgorithmScan = dpcAlgorithmScan }, "钟摆计划扫描", ct);
 
     internal Task<OperationResult> ProbeClockCompatibilityAsync(CancellationToken ct = default)
         => ClockCommandAsync(BackendCommands.ProcmanClockScan, new OptimalClockArgs { CompatibilityOnly = true }, "钟摆计划兼容检测", ct);
+    internal Task<OperationResult> ClockValueAsync(ClockValueAction action, uint? resolution, CancellationToken ct = default)
+        => ClockCommandAsync(BackendCommands.ProcmanClockValue, new ClockValueArgs { Action = action, Resolution100ns = resolution }, "钟摆分辨率与 Sleep", ct);
 
     private async Task<OperationResult> ClockCommandAsync(string command, object args, string what, CancellationToken ct)
     {

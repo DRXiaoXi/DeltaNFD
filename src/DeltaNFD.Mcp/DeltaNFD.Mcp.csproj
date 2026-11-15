@@ -6,8 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <Version>0.9321</Version>
-    <InformationalVersion>Beta0.932-RC2</InformationalVersion>
+    <Version>0.9390</Version>
+    <InformationalVersion>Beta0.939</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../DeltaNFD.AgentBridge/DeltaNFD.AgentBridge.csproj" />

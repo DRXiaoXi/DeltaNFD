@@ -3,16 +3,29 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ui="using:DeltaNFD.Controls" HorizontalContentAlignment="Stretch">
     <ScrollViewer HorizontalContentAlignment="Stretch" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <Grid HorizontalAlignment="Stretch">
         <StackPanel MaxWidth="1440" Padding="28,20,28,32" Spacing="12">
             <StackPanel Spacing="4">
                 <ui:PageHeader Title="钟摆计划"/>
-                <TextBlock Text="扫描本机最佳计时器精度；全局锁定随帧格开启，并持续核对实际生效状态。" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                <TextBlock Text="{x:Bind PageDescription, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
             </StackPanel>
             <Border Style="{StaticResource CardBorderStyle}" Visibility="{x:Bind ExperimentalVisibility, Mode=OneWay}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="Windows 10 实验兼容" Style="{StaticResource SectionTitleStyle}"/>
+                    <TextBlock Text="Windows 10 · 自备 DPC EXE" Style="{StaticResource SectionTitleStyle}"/>
                     <TextBlock Text="{x:Bind GlobalStatusText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource WarningTextStyle}"/>
-                    <TextBlock Text="本机检测只说明当前系统的表现。Win11 的测试与模拟结果不能作为 Win10 实机通过的证据。" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                    <TextBlock Text="选择玩家自备的原版 DPC 1.4.0 EXE。核验后检测并保存；帧格开启时运行，关闭或退出工具时释放。原版固定申请 1.0000ms。" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}"/>
+                    <TextBlock Text="原程序会自行加载旧驱动，存在已知蓝屏漏洞，反作弊兼容性未验收。工具不分发 DPC，也不修改测试模式、证书或启动安全设置。" TextWrapping="Wrap" Style="{StaticResource WarningTextStyle}"/>
+                    <TextBlock Text="{x:Bind DpcPathText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" Style="{StaticResource NoteStyle}"/>
+                    <ToggleSwitch Header="隐藏 DPC 主窗口" IsOn="{x:Bind DpcWindowHidden, Mode=OneWay}" IsEnabled="{x:Bind CanRefresh, Mode=OneWay}"
+                        Toggled="DpcWindowHidden_Toggled" AutomationProperties.Name="核验成功后持续隐藏本工具启动的DPC主窗口"/>
+                    <TextBlock Text="核验成功后隐藏，取消勾选可显示窗口；启动时可能短暂显示，错误弹窗保留。关闭帧格或退出工具仍会正常释放。" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="选择并核验 EXE" Style="{StaticResource PrimaryButtonStyle}" IsEnabled="{x:Bind CanPrepareDriver, Mode=OneWay}" Click="PrepareDriver_Click"/>
+                        <Button Content="清除选择" Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{x:Bind CanPrepareDriver, Mode=OneWay}" Click="ClearDpc_Click"/>
+                        <Button Content="使用与恢复说明" Style="{StaticResource SecondaryButtonStyle}" Click="DriverGuide_Click"/>
+                    </StackPanel>
+                    <Button Content="释放并核对 DPC" HorizontalAlignment="Left" Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{x:Bind CanRefresh, Mode=OneWay}" Click="ReleaseDpc_Click"/>
+                    <Button Content="检测并保存基础 1ms" HorizontalAlignment="Left" Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{x:Bind CanScan, Mode=OneWay}" Click="BasicDpcSave_Click"/>
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource CardBorderStyle}" Visibility="{x:Bind GlobalSettingsVisibility, Mode=OneWay}">
@@ -49,23 +62,45 @@
             </Border>
             <Border Style="{StaticResource CardBorderStyle}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="扫描本机最佳精度" Style="{StaticResource SectionTitleStyle}" ui:HelpTip.Text="粗扫、细扫与稳定性复测都使用 CPU 负载；每个候选用全新子进程测量。只保存通过安全侧复测的值；没有合格结果时不回退到默认值。扫描期间暂停锁定，完成后由帧格恢复监督。"/>
+                    <TextBlock Text="{x:Bind SelectionTitle, Mode=OneWay}" Style="{StaticResource SectionTitleStyle}" ui:HelpTip.Text="{x:Bind SelectionHelp, Mode=OneWay}"/>
                     <TextBlock Text="{x:Bind ScanPrerequisiteText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}"/>
-                    <Button Content="仅检测兼容性（无 CPU 负载）" Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{x:Bind CanScan, Mode=OneWay}" Click="Compatibility_Click"/>
+                    <Button Content="{x:Bind ProbeLabel, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{x:Bind CanScan, Mode=OneWay}" Click="Compatibility_Click"/>
                     <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                         <TextBlock Text="检测模式" VerticalAlignment="Center" Style="{StaticResource CardDescStyle}"/>
-                        <ComboBox Width="200" SelectedIndex="{x:Bind ScanModeIndex, Mode=TwoWay}" AutomationProperties.Name="钟摆计划检测模式">
+                        <ComboBox Width="200" SelectedIndex="{x:Bind ScanModeIndex, Mode=TwoWay}" IsEnabled="{x:Bind CanScan, Mode=OneWay}" AutomationProperties.Name="钟摆计划检测模式">
                             <ComboBoxItem Content="算法1（更稳定）"/>
                             <ComboBoxItem Content="算法2（更激进）"/>
                         </ComboBox>
                     </StackPanel>
                     <TextBlock Text="算法1取典型最快并在稳定侧取锁；算法2在空闲/标准/重载三条件下验证后取最细的合格值。" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
                     <StackPanel Orientation="Horizontal" Spacing="12">
-                        <Button Content="扫描本机最佳值" Style="{StaticResource PrimaryButtonStyle}" IsEnabled="{x:Bind CanScan, Mode=OneWay}" Click="Scan_Click"/>
+                        <Button Content="{x:Bind SelectLabel, Mode=OneWay}" Style="{StaticResource PrimaryButtonStyle}" IsEnabled="{x:Bind CanScan, Mode=OneWay}" Click="Scan_Click"/>
                         <Button Content="快速扫描" Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{x:Bind CanScan, Mode=OneWay}" Click="QuickScan_Click"/>
+                        <Button Content="取消扫描" Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{x:Bind CanCancelScan, Mode=OneWay}" Click="CancelScan_Click"/>
                     </StackPanel>
                     <TextBlock Text="{x:Bind ScanText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
                     <TextBlock Text="{x:Bind OperationText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}" AutomationProperties.LiveSetting="Polite"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="自定义分辨率与 Sleep 测试" Style="{StaticResource SectionTitleStyle}" ui:HelpTip.Text="使用毫秒为单位，最多4位小数（100ns单位）。先关闭帧格并退出目标游戏。自定义值须经过实际持有、独立等待核验和释放后才能保存；开启帧格时使用该值，原自动扫描结果保留。也可切回原自动/基础保存值。Sleep 测试只临时申请目标分辨率，在另一个不申请精度的进程中采样200次 Sleep(1)，不施加 CPU 负载，不覆盖扫描记录或切换使用值。请求、授予或前后读数不符时，不把样本当作该目标的结果。测试完会确认释放；结果不代表游戏收益。"/>
+                    <TextBlock Text="{x:Bind SelectedClockValueText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                    <TextBox Header="自定义分辨率（ms，使用小数点，最多4位小数）" Text="{x:Bind CustomResolutionText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MaxLength="24" MaxWidth="420" HorizontalAlignment="Left" InputScope="Number" IsEnabled="{x:Bind ClockValuesEditable, Mode=OneWay}" PlaceholderText="例如 0.5130" AutomationProperties.Name="自定义时钟分辨率，毫秒"/>
+                    <TextBlock Text="{x:Bind CustomValueRangeText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                    <TextBlock Text="{x:Bind CustomValueError, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource WarningTextStyle}" AutomationProperties.LiveSetting="Polite"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="验证并保存自定义值" Click="SaveCustomValue_Click" IsEnabled="{x:Bind CanCustomValue, Mode=OneWay}" Style="{StaticResource PrimaryButtonStyle}"/>
+                        <Button Content="测试手填值的 Sleep" Click="TestCustomSleep_Click" IsEnabled="{x:Bind CanCustomValue, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="使用原自动/基础值" Click="UseAutomaticValue_Click" IsEnabled="{x:Bind CanUseAutomaticValue, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}"/>
+                        <Button Content="测试自动最优值的 Sleep" Click="TestAutomaticSleep_Click" IsEnabled="{x:Bind CanTestAutomaticValue, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}"/>
+                    </StackPanel>
+                    <Button Content="取消本次验证或测试" Click="CancelClockValue_Click" IsEnabled="{x:Bind CanCancelClockValue, Mode=OneWay}" HorizontalAlignment="Left" Style="{StaticResource SecondaryButtonStyle}"/>
+                    <TextBlock Text="{x:Bind ClockValueGateText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                    <TextBlock Text="{x:Bind ClockValueOperationText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}" AutomationProperties.LiveSetting="Polite"/>
+                    <TextBlock Text="{x:Bind SleepTestResultText, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" Style="{StaticResource NoteStyle}"/>
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource CardBorderStyle}">
@@ -84,5 +119,6 @@
             </Border>
             <TextBlock Text="计时器精度不直接保证帧数收益；全局请求可能增加功耗与温度。" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
         </StackPanel>
+        </Grid>
     </ScrollViewer>
 </Page>

@@ -114,12 +114,14 @@ public sealed partial class ShaderRecoveryPage : Page
     {
         var game = GameCacheChoice.IsChecked == true; var nvidia = NvidiaCacheChoice.IsChecked == true;
         if (!game && !nvidia) throw new InvalidOperationException("请至少选择一种缓存。");
-        if (!await ConfirmAsync("删除所选旧缓存？", (game ? "· 已检测到的三角洲安装目录内 PSOCache\n" : "")
+        var selection = await GameInstallationPicker.PickAsync(XamlRoot, "清理恢复页缓存", sharedOnly: nvidia);
+        if (selection is null) return;
+        if (!await ConfirmAsync("删除所选旧缓存？", GameInstallationPicker.Describe(selection) + (game ? "· 所选三角洲安装目录内 PSOCache\n" : "")
             + (nvidia ? "· 当前用户 NVIDIA DXCache 与 Windows D3DSCache，其他游戏也将重新编译\n" : "")
-            + (game && !nvidia ? ShaderCacheCleanupPolicy.SystemCacheNotice + "\n" : "")
+            + (game && !nvidia ? (selection.AllInstallations ? ShaderCacheCleanupPolicy.SystemCacheNotice : "仅清理本地缓存，保留系统和驱动共享缓存。") + "\n" : "")
             + "请退出三角洲和其他图形应用。删除无法撤销；占用或链接项会跳过并报告。清理后恢复驱动默认，再进入游戏重新预热。", "删除缓存")) return;
         var response = await _system.InvokeAsync(BackendCommands.SystemShaderRecoveryClean,
-            new ShaderRecoveryCleanArgs { GameCache = game, NvidiaCache = nvidia }, null, CancellationToken.None);
+            new ShaderRecoveryCleanArgs { Selection = GameInstallationPicker.ConfirmShared(selection), GameCache = game, NvidiaCache = nvidia }, null, CancellationToken.None);
         var result = response.Data is { } data ? BackendJson.Deserialize<OperationResult>(data)
             : OperationResult.Fail(response.Message);
         CleanupText.Text = result.Message;

@@ -6,62 +6,101 @@ namespace DeltaNFD.Execution.Procman;
 public sealed partial class ProcmanEngine
 {
     private readonly FrameGamePriority _framePriority;
+    private FrameNvidiaGpuShare _frameNvidiaGpuShare;
+    private DateTime _lastNvidiaGpuTick;
+    private int NvidiaGpuShareHeldCount => _frameNvidiaGpuShare.Snapshot is { Maintaining: true } or { RestorePending: true } ? 1 : 0;
     private string _framePriorityError = "";
     private DateTime _lastFramePriorityTick;
     internal Func<IReadOnlyList<ProcmanProcessIdentity>>? FramePriorityTargetsForTests { get; set; }
-    private bool FramePriorityRequested => FrameBackgroundActive && AppSettingsStore.Read().FrameGamePriorityEnabled;
+    private bool FramePriorityRequested => FrameBackgroundActive && (AppSettingsStore.Read().FrameGamePriorityEnabled || AppSettingsStore.Read().FrameGameGpuPriorityEnabled);
+    private bool FrameNvidiaGpuRequested => FrameBackgroundActive && AppSettingsStore.Read().FrameNvidiaGpuShareEnabled;
     private FrameGamePrioritySnapshot FramePriorityState
     {
         get
         {
-            var state = _framePriority.Snapshot;
+            var state = _framePriority.Snapshot with { GpuProtocolVersion = 1 };
             var error = Volatile.Read(ref _framePriorityError);
             return error.Length == 0 ? state : state with { HasError = true, Message = error + "；" + state.Message };
         }
     }
-    private bool RestoreFramePriorities(string reason = "三角洲 CPU、IO 和内存优先级原值已恢复")
+    private bool RestoreFrameProcessPriorities(string reason)
     {
         var ok = _framePriority.Sync([], new(), _ => false, reason);
         GameTargetService.Default.SetRestoreFailure("帧格进程优先级", !ok);
         if (ok) Volatile.Write(ref _framePriorityError, "");
         return ok;
     }
-    private IReadOnlyList<ProcmanProcessIdentity> ReadFramePriorityTargets()
+    private bool RestoreFramePriorities(string reason = "游戏进程优先级原值已恢复")
     {
-        if (FramePriorityTargetsForTests is { } read) return read();
-        var result = new List<ProcmanProcessIdentity>();
-        foreach (var process in Process.GetProcessesByName("DeltaForceClient-Win64-Shipping"))
-        {
-            using (process)
-            {
-                var identity = ProcmanIdentity.TryIdentify(process.Id);
-                if (identity is null) throw new IOException($"无法核验三角洲 PID {process.Id} 的路径和启动时间。");
-                result.Add(identity);
-            }
-        }
-        return result;
+        var ok = RestoreFrameProcessPriorities(reason);
+        var nvidia = _frameNvidiaGpuShare.Sync(false, 10, () => false, resetBlock: true);
+        GameTargetService.Default.SetRestoreFailure("帧格 NVIDIA 前后台比例", !nvidia || _frameNvidiaGpuShare.Snapshot.RestorePending);
+        if (!nvidia) Volatile.Write(ref _framePriorityError, _frameNvidiaGpuShare.Snapshot.Message);
+        return ok && nvidia;
     }
     private bool FramePriorityTick(bool force = false)
+    {
+        var process = FrameProcessPriorityTick(force);
+        var nvidia = FrameNvidiaGpuTick(force);
+        return process && nvidia;
+    }
+    private bool FrameNvidiaGpuTick(bool force)
+    {
+        lock (_gate)
+        {
+            var now = ClockForTests?.Invoke() ?? DateTime.UtcNow;
+            if (!force && now - _lastNvidiaGpuTick < TimeSpan.FromSeconds(2)) return !_frameNvidiaGpuShare.Snapshot.HasError;
+            _lastNvidiaGpuTick = now;
+            try
+            {
+                using var operation = GameTargetService.Default.BeginOperation();
+                var settings = AppSettingsStore.Read(); var target = FrameTarget;
+                bool Allowed() => !_frozen && FrameBackgroundActive && FrameTargetCurrent(target)
+                    && AppSettingsStore.Read().FrameNvidiaGpuShareEnabled
+                    && AppSettingsStore.Read().FrameNvidiaGpuBackgroundPercent == settings.FrameNvidiaGpuBackgroundPercent
+                    && (_rulesEngineRunning || BackgroundLoopDisabledForTests)
+                    && ReadFrameGameTargets(target, FramePriorityTargetsForTests).Count > 0;
+                var requested = settings.FrameNvidiaGpuShareEnabled && FrameBackgroundActive && !_frozen;
+                var result = _frameNvidiaGpuShare.Sync(requested && Allowed(), settings.FrameNvidiaGpuBackgroundPercent, Allowed,
+                    resetBlock: !requested);
+                GameTargetService.Default.SetRestoreFailure("帧格 NVIDIA 前后台比例", _frameNvidiaGpuShare.Snapshot.RestorePending);
+                return result;
+            }
+            catch
+            {
+                var result = _frameNvidiaGpuShare.Sync(false, 10, () => false);
+                GameTargetService.Default.SetRestoreFailure("帧格 NVIDIA 前后台比例", !result || _frameNvidiaGpuShare.Snapshot.RestorePending);
+                return result;
+            }
+        }
+    }
+    private bool FrameProcessPriorityTick(bool force = false)
     {
         lock (_gate)
         {
             if (_frozen || !FramePriorityRequested)
-                return RestoreFramePriorities(_frozen ? "进程管理监控已停止，三角洲优先级原值已恢复" : "帧格或该功能未开启，三角洲优先级原值已恢复");
+                return RestoreFrameProcessPriorities(_frozen ? "进程管理监控已停止，游戏优先级原值已恢复" : "帧格或该功能未开启，游戏优先级原值已恢复");
             var now = ClockForTests?.Invoke() ?? DateTime.UtcNow;
             if (!force && now - _lastFramePriorityTick < TimeSpan.FromSeconds(2)) return !FramePriorityState.HasError;
             _lastFramePriorityTick = now;
             try
             {
+                using var targetOperation = GameTargetService.Default.BeginOperation();
+                var target = FrameTarget;
                 var settings = AppSettingsStore.Read();
-                var config = new FrameGamePriorityConfig { Cpu = settings.FrameGameCpuPriority, Io = settings.FrameGameIoPriority, Memory = settings.FrameGameMemoryPriority };
-                var targets = ReadFramePriorityTargets();
+                var config = new FrameGamePriorityConfig { ProcessEnabled = settings.FrameGamePriorityEnabled,
+                    GpuEnabled = settings.FrameGameGpuPriorityEnabled, Gpu = settings.FrameGameGpuPriority,
+                    Cpu = settings.FrameGameCpuPriority, Io = settings.FrameGameIoPriority, Memory = settings.FrameGameMemoryPriority };
+                var targets = ReadFrameGameTargets(target, FramePriorityTargetsForTests);
                 var rules = _rules.EnabledRules();
                 var ok = _framePriority.Sync(targets, config, id =>
                 {
                     var latest = AppSettingsStore.Read();
-                    return !_frozen && FramePriorityRequested && (_rulesEngineRunning || BackgroundLoopDisabledForTests)
-                        && latest.FrameGameCpuPriority == config.Cpu && latest.FrameGameIoPriority == config.Io && latest.FrameGameMemoryPriority == config.Memory;
-                }, "等待三角洲启动，未锁定进程优先级", (id, property) => !(property == "priority" && settings.GamePriorityEnabled)
+                    return !_frozen && FrameTargetCurrent(target) && IsSelectedFrameTarget(id, target)
+                        && FramePriorityRequested && (_rulesEngineRunning || BackgroundLoopDisabledForTests)
+                        && latest.FrameGameCpuPriority == config.Cpu && latest.FrameGameIoPriority == config.Io && latest.FrameGameMemoryPriority == config.Memory
+                        && latest.FrameGamePriorityEnabled == config.ProcessEnabled && latest.FrameGameGpuPriorityEnabled == config.GpuEnabled && latest.FrameGameGpuPriority == config.Gpu;
+                }, "等待 " + target.DisplayName + " 启动，未锁定进程优先级", (id, property) => !(property == "priority" && settings.GamePriorityEnabled)
                     && !rules.Any(rule => rule.Capability == property
                         && string.Equals(rule.ExecutablePath, id.ExecutablePath, StringComparison.OrdinalIgnoreCase)));
                 Volatile.Write(ref _framePriorityError, "");
@@ -70,11 +109,13 @@ public sealed partial class ProcmanEngine
             }
             catch (Exception ex)
             {
-                RestoreFramePriorities("进程身份或配置无法核对，已恢复可确认的优先级原值");
+                RestoreFrameProcessPriorities("进程身份或配置无法核对，已恢复可确认的优先级原值");
                 Volatile.Write(ref _framePriorityError, "进程优先级锁定未执行：" + ex.Message);
                 return false;
             }
         }
     }
     internal bool FramePriorityOnceForTests() => FramePriorityTick(force: true);
+    internal void NvidiaGpuApiForTests(INvidiaGpuShareApi api, string path, Func<IDisposable> lease)
+    { _frameNvidiaGpuShare.Dispose(); _frameNvidiaGpuShare = new(path, api, lease); }
 }

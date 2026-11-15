@@ -17,6 +17,13 @@ public enum OptimalClockScanMode
 /// </summary>
 public sealed class OptimalClockSnapshot
 {
+    public int ClockValueProtocolVersion { get; init; }
+    public bool CustomResolutionActive { get; init; }
+    public ClockSleepResult? SleepTest { get; init; }
+    /// <summary>Current prerequisites and the saved scan source match; false for older backends.</summary>
+    public bool Prepared { get; init; }
+    public uint SavedResolution100ns { get; init; }
+
     /// <summary>本系统是否可进入检测路径；不表示全局生效已验证。</summary>
     public bool Supported { get; init; }
 
@@ -37,6 +44,10 @@ public sealed class OptimalClockSnapshot
 
     /// <summary>实测确认「不请求的进程也获得该时钟」（全局计时器语义生效）。</summary>
     public bool VerifiedGlobal { get; init; }
+
+    /// <summary>Win10 自有驱动请求与分辨率回读已确认；不表示 Sleep/游戏效果已验证。</summary>
+    public bool KernelResolutionVerified { get; init; }
+    public bool DpcProcessVerified { get; init; }
 
     /// <summary>实测：无请求进程的等待粒度中位数（ms）。</summary>
     public double? RequestlessMilliseconds { get; init; }
@@ -98,6 +109,8 @@ public sealed class OptimalClockArgs
     public bool Quick { get; set; }
     /// <summary>仅运行无 CPU 负载的跨进程能力检测，不保存扫描结果。</summary>
     public bool CompatibilityOnly { get; set; }
+    /// <summary>Win10：DPC固定1ms基底配合额外候选请求，复用算法1/2；默认false保留基础检测协议。</summary>
+    public bool DpcAlgorithmScan { get; set; }
 
     /// <summary>检测模式；默认最低延迟（保持旧行为）。</summary>
     public OptimalClockScanMode ScanMode { get; set; } = OptimalClockScanMode.LowestLatency;

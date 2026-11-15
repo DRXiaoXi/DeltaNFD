@@ -46,7 +46,7 @@ public static class PendulumGlobalInspection
         // Win10 的实验路径不以未确认有效的 Win11 注册表设置作为前提，也不触碰该键。
         if (ExperimentalWindows10)
         {
-            try { return EvaluateWindows10(ReadSystemVersion()); }
+            try { return DpcPendulumInspection.Evaluate(ReadSystemVersion(), DpcPendulumInspection.Read()); }
             catch (Exception ex) { return new() { Supported = true, ExperimentalWindows10 = true,
                 Message = "无法核实 Win10 系统修订版本，暂不准入实验扫描与锁定：" + ex.Message }; }
         }
@@ -67,16 +67,17 @@ public static class PendulumGlobalInspection
         return new(version.Major, version.Minor, version.Build, revision);
     }
 
-    public static PendulumGlobalStatus EvaluateWindows10(Version version)
+    public static PendulumGlobalStatus EvaluateWindows10(Version version, PendulumWin10DriverStatus? driver = null)
     {
         var supported = version.Major == 10 && version.Minor == 0 && version.Build is >= 17763 and < 22000;
-        var platform = "win10-experimental-v1/" + version;
+        var platform = "win10-kernel-resolution-v3/" + version + "/" + PendulumWin10DriverInspection.ExpectedDriverSha256;
         return new()
         {
             Supported = supported, Readable = supported, ExperimentalWindows10 = supported,
+            Win10Driver = driver,
             PlatformId = platform, Fingerprint = platform,
             Message = supported
-                ? "Windows 10 实验兼容：先检测无请求进程能否随精度变化，再扫描本机最佳值；通过后才允许随帧格锁定。此路径不写全局精度注册表，不要求为此重启。"
+                ? driver?.Message ?? "Windows 10 钟摆计划需先开启测试签名模式并重启，安装和启动自研驱动；准备状态尚未确认。"
                 : "此系统版本不在 Windows 10 实验兼容范围（1809 及以后）。",
         };
     }

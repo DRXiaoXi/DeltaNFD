@@ -28,7 +28,9 @@ public sealed record BackendReady(
     int Pid,
     long StartTimeUtcTicks,
     string ImagePath,
-    string ImageSha256);
+    string ImageSha256,
+    int GameInstallationScopeVersion = 0,
+    int ClockValueVersion = 0);
 
 /// <summary>invoke（宿主→后端）：白名单命令 + 参数对象。</summary>
 public sealed record BackendInvoke(string Command, JsonElement Args);
@@ -164,7 +166,7 @@ public static class BackendMessages
     public static BackendReady ParseReady(JsonElement payload)
     {
         BackendJson.EnsureNoExtraProperties(payload,
-            ["nonce", "module", "moduleVersion", "protocolMinor", "pid", "startTimeUtcTicks", "imagePath", "imageSha256"],
+            ["nonce", "module", "moduleVersion", "protocolMinor", "pid", "startTimeUtcTicks", "imagePath", "imageSha256", "gameInstallationScopeVersion", "clockValueVersion"],
             "ready");
         if (!BackendJson.TryGetString(payload, "nonce", out var nonce) || !IsNonce(nonce))
             throw new BackendContractException("ready：nonce 必须是 32 字节随机数的 Base64 文本。");
@@ -185,7 +187,15 @@ public static class BackendMessages
             throw new BackendContractException("ready：imagePath 必须是绝对路径。");
         if (!BackendJson.TryGetString(payload, "imageSha256", out var sha) || !IsSha256(sha))
             throw new BackendContractException("ready：imageSha256 必须是 64 位十六进制。");
-        return new BackendReady(nonce, module, moduleVersion, protocolMinor, pid, ticks, imagePath, sha.ToLowerInvariant());
+        var scopeVersion = 0;
+        if (payload.TryGetProperty("gameInstallationScopeVersion", out _) &&
+            (!BackendJson.TryGetInt(payload, "gameInstallationScopeVersion", out scopeVersion) || scopeVersion is < 0 or > 1))
+            throw new BackendContractException("ready：安装目录范围协议版本无效或不兼容。");
+        var clockVersion = 0;
+        if (payload.TryGetProperty("clockValueVersion", out _) &&
+            (!BackendJson.TryGetInt(payload, "clockValueVersion", out clockVersion) || clockVersion is < 0 or > 1))
+            throw new BackendContractException("ready：钟摆单值协议版本无效或不兼容。");
+        return new BackendReady(nonce, module, moduleVersion, protocolMinor, pid, ticks, imagePath, sha.ToLowerInvariant(), scopeVersion, clockVersion);
     }
 
     public static BackendInvoke ParseInvoke(JsonElement payload)

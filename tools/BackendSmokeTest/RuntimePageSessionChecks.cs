@@ -1,4 +1,5 @@
 using DeltaNFD.Backends;
+using DeltaNFD.Inspection;
 using DeltaNFD.Services;
 using DeltaNFD.Services.Backends;
 using DeltaNFD.ViewModels;
@@ -92,7 +93,7 @@ internal static class RuntimePageSessionChecks
         for (var i = 0; i < 10; i++)
         {
             manager.Navigate("runtime");
-            var vm = RuntimeViewModel.Current; var owner = manager.Current!; var guard = guards[^1];
+            var vm = RuntimeViewModel.Current; vm.VersionReaderForTests = () => Task.FromResult(new RuntimeVersionSnapshot([], [])); var owner = manager.Current!; var guard = guards[^1];
             Check(ReferenceEquals(vm, RuntimeViewModel.Current), "Same page lease reuses its view model.");
             if (i == 0) CheckObservableProperties(vm);
             Check(ReferenceEquals(guard.Owner, owner), "View model guard belongs to the current lease.");
@@ -102,11 +103,11 @@ internal static class RuntimePageSessionChecks
             {
                 await CheckVersionAlertPolicyAsync(vm, guard);
                 vm.SetRuntimePolicyChecking(true);
-                Check(!vm.GuardCleanupEnabled && !vm.CanChangeRuntimeDetection, "Checking policy disables ordinary runtime controls.");
+                Check(!vm.GuardCleanupEnabled && !vm.GuardCleanupEnabled, "Checking policy disables ordinary runtime controls.");
                 vm.SetRuntimePolicyReason("fixture driver 596.49");
                 vm.SetRuntimePolicyChecking(false);
                 Check(vm.RuntimePolicyBlocked && !vm.GuardCleanupEnabled && !vm.GuardModeEnabled
-                    && !vm.CanChangeRuntimeDetection && vm.CanReviewRuntimeRecovery,
+                    && !vm.GuardCleanupEnabled && vm.CanReviewRuntimeRecovery,
                     "Active runtime policy disables ordinary controls and retains review.");
                 var before = guard.Writes;
                 Check(await vm.SetGuardAsync(true) is null && guard.Writes == before, "Active policy cannot enable protection.");
@@ -116,7 +117,7 @@ internal static class RuntimePageSessionChecks
                 Check((await vm.SetGuardAsync(false))?.Success == true && !vm.GuardIsEnabled,
                     "Existing protection is actually released through the isolated guard.");
                 vm.SetRuntimePolicyReason(null);
-                Check(vm.RuntimeOperationsAvailable && vm.GuardCleanupEnabled && vm.CanChangeRuntimeDetection,
+                Check(vm.RuntimeOperationsAvailable && vm.GuardCleanupEnabled && vm.GuardCleanupEnabled,
                     "Policy withdrawal restores ordinary controls.");
                 vm.SetRuntimeDriverUnknown(true);
                 Check(vm.RuntimeDriverUnknown && vm.RuntimeOperationsAvailable && vm.GuardCleanupEnabled,
@@ -126,27 +127,30 @@ internal static class RuntimePageSessionChecks
                     "Initial driver check disables only baseline actions, not protection.");
                 vm.CompleteBaselineDriverCheck(false, false);
                 vm.BaselineIndex = 1;
-                Check(vm.SelectedBaseline == Vc14Baseline.V144 && vm.CanUseBaselineActions, "Non-596 can select 14.44.");
+                Check(vm.SelectedBaseline == Vc14Baseline.V151 && vm.CanUseBaselineActions, "Non-596 can select 14.51.");
                 vm.BeginBaselineDriverCheck();
                 Check(!vm.CanUseBaselineActions && vm.GuardToggleEnabled, "Driver recheck does not disable protection.");
                 vm.CompleteBaselineDriverCheck(true, false);
-                Check(!vm.Hide144Baseline && vm.BaselineIndex == 1 && vm.SelectedBaseline == Vc14Baseline.V144,
-                    "Confirmed 596 keeps a previously selected 14.44 available and selected.");
+                Check(!vm.Hide144Baseline && vm.BaselineIndex == 1 && vm.SelectedBaseline == Vc14Baseline.V151,
+                    "Driver check preserves explicitly selected 14.51.");
                 vm.BaselineIndex = 1;
-                Check(vm.BaselineIndex == 1 && vm.SelectedBaseline == Vc14Baseline.V144 && vm.ContinueInstallLabel.Contains("14.44"),
-                    "596 users can select 14.44 for continuation.");
+                Check(vm.BaselineIndex == 1 && vm.SelectedBaseline == Vc14Baseline.V151 && vm.ContinueInstallLabel.Contains("14.51"),
+                    "151 selection is retained for continuation.");
                 await vm.PreviewRepairAsync(); await vm.PreviewRepairAsync(Vc14RepairMode.InstallOnly);
                 await vm.PreviewHighFpsAsync(false); await vm.PreviewForceReplaceAsync(default);
                 await vm.RepairAsync("fixture", default); await vm.RepairHighFpsAsync("fixture", false, default);
                 await vm.ForceReplaceAsync("fixture", default);
-                Check(guard.Baselines.Count == 7 && guard.Baselines.All(b => b == Vc14Baseline.V144),
-                    "All actual 596 view-model preview, continuation and execution paths pass selected 14.44.");
+                Check(guard.Baselines.Count == 7 && guard.Baselines.All(b => b == Vc14Baseline.V151),
+                    "All actual view-model preview, continuation and execution paths pass selected 14.51.");
                 vm.BeginBaselineDriverCheck(); vm.CompleteBaselineDriverCheck(false, true);
                 Check(!vm.Hide144Baseline && vm.BaselineDriverNotice.Contains("无法完整读取") && vm.CanUseBaselineActions,
                     "Unknown driver warns without treating it as a confirmed 596.");
                 vm.BaselineIndex = 1;
-                Check(vm.SelectedBaseline == Vc14Baseline.V144, "Unknown driver keeps the optional baseline available.");
+                Check(vm.SelectedBaseline == Vc14Baseline.V151, "Unknown driver preserves explicitly selected 14.51.");
                 vm.BaselineIndex = 0;
+                await vm.PreviewRepairAsync();
+                Check(guard.Baselines.Last() == Vc14Baseline.V144 && vm.SelectedBaselineLabel.Contains("AMD"),
+                    "Switching back to 14.44 updates actual request and CPU label.");
             }
             Check((await vm.SetGuardAsync(true))?.Success == true && vm.GuardIsEnabled, "Reentered page can enable protection.");
             Check((await vm.SetGuardAsync(false))?.Success == true && !vm.GuardIsEnabled, "Reentered page can disable protection.");
@@ -165,7 +169,7 @@ internal static class RuntimePageSessionChecks
         }
 
         manager.Navigate("runtime");
-        var active = RuntimeViewModel.Current; var activeGuard = guards[^1]; var activeOwner = manager.Current!;
+        var active = RuntimeViewModel.Current; active.VersionReaderForTests = () => Task.FromResult(new RuntimeVersionSnapshot([], [])); var activeGuard = guards[^1]; var activeOwner = manager.Current!;
         await active.LoadGuardAsync();
         foreach (bool? running in new bool?[] { true, null })
         {
@@ -181,7 +185,7 @@ internal static class RuntimePageSessionChecks
         var inFlight = active.SetGuardAsync(true);
         await activeGuard.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
         manager.Navigate("dashboard"); manager.Navigate("runtime");
-        var fresh = RuntimeViewModel.Current; var freshGuard = guards[^1]; var freshOwner = manager.Current!;
+        var fresh = RuntimeViewModel.Current; fresh.VersionReaderForTests = () => Task.FromResult(new RuntimeVersionSnapshot([], [])); var freshGuard = guards[^1]; var freshOwner = manager.Current!;
         await fresh.LoadGuardAsync();
         var freshWrite = fresh.SetGuardAsync(true);
         Check(!activeOwner.Stopping.IsCompleted && !freshWrite.IsCompleted && freshGuard.Writes == 0, "New page waits for the already submitted old operation.");
@@ -201,33 +205,31 @@ internal static class RuntimePageSessionChecks
     }
     private static async Task CheckVersionAlertPolicyAsync(RuntimeViewModel vm, Guard guard)
     {
-        var before = guard.Scan;
         var writes = guard.Writes;
-        var product = new Vc14Entry("{E}", "Microsoft Visual C++ v14 X64 Minimum Runtime - 14.51.36247", "14.51.36247", "x64", "Minimum", "{U}");
-        var evaluated = new Vc14Scan([product], [new(product.Name, product.Version, product.Architecture, Vc14Severity.Evaluation, "待长期评估")], []);
-        RuntimeDetectionPreference.Shared.SetEnabled(true);
-        guard.Scan = evaluated;
+        RuntimeVersionSnapshot snapshot = new([new("x64", "fixture", "14.51.36247")], []);
+        var reads = 0;
+        vm.VersionReaderForTests = () => { reads++; return Task.FromResult(snapshot); };
+        guard.ScanError = new IOException("old compatibility scan must not run");
         await vm.LoadGuardAsync();
-        Check(vm.HasEvaluation && !vm.HasAbnormal && !vm.HasWarning && vm.EvaluationText.Contains("14.51"), "Verified evaluated version appears only in blue information state.");
-        guard.Scan = evaluated with { Issues = ["注册版本与 MSI 缓存版本不一致"] };
+        Check(!vm.HasEvaluation && !vm.HasAbnormal && !vm.HasWarning && vm.RuntimeVersionText.Contains("14.51"),
+            "Current version is read without blue compatibility evaluation or old MSI scan.");
+        snapshot = snapshot with { Issues = ["fixture unreadable registration"] };
         await vm.LoadGuardAsync();
-        Check(!vm.HasAbnormal && vm.HasEvaluation && vm.HasWarning
-            && vm.WarningText.Contains("不一致"), "Scan issues return to yellow while retaining the specific blue evaluation.");
-        guard.Scan = evaluated;
+        Check(!vm.HasAbnormal && !vm.HasEvaluation && !vm.HasWarning && vm.RuntimeVersionText.Contains("unreadable"),
+            "Unknown version details are shown as information, not old compatibility warnings.");
+        vm.VersionReaderForTests = () => throw new IOException("fixture version read failure");
         await vm.LoadGuardAsync();
-        Check(!vm.HasAbnormal && vm.HasEvaluation, "Successful recheck clears the warning and retains evaluation information.");
-        guard.ScanError = new IOException("无法读取版本");
+        Check(!vm.HasAbnormal && !vm.HasEvaluation && !vm.HasWarning && vm.RuntimeVersionText.Contains("状态未知") && vm.GuardToggleEnabled,
+            "Version read failure never pretends normal or disables a verified guard control.");
+        RuntimeDetectionPreference.Shared.SetEnabled(false);
+        vm.VersionReaderForTests = () => { reads++; return Task.FromResult(new RuntimeVersionSnapshot([new("x86", "fixture", "14.42.34433")], [])); };
+        var before = reads;
         await vm.LoadGuardAsync();
-        Check(!vm.HasAbnormal && !vm.HasEvaluation && vm.HasWarning && vm.WarningText.Contains("无法读取版本"), "Backend failure returns to yellow and clears stale blue state.");
-        guard.ScanError = null; guard.Scan = null;
-        await vm.LoadGuardAsync();
-        Check(!vm.HasAbnormal && !vm.HasEvaluation && vm.HasWarning && vm.WarningText.Contains("未返回"), "Missing scan result returns to yellow, not a missing-runtime claim.");
-        guard.Scan = evaluated; await vm.LoadGuardAsync();
-        await vm.SetRuntimeDetectionEnabledAsync(false);
-        Check(!vm.HasAbnormal && !vm.HasWarning && !vm.HasEvaluation, "Disabling detection clears all three alert channels.");
-        guard.Scan = before;
-        await vm.SetRuntimeDetectionEnabledAsync(true);
-        Check(guard.Writes == writes, "Severity changes and rechecks never trigger runtime repair writes.");
+        Check(reads == before + 1 && vm.RuntimeVersionText.Contains("14.42") && !vm.HasWarning,
+            "Retired detection preference cannot suppress version information; homepage owns the minimum-version reminder.");
+        RuntimeDetectionPreference.Shared.SetEnabled(true); guard.ScanError = null;
+        vm.VersionReaderForTests = () => Task.FromResult(new RuntimeVersionSnapshot([], []));
+        Check(guard.Writes == writes, "Version reads never trigger runtime repair writes.");
     }
 
     private static void CheckObservableProperties(RuntimeViewModel vm)
@@ -235,7 +237,7 @@ internal static class RuntimePageSessionChecks
         // Exercise the actual setters without invoking a backend or running repair operations.
         var dependencies = new Dictionary<string, string[]>
         {
-            [nameof(vm.RepairIsBusy)] = [nameof(vm.CanReviewRuntimeRecovery), nameof(vm.CanChangeRuntimeDetection), nameof(vm.GuardToggleEnabled), nameof(vm.GuardModeEnabled), nameof(vm.GuardCleanupEnabled), nameof(vm.CanUseBaselineActions)],
+            [nameof(vm.RepairIsBusy)] = [nameof(vm.CanReviewRuntimeRecovery), nameof(vm.GuardToggleEnabled), nameof(vm.GuardModeEnabled), nameof(vm.GuardCleanupEnabled), nameof(vm.CanUseBaselineActions)],
             [nameof(vm.BaselineIndex)] = [nameof(vm.SelectedBaseline), nameof(vm.SelectedBaselineLabel), nameof(vm.SelectedBaselineVersion), nameof(vm.SelectedBaselineDescription), nameof(vm.ContinueInstallLabel)],
             [nameof(vm.BaselineDriverChecking)] = [nameof(vm.CanUseBaselineActions)],
             [nameof(vm.Hide144Baseline)] = [nameof(vm.SelectedBaseline), nameof(vm.SelectedBaselineLabel), nameof(vm.SelectedBaselineVersion), nameof(vm.SelectedBaselineDescription), nameof(vm.ContinueInstallLabel)],
@@ -249,7 +251,7 @@ internal static class RuntimePageSessionChecks
         };
         string[] names = [nameof(vm.RepairIsBusy), nameof(vm.BaselineIndex), nameof(vm.BaselineDriverChecking), nameof(vm.Hide144Baseline),
             nameof(vm.BaselineDriverNotice), nameof(vm.RepairStatusText), nameof(vm.AbnormalText), nameof(vm.AbnormalTitle),
-            nameof(vm.WarningText), nameof(vm.EvaluationText), nameof(vm.DetectionStatusText), nameof(vm.ManualRepairGuidanceText), nameof(vm.InstalledText),
+            nameof(vm.WarningText), nameof(vm.EvaluationText), nameof(vm.RuntimeVersionText), nameof(vm.ManualRepairGuidanceText), nameof(vm.InstalledText),
             nameof(vm.GuardIsEnabled), nameof(vm.GuardIsBusy), nameof(vm.GuardIsPartial), nameof(vm.GuardStatusText)];
         foreach (var name in names)
         {

@@ -6,6 +6,7 @@ internal static class Program
 {
     private static async Task<int> Main(string[] args)
     {
+        if (DeltaNFD.Execution.Procman.FrameTimerPolicyProbeHost.TryRun(args, out var policyExitCode)) return policyExitCode;
         // 「钟摆计划」隐藏子进程：全新进程持有/测量（Win11 会对长驻反复改值的进程静默忽略请求）。
         if (DeltaNFD.Execution.OptimalClock.OptimalClockProbeHost.TryRun(args, out var clockExitCode))
             return clockExitCode;

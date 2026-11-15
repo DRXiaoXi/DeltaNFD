@@ -29,7 +29,7 @@ internal enum ChassisKind
 ///   玩家亮屏确认。
 /// 激活状态与全部开关持久化在 %APPDATA%\Delta NFD\settings.json，跨重启保持。
 /// </summary>
-public sealed class FrameService : IFrameService
+public sealed partial class FrameService : IFrameService
 {
     public const string GameProcessName = "DeltaForceClient-Win64-Shipping";
 
@@ -167,6 +167,9 @@ public sealed class FrameService : IFrameService
         {
             OnPropertyChanged(nameof(GamePriorityStatusText));
             OnPropertyChanged(nameof(GameTimerIgnoreStatusText));
+            OnPropertyChanged(nameof(PendulumPrepared));
+            OnPropertyChanged(nameof(PendulumStatusText));
+            OnPropertyChanged(nameof(PendulumDescription));
             UpdateStatus();
         }
         if (_dispatcher is null || _dispatcher.HasThreadAccess) Apply();
@@ -278,7 +281,7 @@ public sealed class FrameService : IFrameService
         {
             var procman = Backends.BackendProcmanService.Instance;
             return FrameStatusPresentation.Priority(_gamePriorityEnabled, _frameModeActive, procman.LatestStatus,
-                DateTimeOffset.UtcNow, procman.StatusError);
+                DateTimeOffset.UtcNow, procman.StatusError, GameTargetService.Default.Current.DisplayName);
         }
     }
     public string GameTimerIgnoreStatusText
@@ -286,10 +289,29 @@ public sealed class FrameService : IFrameService
         get
         {
             var procman = Backends.BackendProcmanService.Instance;
-            return FrameStatusPresentation.TimerIgnore(_gameTimerIgnoreEnabled, _frameModeActive, procman.LatestStatus,
-                DateTimeOffset.UtcNow, procman.StatusError);
+            return FrameStatusPresentation.TimerIgnore(PendulumPrepared, _frameModeActive, procman.LatestStatus,
+                DateTimeOffset.UtcNow, procman.StatusError, GameTargetService.Default.Current.DisplayName);
         }
     }
+    public bool PendulumPrepared
+    {
+        get
+        {
+            var backend = Backends.BackendProcmanService.Instance;
+            return ReleaseFeaturePolicy.PendulumEnabled && FrameStatusPresentation.PendulumPrepared(
+                backend.LatestStatus, DateTimeOffset.UtcNow, backend.StatusError);
+        }
+    }
+    public string PendulumStatusText
+    {
+        get
+        {
+            var backend = Backends.BackendProcmanService.Instance;
+            return FrameStatusPresentation.Pendulum(_frameModeActive, backend.LatestStatus, DateTimeOffset.UtcNow, backend.StatusError, GameTargetService.Default.Current.DisplayName);
+        }
+    }
+    public string PendulumDescription => FrameStatusPresentation.PendulumDescription(
+        Backends.BackendProcmanService.Instance.ClockState?.ExperimentalWindows10 == true, GameTargetService.Default.Current.DisplayName);
     public bool GameTimerIgnoreHasError
     {
         get
@@ -417,7 +439,7 @@ public sealed class FrameService : IFrameService
 
     // ---------------- 让系统忽略三角洲定时器分辨率请求（执行在进程管理后端） ----------------
 
-    /// <summary>让系统忽略三角洲主进程的定时器分辨率请求；默认关，退出或关闭时恢复原值。</summary>
+    /// <summary>旧独立选项的存储兼容；当前执行由准备完成的钟摆与帧格生命周期管理。</summary>
     public bool GameTimerIgnoreEnabled
     {
         get => _gameTimerIgnoreEnabled;
@@ -1161,7 +1183,8 @@ public sealed class FrameService : IFrameService
     private void UpdateStatus() => StatusText = DescribeStatus();
     private void OnObservationStateChanged()
     {
-        void Update() { UpdateStatus(); OnPropertyChanged(nameof(DwmStatusText)); OnPropertyChanged(nameof(GamePriorityStatusText)); OnPropertyChanged(nameof(GameTimerIgnoreStatusText)); }
+        void Update() { UpdateStatus(); NotifyGpuPresentation(); OnPropertyChanged(nameof(DwmStatusText)); OnPropertyChanged(nameof(GamePriorityStatusText)); OnPropertyChanged(nameof(GameTimerIgnoreStatusText));
+            OnPropertyChanged(nameof(PendulumPrepared)); OnPropertyChanged(nameof(PendulumStatusText)); OnPropertyChanged(nameof(PendulumDescription)); }
         if (_dispatcher is null || _dispatcher.HasThreadAccess) Update();
         else _dispatcher.TryEnqueue(Update);
     }
@@ -1180,7 +1203,6 @@ public sealed class FrameService : IFrameService
             var powerPart = FrameStatusPresentation.Power(_powerPlanLockEnabled, _powerLockTargetGuid, snapshot, now);
             var dualPart = _dualCcdArmed && _dualCcdEnabled ? " · 双CCD调度" : "";
             var powerThrottlePart = _gamePowerThrottlingDisabled ? " · 游戏节能关闭" : "";
-            var timerIgnorePart = _gameTimerIgnoreEnabled ? " · 忽略三角洲定时器请求" : "";
             var foregroundPart = _foregroundBoostEnabled ? " · 前台加速" : "";
             var powerSavePart = _powerSaveLatencyEnabled ? " · 省电延迟" : "";
             var memCleanPart = _memoryCleanEnabled ? " · 内存清理" : "";
@@ -1188,14 +1210,9 @@ public sealed class FrameService : IFrameService
             var gamePart = FrameStatusPresentation.Game(observation.TargetRunning, target);
             var execution = FrameStatusPresentation.Execution(snapshot, now, observation.AutomationError);
             var pendulum = Backends.BackendProcmanService.Instance;
-            var clock = pendulum.ClockState;
-            var clockPart = !ReleaseFeaturePolicy.PendulumEnabled || !DeltaNFD.Inspection.PendulumGlobalInspection.Supported ? ""
-                : !pendulum.HasCurrentStatus || clock is null || !Backends.BackendProcmanService.IsFresh(clock.UpdatedUtc) ? " · 钟摆计划状态待确认"
-                : clock.Holding && clock.VerifiedGlobal && clock.Current100ns > 0 && (ulong)clock.Current100ns + 10 < clock.Resolution100ns ? " · 钟摆计划精度被覆盖（查看提醒）"
-                : clock.Holding && clock.VerifiedGlobal && !clock.HasError && clock.Current100ns > 0
-                    && clock.Current100ns <= (ulong)clock.Resolution100ns + 500 ? $" · 钟摆计划 {clock.Current100ns / 10000.0:0.0000} ms"
-                : " · 钟摆计划：" + clock.Message;
-            return $"{execution}{spoofPart}{powerPart}{dualPart}{powerThrottlePart}{timerIgnorePart}{foregroundPart}{powerSavePart}{memCleanPart}{gamePart}{clockPart}";
+            var clockPart = !PendulumPrepared ? ""
+                : " · 钟摆计划：" + FrameStatusPresentation.Pendulum(true, pendulum.LatestStatus, now, pendulum.StatusError, GameTargetService.Default.Current.DisplayName);
+            return $"{execution}{spoofPart}{powerPart}{dualPart}{powerThrottlePart}{foregroundPart}{powerSavePart}{memCleanPart}{gamePart}{clockPart}";
         }
 
         return GameTargetService.Default.Status;
@@ -1608,6 +1625,10 @@ public sealed class FrameService : IFrameService
         _gameCpuPriority = s.FrameGameCpuPriority;
         _gameIoPriority = s.FrameGameIoPriority;
         _gameMemoryPriority = s.FrameGameMemoryPriority;
+        _gameGpuPriorityEnabled = s.FrameGameGpuPriorityEnabled;
+        _gameGpuPriority = s.FrameGameGpuPriority;
+        _nvidiaGpuShareEnabled = s.FrameNvidiaGpuShareEnabled;
+        _nvidiaGpuBackgroundPercent = s.FrameNvidiaGpuBackgroundPercent;
         _memoryCleanEnabled = false; // Ignore the obsolete persisted switch.
         _memoryCleanGameAutoEnabled = false;
         _memoryCleanThresholdPercent = Math.Clamp(s.FrameMemoryCleanThresholdPercent, 30, 95);
@@ -1645,6 +1666,10 @@ public sealed class FrameService : IFrameService
                 s.FrameGameCpuPriority = _gameCpuPriority;
                 s.FrameGameIoPriority = _gameIoPriority;
                 s.FrameGameMemoryPriority = _gameMemoryPriority;
+                s.FrameGameGpuPriorityEnabled = _gameGpuPriorityEnabled;
+                s.FrameGameGpuPriority = _gameGpuPriority;
+                s.FrameNvidiaGpuShareEnabled = _nvidiaGpuShareEnabled;
+                s.FrameNvidiaGpuBackgroundPercent = _nvidiaGpuBackgroundPercent;
                 s.FrameMemoryCleanEnabled = false;
                 s.GpuSpoofApplyMode = _gpuSpoofApplyMode.ToString();
                 s.GpuSpoofRegistryPath = _gpuSpoofRegistryPath;

@@ -1,10 +1,11 @@
 <Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="using:DeltaNFD.Controls" x:Class="DeltaNFD.Views.FramePage" ui:PageMotion.Stagger="True">
     <ScrollViewer IsEnabled="{x:Bind NormalModeControlsEnabled, Mode=OneWay}" HorizontalContentAlignment="Stretch" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <Grid HorizontalAlignment="Stretch">
         <StackPanel MaxWidth="1440" Padding="28,20,28,32" Spacing="12" ui:PageMotion.Stagger="True">
             <Grid>
                 <StackPanel Spacing="4">
                     <ui:PageHeader Title="帧格"/>
-                    <TextBlock Text="{x:Bind TargetLabel}" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                    <TextBlock Text="{x:Bind TargetLabel, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
                     <TextBlock Text="游戏运行期间的自动化帧数保障功能，随开随用" Style="{StaticResource NoteStyle}"/>
                 </StackPanel>
             </Grid>
@@ -59,33 +60,81 @@
                                 <Grid ColumnSpacing="16">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                     <StackPanel Spacing="4">
-                                        <TextBlock Text="提升三角洲进程优先级" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="由进程管理后端在一键帧格激活且三角洲运行时，持续维持下方三项优先级。关闭帧格、停止进程管理监控或退出工具时按原值恢复；不跟随自定义游戏选择，手动与规则设置优先。修改档位前请先停用帧格。&#10;&#10;实时 CPU 优先级可能影响系统和输入响应。IO 高优先级受 Windows 权限与接口限制；写入或回读失败时会明确提示未生效，不绕过系统或反作弊保护。"/>
-                                        <TextBlock Text="帧格激活且三角洲运行时维持下方三项优先级，退出时恢复原值。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{x:Bind GamePriorityTitle, Mode=OneWay}" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="一键帧格激活且当前目标游戏运行时，持续维持下方三项优先级。自定义模式按所选 EXE 的完整路径核验，同名的其他程序不会纳入。关闭帧格、停止监控或退出工具时按原值恢复；手动与规则设置优先。修改档位或更换目标前请先停用帧格。&#10;&#10;实时 CPU 优先级可能影响系统和输入响应。IO 高优先级受 Windows 权限与接口限制；写入或回读失败时会明确提示未生效，不绕过系统或反作弊保护。"/>
+                                        <TextBlock Text="帧格激活且当前目标游戏运行时维持下方三项优先级，退出时恢复原值。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
                                     </StackPanel>
-                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center" IsOn="{x:Bind FrameSrv.GameProcessPriorityEnabled, Mode=TwoWay}" IsEnabled="{x:Bind FrameSrv.FeaturesEditable, Mode=OneWay}" OnContent="" OffContent="" MinWidth="0" AutomationProperties.Name="提升三角洲进程优先级"/>
+                                    <ToggleSwitch Grid.Column="1" VerticalAlignment="Center" IsOn="{x:Bind FrameSrv.GameProcessPriorityEnabled, Mode=TwoWay}" IsEnabled="{x:Bind FrameSrv.FeaturesEditable, Mode=OneWay}" OnContent="" OffContent="" MinWidth="0" AutomationProperties.Name="{x:Bind GamePriorityTitle, Mode=OneWay}"/>
                                 </Grid>
                                 <Grid ColumnSpacing="16">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                     <TextBlock Text="CPU 优先级" TextWrapping="Wrap" VerticalAlignment="Center" ui:HelpTip.Text="实时 CPU 优先级可能影响输入响应；请按实际需要选择。"/>
-                                    <ComboBox Grid.Column="1" Tag="cpu" MinWidth="180" AutomationProperties.Name="三角洲 CPU 优先级" SelectedIndex="{x:Bind GameCpuPriorityIndex, Mode=OneWay}" IsEnabled="{x:Bind GamePriorityOptionsEditable, Mode=OneWay}" SelectionChanged="GamePrioritySelectionChanged">
+                                    <ComboBox Grid.Column="1" Tag="cpu" MinWidth="180" AutomationProperties.Name="目标游戏 CPU 优先级" SelectedIndex="{x:Bind GameCpuPriorityIndex, Mode=OneWay}" IsEnabled="{x:Bind GamePriorityOptionsEditable, Mode=OneWay}" SelectionChanged="GamePrioritySelectionChanged">
                                         <ComboBoxItem Content="实时"/><ComboBoxItem Content="高"/><ComboBoxItem Content="高于正常（默认）"/><ComboBoxItem Content="正常"/><ComboBoxItem Content="低于正常"/><ComboBoxItem Content="低"/>
                                     </ComboBox>
                                 </Grid>
                                 <Grid ColumnSpacing="16">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                     <TextBlock Text="IO 优先级" TextWrapping="Wrap" VerticalAlignment="Center" ui:HelpTip.Text="IO 高优先级可能受系统限制而未生效；以应用后的回读结果为准。"/>
-                                    <ComboBox Grid.Column="1" Tag="io" MinWidth="180" AutomationProperties.Name="三角洲 IO 优先级" SelectedIndex="{x:Bind GameIoPriorityIndex, Mode=OneWay}" IsEnabled="{x:Bind GamePriorityOptionsEditable, Mode=OneWay}" SelectionChanged="GamePrioritySelectionChanged">
+                                    <ComboBox Grid.Column="1" Tag="io" MinWidth="180" AutomationProperties.Name="目标游戏 IO 优先级" SelectedIndex="{x:Bind GameIoPriorityIndex, Mode=OneWay}" IsEnabled="{x:Bind GamePriorityOptionsEditable, Mode=OneWay}" SelectionChanged="GamePrioritySelectionChanged">
                                         <ComboBoxItem Content="高"/><ComboBoxItem Content="正常（默认）"/><ComboBoxItem Content="低"/><ComboBoxItem Content="非常低"/>
                                     </ComboBox>
                                 </Grid>
                                 <Grid ColumnSpacing="16">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                     <TextBlock Text="内存优先级" TextWrapping="Wrap" VerticalAlignment="Center"/>
-                                    <ComboBox Grid.Column="1" Tag="memory" MinWidth="180" AutomationProperties.Name="三角洲内存优先级" SelectedIndex="{x:Bind GameMemoryPriorityIndex, Mode=OneWay}" IsEnabled="{x:Bind GamePriorityOptionsEditable, Mode=OneWay}" SelectionChanged="GamePrioritySelectionChanged">
+                                    <ComboBox Grid.Column="1" Tag="memory" MinWidth="180" AutomationProperties.Name="目标游戏内存优先级" SelectedIndex="{x:Bind GameMemoryPriorityIndex, Mode=OneWay}" IsEnabled="{x:Bind GamePriorityOptionsEditable, Mode=OneWay}" SelectionChanged="GamePrioritySelectionChanged">
                                         <ComboBoxItem Content="正常（默认）"/><ComboBoxItem Content="低于正常"/><ComboBoxItem Content="中"/><ComboBoxItem Content="低"/><ComboBoxItem Content="非常低"/>
                                     </ComboBox>
                                 </Grid>
                                 <TextBlock Text="{x:Bind GamePriorityStatusText, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                        </Grid>
+                        <Grid Style="{StaticResource FeatureTileGridStyle}" Margin="0,4" ui:HoverLift.Enabled="True">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="{x:Bind GameGpuPriorityTitle, Mode=OneWay}" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="使用 Windows GPU 进程调度优先级，按当前游戏完整 EXE 路径和进程身份核对。随帧格启用，关闭、退出游戏或退出工具后恢复原值；进程管理的手动和规则设置优先。不开放实时 GPU 档位，权限或驱动拒绝时显示未生效。此档位不等于 NVIDIA 前后台资源比例，也不保证帧率提升。"/>
+                                        <TextBlock Text="仅调整当前目标游戏，适用于支持接口的 NVIDIA、AMD 和 Intel 显卡；以回读结果为准。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" IsOn="{x:Bind FrameSrv.GameGpuPriorityEnabled, Mode=TwoWay}" IsEnabled="{x:Bind FrameSrv.FeaturesEditable, Mode=OneWay}" OnContent="" OffContent="" MinWidth="0" AutomationProperties.Name="{x:Bind GameGpuPriorityTitle, Mode=OneWay}"/>
+                                </Grid>
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="GPU 调度优先级" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="1" MinWidth="180" SelectedIndex="{x:Bind GameGpuPriorityIndex, Mode=OneWay}" IsEnabled="{x:Bind GameGpuPriorityOptionsEditable, Mode=OneWay}" SelectionChanged="GameGpuPriority_Changed" AutomationProperties.Name="目标游戏 GPU 调度优先级">
+                                        <ComboBoxItem Content="高"/><ComboBoxItem Content="高于正常"/><ComboBoxItem Content="正常"/><ComboBoxItem Content="低于正常"/><ComboBoxItem Content="低"/>
+                                    </ComboBox>
+                                </Grid>
+                                <TextBlock Text="{x:Bind GameGpuPriorityStatusText, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                        </Grid>
+                        <Grid Style="{StaticResource FeatureTileGridStyle}" Margin="0,4" ui:HoverLift.Enabled="True">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="NVIDIA 前后台 GPU 比例" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="采用 NVIDIA App 相同的后台 YieldPct 数值：前台优先 10%，默认 20%，后台优先 50%；前台显示为 100% 减去后台比例。此为全局调度偏好，影响所有前台和后台 GPU 应用，比例不代表实际占用或独占资源。需要当前驱动、HAGS 和已安装的 NVIDIA App 提供支持。先备份实际原值，写后回读，帧格或目标游戏结束后恢复；检测到外部改动时退出接管并保留原值备份，不覆盖 NVIDIA App 的新设置。"/>
+                                        <TextBlock Text="影响所有应用；游戏或帧格结束后恢复原值。需 HAGS、NVIDIA App 11.0.9.585。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1" IsOn="{x:Bind FrameSrv.NvidiaGpuShareEnabled, Mode=TwoWay}" IsEnabled="{x:Bind FrameSrv.FeaturesEditable, Mode=OneWay}" OnContent="" OffContent="" MinWidth="0" AutomationProperties.Name="NVIDIA 前后台 GPU 比例"/>
+                                </Grid>
+                                <ComboBox HorizontalAlignment="Stretch" SelectedIndex="{x:Bind NvidiaGpuPresetIndex, Mode=OneWay}" IsEnabled="{x:Bind NvidiaGpuOptionsEditable, Mode=OneWay}" SelectionChanged="NvidiaGpuPreset_Changed" AutomationProperties.Name="NVIDIA GPU 比例预设">
+                                    <ComboBoxItem Content="前台优先 · 前台 90% / 后台 10%"/>
+                                    <ComboBoxItem Content="默认 · 前台 80% / 后台 20%"/>
+                                    <ComboBoxItem Content="后台优先 · 前台 50% / 后台 50%"/>
+                                    <ComboBoxItem Content="自定义（按驱动支持范围验证）"/>
+                                </ComboBox>
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="后台 GPU 比例（%）" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{x:Bind NvidiaGpuRatioText, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                    <NumberBox x:Name="NvidiaGpuPercentBox" Grid.Column="1" Width="140" Minimum="0" Maximum="100" SmallChange="1" SpinButtonPlacementMode="Inline" Value="{x:Bind NvidiaGpuPercent, Mode=OneWay}" IsEnabled="{x:Bind NvidiaGpuOptionsEditable, Mode=OneWay}" ValueChanged="NvidiaGpuPercent_Changed" AutomationProperties.Name="后台 GPU 比例，百分比"/>
+                                </Grid>
+                                <TextBlock Text="{x:Bind NvidiaGpuRangeText, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                                <TextBlock Text="{x:Bind NvidiaGpuShareStatusText, Mode=OneWay}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                             </StackPanel>
                         </Grid>
                         <!-- 功能：游戏期间 DWM 持续监测与异常重启 -->
@@ -138,20 +187,20 @@
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" VerticalAlignment="Center" AutomationProperties.Name="游戏进程禁用电源限制" IsOn="{x:Bind GamePowerSelected, Mode=TwoWay}" IsEnabled="{x:Bind FrameSrv.FeaturesEditable, Mode=OneWay}" OnContent="" OffContent="" MinWidth="0" HorizontalAlignment="Right"/>
                         </Grid>
-                        <!-- 功能：让系统忽略三角洲的定时器分辨率请求（独立开关，仅 Windows 11） -->
-                        <Grid ColumnSpacing="16" Style="{StaticResource FeatureTileGridStyle}" Margin="0,4" ui:HoverLift.Enabled="True" Visibility="Collapsed">
+                        <!-- Prepared by the backend: no preparation prompt or independent ignore toggle here. -->
+                        <Grid x:Name="PendulumFramePanel" Visibility="{x:Bind FrameSrv.PendulumPrepared, Mode=OneWay}" ColumnSpacing="16" Style="{StaticResource FeatureTileGridStyle}" Margin="0,4" ui:HoverLift.Enabled="True">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Spacing="4" VerticalAlignment="Center">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock Text="忽略三角洲的精度请求（改用系统时钟）" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="一键帧格激活且三角洲主进程运行时，用系统文档化接口把该进程的计时器策略设为「忽略定时器分辨率请求」：该进程不再贡献自己的精度请求，改用系统当前时钟。&#10;&#10;为避免帧数暴跌，启用前会先实测「不请求任何精度的进程」的实际等待粒度：只有实测 ≤5ms（说明系统时钟本身够细）才施加忽略位；否则自动跳过写位、保留三角洲自身精度（否则它会被压到默认 15.625ms）。&#10;&#10;最佳搭配是先在「钟摆计划」页全局锁定本机最佳分辨率，再启用本项：此时三角洲被忽略后仍能获得全局最佳时钟。&#10;&#10;注意：全局计时器语义下，任何进程请求 0.5ms 都会把全局时钟拉到 0.5ms（Sleep(1) 变成 3 个 tick≈1.5ms）。三角洲以外的请求者可在「进程管理」页逐个加入「定时器忽略列表」，只忽略该进程自己的请求。关闭本项、关闭帧格或退出工具时恢复原值；不注入游戏、不修改游戏文件、不拦截 API。若反作弊拒绝访问该进程，会如实显示未生效。"/>
+                                    <TextBlock Text="钟摆计划" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="完成当前系统的准备与检测保存后显示。开启帧格后先持有对应精度，再核验并忽略当前目标游戏的精度请求；自定义模式按所选 EXE 的完整路径核验。Windows 10 同时保持玩家自备的 DPC 在后台。&#10;&#10;Win10 先进行隔离策略能力自检；两系统均保留无请求进程的时钟可达性检测和目标进程回读。时钟过粗、持有失效或访问被拒绝时如实显示未生效。关闭帧格或退出工具时恢复忽略策略并释放请求。"/>
                                     <Border Style="{StaticResource ChipBorderStyle}" Background="{ThemeResource ControlFillColorDefaultBrush}">
-                                        <TextBlock Text="仅 Windows 11" Style="{StaticResource CaptionStyle}"/>
+                                        <TextBlock Text="{x:Bind GameTimerIgnorePlatformText, Mode=OneWay}" Style="{StaticResource CaptionStyle}"/>
                                     </Border>
                                 </StackPanel>
-                                <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="让三角洲改用系统当前时钟；实测系统时钟过粗时自动跳过，避免帧数下降。建议配合「钟摆计划」。"/>
+                                <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="{x:Bind FrameSrv.PendulumDescription, Mode=OneWay}"/>
                                 <TextBlock Text="{x:Bind GameTimerIgnoreStatusText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource CaptionStyle}" AutomationProperties.LiveSetting="Polite"/>
                             </StackPanel>
-                            <ToggleSwitch Grid.Column="1" VerticalAlignment="Center" AutomationProperties.Name="让系统忽略三角洲定时器分辨率请求" IsOn="{x:Bind GameTimerIgnoreSelected, Mode=TwoWay}" IsEnabled="{x:Bind GameTimerIgnoreEditable, Mode=OneWay}" OnContent="" OffContent="" MinWidth="0" HorizontalAlignment="Right"/>
+                            <TextBlock Grid.Column="1" Text="随帧格启停" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center"/>
                         </Grid>
                         <!-- 功能：前台加速响应（总开关 + 两个子开关；退出帧格自动还原） -->
                         <StackPanel Spacing="4" Style="{StaticResource FeatureTilePanelStyle}" Margin="0,4" ui:HoverLift.Enabled="True">
@@ -297,5 +346,6 @@
                 </Border>
             </Grid>
         </StackPanel>
+        </Grid>
     </ScrollViewer>
 </Page>

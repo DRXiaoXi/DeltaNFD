@@ -3,7 +3,8 @@
         侧栏独立入口：只导航并渲染已验证的声明式界面，与管理页共享同一份宿主状态与配置。
         打开本页不启动、不重连、不移交、不恢复、不调用后端；离开本页不停止持续插件。
     -->
-    <ScrollViewer HorizontalContentAlignment="Stretch">
+    <ScrollViewer HorizontalContentAlignment="Stretch" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <Grid HorizontalAlignment="Stretch">
         <StackPanel MaxWidth="1440" Padding="28,20,28,32" Spacing="12">
             <StackPanel Spacing="4">
                 <TextBlock x:Name="EntryTitleText" Text="插件入口" Style="{StaticResource H1Style}" TextWrapping="Wrap"/>
@@ -27,5 +28,6 @@
                 </StackPanel>
             </Border>
         </StackPanel>
+        </Grid>
     </ScrollViewer>
 </Page>

@@ -87,6 +87,8 @@ public sealed partial class MainWindow : Window
         InitializePageBackendNavigation();
         InitializeGameVersionWatch();
         RuntimeNavigationItem.Visibility = ReleaseFeatures.RuntimeUiEnabled ? Visibility.Visible : Visibility.Collapsed;
+        ClockNavigationItem.Visibility = ReleaseFeaturePolicy.PendulumEnabled ? Visibility.Visible : Visibility.Collapsed;
+        DriverPriorityNavigationItem.Visibility = ReleaseFeaturePolicy.DriverPriorityEnabled ? Visibility.Visible : Visibility.Collapsed;
         Services.Backends.BackendAttention.Changed += OnBackendAttention;
         Closed += (_, _) => Services.Backends.BackendAttention.Changed -= OnBackendAttention;
         ServiceLocator.GameTarget.Changed += OnGameTargetChanged;
@@ -290,6 +292,7 @@ public sealed partial class MainWindow : Window
             StartupGameDirectoryCheckCompleted = true;
         }
         _ = CheckGameVersionsAsync(force: true);
+        // Win10 now uses a player-supplied DPC EXE; never resume legacy TESTSIGNING/certificate preparation.
         if (retiredRecovery.Success) _ = Services.Backends.BackendProcmanService.Instance.ActivateSavedRulesAsync();
 
         // 启动时主页可能在目录提示之前已创建；路径设置完成后立即使用真实游戏目录重扫。
@@ -1358,6 +1361,7 @@ public sealed partial class MainWindow : Window
         Type pageType = item.Tag?.ToString() switch
         {
             "system" => typeof(SystemOptimizePage),
+            "driverpriority" => typeof(DriverPriorityPage),
             "spoof" => typeof(GpuSpoofPage),
             "nvsettings" => typeof(NvSettingsPage),
             "gamemods" => typeof(GameModificationsPage),
@@ -1387,6 +1391,7 @@ public sealed partial class MainWindow : Window
     private bool _pendulumUnsupportedDialogOpen;
     private bool CanEnterPendulumPage(string tag)
     {
+        if (tag == "driverpriority" && !ReleaseFeaturePolicy.DriverPriorityEnabled) return false;
         if (tag == "clock" && !ReleaseFeaturePolicy.PendulumEnabled) return false;
         if (tag != "clock" || DeltaNFD.Inspection.PendulumGlobalInspection.Supported) return true;
         _ = ShowPendulumUnsupportedAsync();

@@ -1,5 +1,8 @@
 # 第三方内容与历史授权
 
+- **Thesycon / DPC Latency Checker 1.4.0（原件不随产品分发）**：本项目仅提供原创接入代码和公开文件身份，Win10 玩家自行准备原版 EXE，确认后由工具运行和正常关闭该程序；原程序会自行加载其驱动。原程序内嵌条款要求再分发取得书面许可，未取得授权；其驱动另有 CVE-2025-51619。GitHub 源码及安装包排除其 SYS、EXE 和压缩副本。目录与工具不授予 Thesycon 内容的 GPL 权利，也不构成内核加载或反作弊兼容性承诺。厂商 https://www.thesycon.de/deu/latency_check.shtml ，漏洞记录 https://nvd.nist.gov/vuln/detail/CVE-2025-51619 。
+
+- **ZstdSharp.Port 0.8.8**：NVPH 小缓存的只读、有界 Zstandard 解压使用该托管库，适用 MIT；许可证见 `licenses/ZstdSharp-MIT.txt`。上游 https://github.com/oleg-st/ZstdSharp ，对应提交 `2cd0c019693bc786a5fe5c3be94e107b24e7267e`。不加载或执行着色器载荷。
 - **MCP C# SDK 2.4.0（ModelContextProtocol / ModelContextProtocol.Core）**：本地 Agent 接入辅助程序使用官方 SDK，适用 Apache-2.0；许可证见 `licenses/MCP-SDK-Apache-2.0.txt`。上游为 modelcontextprotocol/csharp-sdk。Microsoft.Extensions.* 等 .NET 组件继续适用各自的 MIT 许可。
 
 自 Alpha0.915 起，Delta NFD 原创代码采用 GPL-3.0-only。本次授权不对第三方材料重新授权，各组件及独立资源继续适用原许可证和声明。

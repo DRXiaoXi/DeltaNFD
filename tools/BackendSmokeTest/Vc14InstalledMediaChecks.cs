@@ -17,6 +17,7 @@ internal static class Vc14InstalledMediaChecks
             var sourceRoots = new Dictionary<Vc14Baseline, string>
             {
                 [Vc14Baseline.V144] = Path.Combine(assetsRoot, Vc14FileRepairSource.DirectoryNameFor(Vc14Baseline.V144)),
+                [Vc14Baseline.V151] = Path.Combine(assetsRoot, Vc14FileRepairSource.DirectoryNameFor(Vc14Baseline.V151)),
             };
             DeploymentLayoutChecks.CheckVc14Media(assetsRoot);
             var extracted = Vc14ForceReplace.ExtractPayload(Path.GetFullPath(sourceRoot), Path.Combine(fixture, "unpacked"), CancellationToken.None);
@@ -34,7 +35,7 @@ internal static class Vc14InstalledMediaChecks
             {
                 var app = Path.Combine(fixture, "安装目录 with spaces " + scenario);
                 var assets = Path.Combine(app, "Assets");
-                foreach (var baseline in new[] { Vc14Baseline.V144 })
+                foreach (var baseline in new[] { Vc14Baseline.V144, Vc14Baseline.V151 })
                 {
                     var sourceMedia = sourceRoots[baseline];
                     var media = Path.Combine(assets, Vc14FileRepairSource.DirectoryNameFor(baseline));
@@ -61,7 +62,7 @@ internal static class Vc14InstalledMediaChecks
                         Directory.CreateDirectory(Path.GetDirectoryName(wrong)!);
                         File.Copy(Path.Combine(sourceRoots[Vc14Baseline.V144], file.Path), wrong);
                     }
-                    foreach (var baseline in new[] { Vc14Baseline.V144 })
+                    foreach (var baseline in new[] { Vc14Baseline.V144, Vc14Baseline.V151 })
                     {
                         var media = Path.Combine(assets, Vc14FileRepairSource.DirectoryNameFor(baseline));
                         var source = Vc14FileRepairSource.PackagesFor(baseline).SelectMany(p => p.Files)
@@ -121,6 +122,12 @@ internal static class Vc14InstalledMediaChecks
         Check(Path.GetFullPath(BackendEnvironment.AppRoot).TrimEnd('\\') == Path.GetFullPath(app).TrimEnd('\\'), "Cold process resolves app root above Backends/runtime independently of cwd");
         var expected42 = Path.Combine(app, "Assets", "Vc14FileRepair14.42");
         var expected44 = Path.Combine(app, "Assets", "Vc14FileRepair14.44");
+        var expected51 = Path.Combine(app, "Assets", "Vc14FileRepair14.51");
+        Check(Vc14FileRepairSource.InstalledRootFor(Vc14Baseline.V151) == expected51,
+            "Explicit 14.51 uses its deployed Assets child in a cold relocated process");
+        var preview51 = Vc14ForceReplace.PreviewCore(expected51, windows, false, null, CancellationToken.None, Vc14Baseline.V151);
+        Check(preview51.CanRun == (scenario == "valid") && (scenario != "valid" || preview51.ReplaceCount == 51 && preview51.DowngradeCount == 0),
+            "Relocated 14.51 validates all own media before offering upgrade of the fake 14.44 files");
         Check(Vc14FileRepairSource.InstalledRoot == expected44
             && Vc14FileRepairSource.InstalledRootFor(Vc14Baseline.V144) == expected44
             && Vc14FileRepairSource.InstalledRootFor(Vc14Baseline.V142) == expected42 && !Directory.Exists(expected42),

@@ -36,6 +36,7 @@ internal static class Vc14FileRepairSource
         {
             [Vc14Baseline.V142] = "Vc14FileRepair.catalog.json",
             [Vc14Baseline.V144] = "Vc14FileRepair14.44.catalog.json",
+            [Vc14Baseline.V151] = "Vc14FileRepair14.51.catalog.json",
         };
         var result = new Dictionary<Vc14Baseline, Vc14FileRepairPackage[]>();
         foreach (var (baseline, resource) in resources)

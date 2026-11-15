@@ -40,7 +40,7 @@ internal sealed record OptimalClockConditionRow
 }
 
 /// <summary>扫描模式：global（全局计时器语义，请求影响全系统）/ self（按进程，仅本进程）。</summary>
-internal enum OptimalClockMode { Unknown, Global, Self }
+internal enum OptimalClockMode { Unknown, Global, Self, KernelResolution, DpcProcess }
 
 /// <summary>检测模式：最低延迟（原算法）/ 稳定延迟（新算法）。</summary>
 public enum OptimalClockScanKind { LowestLatency, StableLatency }

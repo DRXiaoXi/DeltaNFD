@@ -92,10 +92,12 @@ internal static class AceCoreOwnershipInspection
             }
             if (blocked()) return Blocked(); // Do not publish an inventory after the game has started.
             var manualCount = games.Count(g => g.ManuallyAssociated);
-            var excess = shared.Count > games.Count;
-            var level = AceCoreCountPolicy.Evaluate(shared.Count, games.Count, manualCount, coreCountIncomplete);
+            var limited = GameInstallationScope.CurrentSelection is { AllInstallations: false };
+            var excess = !limited && shared.Count > games.Count;
+            var level = limited ? AceCoreCheckLevel.NeedsReview : AceCoreCountPolicy.Evaluate(shared.Count, games.Count, manualCount, coreCountIncomplete);
             var countSummary = $"检测到 {games.Count} 个包含 ACE 组件的游戏安装目录、{shared.Count} 个共享 ACE-CORE 驱动文件；已手动关联 {manualCount} 个游戏。";
-            var detail = level == AceCoreCheckLevel.Abnormal
+            var detail = limited ? "本次只检测所选安装，共享 CORE 数量仅作参考，不与所选游戏数比较，也不据此报冗余。选择全部目录可进行完整数量核对。"
+                : level == AceCoreCheckLevel.Abnormal
                 ? $"手动关联后 CORE 数量仍偏多（{shared.Count} > {games.Count}），按本工具计数规则判定异常。"
                 : excess ? $"CORE 数量偏多（{shared.Count} > {games.Count}），尚未完成有效手动关联，请先添加/关联 ACE 游戏。"
                 : level == AceCoreCheckLevel.NeedsReview ? $"当前已读 CORE 数量未超出已识别游戏数（{shared.Count} ≤ {games.Count}）；共享 CORE 目录尚未读全，驱动总数待核对。"
@@ -104,12 +106,13 @@ internal static class AceCoreOwnershipInspection
                 detail += "部分目录或安装信息仍待核对，请查看明细。";
             return new()
             {
-                Level = level, SysCount = shared.Count, CoreInventoryComplete = !coreCountIncomplete,
+                Level = level, SysCount = shared.Count, CoreInventoryComplete = !coreCountIncomplete, InstallationScopeLimited = limited,
                 Files = shared.Select(path => "· " + Path.GetRelativePath(root, path)).ToList(),
                 Games = games, Notes = notes.Distinct().Take(32).ToList(),
                 ManuallyAssociatedGameCount = manualCount,
                 Summary = countSummary + detail,
-                Advice = excess ? "请确认所有含 ACE 的游戏均已添加/关联，并重新检测。计数提醒不证明多余文件已失效或可删除，目录读取缺口请查看明细。"
+                Advice = limited ? "共享 CORE 无法按安装目录隔离；仅清理所选目录本地 ACE 时保留共享组件，需共享清理时请选择全部目录并再次确认。"
+                    : excess ? "请确认所有含 ACE 的游戏均已添加/关联，并重新检测。计数提醒不证明多余文件已失效或可删除，目录读取缺口请查看明细。"
                     : coreCountIncomplete ? "共享 CORE 目录未读全，不能确认驱动总数，请查看读取明细后重试。检测不会自动删除组件。"
                     : "默认检查软件已识别的三角洲及玩家手动添加的游戏目录，并按去重游戏数核对共享 CORE 数量；其他游戏仍需手动添加。检测不会自动删除组件。",
             };

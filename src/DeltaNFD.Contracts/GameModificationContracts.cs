@@ -29,6 +29,7 @@ public sealed class GameRecordingSnapshot
 
 public sealed class GameRecordingArgs
 {
+    public GameInstallationSelection? Selection { get; init; }
     public string InstallationRoot { get; init; } = "";
     public string ComponentId { get; init; } = "";
     public string ExpectedFingerprint { get; init; } = "";

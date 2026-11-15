@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using DeltaNFD.Execution.Procman;
+using DeltaNFD.Execution.OptimalClock;
 using DeltaNFD.Services;
 
 // Actual procman loop + fake process APIs, and the production EcoQoS RMW/comparison logic.
@@ -32,13 +33,34 @@ internal static class FrameAcceptanceFixChecks
     private static void Configure(bool active = true, bool selected = true) => AppSettingsStore.Update(s =>
     {
         s.FrameModeActive = active; s.FrameGameTimerIgnoreEnabled = selected;
+        s.OptimalClockScanUtc = selected ? DateTimeOffset.UtcNow : null;
+        s.OptimalClockScanPlatform = ""; s.OptimalClockResolution100ns = 10000;
         s.FrameAutomaticMemoryEnabled = false; s.FrameGamePriorityEnabled = false;
     });
 
     private static ProcmanEngine Engine(string root, Api api) => new(Path.Combine(root, "changes.json"), Path.Combine(root, "rules.json"),
-        timerIgnoreApi: api, timerProbe: new FrameTimerLegacyProbe(new FakeProbe()))
+        timerIgnoreApi: api, timerProbe: new FrameTimerLegacyProbe(new FakeProbe()),
+        clockHolder: new Clock(), clockMeasurement: new ClockMeasurements(), clockCurrentResolution: () => 10000)
     { ExperimentalTimerFeaturesForTests = true, FrameTimerIgnoreTargetsForTests = () => Volatile.Read(ref api.TargetPresent) ? [Id] : [],
-      GlobalPrecisionForTests = () => new() { Supported = true, Readable = true, Message = "fake setup off" } };
+      GlobalPrecisionForTests = () => new() { Supported = true, Readable = true, Configured = true, BootConfirmed = true } };
+
+    private sealed class Clock : IOptimalClockHolderApi
+    {
+        public bool Holding { get; private set; }
+        public uint Resolution100ns => 10000;
+        public uint Granted100ns => 10000;
+        public uint Current100ns => Holding ? 10000u : 156250u;
+        public string Error => "";
+        public bool Ensure(uint target) { Holding = true; return true; }
+        public void Stop() => Holding = false;
+    }
+    private sealed class ClockMeasurements : IOptimalClockMeasurementApi
+    {
+        public double? MeasureRequestlessMs(int samples) => 1;
+        public OptimalClockSample? MeasureGlobal(uint r, int samples, int spin) => throw new IOException("Unexpected scanner");
+        public OptimalClockSample? MeasureSelf(uint r, int samples, int spin) => throw new IOException("Unexpected self probe");
+        public IOptimalClockLoad? StartLoad(int threads) => throw new IOException("Unexpected load");
+    }
 
     private static async Task Until(Func<bool> condition, string why)
     {

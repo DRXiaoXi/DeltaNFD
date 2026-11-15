@@ -20,7 +20,7 @@
                 </Border>
             </StackPanel>
         </Grid>
-        <NavigationView x:Name="NavView" Grid.Row="1" PaneDisplayMode="Left" OpenPaneLength="224" IsBackButtonVisible="Collapsed" IsSettingsVisible="False" SelectionChanged="NavView_SelectionChanged" IsPaneOpen="True">
+        <NavigationView x:Name="NavView" Grid.Row="1" PaneDisplayMode="Left" OpenPaneLength="224" IsBackButtonVisible="Collapsed" IsSettingsVisible="False" SelectionChanged="NavView_SelectionChanged" IsPaneOpen="True" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
             <NavigationView.Resources>
                 <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent"/>
             </NavigationView.Resources>
@@ -35,7 +35,7 @@
                         <FontIcon Glyph=""/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Tag="clock" Content="钟摆计划" Visibility="Collapsed">
+                <NavigationViewItem x:Name="ClockNavigationItem" Tag="clock" Content="钟摆计划">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph=""/>
                     </NavigationViewItem.Icon>
@@ -44,6 +44,11 @@
                 <NavigationViewItem Tag="system" Content="系统优化">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph=""/>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="DriverPriorityNavigationItem" Tag="driverpriority" Content="驱动优先级">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8CB;"/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem x:Name="RuntimeNavigationItem" Tag="runtime" Content="运行库">

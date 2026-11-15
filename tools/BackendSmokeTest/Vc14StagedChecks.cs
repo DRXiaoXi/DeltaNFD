@@ -240,8 +240,9 @@ internal static class Vc14StagedChecks
         }
     }
 
-    private sealed class Fake(string root) : IVc14ReinstallEnvironment
+    internal sealed class Fake(string root, Vc14Baseline baseline = Vc14Baseline.V144) : IVc14ReinstallEnvironment
     {
+        public Vc14Baseline Baseline => baseline;
         public string Root => root;
         public bool IsSafeMode { get; set; }
         public bool PlanError, LeaveProducts, SaveError, SavedBeforeRemoval, SavedBeforeInstall, ServiceBlocked, ExcludeOrphanWrappers, CleanupAddsProduct;
@@ -296,7 +297,7 @@ internal static class Vc14StagedChecks
         {
             Products.RemoveAll(p => p.Architecture == arch);
             Products.AddRange(Vc14Catalog.Families.Where(f => f.Arch == arch).Select(f => new Vc14Entry(Guid.NewGuid().ToString("B"),
-                "Microsoft Visual C++ 2022 " + arch + " " + f.Role + " Runtime", Vc14Reinstall.BaselineVersion, arch, f.Role, f.Upgrade)));
+                "Microsoft Visual C++ 2022 " + arch + " " + f.Role + " Runtime", baseline.FullVersion(), arch, f.Role, f.Upgrade)));
         }
         public Task<Vc14StepResult> InstallAsync(string arch, IProgress<string>? progress, CancellationToken token)
         { SavedBeforeInstall = PendingInstall() is not null; Calls.Add("install:" + arch); if (InstallFail == arch) return Task.FromResult(new Vc14StepResult(1603)); AddBaseline(arch); return Task.FromResult(new Vc14StepResult(0)); }

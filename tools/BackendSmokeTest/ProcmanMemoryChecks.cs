@@ -6,7 +6,7 @@ using DeltaNFD.Services.Backends;
 
 internal static class ProcmanMemoryChecks
 {
-    internal static async Task RunAsync()
+    internal static async Task RunAsync(bool nativeChild = true)
     {
         var root = Path.Combine(Path.GetTempPath(), "DeltaNFD-memory-checks-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -216,8 +216,8 @@ internal static class ProcmanMemoryChecks
                 pressure = 95; now = now.AddSeconds(31);
                 foreground = ordinary.Pid; engine.AutomaticMemoryOnceForTests();
                 Check(writes.Count == before + 1, "自动回收沿用前台保护"); foreground = 20202;
-                now = now.AddSeconds(31); engine.AutomaticMemoryOnceForTests();
-                Check(writes.Count == before + 2, "冷却结束后恢复自动回收");
+                now = now.AddMinutes(10); engine.AutomaticMemoryOnceForTests();
+                Check(writes.Count == before + 2, "空候选扫描的设置间隔结束后恢复自动回收");
                 engine.FrameModeActiveForTests = () => false;
                 engine.SaveBackgroundConfig(new() { AutomaticMemoryEnabled = false });
                 now = now.AddMinutes(11); engine.AutomaticMemoryOnceForTests();
@@ -377,6 +377,8 @@ internal static class ProcmanMemoryChecks
             var review = new BackendUnconfirmedStore.Review(BackendModules.Procman, "fixture", "fixture", true) { Command = BackendCommands.ProcmanMemoryTrim };
             Check(BackendRecovery.RecoveryChoices(review, new ReconcileSnapshot { Module = BackendModules.Procman, Summary = "fixture", Complete = true,
                 RecoveryScopes = [new() { Id = "all", Description = "fixture", Available = true }] }).Count == 0, "工作集回收未知结果不伪称可从属性备份撤销");
+            if (nativeChild)
+            {
             using var child = Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--procman-test-child") { UseShellExecute = false, CreateNoWindow = true })!;
             try
             {
@@ -389,7 +391,8 @@ internal static class ProcmanMemoryChecks
                     "固定句柄复核拒绝错误启动身份");
             }
             finally { if (!child.HasExited) { child.Kill(); await child.WaitForExitAsync(); } }
-            Console.WriteLine($"Procman memory checks: {count} passed. Only one dedicated child working set trimmed; other effects simulated.");
+            }
+            Console.WriteLine($"Procman memory checks: {count} passed. Native child enabled={nativeChild}; other effects simulated.");
         }
         finally
         {

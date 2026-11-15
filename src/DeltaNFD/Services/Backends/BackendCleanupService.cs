@@ -22,7 +22,8 @@ internal sealed class BackendCleanupService : ICleanupService
 
     public async Task<ShaderCacheCleanupResult> CleanShaderCachesAsync(IProgress<string>? progress = null, CancellationToken token = default)
     {
-        var result = await _caller.InvokeAsync(BackendCommands.SystemCleanupShaderCache, new { }, progress, token);
+        var result = await _caller.InvokeAsync(BackendCommands.SystemCleanupShaderCache,
+            new GameInstallationArgs { Selection = GameInstallationScope.CurrentSelection }, progress, token);
         if (result.Status is not (BackendResultStatuses.Ok or BackendResultStatuses.Partial) || result.Data is null)
             throw new InvalidOperationException($"清理着色器缓存失败：{result.Message}");
         return BackendJson.Deserialize<ShaderCacheCleanupResult>(result.Data.Value);

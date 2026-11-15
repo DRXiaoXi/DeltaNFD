@@ -68,7 +68,22 @@ public sealed class PluginPackageImporter
         {
             return PluginImportResult.Fail("插件包不可读：" + ex.Message);
         }
-        if (!Directory.Exists(pluginsRoot)) return PluginImportResult.Fail("插件安装根不存在。");
+        if (!Directory.Exists(pluginsRoot))
+        {
+            // 首次导入时宿主插件根目录可能尚未创建（真实 GUI 首次导入失败的根因）。
+            // 创建前先核对所有已存在父目录不是重解析点，避免把插件写到符号链接/目录联接指向的位置。
+            for (var directory = new DirectoryInfo(pluginsRoot).Parent; directory is not null; directory = directory.Parent)
+                if (directory.Exists && (directory.Attributes & FileAttributes.ReparsePoint) != 0)
+                    return PluginImportResult.Fail("插件安装路径包含重解析点，拒绝导入。");
+            try
+            {
+                Directory.CreateDirectory(pluginsRoot);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                return PluginImportResult.Fail("插件安装根不存在且无法创建：" + ex.Message);
+            }
+        }
 
         var stagingRoot = Path.Combine(pluginsRoot, $".staging-{Guid.NewGuid():N}");
         try

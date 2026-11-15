@@ -28,6 +28,13 @@ public interface IFrameService : INotifyPropertyChanged
     FrameIoPriority GameIoPriority { get; set; }
     FrameMemoryPriority GameMemoryPriority { get; set; }
     string GamePriorityStatusText { get; }
+    bool GameGpuPriorityEnabled { get => false; set { } }
+    FrameGpuPriority GameGpuPriority { get => FrameGpuPriority.High; set { } }
+    string GameGpuPriorityStatusText => "等待后端核对 GPU 调度优先级";
+    bool NvidiaGpuShareEnabled { get => false; set { } }
+    int NvidiaGpuBackgroundPercent { get => 10; set { } }
+    string NvidiaGpuShareStatusText => "等待后端核对 NVIDIA 前后台比例";
+    NvidiaGpuShareInfo? NvidiaGpuShareInfo => null;
 
     /// <summary>帧格功能：游戏期间持续监测 DWM，高 CPU 持续满足阈值时重启并复查；保留旧设置字段名。</summary>
     bool DwmRestartOnGameStart { get; set; }
@@ -77,12 +84,15 @@ public interface IFrameService : INotifyPropertyChanged
     string GamePowerStatusText { get; }
     bool GamePowerHasError { get; }
 
-    // ---- 帧格功能：让系统忽略三角洲定时器分辨率请求（仅 Windows 11） ----
+    // ---- 准备完成后随帧格运行的钟摆及三角洲精度请求忽略（Win10/Win11） ----
 
-    /// <summary>让系统忽略三角洲主进程的定时器分辨率请求；默认关，退出或关闭时恢复原值。</summary>
+    /// <summary>旧独立选项的存储兼容；当前由已准备的钟摆和帧格生命周期决定执行。</summary>
     bool GameTimerIgnoreEnabled { get; set; }
+    bool PendulumPrepared => false;
+    string PendulumStatusText => "";
+    string PendulumDescription => "";
 
-    /// <summary>该功能当前是否受本系统支持（Windows 11 起；未知按不支持处理）。</summary>
+    /// <summary>进程策略能力是否已核验；Win10需隔离自检，未知按不支持处理。</summary>
     bool GameTimerIgnoreSupported => false;
 
     /// <summary>状态文字（实际生效数、当前系统读数、等待/未启用/错误）。</summary>

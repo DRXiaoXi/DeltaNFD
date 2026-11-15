@@ -492,6 +492,16 @@ internal static class BackendUnconfirmedStore
     public static string ArchiveAfterRecovery(Review confirmed, string scope, bool verified, string message, ReconcileSnapshot? snapshot)
     {
         _ = BackendModules.RequireForReview(confirmed.Module);
+        if (confirmed.Module == BackendModules.System
+            && (confirmed.Command is BackendCommands.SystemDriverPriorityChange or BackendCommands.SystemDriverPriorityRestoreAll)
+            && (scope != "driver-priority" || snapshot is not { Complete: true, Module: BackendModules.System }
+                || !snapshot.RecoveryScopes.Any(s => s.Id == "driver-priority" && !s.Available && s.AffectedCount == 0)))
+            throw new IOException("设备中断操作未通过对应范围完整复核，保留原始记录。");
+        if (confirmed.Module == BackendModules.System
+            && (confirmed.Command is BackendCommands.SystemStartupChange or BackendCommands.SystemStartupRestoreAll)
+            && (scope != "startup" || snapshot is not { Complete: true, Module: BackendModules.System }
+                || !snapshot.RecoveryScopes.Any(s => s.Id == "startup" && !s.Available && s.AffectedCount == 0)))
+            throw new IOException("自启动操作未通过对应范围完整复核，保留原始记录。");
         var source = RecordPath(confirmed.Module);
         var bytes = ReadEvidence(source);
         if (Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)) != confirmed.Fingerprint)

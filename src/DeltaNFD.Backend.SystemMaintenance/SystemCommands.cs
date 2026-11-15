@@ -2,6 +2,7 @@ using DeltaNFD.Backends;
 using DeltaNFD.Native;
 using DeltaNFD.Services;
 using DeltaNFD.Services.TweakDb;
+using DeltaNFD.Inspection;
 
 namespace DeltaNFD.Backend.SystemMaintenance;
 
@@ -27,6 +28,7 @@ internal static class SystemCommands
     public static readonly BackendHostOptions Options = new()
     {
         Module = BackendModules.Require(BackendModules.System),
+        GameInstallationScopeVersion = GameInstallationProtocol.Version,
         OnStopping = () => _ownsDefenderCleanup ? DefenderGuard.RestoreSessionAsync() : Task.FromResult(OperationResult.Ok("本会话无 Defender 恢复责任。")),
         Handlers = new Dictionary<string, Func<BackendCommandContext, Task<BackendResult>>>(StringComparer.Ordinal)
         {
@@ -59,24 +61,39 @@ internal static class SystemCommands
             },
 
             [BackendCommands.SystemPendulumGlobalConfigure] = async c => Wrap(c.Command, await PendulumGlobalSettings.ConfigureAsync(c.ArgsAs<PendulumGlobalArgs>(), c.CancellationToken)),
+            [BackendCommands.SystemPendulumDriverPrepare] = c => Task.FromResult(BackendResult.Failed(c.Command, "Win10 已改用玩家自备 DPC EXE；旧测试签名/证书自动准备入口已停用，原备份保留。")),
             [BackendCommands.SystemTimerRecover] = async c => Wrap(c.Command, await TimerConfigurationRecovery.RunAsync(c.ArgsAs<TimerRecoveryArgs>(), c.CancellationToken)),
             [BackendCommands.SystemLowMemoryApply] = async c =>
             {
                 var result = await LowMemoryRepair.RunAsync(c.ArgsAs<LowMemoryApplyArgs>(), c.CancellationToken);
                 return Wrap(c.Command, result);
             },
+            [BackendCommands.SystemStartupList] = c => Task.FromResult(BackendResult.Ok(c.Command, "", StartupItemInspection.Read())),
+            [BackendCommands.SystemStartupChange] = c => Task.FromResult(Wrap(c.Command, StartupItemService.Change(c.ArgsAs<StartupItemChangeArgs>(), c.CancellationToken))),
+            [BackendCommands.SystemStartupRestoreAll] = c => Task.FromResult(Wrap(c.Command, StartupItemService.RestoreAll(c.CancellationToken))),
+            [BackendCommands.SystemDriverPriorityList] = c => Task.FromResult(BackendResult.Ok(c.Command, "", DriverPriorityService.List())),
+            [BackendCommands.SystemDriverPriorityChange] = c => Task.FromResult(Wrap(c.Command, DriverPriorityService.Change(c.ArgsAs<DriverPriorityArgs>(), c.CancellationToken))),
+            [BackendCommands.SystemDriverPriorityRestoreAll] = c => Task.FromResult(Wrap(c.Command, DriverPriorityService.RestoreAll(c.CancellationToken))),
             [BackendCommands.SystemShaderStatus] = ShaderStatusAsync,
             [BackendCommands.SystemShaderDiagnose] = ShaderDiagnoseAsync,
             [BackendCommands.SystemShaderClear] = ShaderClearAsync,
-            [BackendCommands.SystemGameRecordingStatus] = c => Task.FromResult(BackendResult.Ok(c.Command, "", GameRecordingModification.CreateDefault().Read())),
+            [BackendCommands.SystemGameRecordingStatus] = c =>
+            {
+                using var scope = GameInstallationScope.Enter(c.ArgsAs<GameInstallationArgs>().Selection);
+                return Task.FromResult(BackendResult.Ok(c.Command, "", GameRecordingModification.CreateDefault().Read()));
+            },
             [BackendCommands.SystemGameRecordingChange] = c =>
             {
                 c.CancellationToken.ThrowIfCancellationRequested();
                 using var target = GameTargetService.Default.BeginOperation();
+                using var scope = GameInstallationScope.Enter(c.ArgsAs<GameRecordingArgs>().Selection, requireChoice: true);
                 return Task.FromResult(Wrap(c.Command, GameRecordingModification.CreateDefault().Change(c.ArgsAs<GameRecordingArgs>())));
             },
             [BackendCommands.SystemShaderRecoveryClean] = async c => {
                 var args = c.ArgsAs<ShaderRecoveryCleanArgs>();
+                using var scope = GameInstallationScope.Enter(args.Selection, requireChoice: true);
+                if (args.NvidiaCache && !GameInstallationScope.AllowsSharedCleanup)
+                    return BackendResult.Failed(c.Command, "系统/驱动缓存由所有游戏共享，请选择全部目录并确认共享清理。");
                 var result = await ShaderRecoveryCleanup.RunAsync(args.GameCache, args.NvidiaCache, c.CancellationToken);
                 return new BackendResult(result.Success ? BackendResultStatuses.Ok : BackendResultStatuses.Failed,
                     c.Command, result.Message, [], false,
@@ -129,7 +146,7 @@ internal static class SystemCommands
     {
         var args = context.ArgsAs<RecoverArgs>();
         var scope = (args.Scope ?? "").Trim().ToLowerInvariant();
-        if (scope is not ("tweaks" or "advanced" or "pagefile" or "defender" or "intel-pcore" or "game-recording"))
+        if (scope is not ("tweaks" or "advanced" or "pagefile" or "defender" or "intel-pcore" or "game-recording" or "startup" or "driver-priority"))
             return BackendResult.Failed("system.recover", $"未知恢复范围“{args.Scope}”，已拒绝执行。");
 
         context.ReportProgress("正在按可信备份恢复…", null, "recover");
@@ -137,6 +154,16 @@ internal static class SystemCommands
         var ok = true;
         switch (scope)
         {
+            case "driver-priority":
+            {
+                var result = DriverPriorityService.RestoreAll(context.CancellationToken);
+                messages.Add(result.Message); ok = result.Success; break;
+            }
+            case "startup":
+            {
+                var result = StartupItemService.RestoreAll(context.CancellationToken);
+                messages.Add(result.Message); ok = result.Success; break;
+            }
             case "game-recording":
             {
                 using var target = GameTargetService.Default.BeginOperation();
@@ -189,7 +216,7 @@ internal static class SystemCommands
 
         var snapshot = await BuildSnapshotAsync();
         var remaining = snapshot.RecoveryScopes.FirstOrDefault(s => s.Id == scope);
-        var verified = ok && (remaining is null || !remaining.Available);
+        var verified = ok && (scope is not ("startup" or "driver-priority") || snapshot.Complete) && (remaining is null || !remaining.Available);
         var message = string.Join("；", messages) + (verified ? "复核通过：恢复范围已无可恢复项。" : "复核未通过，保留阻塞与原始证据。");
         return BackendResult.Ok("system.recover", message, new RecoverOutcome
         {
@@ -259,15 +286,31 @@ internal static class SystemCommands
         foreach (var item in recording.Items.Where(i => i.HasRecord))
             items.Add(new ReconcileItem { Id = item.FilePath, Kind = "game-recording", State = item.State, HasBackup = item.HasRecord, Detail = item.Detail });
         var recordingCount = recording.RecordCount;
+        var startup = StartupItemInspection.ReadBackups();
+        if (!startup.Complete) { complete = false; notes.AddRange(startup.Errors); }
+        foreach (var item in startup.Items)
+            items.Add(new ReconcileItem { Id = item.Id, Kind = "startup", State = item.State, HasBackup = true, Detail = item.Detail });
+        DriverPriorityReport priority;
+        try { priority = DriverPriorityService.ReadBackups(); }
+        catch (Exception ex) { priority = new([], false, 1, ["驱动中断备份未能读取：" + ex.Message]); }
+        if (!priority.Complete) { complete = false; notes.AddRange(priority.Errors); }
+        foreach (var item in priority.Items.Where(i => i.HasBackup))
+            items.Add(new ReconcileItem { Id = item.Device.InstanceId, Kind = "driver-priority", State = item.CanRestore ? "modified" : "conflict", HasBackup = true, Detail = item.BackupDetail });
         var prefix = notes.Count > 0 ? string.Join("；", notes) + "；" : "";
         return new ReconcileSnapshot
         {
             Module = BackendModules.System,
-            Summary = prefix + $"深度优化备份 {backups.Count} 项；高级优化已应用 {appliedAdvanced} 组；虚拟内存原配置备份 {(hasPagefileBackup ? "有" : "无")}。",
+            Summary = prefix + $"深度优化备份 {backups.Count} 项；高级优化已应用 {appliedAdvanced} 组；虚拟内存原配置备份 {(hasPagefileBackup ? "有" : "无")}；自启动原始备份 {startup.BackupCount} 项。",
             Complete = complete,
             Items = items,
             RecoveryScopes =
             [
+                new RecoveryScope { Id = "driver-priority", Description = "按备份恢复本工具修改的设备中断设置（手动重启生效）",
+                    Available = priority.BackupCount > 0, AffectedCount = priority.BackupCount,
+                    Reason = priority.Complete ? "" : "设备中断设置或原始备份尚未完整核对。" },
+                new RecoveryScope { Id = "startup", Description = "按原始备份恢复本工具停用的自启动登记",
+                    Available = startup.BackupCount > 0, AffectedCount = startup.BackupCount,
+                    Reason = startup.Complete ? "" : "部分自启动备份或当前登记无法核对。" },
                 new RecoveryScope
                 {
                     Id = "game-recording", Description = "按原件备份恢复游戏录制组件（仅恢复本工具确认归属的文件）",
@@ -325,6 +368,9 @@ internal static class SystemCommands
 
     private static async Task<BackendResult> CleanupShaderCacheAsync(BackendCommandContext context)
     {
+        using var scope = GameInstallationScope.Enter(context.ArgsAs<GameInstallationArgs>().Selection, requireChoice: true);
+        if (!GameInstallationScope.AllowsSharedCleanup)
+            return BackendResult.Failed(context.Command, "系统缓存无法按单个游戏安装隔离，请选择全部目录并确认共享清理。");
         var progress = new RelayProgress(context, "shader-cache");
         var report = await new CleanupService().CleanShaderCachesAsync(progress, context.CancellationToken);
         var items = report.Skipped
@@ -410,18 +456,23 @@ internal static class SystemCommands
 
     private static async Task<BackendResult> ShaderStatusAsync(BackendCommandContext context)
     {
+        using var scope = GameInstallationScope.Enter(context.ArgsAs<GameInstallationArgs>().Selection);
         var status = await new ShaderService().GetStatusAsync();
         return BackendResult.Ok("system.shader.status", status.DriverAdvice, status);
     }
 
     private static async Task<BackendResult> ShaderDiagnoseAsync(BackendCommandContext context)
     {
+        using var scope = GameInstallationScope.Enter(context.ArgsAs<GameInstallationArgs>().Selection);
         var diagnosis = await new ShaderService().DiagnoseAsync();
         return BackendResult.Ok("system.shader.diagnose", diagnosis.Summary, diagnosis);
     }
 
-    private static async Task<BackendResult> ShaderClearAsync(BackendCommandContext context) =>
-        Wrap("system.shader.clear-cache", await new ShaderService().ClearPsoCacheAsync(context.CancellationToken));
+    private static async Task<BackendResult> ShaderClearAsync(BackendCommandContext context)
+    {
+        using var scope = GameInstallationScope.Enter(context.ArgsAs<GameInstallationArgs>().Selection, requireChoice: true);
+        return Wrap("system.shader.clear-cache", await new ShaderService().ClearPsoCacheAsync(context.CancellationToken));
+    }
 
     // ---------------- 虚拟内存 ----------------
 

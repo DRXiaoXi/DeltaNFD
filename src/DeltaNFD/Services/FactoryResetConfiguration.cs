@@ -7,7 +7,7 @@ namespace DeltaNFD.Services;
 internal sealed class FactoryResetConfiguration(string root)
 {
     private static readonly string[] ConfigurationFiles = ["settings.json", "procman-rules.json", "procman-background.json"];
-    private static readonly string[] EvidenceFiles = ["offline-mode.json", "procman-changes.json", "frame-game-priority.json", "frame-game-timer-ignore.json"];
+    private static readonly string[] EvidenceFiles = ["offline-mode.json", "procman-changes.json", "frame-game-priority.json", "frame-nvidia-gpu-share.json", "frame-game-timer-ignore.json"];
     private readonly string _root = Path.GetFullPath(root);
     internal string BackupDirectory { get; private set; } = "";
     internal Action<string>? BeforeReplaceForTests { get; set; }

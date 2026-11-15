@@ -89,6 +89,15 @@ src/DeltaNFD/Assets/background.png
 /dwmhighcpu-analysis/
 
 # ---------- 本地配置与凭据（示例文件可入库） ----------
+# Third-party driver inputs and authorization evidence stay outside public source.
+private-driver-payloads/
+_private-driver-payloads/
+**/Drivers/DpcTimer/
+**/DpcTimer/package/
+**/dpclat*.sys
+**/dpc.sys
+**/dpclat*.exe
+**/DPCLatencyChecker*.exe
 .env
 .env.*
 !.env.example
@@ -132,3 +141,5 @@ installer/Backup/
 src/DeltaNFD/Assets/Vc14Baseline14.42/**
 src/DeltaNFD/Assets/Vc14Baseline14.44/**
 src/DeltaNFD/Assets/Vc14FileRepair14.44/**
+src/DeltaNFD/Assets/Vc14Baseline14.51/**
+src/DeltaNFD/Assets/Vc14FileRepair14.51/**

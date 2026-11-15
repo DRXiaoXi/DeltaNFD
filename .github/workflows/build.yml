@@ -43,6 +43,10 @@ jobs:
 
       - name: Check source repository boundaries
         run: |
+          python tools/driver_payloads.py audit-index
+          if ($LASTEXITCODE -ne 0) { throw "Private vendor driver in public Git index" }
+          python -m unittest discover -s tools -p test_driver_payloads.py -v
+          if ($LASTEXITCODE -ne 0) { throw "Driver source/payload boundary regression" }
           python tools/check_repository.py
           if ($LASTEXITCODE -ne 0) { throw "Repository boundary violation" }
           python -m unittest discover -s tools -p test_repository_maintenance.py -v
@@ -258,6 +262,13 @@ jobs:
         run: |
           dotnet build src/Plugin.WeakNetBoost/Plugin.WeakNetBoost.csproj -c Release -p:Platform=x64
           dotnet run --project tools/BackendSmokeTest -c Release -- --plugin-weaknet-checks
+
+      # DPC 计时器常驻（Win10 研究）插件：包合同 + 原版文件身份规则 + 假进程/假服务状态机
+      # + 真实导入器接受真实包 + 只读 probe/拒绝路径端到端（不启动原版 DPC、不加载驱动、不改服务）
+      - name: DPC timer resident plugin checks
+        run: |
+          dotnet build src/Plugin.DpcTimerHold/Plugin.DpcTimerHold.csproj -c Release -p:Platform=x64
+          dotnet run --project tools/BackendSmokeTest -c Release -- --plugin-dpc-timer-checks
 
       - name: Auto-update logic checks
         run: dotnet run --project tools/BackendSmokeTest -c Release -- --update-checks

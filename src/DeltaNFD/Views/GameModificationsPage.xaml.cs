@@ -57,7 +57,15 @@ public sealed partial class GameModificationsPage : Page
         finally { SetBusy(false); }
     }
 
-    private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshAsync();
+    private async void Refresh_Click(object sender, RoutedEventArgs e)
+        => await GameInstallationPicker.RunAsync(XamlRoot, RefreshSelectedAsync);
+    private async Task RefreshSelectedAsync()
+    {
+        var selection = await GameInstallationPicker.PickAsync(XamlRoot, "刷新游戏改动");
+        if (selection is null) return;
+        using var scope = GameInstallationScope.Enter(selection);
+        await RefreshAsync();
+    }
     private void Settings_Click(object sender, RoutedEventArgs e) => Frame.Navigate(typeof(SettingsPage));
     private async void Replace_Click(object sender, RoutedEventArgs e) => await ChangeRecordingAsync(sender, false);
     private async void Restore_Click(object sender, RoutedEventArgs e) => await ChangeRecordingAsync(sender, true);
@@ -68,25 +76,34 @@ public sealed partial class GameModificationsPage : Page
         SetBusy(true);
         try
         {
+            var selection = await GameInstallationPicker.PickAsync(XamlRoot, "核对录制组件");
+            if (selection is null) return;
+            using var scope = GameInstallationScope.Enter(selection);
+            var targets = await RecordingTargetsAsync(item.ComponentId, selection);
+            var canArchive = targets.All(i => i.CanArchiveRecord);
             var dialog = new ContentDialog
             {
                 XamlRoot = XamlRoot, Title = "核对录制组件记录",
-                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = item.FilePath + "\n\n" + item.Detail + "\n\n" + (item.CanArchiveRecord
+                Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { Text = GameInstallationPicker.Describe(selection) + string.Join("\n\n", targets.Select(i => i.FilePath + "\n" + i.Detail)) + "\n\n" + (canArchive
                     ? "将再次核对当前文件与原件记录的内容哈希和长度，只把旧记录逐字归档到软件数据目录。当前游戏文件、属性和现存备份均不修改；归档后可以重新备份并替换，不会自动替换。"
                     : item.CanRestore ? "原件或备份可按原恢复记录处理。关闭此窗口后点击“恢复原文件”，完成后再重新替换。"
                     : "请完全退出游戏及录制组件，通过游戏启动器检查/修复游戏完整性，然后在本页刷新状态。当前文件缺失、为空、内容不符或仍有中断临时文件时，不会清除旧记录；请保留备份与记录继续核对。"),
                     TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } },
-                PrimaryButtonText = item.CanArchiveRecord ? "核对并归档旧记录" : "",
-                CloseButtonText = item.CanArchiveRecord ? "取消" : "知道了", DefaultButton = ContentDialogButton.Close,
+                PrimaryButtonText = canArchive ? "核对并归档旧记录" : "",
+                CloseButtonText = canArchive ? "取消" : "知道了", DefaultButton = ContentDialogButton.Close,
             };
             if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
             OperationBar.Title = "正在核对旧记录";
             OperationBar.Message = "正在重新读取当前文件并核对原件内容，请稍候。";
             OperationBar.Severity = InfoBarSeverity.Informational;
             OperationBar.IsOpen = true;
-            var result = await _recording.ChangeAsync(new() { InstallationRoot = item.InstallationRoot,
-                ComponentId = item.ComponentId, ExpectedFingerprint = item.Fingerprint, ArchiveRecord = true });
-            ShowResult(result);
+            foreach (var target in targets)
+            {
+                var result = await _recording.ChangeAsync(new() { Selection = selection, InstallationRoot = target.InstallationRoot,
+                    ComponentId = target.ComponentId, ExpectedFingerprint = target.Fingerprint, ArchiveRecord = true });
+                ShowResult(result);
+                if (!result.Success) break;
+            }
             await ReadStatesAsync();
         }
         catch (Exception ex) { ShowResult(OperationResult.Fail("旧记录核对未完成，未修改游戏文件：" + ex.Message)); }
@@ -99,20 +116,39 @@ public sealed partial class GameModificationsPage : Page
         SetBusy(true);
         try
         {
+            var selection = await GameInstallationPicker.PickAsync(XamlRoot, restore ? "恢复录制组件" : "替换录制组件");
+            if (selection is null) return;
+            using var scope = GameInstallationScope.Enter(selection);
+            var targets = await RecordingTargetsAsync(item.ComponentId, selection);
+            bool AlreadyDesired(GameRecordingItem i) => !i.NeedsReview && (restore
+                ? !i.HasRecord && !i.IsManaged && i.CanApply : i.IsManaged && i.CanRestore);
+            if (targets.Any(i => (restore ? !i.CanRestore : !i.CanApply) && !AlreadyDesired(i)))
+                throw new InvalidOperationException("所选安装中存在暂不可操作的组件，请先刷新并核对各目录状态。\n" + string.Join("\n", targets.Select(i => i.FilePath + "：" + i.State)));
+            var pending = targets.Where(i => restore ? i.CanRestore : i.CanApply).ToArray();
+            if (pending.Length == 0) { ShowResult(OperationResult.Skip("所选安装的组件均已处于目标状态，无需重复操作。")); return; }
             var dialog = new ContentDialog
             {
                 XamlRoot = XamlRoot,
                 Title = restore ? "恢复录制组件原文件？" : "替换录制组件为只读空文件？",
-                Content = new TextBlock { Text = item.FilePath + "\n\n" + (restore
+                Content = new TextBlock { Text = GameInstallationPicker.Describe(selection) + string.Join("\n", targets.Select(i => i.FilePath + "：" + i.State))
+                    + "\n\n已处于目标状态的组件会跳过；其余所选组件依次处理，失败时停止后续目录。\n\n" + (restore
                     ? "将核对原件备份和当前文件身份，再恢复原字节及原属性。文件已被更新或替换时会停止，保留证据。"
                     : "会将原件备份到软件数据目录，再创建只读空文件，使此组件无法启动。对应录制/精彩时刻功能会受影响，帧率收益尚未实测。可在本页恢复；更新游戏前建议先恢复原件。"), TextWrapping = TextWrapping.Wrap },
                 PrimaryButtonText = restore ? "恢复原文件" : "备份并替换",
                 CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
             };
             if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
-            var result = await _recording.ChangeAsync(new() { InstallationRoot = item.InstallationRoot, ComponentId = item.ComponentId,
-                ExpectedFingerprint = item.Fingerprint, Restore = restore });
-            ShowResult(result);
+            var results = new List<string>();
+            var completed = true;
+            foreach (var target in pending)
+            {
+                var result = await _recording.ChangeAsync(new() { Selection = selection, InstallationRoot = target.InstallationRoot, ComponentId = target.ComponentId,
+                    ExpectedFingerprint = target.Fingerprint, Restore = restore });
+                results.Add(target.InstallationRoot + "：" + result.Message);
+                if (!result.Success) { completed = false; break; }
+            }
+            ShowResult(completed ? OperationResult.Ok(string.Join("\n", results)) : new OperationResult
+            { Success = false, IsPartial = results.Count > 1, Message = "已停止后续目录操作，已完成项保留。\n" + string.Join("\n", results) });
             await ReadStatesAsync();
         }
         catch (Exception ex) { ShowResult(OperationResult.Fail("未确认改动完成，请刷新或在设置中核对未确认操作：" + ex.Message)); }
@@ -126,9 +162,17 @@ public sealed partial class GameModificationsPage : Page
         SetBusy(true);
         try
         {
+            var selection = await GameInstallationPicker.PickAsync(XamlRoot, disable ? "禁用全屏优化" : "恢复全屏优化");
+            if (selection is null)
+            {
+                _suppressFso = true; FsoDisableToggle.IsOn = !disable; _suppressFso = false;
+                return;
+            }
+            using var scope = GameInstallationScope.Enter(selection);
             using var operation = ServiceLocator.GameTarget.BeginOperation();
             var result = await Task.Run(() =>
             {
+                using var freshScope = GameInstallationScope.Enter(selection, requireChoice: true);
                 if (ServiceLocator.GameTarget.IsCustom) return OperationResult.Fail(GameTargetService.DeltaOnlyMessage);
                 var paths = GameCompatibilityService.ResolveGameExePaths();
                 if (paths.Count == 0) return OperationResult.Fail("未找到游戏主程序，请先登记安装目录。");
@@ -141,7 +185,7 @@ public sealed partial class GameModificationsPage : Page
                         : GameCompatibilityService.RestoreFullscreenOptimizations(path);
                     if (!item.Success) failures.Add(path + "：" + item.Message);
                 }
-                return failures.Count == 0 ? OperationResult.Ok(disable ? "已为所有识别安装禁用全屏优化，下次启动游戏生效。" : "已恢复所有识别安装的全屏优化原设置。")
+                return failures.Count == 0 ? OperationResult.Ok(disable ? "已为所选安装禁用全屏优化，下次启动游戏生效。" : "已恢复所选安装的全屏优化原设置。")
                     : OperationResult.Fail("部分操作未完成，请核对各安装状态。" + string.Join("；", failures));
             });
             ShowResult(result);
@@ -158,5 +202,15 @@ public sealed partial class GameModificationsPage : Page
         OperationBar.Severity = result.Success ? InfoBarSeverity.Success : InfoBarSeverity.Warning;
         OperationBar.IsOpen = true;
         if (!_loaded) App.MainWindow?.ReportPageOperationResult("游戏改动", result.Message);
+    }
+
+    private async Task<GameRecordingItem[]> RecordingTargetsAsync(string componentId, GameInstallationSelection selection)
+    {
+        var snapshot = await _recording.GetStatusAsync();
+        if (!snapshot.Complete) throw new InvalidOperationException("组件状态尚未完整读取，请刷新后重试。" + snapshot.Message);
+        var items = snapshot.Items.Where(i => i.ComponentId == componentId).ToArray();
+        if (items.Length != selection.Roots.Length || items.Length == 0)
+            throw new InvalidOperationException("所选目录的组件状态不完整，未开始改动。请刷新并核对安装目录。");
+        return items;
     }
 }

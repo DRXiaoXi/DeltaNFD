@@ -103,7 +103,7 @@ public sealed class ShaderInspection
             var chosen = present.Where(p => p.Healthy).OrderByDescending(p => ToVersionNumber(p.Version) ?? 0).FirstOrDefault();
             if (chosen == default)
                 chosen = present.OrderByDescending(p => ToVersionNumber(p.Version) ?? 0).First();
-            return LogDriverReading(new ShaderDriverReading(ShaderGpuDetectionState.Nvidia, chosen.Version, chosen.Raw, "WMI", chosen.Name));
+            return LogDriverReading(new ShaderDriverReading(ShaderGpuDetectionState.Nvidia, chosen.Version, chosen.Raw, "WMI", chosen.Name, chosen.Pnp));
         }
 
         // WMI 可用且明确列出了显示适配器、但没有 NVIDIA：不采用注册表里的残留/旧卡条目。
@@ -212,7 +212,8 @@ public sealed class ShaderInspection
 
         // "576.88" → 57688（与 WMI 末 5 位同构），便于比较
         var parts = version.Split('.');
-        if (parts.Length != 2 || !int.TryParse(parts[0], out var major) || !int.TryParse(parts[1], out var minor))
+        if (parts.Length != 2 || !int.TryParse(parts[0], out var major) || !int.TryParse(parts[1], out var minor)
+            || major is < 0 or > 9999 || minor is < 0 or > 99)
         {
             return (ShaderDriverState.NotApplicable, "驱动版本读取失败，请通过 GeForce App / nvidia.cn 确认驱动版本。");
         }
@@ -223,11 +224,16 @@ public sealed class ShaderInspection
             return (ShaderDriverState.TooOld, $"⚠ 驱动过老（{version}）：着色器渲染使用旧方法，不适合现在的三角洲。" + "建议升级到 576.88 或更新的驱动，并在升级后一键清除旧着色器文件重新编译。");
         }
 
+        if (major == 591)
+            return (ShaderDriverState.ProblemSeries, $"⚠ 591 系问题驱动（{version}）：本工具将此系列列为三角洲兼容性问题驱动。建议更换其他系列的合适驱动；更换后清理旧着色器并重新预热。");
         return (ShaderDriverState.Ok, $"✓ 已读取驱动版本（{version}），缓存状态请查看着色器健康检测。");
     }
 
     private const long NvphMinBytes = 256L * 1024 * 1024;
     private const int NvphMinLargeCount = 2;
+
+    /// <summary>Win11 24H2 起始 build；低于此版本的系统不提供驱动托管缓存路径。</summary>
+    private const int Win11R24H2Build = 26100;
     public Task<ShaderDiagnosis> DiagnoseAsync() => DeltaNFD.Inspection.InspectionScheduler.Run(() =>
     {
         using var operation = _target.BeginOperation();
@@ -239,9 +245,32 @@ public sealed class ShaderInspection
             Advice = ""
         }
 
-        : DiagnoseAt(DeltaForceLocator.FindPsoCachePath());
+        : DiagnoseInstallations();
     });
-    internal ShaderDiagnosis DiagnoseAt(string psoPath)
+
+    private ShaderDiagnosis DiagnoseInstallations()
+    {
+        var roots = DeltaForceLocator.FindRoots().ToArray();
+        if (roots.Length < 2) return DiagnoseAt(DeltaForceLocator.FindPsoCachePath(), inspectSystemCache: true);
+        var results = roots.Select(root => (Root: root, Result: DiagnoseAt(
+            DeltaForceLocator.FindPsoCachePaths([root]).FirstOrDefault() ?? "", inspectSystemCache: true))).ToArray();
+        static int Rank(ShaderDiagLevel level) => level switch
+        {
+            ShaderDiagLevel.Abnormal or ShaderDiagLevel.AbnormalDriverIssue => 5,
+            ShaderDiagLevel.Warning => 4, ShaderDiagLevel.Info => 3,
+            ShaderDiagLevel.NotApplicable => 2, _ => 1,
+        };
+        var worst = results.OrderByDescending(i => Rank(i.Result.Level)).First().Result;
+        return new ShaderDiagnosis
+        {
+            Level = worst.Level, Advice = worst.Advice,
+            CacheLayout = results.All(i => i.Result.CacheLayout == worst.CacheLayout) ? worst.CacheLayout : ShaderCacheLayout.Unspecified,
+            IsLayoutUncertain = results.Any(i => i.Result.IsLayoutUncertain),
+            Summary = $"已检测 {results.Length} 个所选安装目录：" + worst.Summary,
+            Details = results.SelectMany(i => new[] { "安装目录：" + i.Root, i.Result.Summary }.Concat(i.Result.Details)).ToList(),
+        };
+    }
+    internal ShaderDiagnosis DiagnoseAt(string psoPath, bool inspectSystemCache = false)
     {
         if (psoPath.Length == 0 || !Directory.Exists(psoPath))
         {
@@ -519,4 +548,4 @@ public sealed class ShaderInspection
     }
 }
 
-public sealed record ShaderDriverReading(ShaderGpuDetectionState State, string Version, string Raw = "", string Source = "", string Adapter = "");
+public sealed record ShaderDriverReading(ShaderGpuDetectionState State, string Version, string Raw = "", string Source = "", string Adapter = "", string PnpDeviceId = "");

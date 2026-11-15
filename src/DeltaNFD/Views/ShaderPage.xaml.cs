@@ -7,6 +7,14 @@ namespace DeltaNFD.Views;
 
 public sealed partial class ShaderPage : Page
 {
+    private bool _selectionFlowBusy;
+    private async Task SelectionFlowAsync(Func<Task> action)
+    {
+        if (_selectionFlowBusy) return;
+        _selectionFlowBusy = true;
+        try { await GameInstallationPicker.RunAsync(XamlRoot, action); }
+        finally { _selectionFlowBusy = false; }
+    }
     private readonly DeltaNFD.Services.Backends.PageBackendLease? _pageOwner = DeltaNFD.Services.Backends.PageBackendSessions.Manager.Current;
     public ShaderViewModel ViewModel { get; } = new();
     public string WarmupLaunchArgument => "-WarmAllPSOWhenLaunch";
@@ -56,7 +64,12 @@ public sealed partial class ShaderPage : Page
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
+        => await SelectionFlowAsync(RefreshSelectedAsync);
+    private async Task RefreshSelectedAsync()
     {
+        var selection = await GameInstallationPicker.PickAsync(XamlRoot, "刷新着色器状态");
+        if (selection is null) return;
+        using var scope = GameInstallationScope.Enter(selection);
         await ViewModel.LoadAsync();
     }
 
@@ -64,13 +77,18 @@ public sealed partial class ShaderPage : Page
         => Frame.Navigate(typeof(ShaderRecoveryPage), "shader");
 
     private async void ClearButton_Click(object sender, RoutedEventArgs e)
+        => await SelectionFlowAsync(ClearSelectedAsync);
+    private async Task ClearSelectedAsync()
     {
+        var selection = await GameInstallationPicker.PickAsync(XamlRoot, "清理旧着色器");
+        if (selection is null) return;
         var confirm = new ContentDialog
         {
             XamlRoot = XamlRoot,
             Title = "清除旧着色器文件？",
-            Content = "将删除三角洲的 PSOCache 着色器缓存。\n\n"
-                      + ShaderCacheCleanupPolicy.SystemCacheNotice + "\n\n"
+            Content = GameInstallationPicker.Describe(selection) + "将删除所选安装的 PSOCache 着色器缓存。\n\n"
+                      + (selection.AllInstallations ? ShaderCacheCleanupPolicy.SystemCacheNotice
+                          : "单目录操作仅清理本地 PSOCache，保留系统 D3DSCache 和显卡驱动共享缓存。") + "\n\n"
                       + "请先退出三角洲和其他图形应用。删除无法撤销；链接及占用等未完成项目会报告。"
                       + "清理后请进入游戏完成着色器预热，初次加载可能出现卡顿。",
             PrimaryButtonText = "清除",
@@ -83,6 +101,7 @@ public sealed partial class ShaderPage : Page
             return;
         }
 
+        using var scope = GameInstallationScope.Enter(GameInstallationPicker.ConfirmShared(selection));
         var result = await ViewModel.ClearAsync();
         if (result is { Success: false })
         {
@@ -112,12 +131,21 @@ public sealed partial class ShaderPage : Page
     }
 
     private async void DiagnoseButton_Click(object sender, RoutedEventArgs e)
+        => await SelectionFlowAsync(DiagnoseSelectedAsync);
+    private async Task DiagnoseSelectedAsync()
     {
+        var selection = await GameInstallationPicker.PickAsync(XamlRoot, "检测着色器");
+        if (selection is null) return;
+        using var scope = GameInstallationScope.Enter(selection);
         await ViewModel.DiagnoseAsync();
     }
 
     private async void CleanSystemButton_Click(object sender, RoutedEventArgs e)
+        => await SelectionFlowAsync(CleanSystemSelectedAsync);
+    private async Task CleanSystemSelectedAsync()
     {
+        var selection = await GameInstallationPicker.PickAsync(XamlRoot, "清理系统着色器", sharedOnly: true);
+        if (selection is null) return;
         var confirm = new ContentDialog
         {
             XamlRoot = XamlRoot,
@@ -131,7 +159,7 @@ public sealed partial class ShaderPage : Page
                       + "链接/重解析项会跳过；被占用或无法删除的项目会逐项报告。确定继续？",
             PrimaryButtonText = "清理",
             CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Primary,
+            DefaultButton = ContentDialogButton.Close,
         };
 
         if (await confirm.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary)
@@ -139,6 +167,7 @@ public sealed partial class ShaderPage : Page
             return;
         }
 
+        using var scope = GameInstallationScope.Enter(GameInstallationPicker.ConfirmShared(selection));
         var result = await ViewModel.CleanSystemShadersAsync();
         if (result is null)
         {

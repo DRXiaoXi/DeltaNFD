@@ -10,6 +10,10 @@ namespace DeltaNFD.Services.Backends;
 /// </summary>
 internal static class BackendRecovery
 {
+    internal static bool IsStartupOperation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.System
+        && review.Command is BackendCommands.SystemStartupChange or BackendCommands.SystemStartupRestoreAll;
+    internal static bool IsDriverPriorityOperation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.System
+        && review.Command is BackendCommands.SystemDriverPriorityChange or BackendCommands.SystemDriverPriorityRestoreAll;
     internal static bool IsRuntimeFileReplacement(BackendUnconfirmedStore.Review review) =>
         review.Module == BackendModules.Runtime && review.Command == BackendCommands.Vc14ForceReplace;
     internal static bool CanKeepCurrentState(BackendUnconfirmedStore.Review review, ReconcileSnapshot? snapshot) =>
@@ -40,6 +44,10 @@ internal static class BackendRecovery
         // A driver profile reset has no relation to the display-name spoof backup.
         if (module == BackendModules.Gpu && review.Command == BackendCommands.GpuDriverProfileReset) return [];
         if (snapshot is null || !snapshot.Complete || snapshot.Module != module) return [];
+        if (IsStartupOperation(review)) return snapshot.RecoveryScopes.Where(s => s.Available && s.Id == "startup").ToArray();
+        if (IsDriverPriorityOperation(review)) return snapshot.RecoveryScopes.Where(s => s.Available && s.Id == "driver-priority").ToArray();
+        // Boot/trust preparation is not restored by unrelated tweak/startup scopes.
+        if (review.Module == BackendModules.System && review.Command == BackendCommands.SystemPendulumDriverPrepare) return [];
         if (module == BackendModules.Runtime)
             return snapshot.RecoveryScopes.Where(s => s.Available && (IsRuntimeInstallation(review)
                 ? IsRuntimeInstallationScope(s.Id) : s.Id == "guard")).ToArray();
@@ -74,6 +82,12 @@ internal static class BackendRecovery
     {
         if (IsRuntimeFileReplacement(review))
             throw new InvalidOperationException("系统 DLL 替换不能使用运行库防护恢复。请按强制替换备份目录中的 restore.ps1/README 手动恢复并核对文件，再确认保留当前状态；旧记录保留。");
+        if (review.Module == BackendModules.System && review.Command == BackendCommands.SystemPendulumDriverPrepare)
+            throw new InvalidOperationException("驱动准备涉及证书与启动配置，不能通过无关系统优化范围解除记录。请核对准备子进程、专用记录与BCD备份；确认保留当前状态后可按原授权继续准备。");
+        if (IsStartupOperation(review) && scope != "startup")
+            throw new InvalidOperationException("自启动操作只能按自启动原始备份核对恢复，不能通过其他系统优化范围解除阻塞。");
+        if (IsDriverPriorityOperation(review) && scope != "driver-priority")
+            throw new InvalidOperationException("驱动中断操作只能使用设备中断原始备份恢复，不能通过其他优化范围解除记录。");
         var current = BackendUnconfirmedStore.ReviewAll().SingleOrDefault(r => r.Module == review.Module);
         if (current is null || current.Fingerprint != review.Fingerprint || !current.CanRestore)
             throw new InvalidOperationException("记录已变化或原后端、子进程尚未确认退出，请重新核对。");
@@ -102,6 +116,8 @@ internal static class BackendRecovery
         var checkpoint = review.Module == BackendModules.Runtime && scope == "repair-restart-checkpoint";
         var verified = !checkpoint && outcome.Success && outcome.Verified && outcome.Scope == scope
             && outcome.VerifiedSnapshot is { Complete: true } snapshot && snapshot.Module == review.Module
+            && (!IsStartupOperation(review) || snapshot.RecoveryScopes.Any(s => s.Id == "startup" && !s.Available && s.AffectedCount == 0))
+            && (!IsDriverPriorityOperation(review) || snapshot.RecoveryScopes.Any(s => s.Id == "driver-priority" && !s.Available && s.AffectedCount == 0))
             && (review.Module != BackendModules.CpuFrame || !snapshot.RecoveryScopes.Any(s => s.Available));
         if (verified)
         {
