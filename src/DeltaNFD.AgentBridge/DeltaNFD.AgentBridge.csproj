@@ -4,8 +4,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <Version>0.9392</Version>
-    <InformationalVersion>Beta0.939-RC2</InformationalVersion>
+    <Version>0.9402</Version>
+    <InformationalVersion>Alpha0.94-RC2</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../DeltaNFD.Contracts/DeltaNFD.Contracts.csproj" />
