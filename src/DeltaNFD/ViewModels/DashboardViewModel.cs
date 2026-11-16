@@ -313,7 +313,7 @@ public partial class DashboardViewModel : ObservableObject
         if (!CanApplyHealth(generation)) return;
         RuntimeHealthState = versions.RequiresUpdate ? DashboardHealthState.Warning : DashboardHealthState.Normal;
         RuntimeStatusText = versions.RequiresUpdate
-            ? "C++ 运行库低于 14.44：" + versions.OlderVersions + "；可在运行库页选择 14.44 / 14.51 基线。"
+            ? "C++ 运行库低于 14.44：" + versions.OlderVersions + "；可在运行库页选择 14.44 / 14.52 基线。"
             : "";
         if (versions.Issues.Count > 0) Log.Warn("运行库版本读取：" + string.Join("；", versions.Issues));
     }

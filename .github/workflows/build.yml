@@ -63,27 +63,30 @@ jobs:
       - name: Prepare fixed published build inputs (never execute installers)
         run: python tools/prepare-source-assets.py
 
-      - name: Restore pinned 14.51 media without running installers
+      - name: Restore pinned 14.52 media without running installers
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $media = Join-Path $env:RUNNER_TEMP 'deltanfd-vc1451'
+          $media = Join-Path $env:RUNNER_TEMP 'deltanfd-vc1452'
           New-Item -ItemType Directory -Force -Path $media | Out-Null
           $expected = @{
-            x86 = 'f0bab33a302b3cdb2e11113760d016f54fd3d2632c65ba7834fac4f0abd7f1a3'
-            x64 = '843068991daaa1f73ad9f6239bce4d0f6a07a51f18c37ea2a867e9beca71295c'
+            x86 = '7b0117e6e20e9e349029c000a8a2715a52cf37c15b6bb697b2908e8bc7066cdf'
+            x64 = '9c02c9ed120f671b900e6b9471d890e3b2414117a7e53f4ae2e855466fa2b7c9'
           }
           foreach ($arch in @('x86', 'x64')) {
-            $name = "vc_redist.14.51.36247.$arch.exe"
+            $name = "vc_redist.14.52.37029.$arch.exe"
             $file = Join-Path $media $name
-            Invoke-WebRequest "https://github.com/DRXiaoXi/DeltaNFD/releases/download/v0.9390/$name" -OutFile $file
-            if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected[$arch]) { throw 'Pinned 14.51 media mismatch' }
+            gh release download v0.9392 --repo DRXiaoXi/DeltaNFD --pattern $name --dir $media
+            if ($LASTEXITCODE -ne 0) { throw "Pinned media download failed: $name" }
+            if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected[$arch]) { throw 'Pinned 14.52 media mismatch' }
           }
           $wixTools = Join-Path $env:RUNNER_TEMP 'deltanfd-wix5'
           dotnet tool install --tool-path $wixTools wix --version 5.0.2
           if ($LASTEXITCODE -ne 0) { throw 'WiX 5 setup failed' }
           $env:PATH = $wixTools + [IO.Path]::PathSeparator + $env:PATH
-          python tools/prepare-vc1451-media.py --x86 (Join-Path $media 'vc_redist.14.51.36247.x86.exe') --x64 (Join-Path $media 'vc_redist.14.51.36247.x64.exe')
-          if ($LASTEXITCODE -ne 0) { throw 'Static 14.51 media preparation failed' }
+          python tools/prepare-vc1452-media.py --x86 (Join-Path $media 'vc_redist.14.52.37029.x86.exe') --x64 (Join-Path $media 'vc_redist.14.52.37029.x64.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'Static 14.52 media preparation failed' }
 
       - name: Save verified binary build inputs
         if: steps.source-assets-cache.outputs.cache-hit != 'true'

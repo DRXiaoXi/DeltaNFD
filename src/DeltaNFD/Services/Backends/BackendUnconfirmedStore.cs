@@ -492,6 +492,10 @@ internal static class BackendUnconfirmedStore
     public static string ArchiveAfterRecovery(Review confirmed, string scope, bool verified, string message, ReconcileSnapshot? snapshot)
     {
         _ = BackendModules.RequireForReview(confirmed.Module);
+        if (confirmed.Module == BackendModules.System && confirmed.Command == BackendCommands.SystemClockEnvironmentChange
+            && (scope != "clock-environment" || snapshot is not { Complete: true, Module: BackendModules.System }
+                || !snapshot.RecoveryScopes.Any(s => s.Id == "clock-environment" && !s.Available && s.AffectedCount == 0)))
+            throw new IOException("计时源与 HPET 操作未通过对应范围复核，原始记录保留。");
         if (confirmed.Module == BackendModules.System
             && (confirmed.Command is BackendCommands.SystemDriverPriorityChange or BackendCommands.SystemDriverPriorityRestoreAll)
             && (scope != "driver-priority" || snapshot is not { Complete: true, Module: BackendModules.System }

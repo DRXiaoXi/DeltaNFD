@@ -35,6 +35,8 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
     private volatile bool _readerEnded;
     private int _gameInstallationScopeVersion;
     private int _clockValueVersion;
+    private int _manualAsdVersion;
+    private int _clockEnvironmentVersion;
     private string? _lastCommand;
     private DateTimeOffset? _lastStatusUtc;
     /// <summary>最近一次带写前意图的写入命令；收尾失败时用它建立正确的恢复证据（而不是被只读轮询覆盖）。</summary>
@@ -492,6 +494,8 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
         EnsureImageHashMatches(ready.ImageSha256, expectedHash);
         _gameInstallationScopeVersion = ready.GameInstallationScopeVersion;
         _clockValueVersion = ready.ClockValueVersion;
+        _manualAsdVersion = ready.ManualAsdVersion;
+        _clockEnvironmentVersion = ready.ClockEnvironmentVersion;
     }
 
     /// <summary>
@@ -549,6 +553,12 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
                 return BackendResult.Failed("backend.installation-scope-unsupported", "此后端不支持安装目录范围，未发送操作。请使用完整新版安装包并重新打开工具，勿混用旧版后端。");
             if (command == BackendCommands.ProcmanClockValue && _clockValueVersion != 1)
                 return BackendResult.Failed("backend.clock-value-unsupported", "此后端不支持自定义分辨率和 Sleep 测试，未发送操作。请使用完整新版程序。");
+            if (command == BackendCommands.SystemManualAsdStart && _manualAsdVersion != ManualAsdPolicy.Version)
+                return BackendResult.Failed("backend.manual-asd-unsupported", "此后端不支持手动 ASD 判定，未清理缓存。请使用完整新版程序。");
+            if ((command is BackendCommands.SystemClockEnvironmentRead or BackendCommands.SystemClockEnvironmentChange
+                || command == BackendCommands.SystemRecover && argsElement.TryGetProperty("scope", out var recoveryScope) && recoveryScope.GetString() == "clock-environment")
+                && _clockEnvironmentVersion != ClockEnvironmentPolicy.Version)
+                return BackendResult.Failed("backend.clock-environment-unsupported", "此后端不支持计时源与 HPET 功能，未发送操作。请使用完整新版程序。");
             var invoke = new BackendInvoke(command, argsElement);
             var invokeFrame = BackendMessages.EncodeInvoke(_spec.Id, _sessionId, requestId, invoke);
             using var sending = BackendOperationGate.EnterStart();

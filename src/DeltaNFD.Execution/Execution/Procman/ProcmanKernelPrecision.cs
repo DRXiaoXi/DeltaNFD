@@ -16,7 +16,7 @@ public sealed partial class ProcmanEngine
             lock (_gate)
             {
                 var preparation = ReadGlobalPrecision();
-                if (!preparation.Ready || preparation.PlatformId != admitted.PlatformId)
+                if (!preparation.Ready || preparation.PlatformId != admitted.PlatformId || preparation.ClockEnvironmentRevision != admitted.ClockEnvironmentRevision)
                     return OperationResult.Fail("Win10 准备状态已变化，驱动检测已停止：" + preparation.Message);
                 var accepted = _optimalClock.Apply(requested, supported: true);
                 var status = _optimalClock.State;
@@ -34,7 +34,7 @@ public sealed partial class ProcmanEngine
         lock (_gate)
         {
             var latest = ReadGlobalPrecision();
-            if (!latest.Ready || !latest.ExperimentalWindows10 || latest.PlatformId != admitted.PlatformId
+            if (!latest.Ready || !latest.ExperimentalWindows10 || latest.PlatformId != admitted.PlatformId || latest.ClockEnvironmentRevision != admitted.ClockEnvironmentRevision
                 || OfflineModeGuard.BlocksNormalAutomation)
                 return OperationResult.Fail("系统或后端状态已变化，驱动检测结果未保存。");
             var completed = DateTimeOffset.UtcNow;
@@ -43,6 +43,7 @@ public sealed partial class ProcmanEngine
                 s.OptimalClockResolution100ns = selected;
                 s.OptimalClockScanUtc = completed;
                 s.OptimalClockScanPlatform = admitted.PlatformId;
+                s.OptimalClockScanEnvironment = admitted.ClockEnvironmentRevision;
                 s.OptimalClockBestTypical100ns = 0;
                 s.OptimalClockBestStable100ns = 0;
                 s.OptimalClockScanLoadThreads = 0;
@@ -51,7 +52,7 @@ public sealed partial class ProcmanEngine
             });
             var saved = AppSettingsStore.ReadRequired();
             if (saved.OptimalClockResolution100ns != selected || saved.OptimalClockScanPlatform != admitted.PlatformId
-                || saved.OptimalClockScanUtc != completed)
+                || saved.OptimalClockScanUtc != completed || saved.OptimalClockScanEnvironment != admitted.ClockEnvironmentRevision)
                 return OperationResult.Fail("驱动持有值保存后回读不匹配，未授权新的持有值。");
             _optimalClock.RecordKernelSelection(selected, completed);
             _pendulumLog.Write("kernel-precision-saved", new { admitted.PlatformId, selected, completed });

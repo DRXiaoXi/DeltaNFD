@@ -83,7 +83,7 @@ internal static class NvphLayoutProbeChecks
             () => new(ShaderGpuDetectionState.Nvidia, driver)).DiagnoseAt(Path.Combine(root, "PSO"));
         void Unknown(ShaderDiagnosis diag, string why)
         {
-            Check(diag.Level == ShaderDiagLevel.Warning && diag.CacheLayout == ShaderCacheLayout.Unspecified, why + ": stays unknown, not damaged or green");
+            Check(diag.Level == ShaderDiagLevel.Normal && diag.CacheLayout == ShaderCacheLayout.Unspecified, why + ": capacity-valid files stay green without ASD inference");
             Check(!diag.Summary.Contains("ASD已激活") && !diag.Summary.Contains("B 层已退出"), why + ": cannot claim activation/exit");
         }
         var status = new ShaderStatus { IsNvidia = true, DriverVersion = "621.14", DriverState = ShaderDriverState.Ok,
@@ -134,18 +134,18 @@ internal static class NvphLayoutProbeChecks
         {
             NvphFixtureFiles.Write(a, 256 * mb); NvphFixtureFiles.Write(b, 256 * mb);
             var active = Diagnose(driver);
-            Check(active.Level == ShaderDiagLevel.Normal && active.CacheLayout == (driver.StartsWith("621.") ? ShaderCacheLayout.Asd : ShaderCacheLayout.Unspecified), "all-A coverage permits prior positive result");
+            Check(active.Level == ShaderDiagLevel.Normal && active.CacheLayout == ShaderCacheLayout.Unspecified, "all-A contents do not imply automatic ASD activation");
             NvphFixtureFiles.Write(b, 256 * mb, 800, 5400);
             var legacy = Diagnose(driver);
-            Check(legacy.Level == ShaderDiagLevel.Warning && legacy.CacheLayout == (driver.StartsWith("621.") ? ShaderCacheLayout.Legacy : ShaderCacheLayout.Unspecified), "positive B evidence retained");
+            Check(legacy.Level == ShaderDiagLevel.Normal && legacy.CacheLayout == ShaderCacheLayout.Unspecified, "B-layer contents do not change capacity compliance");
             using (var locked = new FileStream(b, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
             {
                 Unknown(Diagnose(driver), "locked B");
                 Check(!NvphLayoutProbe.Read(b).Ok, "exclusive lock genuinely prevents probing");
             }
-            Check(Diagnose(driver).Summary.Contains("检测到 B 层"), "released B returns to detected B result");
+            Check(Diagnose(driver).Level == ShaderDiagLevel.Normal, "released B remains capacity-valid");
             foreach (var offset in new[] { 16L, 20L, 64L }) NvphFixtureFiles.Put32(b, offset, 0x00061234);
-            Check(Diagnose(driver).Summary.Contains("检测到 B 层"), "decoy header markers do not hide B in diagnosis");
+            Check(Diagnose(driver).Level == ShaderDiagLevel.Normal, "decoy header markers are not inspected by automatic health checks");
             NvphFixtureFiles.Write(b, 256 * mb, 250, 1024);
             Unknown(Diagnose(driver), "A plus Unknown");
             NvphFixtureFiles.Raw(b, mb); Unknown(Diagnose(driver), "A plus unparsed small cache");
@@ -153,30 +153,30 @@ internal static class NvphLayoutProbeChecks
             NvphFixtureFiles.Write(a, 256 * mb); NvphFixtureFiles.Write(b, 256 * mb); NvphFixtureFiles.Raw(extra, 1);
             Unknown(Diagnose(driver), "nonzero intermediate permitted but cannot confirm ASD");
             NvphFixtureFiles.Write(b, 256 * mb, 800, 5400);
-            Check(Diagnose(driver).Summary.Contains("检测到 B 层"), "known B not discarded due to another unknown file");
+            Check(Diagnose(driver).Level == ShaderDiagLevel.Normal && Diagnose(driver).CacheLayout == ShaderCacheLayout.Unspecified, "known B does not change the capacity rule");
             File.Delete(extra);
             using (var locked = new FileStream(a, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
-                Check(Diagnose(driver).Summary.Contains("检测到 B 层"), "unreadable A does not erase positive B evidence");
+                Check(Diagnose(driver).Level == ShaderDiagLevel.Normal, "header read locks are irrelevant to readable size metadata");
         }
         NvphFixtureFiles.Write(a, 256 * mb); NvphFixtureFiles.Write(b, 256 * mb, 800, 5400);
-        Check(!DashboardShaderHealth.Evaluate(status, Diagnose(), good, true).ShowAction, "confirmed legacy still hides unnecessary cleanup action");
+        Check(DashboardShaderHealth.Evaluate(status, Diagnose(), good, true).State == DashboardHealthState.Normal, "capacity-valid B pair stays green");
         NvphFixtureFiles.Raw(b, mb);
         var unknownHealth = DashboardShaderHealth.Evaluate(status, Diagnose(), good, true);
-        Check(unknownHealth.State == DashboardHealthState.Warning && !unknownHealth.ShowAction, "layout uncertainty alone is yellow without unnecessary processing action");
+        Check(unknownHealth.State == DashboardHealthState.Normal && !unknownHealth.Text.Contains("ASD"), "unknown headers do not add automatic ASD warnings");
         foreach (var records in new[] { 7, 85, 199, 200, 400 })
         {
             NvphFixtureFiles.Write(a, 256 * mb); NvphFixtureFiles.WriteNvuc(b, records);
             var probe = NvphLayoutProbe.Read(b); var diagnosis = Diagnose();
             Check(probe.Ok && probe.Records == records && probe.Layer == NvphLayoutProbe.NvphLayer.NvucAuxiliary, "bounded pure NVuc content has positive auxiliary classification, including 85 records");
-            Check(diagnosis.Level == ShaderDiagLevel.Normal && diagnosis.CacheLayout == ShaderCacheLayout.Asd
-                && diagnosis.Summary.StartsWith("ASD已激活") && !diagnosis.IsLayoutUncertain, "A plus decoded pure NVuc small cache confirms ASD layout");
-            Check(diagnosis.Details.Any(d => d.Contains("全部记录已解压确认")), "auxiliary recognition evidence appears in details");
+            Check(diagnosis.Level == ShaderDiagLevel.Normal && diagnosis.CacheLayout == ShaderCacheLayout.Unspecified
+                && !diagnosis.Summary.Contains("ASD已激活") && !diagnosis.IsLayoutUncertain, "A plus decoded pure NVuc small cache confirms ASD layout");
+            Check(!diagnosis.Details.Any(d => d.Contains("全部记录已解压确认")), "ordinary diagnosis does not parse auxiliary contents");
         }
         foreach (var tag in new uint[] { 0xdec04342, 0x00525453, 0x43425844, 0x464c457f })
         {
             NvphFixtureFiles.WriteNvuc(b, lastTag: tag);
             Check(NvphLayoutProbe.Read(b).Layer == NvphLayoutProbe.NvphLayer.Bytecode, "small mixed bytecode is positive B evidence, not a benign auxiliary");
-            Check(Diagnose().CacheLayout == ShaderCacheLayout.Legacy, "mixed small cache cannot produce green ASD");
+            Check(Diagnose().CacheLayout == ShaderCacheLayout.Unspecified, "mixed small cache does not produce an ASD claim");
         }
         NvphFixtureFiles.WriteNvuc(b, lastTag: 0x12345678); Unknown(Diagnose(), "unknown decoded tag");
         NvphFixtureFiles.WriteNvuc(b, concatenate: true); Unknown(Diagnose(), "concatenated NVuc plus hidden BC frame");
@@ -190,7 +190,7 @@ internal static class NvphLayoutProbeChecks
         Unknown(Diagnose(), "unsupported first record cannot be skipped to classify a later suffix as auxiliary");
         NvphFixtureFiles.WriteNvuc(b);
         using (var file = new FileStream(b, FileMode.Open, FileAccess.Write)) file.SetLength(4 * mb);
-        Check(NvphLayoutProbe.Read(b).Layer == NvphLayoutProbe.NvphLayer.Bytecode && Diagnose().CacheLayout == ShaderCacheLayout.Legacy,
+        Check(NvphLayoutProbe.Read(b).Layer == NvphLayoutProbe.NvphLayer.Bytecode && Diagnose().CacheLayout == ShaderCacheLayout.Unspecified,
             "expanded NVuc preallocation is B evidence rather than a small auxiliary or A-like capacity hint");
         NvphFixtureFiles.WriteNvuc(b, records: 4097);
         Unknown(Diagnose(), "auxiliary record budget cannot be exceeded");
@@ -207,7 +207,7 @@ internal static class NvphLayoutProbeChecks
         var custom = new NvShaderCacheReport { Scopes = [new("global", "custom", 0, "fixture"), new("delta", "default", null, "fixture")] };
         Check(DashboardShaderHealth.Evaluate(status, auxiliaryActive, custom, true) is { State: DashboardHealthState.Abnormal, ShowAction: true }, "auxiliary-positive ASD cannot hide unrelated cache setting errors");
         NvphFixtureFiles.Raw(extra, 0);
-        Check(Diagnose().Level == ShaderDiagLevel.Abnormal, "zero-file abnormality outranks uncertainty");
+        Check(Diagnose().Level == ShaderDiagLevel.Normal, "extra zero intermediate does not invalidate an existing valid pair");
         Directory.CreateDirectory(Path.Combine(root, "PSO", "GameVer_Old"));
         Check(Diagnose().Level == ShaderDiagLevel.Abnormal, "multi-version abnormality retains priority");
         Console.WriteLine($"NVPH probe robustness: {count} checks passed; owned files and real read-only parser/diagnosis only, no GPU/real cache/system writes. Evidence: {root}");

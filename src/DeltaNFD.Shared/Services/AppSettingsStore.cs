@@ -80,6 +80,8 @@ public sealed class AppSettings
 
     /// <summary>实验兼容扫描绑定的系统版本；旧结果不能自动授权 Win10 全局锁定。</summary>
     public string OptimalClockScanPlatform { get; set; } = "";
+    public string OptimalClockScanEnvironment { get; set; } = "";
+    public string OptimalClockCustomEnvironment { get; set; } = "";
     public string OptimalClockDpcExePath { get; set; } = "";
     public string OptimalClockDpcAcceptedSha { get; set; } = "";
     public bool OptimalClockDpcWindowHidden { get; set; } = true;

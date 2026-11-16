@@ -76,8 +76,8 @@ $required = @(
     "Assets/UpdateConfig.json",
     "Assets/Vc14Baseline14.44/vc_redist.x64.exe",
     "Assets/Vc14Baseline14.44/vc_redist.x86.exe",
-    "Assets/Vc14Baseline14.51/vc_redist.x64.exe",
-    "Assets/Vc14Baseline14.51/vc_redist.x86.exe",
+    "Assets/Vc14Baseline14.52/vc_redist.x64.exe",
+    "Assets/Vc14Baseline14.52/vc_redist.x86.exe",
     "Assets/RuntimeHighFps/Installer.cmd",
     "Assets/RuntimeHighFps/payload_manifest_sha256.csv",
     "Assets/TweakDb/RegistryTweaks.json"
@@ -110,7 +110,7 @@ foreach ($retired in @('Assets/DotNetRepair', 'Assets/VCRedistRepair', 'Assets/V
 $officialCatalog = Get-Content -LiteralPath (Join-Path $repo 'src/DeltaNFD.Execution/Execution/AlphaRestore/RuntimeCppOfficial.catalog.json') -Raw | ConvertFrom-Json
 $fileRepairCatalogs = @(
     @{ Version = '14.44'; Directory = 'Assets/Vc14FileRepair14.44'; Catalog = 'src/DeltaNFD.Execution/Execution/Vc14FileRepair14.44.catalog.json' },
-    @{ Version = '14.51'; Directory = 'Assets/Vc14FileRepair14.51'; Catalog = 'src/DeltaNFD.Execution/Execution/Vc14FileRepair14.51.catalog.json' }
+    @{ Version = '14.52'; Directory = 'Assets/Vc14FileRepair14.52'; Catalog = 'src/DeltaNFD.Execution/Execution/Vc14FileRepair14.52.catalog.json' }
 )
 $ownershipCatalog = @(Get-Content -LiteralPath (Join-Path $repo 'src/DeltaNFD.Execution/Execution/Vc14OwnershipOriginals.catalog.json') -Raw | ConvertFrom-Json)
 if ($ownershipCatalog.Count -ne 1) { throw 'Expected the pinned historical ownership original' }

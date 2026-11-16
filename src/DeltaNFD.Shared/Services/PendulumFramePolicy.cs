@@ -13,12 +13,13 @@ internal static class PendulumFramePolicy
         if (!settings.OptimalClockUseCustomResolution) return AutomaticPrepared(global, settings);
         var source = CustomSource(global);
         return global.Ready && source.Length > 0 && settings.OptimalClockCustomVerifiedUtc is not null
+            && settings.OptimalClockCustomEnvironment == global.ClockEnvironmentRevision
             && settings.OptimalClockCustomPlatform == source && settings.OptimalClockCustomResolution100ns >= 5000
             && settings.OptimalClockCustomResolution100ns <= (global.ExperimentalWindows10 ? 10000u : 156250u);
     }
     internal static bool AutomaticPrepared(PendulumGlobalStatus global, AppSettings settings)
     {
-        if (!global.Ready || settings.OptimalClockScanUtc is null) return false;
+        if (!global.Ready || settings.OptimalClockScanUtc is null || settings.OptimalClockScanEnvironment != global.ClockEnvironmentRevision) return false;
         var target = settings.OptimalClockResolution100ns;
         if (!global.ExperimentalWindows10)
             return settings.OptimalClockScanPlatform.Length == 0 && target is >= 5100 and <= 156250;

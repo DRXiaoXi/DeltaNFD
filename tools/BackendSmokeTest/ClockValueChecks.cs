@@ -52,7 +52,7 @@ internal static class ClockValueChecks
     private static PendulumGlobalStatus Global(bool win10) => new()
     {
         Supported = true, Readable = true, Configured = true, BootConfirmed = true, ExperimentalWindows10 = win10,
-        PlatformId = win10 ? "win10-dpc-exe-v1/owned-fixture" : "", Fingerprint = "fixture-ready",
+        PlatformId = win10 ? "win10-dpc-exe-v1/owned-fixture" : "", Fingerprint = "fixture-ready", ClockEnvironmentRevision = "fixture-environment",
         Win10Dpc = win10 ? new(true, @"C:\fixture\dpc.exe", "fixture") : null,
     };
     internal static async Task RunAsync()
@@ -112,6 +112,7 @@ internal static class ClockValueChecks
         AppSettingsStore.Update(s => { s.FrameModeActive = false; s.FrameAutomaticMemoryEnabled = false; s.CustomGameModeEnabled = false;
             s.OptimalClockUseCustomResolution = false; s.OptimalClockCustomVerifiedUtc = null; s.OptimalClockCustomPlatform = "";
             s.OptimalClockScanUtc = DateTimeOffset.UtcNow; s.OptimalClockScanPlatform = win10 ? global.PlatformId + DpcPendulumSource.AlgorithmProfileSuffix : "";
+            s.OptimalClockScanEnvironment = global.ClockEnvironmentRevision;
             s.OptimalClockResolution100ns = 6000; s.OptimalClockBestTypical100ns = 6100; s.OptimalClockBestStable100ns = 6200; });
         string Auto() { var s = AppSettingsStore.ReadRequired(); return $"{s.OptimalClockResolution100ns}/{s.OptimalClockScanUtc:O}/{s.OptimalClockScanPlatform}/{s.OptimalClockBestTypical100ns}/{s.OptimalClockBestStable100ns}"; }
         var originalAuto = Auto();
@@ -138,6 +139,7 @@ internal static class ClockValueChecks
         var saved = await Run(ClockValueAction.SaveCustom, 5000);
         Check(saved.Success, mode + ": verified custom 0.5ms saved: " + saved.Message);
         var settings = AppSettingsStore.ReadRequired();
+        Check(settings.OptimalClockCustomEnvironment == global.ClockEnvironmentRevision, mode + ": custom proof saves current environment identity");
         Check(settings.OptimalClockUseCustomResolution && settings.OptimalClockCustomResolution100ns == 5000 && Auto() == originalAuto,
             mode + ": custom storage is independent from automatic results");
         Check(PendulumFramePolicy.Prepared(global, settings) && !holder.Holding && !candidate.Holding && !dpc.Holding,
@@ -147,6 +149,16 @@ internal static class ClockValueChecks
         active = true;
         Check(engine.OptimalClockOnceForTests() && holder.Holding && holder.Resolution100ns == 5000
             && engine.Snapshot().OptimalClock is { Prepared: true, CustomResolutionActive: true, SavedResolution100ns: 5000 }, mode + ": actual frame tick holds saved custom value");
+        var admittedEnvironment = global;
+        global = global with { ClockEnvironmentRevision = "changed-environment" };
+        Check(engine.OptimalClockOnceForTests() && !holder.Holding && !engine.Snapshot().OptimalClock.Prepared,
+            mode + ": environment change releases actual custom hold and invalidates readiness");
+        global = admittedEnvironment;
+        engine.ClockEnvironmentLeaseForTests = () => { global = global with { ClockEnvironmentRevision = "changed-before-lease" }; return null; };
+        Check(!engine.ApplyOptimalClock(null).Success && !holder.Holding, mode + ": direct hold reads readiness after acquiring environment lease");
+        global = admittedEnvironment;
+        Check(engine.OptimalClockOnceForTests() && !holder.Holding, mode + ": background hold reads readiness after acquiring environment lease");
+        engine.ClockEnvironmentLeaseForTests = null; global = admittedEnvironment;
         active = false; Check(engine.OptimalClockOnceForTests() && !holder.Holding, mode + ": frame off releases custom hold");
         var before = JsonSerializer.Serialize(AppSettingsStore.ReadRequired());
         var result = await Run(ClockValueAction.TestCustomSleep, 5500);
@@ -171,6 +183,11 @@ internal static class ClockValueChecks
             ExperimentalWindows10 = win10, PlatformId = global.PlatformId, Fingerprint = "changed", Win10Dpc = global.Win10Dpc };
         Check(!(await Run(ClockValueAction.TestCustomSleep, 5000)).Success && engine.Snapshot().OptimalClock.SleepTest?.TargetVerified == false,
             mode + ": preparation identity change invalidates result"); api.AfterMeasurement = null; global = Global(win10);
+        candidate.AfterEnsure = () => global = global with { ClockEnvironmentRevision = "changed-environment" };
+        before = JsonSerializer.Serialize(AppSettingsStore.ReadRequired());
+        Check(!(await Run(ClockValueAction.SaveCustom, 5500)).Success && JsonSerializer.Serialize(AppSettingsStore.ReadRequired()) == before,
+            mode + ": environment change during validation cannot replace saved custom proof");
+        candidate.AfterEnsure = null; global = Global(win10);
         api.AfterMeasurement = () => game = true;
         Check(!(await Run(ClockValueAction.TestCustomSleep, 5000)).Success && !holder.Holding && !candidate.Holding && !dpc.Holding,
             mode + ": game starting during measurement invalidates result and releases requests"); api.AfterMeasurement = null; game = false;

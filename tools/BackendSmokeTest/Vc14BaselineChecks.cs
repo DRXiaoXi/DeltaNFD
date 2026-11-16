@@ -29,8 +29,8 @@ internal static class Vc14BaselineChecks
         // 1) 元数据与展示。
         Check(Vc14BaselineOption.Default == Vc14Baseline.V144 && Vc14Baseline.V142.FullVersion() == "14.42.34433.0"
             && Vc14Baseline.V144.FullVersion() == "14.44.35211.0", "current and historical version metadata");
-        Check(!Vc14Baseline.V142.IsSupported() && Vc14Baseline.V144.IsSupported() && Vc14Baseline.V151.IsSupported() && !((Vc14Baseline)9).IsSupported(), "144 and 151 supported; retired and unknown rejected");
-        Check(Vc14BaselineInfo.All.Count == 3 && Vc14BaselineInfo.Default.Id == Vc14Baseline.V144
+        Check(!Vc14Baseline.V142.IsSupported() && Vc14Baseline.V144.IsSupported() && !Vc14Baseline.V151.IsSupported() && Vc14Baseline.V152.IsSupported() && !((Vc14Baseline)9).IsSupported(), "144 and 152 supported; retired 142/151 and unknown rejected");
+        Check(Vc14BaselineInfo.All.Count == 4 && Vc14BaselineInfo.Default.Id == Vc14Baseline.V144
             && Vc14BaselineInfo.V144.Version == "14.44.35211.0"
             && Vc14BaselineInfo.V144.ShortVersion == "14.44.35211"
             && Vc14BaselineInfo.V144.BaselineDirectory == "Vc14Baseline14.44"

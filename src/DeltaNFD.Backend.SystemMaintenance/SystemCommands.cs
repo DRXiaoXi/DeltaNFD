@@ -29,6 +29,8 @@ internal static class SystemCommands
     {
         Module = BackendModules.Require(BackendModules.System),
         GameInstallationScopeVersion = GameInstallationProtocol.Version,
+        ManualAsdVersion = ManualAsdPolicy.Version,
+        ClockEnvironmentVersion = ClockEnvironmentPolicy.Version,
         OnStopping = () => _ownsDefenderCleanup ? DefenderGuard.RestoreSessionAsync() : Task.FromResult(OperationResult.Ok("本会话无 Defender 恢复责任。")),
         Handlers = new Dictionary<string, Func<BackendCommandContext, Task<BackendResult>>>(StringComparer.Ordinal)
         {
@@ -63,6 +65,12 @@ internal static class SystemCommands
             [BackendCommands.SystemPendulumGlobalConfigure] = async c => Wrap(c.Command, await PendulumGlobalSettings.ConfigureAsync(c.ArgsAs<PendulumGlobalArgs>(), c.CancellationToken)),
             [BackendCommands.SystemPendulumDriverPrepare] = c => Task.FromResult(BackendResult.Failed(c.Command, "Win10 已改用玩家自备 DPC EXE；旧测试签名/证书自动准备入口已停用，原备份保留。")),
             [BackendCommands.SystemTimerRecover] = async c => Wrap(c.Command, await TimerConfigurationRecovery.RunAsync(c.ArgsAs<TimerRecoveryArgs>(), c.CancellationToken)),
+            [BackendCommands.SystemClockEnvironmentRead] = c => Task.FromResult(BackendResult.Ok(c.Command, "", ClockEnvironmentInspection.Read())),
+            [BackendCommands.SystemClockEnvironmentChange] = c =>
+            {
+                var result = ClockEnvironmentService.Change(c.ArgsAs<ClockEnvironmentArgs>(), c.CancellationToken);
+                return Task.FromResult(Wrap(c.Command, result));
+            },
             [BackendCommands.SystemLowMemoryApply] = async c =>
             {
                 var result = await LowMemoryRepair.RunAsync(c.ArgsAs<LowMemoryApplyArgs>(), c.CancellationToken);
@@ -77,6 +85,11 @@ internal static class SystemCommands
             [BackendCommands.SystemShaderStatus] = ShaderStatusAsync,
             [BackendCommands.SystemShaderDiagnose] = ShaderDiagnoseAsync,
             [BackendCommands.SystemShaderClear] = ShaderClearAsync,
+            [BackendCommands.SystemManualAsdStart] = async c =>
+            {
+                var session = await ManualAsdStart.RunAsync(c.ArgsAs<ManualAsdStartArgs>(), c.CancellationToken);
+                return BackendResult.Ok(c.Command, session.Message, session);
+            },
             [BackendCommands.SystemGameRecordingStatus] = c =>
             {
                 using var scope = GameInstallationScope.Enter(c.ArgsAs<GameInstallationArgs>().Selection);
@@ -146,7 +159,7 @@ internal static class SystemCommands
     {
         var args = context.ArgsAs<RecoverArgs>();
         var scope = (args.Scope ?? "").Trim().ToLowerInvariant();
-        if (scope is not ("tweaks" or "advanced" or "pagefile" or "defender" or "intel-pcore" or "game-recording" or "startup" or "driver-priority"))
+        if (scope is not ("tweaks" or "advanced" or "pagefile" or "defender" or "intel-pcore" or "game-recording" or "startup" or "driver-priority" or "clock-environment"))
             return BackendResult.Failed("system.recover", $"未知恢复范围“{args.Scope}”，已拒绝执行。");
 
         context.ReportProgress("正在按可信备份恢复…", null, "recover");
@@ -154,6 +167,11 @@ internal static class SystemCommands
         var ok = true;
         switch (scope)
         {
+            case "clock-environment":
+            {
+                var result = ClockEnvironmentService.RestoreAll(context.CancellationToken);
+                messages.Add(result.Message); ok = result.Success; break;
+            }
             case "driver-priority":
             {
                 var result = DriverPriorityService.RestoreAll(context.CancellationToken);
@@ -216,7 +234,7 @@ internal static class SystemCommands
 
         var snapshot = await BuildSnapshotAsync();
         var remaining = snapshot.RecoveryScopes.FirstOrDefault(s => s.Id == scope);
-        var verified = ok && (scope is not ("startup" or "driver-priority") || snapshot.Complete) && (remaining is null || !remaining.Available);
+        var verified = ok && (scope is not ("startup" or "driver-priority" or "clock-environment") || snapshot.Complete) && (remaining is null || !remaining.Available);
         var message = string.Join("；", messages) + (verified ? "复核通过：恢复范围已无可恢复项。" : "复核未通过，保留阻塞与原始证据。");
         return BackendResult.Ok("system.recover", message, new RecoverOutcome
         {
@@ -296,6 +314,13 @@ internal static class SystemCommands
         if (!priority.Complete) { complete = false; notes.AddRange(priority.Errors); }
         foreach (var item in priority.Items.Where(i => i.HasBackup))
             items.Add(new ReconcileItem { Id = item.Device.InstanceId, Kind = "driver-priority", State = item.CanRestore ? "modified" : "conflict", HasBackup = true, Detail = item.BackupDetail });
+        var clockEnvironment = ClockEnvironmentInspection.Read(backupsOnly: true);
+        var clockBackups = (clockEnvironment.SourceBackup ? 1 : 0) + (clockEnvironment.HpetBackup ? 1 : 0);
+        if (!clockEnvironment.RecordsReadable || clockEnvironment.SourceBackup && !clockEnvironment.CanRestoreSource
+            || clockEnvironment.HpetBackup && !clockEnvironment.CanRestoreHpet)
+        { complete = false; notes.Add(clockEnvironment.Message); }
+        if (clockBackups > 0) items.Add(new ReconcileItem { Id = "clock-environment", Kind = "clock-environment",
+            State = clockEnvironment.Incomplete ? "待核对" : "modified", HasBackup = true, Detail = clockEnvironment.Message });
         var prefix = notes.Count > 0 ? string.Join("；", notes) + "；" : "";
         return new ReconcileSnapshot
         {
@@ -305,6 +330,9 @@ internal static class SystemCommands
             Items = items,
             RecoveryScopes =
             [
+                new RecoveryScope { Id = "clock-environment", Description = "按原始备份恢复平台计时源与 HPET 设备（动态节拍保持原样）",
+                    Available = clockBackups > 0, AffectedCount = clockBackups,
+                    Reason = clockEnvironment.RecordsReadable ? "" : clockEnvironment.Message },
                 new RecoveryScope { Id = "driver-priority", Description = "按备份恢复本工具修改的设备中断设置（手动重启生效）",
                     Available = priority.BackupCount > 0, AffectedCount = priority.BackupCount,
                     Reason = priority.Complete ? "" : "设备中断设置或原始备份尚未完整核对。" },

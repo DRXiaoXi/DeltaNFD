@@ -83,7 +83,7 @@ public enum ShaderDiagLevel
     Warning = 5,
 }
 
-/// <summary>621.xx 的文件布局提示，不是驱动 ASD 开关或运行实效的读取结果。</summary>
+/// <summary>历史协议布局字段；当前621+普通检测不再填充ASD结论，仅供旧记录兼容。</summary>
 public enum ShaderCacheLayout { Unspecified = 0, Legacy = 1, Asd = 2 }
 
 public sealed record D3dsCacheEntry(string FileName, string Executable, bool HasDriverData, string Format, string Detail, bool? MatchesAdapter = null);
@@ -132,10 +132,7 @@ public interface IShaderService
     /// PSOCache 健康检测（纯只读），判定优先级：
     /// ① GameVer 达到 2 个及以上 → AMD / Intel / NVIDIA 通用异常判据；
     /// ② 单版本下 SM6\DXCache（缺少目录时回退 SM5\DXCache）的 NVPH 结构判定（仅 N 卡且驱动 ≥576.88）；
-    ///    621.00 起至少两个 NVPH：包含一个 256MiB 或 512MiB 加另一个非零文件，或至少两个均 ≥256MiB；允许额外非零文件，所有 NVPH 须非零。
-    ///    621.xx 起「B 层是否退出」按 NVPH 记录结构判定（单条平均占用：A 层约 15.7KB，B 层约 5.4–8.0KB），
-    ///    不再用「双精确 256MiB」推断——实测 Win11 23H2 + 621.14 的双 256MiB 仍在写 B 层，25H2 同驱动已退出。
-    ///    存在 A 层、其余均为 A 或经有界解压确认的纯 NVuc 小缓存且未检出 B 时给出 ASD 布局提示；读取失败/未知保留待确认，B 证据优先。
+    ///    621.00 起只要求一个精确256MiB NVPH与另一个非空NVPH，不自动判定ASD；ASD使用独立手动清理/预热流程。
     ///    更早驱动需恰好两个 ≥256MiB 大文件且无空文件，但不再接受两个大文件均恰好 256MiB。
     ///    无缓存时提示预热；读取失败拒绝下结论。缓存异常不归因驱动版本。
     /// </summary>

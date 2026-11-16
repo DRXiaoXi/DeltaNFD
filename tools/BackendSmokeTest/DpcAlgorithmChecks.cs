@@ -70,12 +70,14 @@ internal static class DpcAlgorithmChecks
         {
             world = new(); dpc = new(world, true); fine = new(world, false); combined = new(dpc, fine); measurement = new(world);
             var global = DpcPendulumInspection.Evaluate(new(10, 0, 19045, 6093), new(true, @"D:\fixture\dpclat.exe", "fixture"));
+            global = global with { ClockEnvironmentRevision = "fixture-environment" };
             var frame = false;
             using var engine = new ProcmanEngine(Path.Combine(root, kind + "-changes.json"), Path.Combine(root, kind + "-rules.json"),
                 clockHolder: combined, clockMeasurement: measurement, clockCurrentResolution: () => world.Current);
             engine.GlobalPrecisionForTests = () => global; engine.FrameModeActiveForTests = () => frame; engine.BackgroundLoopDisabledForTests = true;
             Check(engine.ScanOptimalClockAsync(false, kind).GetAwaiter().GetResult().Success && AppSettingsStore.Read().OptimalClockScanPlatform == global.PlatformId,
                 "Existing basic 1ms save remains supported: " + kind);
+            Check(AppSettingsStore.Read().OptimalClockScanEnvironment == global.ClockEnvironmentRevision, "Basic proof saves current environment: " + kind);
             var before = JsonSerializer.Serialize(AppSettingsStore.Read()); measurement.Clamp = true;
             Check(!engine.ScanOptimalClockAsync(true, kind, dpcAlgorithmScan: true).GetAwaiter().GetResult().Success
                 && JsonSerializer.Serialize(AppSettingsStore.Read()) == before && !combined.HasCleanupResponsibility,
@@ -83,6 +85,7 @@ internal static class DpcAlgorithmChecks
             var result = engine.ScanOptimalClockAsync(true, kind, dpcAlgorithmScan: true).GetAwaiter().GetResult();
             Check(result.Success, "Real engine dispatches original scanner kind " + kind + ": " + result.Message);
             var saved = AppSettingsStore.Read();
+            Check(saved.OptimalClockScanEnvironment == global.ClockEnvironmentRevision, "Algorithm proof saves current environment: " + kind);
             Check(saved.OptimalClockScanPlatform == global.PlatformId + DpcPendulumSource.AlgorithmProfileSuffix
                 && saved.OptimalClockResolution100ns is >= 5100 and <= 6300 && saved.OptimalClockScanLoadThreads > 0
                 && saved.OptimalClockScanMode == (kind == OptimalClockScanKind.StableLatency ? OptimalClockScanMode.StableLatency : OptimalClockScanMode.LowestLatency),
@@ -104,6 +107,11 @@ internal static class DpcAlgorithmChecks
             Check(!engine.ScanOptimalClockAsync(true, kind, dpcAlgorithmScan: true).GetAwaiter().GetResult().Success
                 && JsonSerializer.Serialize(AppSettingsStore.Read()) == prior && !combined.HasCleanupResponsibility,
                 "Source identity change during scan cannot replace result: " + kind);
+            measurement.AfterMeasure = null; global = admitted;
+            measurement.AfterMeasure = () => global = global with { ClockEnvironmentRevision = "changed-environment" };
+            Check(!engine.ScanOptimalClockAsync(true, kind, dpcAlgorithmScan: true).GetAwaiter().GetResult().Success
+                && JsonSerializer.Serialize(AppSettingsStore.Read()) == prior && !combined.HasCleanupResponsibility,
+                "Environment change during scan cannot replace proof: " + kind);
             measurement.AfterMeasure = null; global = admitted;
             using (AppSettingsStore.BlockWritesForReset(AppSettingsStore.DefaultPath))
                 Check(!engine.ScanOptimalClockAsync(true, kind, dpcAlgorithmScan: true).GetAwaiter().GetResult().Success

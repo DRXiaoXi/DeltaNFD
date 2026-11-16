@@ -1,4 +1,5 @@
 using DeltaNFD.Services;
+if (args is ["--clock-environment-checks"]) { try { ClockEnvironmentChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--driver-priority-checks"]) { try { DriverPriorityChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--memory-improvement-checks"]) { try { await MemoryImprovementChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--procman-memory-simulated-checks"]) { try { await ProcmanMemoryChecks.RunAsync(nativeChild: false); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
@@ -18,6 +19,7 @@ if (args is ["--d3ds-association-live-readonly", var d3dsLayout]) { try { await 
 if (args is ["--d3ds-association-checks"]) { try { D3dsAssociationChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--startup-item-ipc-readonly-checks", var startupLayout]) { try { await StartupItemChecks.RunIpcReadOnlyAsync(startupLayout); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--startup-item-checks"]) { try { StartupItemChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--manual-asd-checks"]) { try { ManualAsdChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--nvph-layout-probe-checks"]) { try { NvphLayoutProbeChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--feedback-repair-checks"]) { try { await FeedbackRepairChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--session-end-drain-checks"]) { try { await SessionEndDrainChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
@@ -542,9 +544,9 @@ if (args is ["--clock-value-checks"])
     return;
 }
 
-if (args is ["--runtime-1451-checks", var runtime1451Assets])
+if (args is ["--runtime-1452-checks", var runtime1452Assets])
 {
-    try { await Runtime1451Checks.RunAsync(runtime1451Assets); }
+    try { await Runtime1452Checks.RunAsync(runtime1452Assets); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }

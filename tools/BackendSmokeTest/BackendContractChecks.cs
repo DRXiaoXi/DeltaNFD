@@ -277,6 +277,11 @@ internal static class BackendContractChecks
             "伪造的扩展库命令不在白名单内");
 
         await using var client = await BackendClient.StartAsync(BackendModules.System, CancellationToken.None);
+        var clockEnvironment = await client.InvokeAsync(BackendCommands.SystemClockEnvironmentRead, new { }, null, CancellationToken.None);
+        Check(clockEnvironment.Status == BackendResultStatuses.Ok && clockEnvironment.Data is not null,
+            "新版联动计时源能力通过实际客户端门禁，只读检测可调用");
+        Check(BackendJson.Deserialize<ClockEnvironmentStatus>(clockEnvironment.Data!.Value) is not null,
+            "联动计时源只读结果可反序列化，不要求本机具备可写设备");
         var backups = await client.InvokeAsync(BackendCommands.SystemTweaksBackups, new { }, null, CancellationToken.None);
         Check(backups.Status == BackendResultStatuses.Ok && BackendJson.Deserialize<List<SystemTweak>>(backups.Data!.Value).Count == 0,
             "系统恢复清单由隔离后端读取，不是前端猜测");

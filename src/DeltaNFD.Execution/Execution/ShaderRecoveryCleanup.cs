@@ -11,6 +11,7 @@ public static class ShaderRecoveryCleanup
         if (!gameCache && !nvidiaCache) return OperationResult.Fail("请至少选择一种缓存。");
         if (gameCache && GameTargetService.Default.IsCustom) return OperationResult.Fail(GameTargetService.DeltaOnlyMessage);
         using var shaderGate = ShaderCacheOperationGate.Acquire();
+        ManualAsdStore.InvalidateForCleanup();
         var roots = new List<string>();
         if (gameCache) roots.AddRange(DeltaForceLocator.FindPsoCachePaths());
         var driver = gameCache && !nvidiaCache ? ShaderService.ReadNvidiaDriver() : null;

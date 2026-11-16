@@ -127,26 +127,26 @@ internal static class RuntimePageSessionChecks
                     "Initial driver check disables only baseline actions, not protection.");
                 vm.CompleteBaselineDriverCheck(false, false);
                 vm.BaselineIndex = 1;
-                Check(vm.SelectedBaseline == Vc14Baseline.V151 && vm.CanUseBaselineActions, "Non-596 can select 14.51.");
+                Check(vm.SelectedBaseline == Vc14Baseline.V152 && vm.CanUseBaselineActions, "Non-596 can select 14.52.");
                 vm.BeginBaselineDriverCheck();
                 Check(!vm.CanUseBaselineActions && vm.GuardToggleEnabled, "Driver recheck does not disable protection.");
                 vm.CompleteBaselineDriverCheck(true, false);
-                Check(!vm.Hide144Baseline && vm.BaselineIndex == 1 && vm.SelectedBaseline == Vc14Baseline.V151,
-                    "Driver check preserves explicitly selected 14.51.");
+                Check(!vm.Hide144Baseline && vm.BaselineIndex == 1 && vm.SelectedBaseline == Vc14Baseline.V152,
+                    "Driver check preserves explicitly selected 14.52.");
                 vm.BaselineIndex = 1;
-                Check(vm.BaselineIndex == 1 && vm.SelectedBaseline == Vc14Baseline.V151 && vm.ContinueInstallLabel.Contains("14.51"),
+                Check(vm.BaselineIndex == 1 && vm.SelectedBaseline == Vc14Baseline.V152 && vm.ContinueInstallLabel.Contains("14.52"),
                     "151 selection is retained for continuation.");
                 await vm.PreviewRepairAsync(); await vm.PreviewRepairAsync(Vc14RepairMode.InstallOnly);
                 await vm.PreviewHighFpsAsync(false); await vm.PreviewForceReplaceAsync(default);
                 await vm.RepairAsync("fixture", default); await vm.RepairHighFpsAsync("fixture", false, default);
                 await vm.ForceReplaceAsync("fixture", default);
-                Check(guard.Baselines.Count == 7 && guard.Baselines.All(b => b == Vc14Baseline.V151),
-                    "All actual view-model preview, continuation and execution paths pass selected 14.51.");
+                Check(guard.Baselines.Count == 7 && guard.Baselines.All(b => b == Vc14Baseline.V152),
+                    "All actual view-model preview, continuation and execution paths pass selected 14.52.");
                 vm.BeginBaselineDriverCheck(); vm.CompleteBaselineDriverCheck(false, true);
                 Check(!vm.Hide144Baseline && vm.BaselineDriverNotice.Contains("无法完整读取") && vm.CanUseBaselineActions,
                     "Unknown driver warns without treating it as a confirmed 596.");
                 vm.BaselineIndex = 1;
-                Check(vm.SelectedBaseline == Vc14Baseline.V151, "Unknown driver preserves explicitly selected 14.51.");
+                Check(vm.SelectedBaseline == Vc14Baseline.V152, "Unknown driver preserves explicitly selected 14.52.");
                 vm.BaselineIndex = 0;
                 await vm.PreviewRepairAsync();
                 Check(guard.Baselines.Last() == Vc14Baseline.V144 && vm.SelectedBaselineLabel.Contains("AMD"),
@@ -206,12 +206,12 @@ internal static class RuntimePageSessionChecks
     private static async Task CheckVersionAlertPolicyAsync(RuntimeViewModel vm, Guard guard)
     {
         var writes = guard.Writes;
-        RuntimeVersionSnapshot snapshot = new([new("x64", "fixture", "14.51.36247")], []);
+        RuntimeVersionSnapshot snapshot = new([new("x64", "fixture", "14.52.37029")], []);
         var reads = 0;
         vm.VersionReaderForTests = () => { reads++; return Task.FromResult(snapshot); };
         guard.ScanError = new IOException("old compatibility scan must not run");
         await vm.LoadGuardAsync();
-        Check(!vm.HasEvaluation && !vm.HasAbnormal && !vm.HasWarning && vm.RuntimeVersionText.Contains("14.51"),
+        Check(!vm.HasEvaluation && !vm.HasAbnormal && !vm.HasWarning && vm.RuntimeVersionText.Contains("14.52"),
             "Current version is read without blue compatibility evaluation or old MSI scan.");
         snapshot = snapshot with { Issues = ["fixture unreadable registration"] };
         await vm.LoadGuardAsync();

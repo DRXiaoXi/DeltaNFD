@@ -90,7 +90,7 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Spacing="4">
-                                <TextBlock Text="着色器健康检测" Style="{StaticResource H2Style}" ui:HelpTip.Text="检测 PSOCache 版本残留与 NVPH 结构。N 卡 621 系及以上至少两个 NVPH：包含一个 256MB 或 512MB 加另一个非空文件，或至少两个均 ≥256MB。允许额外非零文件，空文件或无有效布局仍异常。621.xx 包含两个精确256MB时优先绿色提示ASD已激活，其他新版布局同样绿色；其他双大文件旧布局黄色提示未激活ASD，无需处理。低于621不再将双256MB判为合规。ASD按布局推断，未验证驱动开关；其他显卡仅检查版本残留。"/>
+                            <TextBlock Text="着色器健康检测" Style="{StaticResource H2Style}" ui:HelpTip.Text="检查 PSOCache 版本残留。NVIDIA 621 及以上只需一个精确256MB NVPH和另一个非0KB NVPH即可合格，允许额外中间文件；普通检测不判断ASD。较早驱动保留原容量规则。ASD请使用下方手动判定。"/>
                                 <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="检测 PSOCache 版本残留；N 卡按驱动版本检查 NVPH 数量与大小。"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
@@ -102,6 +102,18 @@
                     </StackPanel>
                 </Border>
             </Grid>
+            <Border Style="{StaticResource FeatureCardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="手动 ASD 判定 · NVIDIA 621 及以上" Style="{StaticResource H2Style}"/>
+                    <TextBlock Text="1. 开始判定并清理缓存 → 2. 进入游戏完成预热 → 3. 返回点击“预热完成”。" Style="{StaticResource BodyStyle}" TextWrapping="Wrap"/>
+                    <TextBlock Text="D3DSCache 为系统共享缓存；判定期间请关闭其他图形应用。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap" ui:HelpTip.Text="按本次清理后出现大于100MB的NVPH判定；该容量规则不能单独证明文件归属，其他应用可能影响结果。"/>
+                    <InfoBar IsOpen="True" IsClosable="False" Severity="{x:Bind ViewModel.ManualAsdSeverity, Mode=OneWay}" Message="{x:Bind ViewModel.ManualAsdText, Mode=OneWay}" AutomationProperties.LiveSetting="Polite"/>
+                    <ProgressRing Width="24" Height="24" HorizontalAlignment="Left" IsActive="{x:Bind ViewModel.ManualAsdBusy, Mode=OneWay}"/>
+                    <Button Content="开始判定（清理缓存）" IsEnabled="{x:Bind ViewModel.CanStartManualAsd, Mode=OneWay}" Click="StartManualAsd_Click" Style="{StaticResource DangerButtonStyle}"/>
+                    <Button Content="预热完成" IsEnabled="{x:Bind ViewModel.CanFinishManualAsd, Mode=OneWay}" Click="FinishManualAsd_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                    <Button Content="取消判定" IsEnabled="{x:Bind ViewModel.CanCancelManualAsd, Mode=OneWay}" Click="CancelManualAsd_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                </StackPanel>
+            </Border>
             <!-- 着色器缓存状态与修复入口集中展示；本卡仅查询，不写入驱动。 -->
             <Border x:Name="ShaderRepairModule" Style="{StaticResource FeatureCardBorderStyle}">
                 <StackPanel Spacing="12">

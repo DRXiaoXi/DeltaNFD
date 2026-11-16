@@ -124,10 +124,12 @@ internal static class D3dsAssociationChecks
             var layer = NvphLayoutProbe.Read(expanded);
             Check(layer.AverageFootprint >= 12 * 1024 && layer.Layer == NvphLayoutProbe.NvphLayer.Bytecode, "decoded bytecode overrides A-like footprint regardless of 256/512MB preallocation");
             var diagnosis = new ShaderInspection(null, () => new(ShaderGpuDetectionState.Nvidia, "621.14")).DiagnoseAt(pso);
-            Check(diagnosis.CacheLayout == ShaderCacheLayout.Legacy && diagnosis.Summary.StartsWith("未激活ASD"), "A plus expanded B retains its local evidence before correlation");
-            var combined = D3dsCacheInspection.Combine(diagnosis, matched);
+            Check(diagnosis.Level == ShaderDiagLevel.Normal && diagnosis.CacheLayout == ShaderCacheLayout.Unspecified && diagnosis.SystemCache is null, "current ordinary capacity detection does not emit automatic ASD or system-cache evidence");
+            var legacyDiagnosis = Diagnosis(ShaderDiagLevel.Warning, ShaderCacheLayout.Legacy);
+            var combined = D3dsCacheInspection.Combine(legacyDiagnosis, matched);
             Check(combined.Level == ShaderDiagLevel.Normal && combined.CacheLayout == ShaderCacheLayout.Asd && !combined.IsLayoutUncertain, "A plus 256/512MB B plus matched system data is active ASD");
-            Check(diagnosis.Level == ShaderDiagLevel.Warning && diagnosis.CacheLayout == ShaderCacheLayout.Legacy, "combining evidence does not mutate the original local snapshot");
+            Check(legacyDiagnosis.Level == ShaderDiagLevel.Warning && legacyDiagnosis.CacheLayout == ShaderCacheLayout.Legacy
+                && diagnosis.Level == ShaderDiagLevel.Normal && diagnosis.CacheLayout == ShaderCacheLayout.Unspecified, "historical combination does not mutate its input or current ordinary snapshot");
         }
         Console.WriteLine($"D3DSCache association: {count} checks passed; owned SQLite/NVPH fixtures only; no real cache/system/GPU writes. Evidence: {root}");
     }

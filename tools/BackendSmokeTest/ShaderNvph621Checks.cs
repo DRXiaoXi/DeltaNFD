@@ -24,9 +24,17 @@ internal static class ShaderNvph621Checks
             foreach (var file in Directory.GetFiles(cache)) File.Delete(file);
             for (var i = 0; i < sizes.Length; i++)
             {
-                using var file = File.Create(Path.Combine(cache, $"fixture{i}.nvph"));
-                file.SetLength(sizes[i]);
+                var path = Path.Combine(cache, $"fixture{i}.nvph");
+                if (sizes[i] >= 256 * mb) NvphFixtureFiles.Write(path, sizes[i]);
+                else NvphFixtureFiles.Raw(path, sizes[i]);
             }
+        }
+        void FixtureB(params long[] sizes)
+        {
+            Fixture(sizes);
+            var lastLarge = Array.FindLastIndex(sizes, s => s >= 256 * mb);
+            if (lastLarge < 0) throw new Exception("B fixture needs a large container");
+            NvphFixtureFiles.Write(Path.Combine(cache, $"fixture{lastLarge}.nvph"), sizes[lastLarge], 800, 5400);
         }
         ShaderDiagnosis Diagnose(string version, ShaderDiagLevel expected,
             ShaderGpuDetectionState gpu = ShaderGpuDetectionState.Nvidia)
@@ -45,89 +53,25 @@ internal static class ShaderNvph621Checks
         }
         try
         {
-            foreach (var version in new[] { "621.00", "621.01", "621.99", "622.00", "700.00" })
+            var values = new long[] { 0, 1, 1023, mb, 100 * mb, 256 * mb - 1, 256 * mb, 256 * mb + 1, 512 * mb, 1024 * mb };
+            foreach (var version in new[] { "621.00", "621.99", "622.00", "700.00" })
+            foreach (var first in values)
+            foreach (var second in values)
             {
-                var legacyLevel = version.StartsWith("621.") ? ShaderDiagLevel.Warning : ShaderDiagLevel.Normal;
-                Fixture(256 * mb, mb);
-                Diagnose(version, ShaderDiagLevel.Normal);
-                foreach (var other in new long[] { 1, 1023, mb, 255 * mb })
-                {
-                    Fixture(512 * mb, other);
-                    Diagnose(version, ShaderDiagLevel.Normal);
-                }
-                Fixture(512 * mb, mb, 1);
-                Diagnose(version, ShaderDiagLevel.Normal);
-                foreach (var sizes in new long[][] { [512 * mb, 1024 * mb], [512 * mb, 512 * mb], [256 * mb + 1, 256 * mb + 1] })
-                {
-                    Fixture(sizes);
-                    var legacy = Diagnose(version, legacyLevel);
-                    Check(legacy.Summary.Contains("旧版布局"), version + ": legacy layout is identified without requiring an exact 256MB file");
-                }
-                Fixture(256 * mb, mb, 65536);
-                Diagnose(version, ShaderDiagLevel.Normal);
-                Fixture(512 * mb, 512 * mb, 1);
-                Diagnose(version, legacyLevel);
-                Fixture(512 * mb, 512 * mb, 0);
-                Diagnose(version, ShaderDiagLevel.Abnormal);
-                Fixture(512 * mb, 512 * mb, 512 * mb);
-                Diagnose(version, legacyLevel);
-                foreach (var (sizes, oldLayout) in new (long[] Sizes, bool OldLayout)[]
-                {
-                    ([256 * mb, mb, mb], false), ([256 * mb, mb, 256 * mb], false),
-                    ([256 * mb + 1, 1024 * mb, 1, 65536], true),
-                    ([1024 * mb, 1024 * mb, 1024 * mb, mb], true),
-                    ([256 * mb, 1, 1023, 65536, mb, 255 * mb], false),
-                })
-                {
-                    Fixture(sizes);
-                    var withIntermediates = Diagnose(version, oldLayout ? legacyLevel : ShaderDiagLevel.Normal);
-                    Check(withIntermediates.Summary.Contains($"共 {sizes.Length} 个非空 NVPH"),
-                        version + ": accepted extra files are still reported in the count");
-                }
-                foreach (var sizes in new long[][] { [256 * mb, 256 * mb], [256 * mb, 256 * mb, 1],
-                    [256 * mb, 512 * mb, 256 * mb], [256 * mb, 256 * mb, 256 * mb] })
-                {
-                    Fixture(sizes);
-                    var dual256 = Diagnose(version, ShaderDiagLevel.Normal);
-                    Check(dual256.CacheLayout == (version.StartsWith("621.") ? ShaderCacheLayout.Asd : ShaderCacheLayout.Unspecified),
-                        version + ": exact 256MB pair is active ASD only within 621 series");
-                }
-                Fixture(new long[] { 512 * mb }.Concat(Enumerable.Repeat(1L, 64)).ToArray());
-                Diagnose(version, ShaderDiagLevel.Normal);
-                foreach (var sizes in new long[][]
-                {
-                    [mb, mb, mb, mb], [256 * mb - 1, mb, 1], [512 * mb + 1, mb, 65536],
-                    [256 * mb, mb, 0], [256 * mb + 1, 1024 * mb, 0, 1], [0, 0, 0],
-                })
-                {
-                    Fixture(sizes);
-                    Diagnose(version, ShaderDiagLevel.Abnormal);
-                }
+                Fixture(first, second);
+                var expected = (first == 256 * mb && second > 0) || (second == 256 * mb && first > 0);
+                var diag = Diagnose(version, expected ? ShaderDiagLevel.Normal : ShaderDiagLevel.Abnormal);
+                Check(diag.CacheLayout == ShaderCacheLayout.Unspecified && !diag.IsLayoutUncertain && diag.SystemCache is null,
+                    "automatic diagnosis never infers ASD or associates system cache");
+                Check(!diag.Summary.Contains("ASD已激活") && !diag.Summary.Contains("未激活ASD"), "capacity result is distinct from manual ASD");
             }
-            foreach (var sizes in new long[][]
+            foreach(var extra in new long[]{0,1,mb,256*mb,512*mb})
             {
-                [256 * mb], [mb], [mb, mb], [256 * mb, 0],
-                [256 * mb, mb, 0],
-                [256 * mb - 1, mb], [256 * mb + 1, mb],
-                [512 * mb - 1, mb], [512 * mb + 1, mb], [512 * mb, 0], [256000000, 1000000], [0], [65536],
-            })
-            {
-                Fixture(sizes);
-                Diagnose("621.01", ShaderDiagLevel.Abnormal);
+                Fixture(256*mb,1,extra);Diagnose("621.14",ShaderDiagLevel.Normal);
             }
-            foreach (var otherSize in new long[] { 1, 1023, 65536, mb - 1, mb + 1, 256 * mb - 1, 256 * mb, 256 * mb + 1, 512 * mb })
-            {
-                Fixture(256 * mb, otherSize);
-                Diagnose("621.01", otherSize >= 256 * mb && otherSize != 256 * mb ? ShaderDiagLevel.Warning : ShaderDiagLevel.Normal);
-            }
-            Fixture(256 * mb, mb);
-            File.WriteAllText(Path.Combine(cache, "ignored.parc"), "fixture");
-            File.WriteAllText(Path.Combine(cache, "ignored.nvph.bak"), "fixture");
-            var nested = Path.Combine(cache, "nested");
-            Directory.CreateDirectory(nested);
-            File.WriteAllBytes(Path.Combine(nested, "ignored.nvph"), []);
-            Diagnose("621.01", ShaderDiagLevel.Normal);
-
+            Fixture(256*mb,1); var capacity=Diagnose("621.14",ShaderDiagLevel.Normal);
+            FixtureB(256*mb,256*mb);Check(Diagnose("621.14",ShaderDiagLevel.Normal).CacheLayout==ShaderCacheLayout.Unspecified,"B-layer contents do not change the capacity rule");
+            Fixture(new long[]{256*mb}.Concat(Enumerable.Repeat(1L,64)).ToArray());Diagnose("621.14",ShaderDiagLevel.Normal);
             foreach (var version in new[] { "576.88", "591.32", "592.71", "596.49", "610.03", "616.24", "617.14", "617.99", "620.99" })
             {
                 Fixture(256 * mb, 256 * mb);
@@ -150,7 +94,9 @@ internal static class ShaderNvph621Checks
                 Fixture(256 * mb, 512 * mb, 0);
                 Diagnose(version, ShaderDiagLevel.Abnormal);
                 var advice = ShaderInspection.BuildDriverAdvice(ShaderGpuDetectionState.Nvidia, version);
-                Check(advice.State == (version.StartsWith("591.", StringComparison.Ordinal) ? ShaderDriverState.ProblemSeries : ShaderDriverState.Ok) && (advice.Advice.Contains("问题驱动") == version.StartsWith("591.", StringComparison.Ordinal)), $"{version}: no series blacklist");
+                Check(version.StartsWith("591.", StringComparison.Ordinal)
+                    ? advice.State == ShaderDriverState.ProblemSeries && advice.Advice.Contains("问题驱动")
+                    : advice.State == ShaderDriverState.Ok && !advice.Advice.Contains("问题驱动"), $"{version}: only 591 series is marked as a problem driver");
             }
             Fixture(256 * mb, mb);
             Diagnose("572.83", ShaderDiagLevel.NotApplicable);
@@ -163,21 +109,14 @@ internal static class ShaderNvph621Checks
             Diagnose("621.01", ShaderDiagLevel.Abnormal, ShaderGpuDetectionState.NotPresent);
             Directory.Delete(Path.Combine(root, "GameVer_Old"));
 
-            Fixture();
-            Diagnose("621.01", ShaderDiagLevel.Info);
+            Fixture(); Diagnose("621.01", ShaderDiagLevel.Info);
             Fixture(256 * mb, mb);
             Check(Diagnose("621.01", ShaderDiagLevel.Normal).Details.Any(d => d.Contains("SM5\\DXCache")), "621 uses SM5 fallback");
-            cache = Path.Combine(gameVer, "SM6", "DXCache");
-            Directory.CreateDirectory(cache);
-            Diagnose("621.01", ShaderDiagLevel.Info);
-            Fixture(256 * mb, 1);
-            Check(Diagnose("621.01", ShaderDiagLevel.Normal).Details.Any(d => d.Contains("SM6\\DXCache")), "621 prefers SM6 when both paths exist");
-            Fixture(512 * mb, 512 * mb);
-            Check(Diagnose("621.01", ShaderDiagLevel.Warning).Summary.Contains("旧版布局"), "legacy 621 layout also works on the preferred SM6 path");
-            Fixture(256 * mb, 256 * mb);
-            Check(Diagnose("621.01", ShaderDiagLevel.Normal).CacheLayout == ShaderCacheLayout.Asd,
-                "exact 256MB pair is active ASD on the preferred SM6 path");
-
+            cache = Path.Combine(gameVer, "SM6", "DXCache"); Directory.CreateDirectory(cache);
+            Diagnose("621.01", ShaderDiagLevel.Info); Fixture(256 * mb, 1);
+            Check(Diagnose("621.01", ShaderDiagLevel.Normal).Details.Any(d => d.Contains("SM6\\DXCache")), "621 prefers SM6");
+            FixtureB(512 * mb, 512 * mb); Diagnose("621.01", ShaderDiagLevel.Abnormal);
+            Fixture(256 * mb, 256 * mb);Check(Diagnose("621.01", ShaderDiagLevel.Normal).CacheLayout == ShaderCacheLayout.Unspecified,"pair is green without ASD claim");
             var status = await new ShaderInspection(null, () => new(ShaderGpuDetectionState.Nvidia, "617.14")).GetStatusAsync();
             Check(status.DriverState == ShaderDriverState.Ok && !status.DriverAdvice.Contains("问题驱动"), "public status no longer marks 617.14 problematic");
             Check(ShaderInspection.BuildDriverAdvice(ShaderGpuDetectionState.Nvidia, "572.83").State == ShaderDriverState.TooOld, "minimum driver check retained");

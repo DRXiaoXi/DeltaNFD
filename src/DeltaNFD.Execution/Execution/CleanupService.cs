@@ -93,6 +93,7 @@ public sealed class CleanupService : ICleanupService
 
     private static ShaderCacheCleanupResult CleanShaderCachesCore(IProgress<string>? progress, CancellationToken token)
     {
+        ManualAsdStore.InvalidateForCleanup();
         var roots = Targets.Where(IsShaderTarget).SelectMany(t => t.Paths()).ToArray();
         return ShaderCacheCleanup.CleanRoots(roots, DeltaForceLocator.IsGameRunning, token, progress);
     }

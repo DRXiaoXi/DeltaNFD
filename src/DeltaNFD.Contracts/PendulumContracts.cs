@@ -18,6 +18,7 @@ public sealed record PendulumGlobalStatus
     public DpcPendulumStatus? Win10Dpc { get; init; }
     public bool ExperimentalWindows10 { get; init; }
     public string PlatformId { get; init; } = "";
+    public string ClockEnvironmentRevision { get; init; } = "";
     public bool Supported { get; init; }
     public bool Readable { get; init; }
     public bool Configured { get; init; }

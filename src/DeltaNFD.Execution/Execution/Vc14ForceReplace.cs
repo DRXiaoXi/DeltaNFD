@@ -728,6 +728,7 @@ public static class Vc14ForceReplace
             [Vc14Baseline.V142] = "Vc14ForceReplace.catalog.json",
             [Vc14Baseline.V144] = "Vc14ForceReplace14.44.catalog.json",
             [Vc14Baseline.V151] = "Vc14ForceReplace14.51.catalog.json",
+            [Vc14Baseline.V152] = "Vc14ForceReplace14.52.catalog.json",
         };
         var result = new Dictionary<Vc14Baseline, Vc14ForceReplacePayloadSet>();
         foreach (var (baseline, resource) in resources)

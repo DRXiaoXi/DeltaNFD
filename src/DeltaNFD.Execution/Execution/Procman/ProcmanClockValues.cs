@@ -21,6 +21,7 @@ public sealed partial class ProcmanEngine
         var custom = args.Action is ClockValueAction.SaveCustom or ClockValueAction.TestCustomSleep;
         var testing = args.Action is ClockValueAction.TestCustomSleep or ClockValueAction.TestAutomaticSleep;
         if (!custom && args.Resolution100ns is not null) return OperationResult.Fail("自动值由后端读取，不接受额外目标值。");
+        using var environmentLease = EnvironmentReadLease();
         using var targetLease = GameTargetService.Default.BeginOperation();
         PendulumGlobalStatus admitted;
         AppSettings original;
@@ -62,7 +63,8 @@ public sealed partial class ProcmanEngine
             var current = ReadGlobalPrecision();
             if (_memoryStopping > 0 || _memoryDisposed || FrameBackgroundActive || ClockGameRunning || !targetCurrent()
                 || OfflineModeGuard.BlocksNormalAutomation || !current.Ready || current.Fingerprint != admitted.Fingerprint
-                || current.PlatformId != admitted.PlatformId || PendulumFramePolicy.CustomSource(current) != PendulumFramePolicy.CustomSource(admitted)) return false;
+                || current.PlatformId != admitted.PlatformId || current.ClockEnvironmentRevision != admitted.ClockEnvironmentRevision
+                || PendulumFramePolicy.CustomSource(current) != PendulumFramePolicy.CustomSource(admitted)) return false;
             var settings = AppSettingsStore.ReadRequired();
             return custom || settings.OptimalClockResolution100ns == original.OptimalClockResolution100ns
                 && settings.OptimalClockScanUtc == original.OptimalClockScanUtc && settings.OptimalClockScanPlatform == original.OptimalClockScanPlatform;
@@ -126,11 +128,12 @@ public sealed partial class ProcmanEngine
                     if (args.Action == ClockValueAction.SaveCustom)
                     {
                         var source = PendulumFramePolicy.CustomSource(admitted); var utc = DateTimeOffset.UtcNow;
-                        AppSettingsStore.UpdateRequired(s => { s.OptimalClockCustomResolution100ns = target;
+                        AppSettingsStore.UpdateRequired(s => { s.OptimalClockCustomResolution100ns = target; s.OptimalClockCustomEnvironment = admitted.ClockEnvironmentRevision;
                             s.OptimalClockCustomVerifiedUtc = utc; s.OptimalClockCustomPlatform = source; s.OptimalClockUseCustomResolution = true; });
                         var read = AppSettingsStore.ReadRequired();
                         if (!read.OptimalClockUseCustomResolution || read.OptimalClockCustomResolution100ns != target
-                            || read.OptimalClockCustomVerifiedUtc != utc || read.OptimalClockCustomPlatform != source)
+                            || read.OptimalClockCustomVerifiedUtc != utc || read.OptimalClockCustomPlatform != source
+                            || read.OptimalClockCustomEnvironment != admitted.ClockEnvironmentRevision)
                             throw new IOException("自定义配置写后回读不匹配。");
                         _pendulumLog.Write("custom-value-saved", new { target, utc, source });
                         return OperationResult.Ok($"已验证并保存自定义 {target / 10000.0:0.0000}ms；开启帧格后使用，原自动扫描结果保留。");

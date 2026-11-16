@@ -29,6 +29,8 @@ public static class BackendCommands
     public const string SystemShaderRecoveryClean = "system.shader.recovery-clean";
     public const string SystemPendulumGlobalConfigure = "system.pendulum.global.configure";
     public const string SystemPendulumDriverPrepare = "system.pendulum.driver.prepare";
+    public const string SystemClockEnvironmentRead = "system.clock-environment.read";
+    public const string SystemClockEnvironmentChange = "system.clock-environment.change";
     public const string SystemTimerRecover = "system.timer.recover";
     public const string SystemLowMemoryApply = "system.low-memory.apply";
     public const string SystemStartupList = "system.startup.list";
@@ -165,6 +167,7 @@ public static class BackendCommands
     public const string SystemShaderStatus = "system.shader.status";
     public const string SystemShaderDiagnose = "system.shader.diagnose";
     public const string SystemShaderClear = "system.shader.clear-cache";
+    public const string SystemManualAsdStart = "system.shader.manual-asd.start";
     public const string SystemGameRecordingStatus = "system.game-recording.status";
     public const string SystemGameRecordingChange = "system.game-recording.change";
     public const string SystemPagefileStatus = "system.pagefile.status";
@@ -395,9 +398,12 @@ public static class BackendModules
                     [BackendCommands.SystemShaderStatus] = TwoMinutes,
                     [BackendCommands.SystemShaderDiagnose] = TwoMinutes,
                     [BackendCommands.SystemShaderClear] = FiveMinutes,
+                    [BackendCommands.SystemManualAsdStart] = FiveMinutes,
                     [BackendCommands.SystemShaderRecoveryClean] = FiveMinutes,
                     [BackendCommands.SystemGameRecordingStatus] = TwoMinutes,
                     [BackendCommands.SystemGameRecordingChange] = FiveMinutes,
+                    [BackendCommands.SystemClockEnvironmentRead] = TwoMinutes,
+                    [BackendCommands.SystemClockEnvironmentChange] = TwoMinutes,
                     [BackendCommands.SystemTimerRecover] = FiveMinutes,
                     [BackendCommands.SystemLowMemoryApply] = FiveMinutes,
                     [BackendCommands.SystemStartupList] = TwoMinutes,
@@ -493,6 +499,7 @@ public static class BackendModules
         BackendCommands.SystemGameRecordingStatus,
         BackendCommands.SystemStartupList,
         BackendCommands.SystemDriverPriorityList,
+        BackendCommands.SystemClockEnvironmentRead,
         BackendCommands.SystemPagefileStatus, BackendCommands.SystemReconcile,
         // T3：扩展优化库/Defender/内存的只读命令
         BackendCommands.SystemBxStatus, BackendCommands.SystemBxGearInfo,
@@ -532,7 +539,8 @@ public static class BackendModules
         or BackendCommands.SystemPowerIntelPcores or BackendCommands.SystemTimerRecover or BackendCommands.SystemPendulumGlobalConfigure
         or BackendCommands.SystemGameRecordingChange or BackendCommands.SystemLowMemoryApply or BackendCommands.SystemPendulumDriverPrepare
         or BackendCommands.SystemStartupChange or BackendCommands.SystemStartupRestoreAll
-        or BackendCommands.SystemDriverPriorityChange or BackendCommands.SystemDriverPriorityRestoreAll;
+        or BackendCommands.SystemDriverPriorityChange or BackendCommands.SystemDriverPriorityRestoreAll
+        or BackendCommands.SystemClockEnvironmentChange;
 
     /// <summary>公开只读集合（只读命令的负向校验用）。</summary>
     public static IReadOnlySet<string> ReadOnly => ReadOnlyCommands;

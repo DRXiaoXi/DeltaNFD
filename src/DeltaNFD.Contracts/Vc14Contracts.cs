@@ -38,18 +38,19 @@ public sealed record Vc14Scan(IReadOnlyList<Vc14Entry> Products, IReadOnlyList<V
     }
 }
 public enum Vc14RepairMode { Full, UninstallOnly, InstallOnly, RegistrationCleanup }
-/// <summary>支持 14.44 / 14.51；V142 线值仅保留用于读取历史记录。</summary>
-public enum Vc14Baseline { V142 = 0, V144 = 1, V151 = 2 }
+/// <summary>支持 14.44 / 14.52；V142/V151 线值仅保留用于读取历史记录。</summary>
+public enum Vc14Baseline { V142 = 0, V144 = 1, V151 = 2, V152 = 3 }
 public static class Vc14BaselineOption
 {
     public const Vc14Baseline Default = Vc14Baseline.V144;
-    public static bool IsSupported(this Vc14Baseline baseline) => baseline is Vc14Baseline.V144 or Vc14Baseline.V151;
-    public static string UnsupportedMessage(this Vc14Baseline baseline) => "14.42 已停止作为安装基线；当前支持 14.44 / 14.51，请重新预览。";
+    public static bool IsSupported(this Vc14Baseline baseline) => baseline is Vc14Baseline.V144 or Vc14Baseline.V152;
+    public static string UnsupportedMessage(this Vc14Baseline baseline) => "14.42 / 14.51 已停止作为安装基线；当前支持 14.44 / 14.52，请重新预览。";
     public static string ShortVersion(this Vc14Baseline baseline) => baseline switch
     {
         Vc14Baseline.V142 => "14.42.34433",
         Vc14Baseline.V144 => "14.44.35211",
         Vc14Baseline.V151 => "14.51.36247",
+        Vc14Baseline.V152 => "14.52.37029",
         _ => throw new ArgumentOutOfRangeException(nameof(baseline)),
     };
     public static string FullVersion(this Vc14Baseline baseline) => baseline.ShortVersion() + ".0";
@@ -58,20 +59,23 @@ public static class Vc14BaselineOption
         Vc14Baseline.V142 => "14.42",
         Vc14Baseline.V144 => "14.44",
         Vc14Baseline.V151 => "14.51",
+        Vc14Baseline.V152 => "14.52",
         _ => throw new ArgumentOutOfRangeException(nameof(baseline)),
     };
     public static string Label(this Vc14Baseline baseline) => baseline switch
     {
         Vc14Baseline.V142 => "14.42（历史记录）",
         Vc14Baseline.V144 => "14.44（适合 AMD 处理器）",
-        Vc14Baseline.V151 => "14.51（适合 Intel 处理器）",
+        Vc14Baseline.V151 => "14.51（历史记录）",
+        Vc14Baseline.V152 => "14.52（适合 Intel 处理器）",
         _ => throw new ArgumentOutOfRangeException(nameof(baseline)),
     };
     public static string Description(this Vc14Baseline baseline) => baseline switch
     {
         Vc14Baseline.V142 => "已移除的安装基线，仅保留历史记录。",
         Vc14Baseline.V144 => "14.44.35211 · 适合 AMD 处理器 · x86 / x64 微软原包。",
-        Vc14Baseline.V151 => "14.51.36247 · 适合 Intel 处理器 · x86 / x64 微软原包。",
+        Vc14Baseline.V151 => "已移除的安装基线，仅保留历史记录。",
+        Vc14Baseline.V152 => "14.52.37029 · 适合 Intel 处理器 · x86 / x64 微软原包。",
         _ => throw new ArgumentOutOfRangeException(nameof(baseline)),
     };
 }

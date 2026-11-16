@@ -41,7 +41,8 @@ public static class PendulumGlobalInspection
         return record;
     }
 
-    public static PendulumGlobalStatus Read()
+    public static PendulumGlobalStatus Read() => ClockEnvironmentInspection.Decorate(ReadCore());
+    private static PendulumGlobalStatus ReadCore()
     {
         // Win10 的实验路径不以未确认有效的 Win11 注册表设置作为前提，也不触碰该键。
         if (ExperimentalWindows10)

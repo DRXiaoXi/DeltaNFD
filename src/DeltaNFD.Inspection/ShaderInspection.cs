@@ -55,6 +55,8 @@ public sealed class ShaderInspection
             IsGameRunning = DeltaForceLocator.IsGameRunning(),
         };
     });
+    public static ShaderDriverReading ReadCurrentDriver() => ReadNvidiaDriver();
+
     private static ShaderDriverReading ReadNvidiaDriver()
     {
         var foundNvidiaWmi = false;
@@ -396,7 +398,8 @@ public sealed class ShaderInspection
                 return (Name: f.Name, Size: -1L);
             }
         }).OrderByDescending(f => f.Size).ToList();
-        if (nvphFiles.Any(f => f.Size < 0))
+        if (nvphFiles.Any(f => f.Size < 0) && (versionNumber.Value < Driver621Version
+            || !nvphFiles.Any(f => f.Size == NvphMinBytes) || nvphFiles.Count(f => f.Size > 0) < 2))
         {
             return new ShaderDiagnosis
             {
@@ -419,37 +422,25 @@ public sealed class ShaderInspection
 
         foreach (var f in nvphFiles)
         {
-            details.Add($"· {f.Name}（{f.Size / 1024.0 / 1024.0:0.0} MB，{f.Size} 字节）");
+            details.Add(f.Size < 0 ? $"· {f.Name}：大小读取失败，未用于配对。"
+                : $"· {f.Name}（{f.Size / 1024.0 / 1024.0:0.0} MB，{f.Size} 字节）");
         }
 
-        // 621 系及以上只要求包含有效布局；额外非零 NVPH 可能为中间文件，不凭数量判异常。
+        // 621+ 只检查容量和非空配对；ASD 仅由独立的手动清理/预热流程判定。
         if (versionNumber.Value >= Driver621Version)
         {
-            var primaryCount = nvphFiles.Count(f => f.Size == NvphMinBytes || f.Size == 2 * NvphMinBytes);
-            var legacyLargeCount = nvphFiles.Count(f => f.Size >= NvphMinBytes);
-            var nonEmptyCount = nvphFiles.Count(f => f.Size > 0);
-            var modernLayout = primaryCount >= 1 && nonEmptyCount >= 2;
-            // 621.xx 的双精确 256MiB 是新版布局；额外非零文件不取消该布局证据。
-            var dual256AsdLayout = versionNumber.Value < 62200
-                && nvphFiles.Count(f => f.Size == NvphMinBytes) >= NvphMinLargeCount;
-            var legacyLayout = legacyLargeCount >= NvphMinLargeCount && !dual256AsdLayout;
-            var normal = nonEmptyCount == nvphFiles.Count && (modernLayout || legacyLayout);
-            var asdHint = versionNumber.Value < 62200 && normal;
-            details.Add($"621 系及以上规则：至少 2 个 NVPH；包含一个 256MB 或 512MB（{NvphMinBytes} 或 {2 * NvphMinBytes} 字节）加另一个非空文件，或至少两个均 ≥256MB。允许额外非零 NVPH，不凭文件总数判异常；仍不允许零字节文件。");
-            if (versionNumber.Value < 62200)
-                details.Add("621 系包含两个精确 256MB 的有效布局优先判为 ASD已激活；其他双大文件旧布局仍提示未激活ASD。");
+            var exact256 = nvphFiles.Count(f => f.Size == NvphMinBytes);
+            var nonEmpty = nvphFiles.Count(f => f.Size > 0);
+            var normal = exact256 > 0 && nonEmpty >= 2;
+            details.Add("621 及以上：至少一个精确 256MB（268435456 字节）的 NVPH，另有一个非 0KB 的 NVPH；允许额外中间文件。普通检测不判断 ASD 状态。");
             return new ShaderDiagnosis
             {
-                Level = !normal ? ShaderDiagLevel.Abnormal : asdHint && legacyLayout ? ShaderDiagLevel.Warning : ShaderDiagLevel.Normal,
-                CacheLayout = !asdHint ? ShaderCacheLayout.Unspecified : legacyLayout ? ShaderCacheLayout.Legacy : ShaderCacheLayout.Asd,
-                Summary = normal
-                    ? (asdHint ? legacyLayout ? "未激活ASD；" : "ASD已激活；" : "") + (legacyLayout
-                        ? $"着色器缓存结构正常（包含旧版布局：{legacyLargeCount} 个 ≥256MB 文件，共 {nvphFiles.Count} 个非空 NVPH）。"
-                        : $"着色器缓存结构正常（包含新版布局：一个 256MB 或 512MB 加另一个非 0KB 文件，共 {nvphFiles.Count} 个非空 NVPH）。")
-                    : $"判定为着色器异常：621 系及以上需包含「一个 256MB 或 512MB 加另一个非空文件」或「至少两个均 ≥256MB」，且所有 NVPH 非空；实际共 {nvphFiles.Count} 个，其中 256/512MB 文件 {primaryCount} 个、≥256MB 文件 {legacyLargeCount} 个、0KB 文件 {nvphFiles.Count - nonEmptyCount} 个。额外非零文件本身不算异常。",
+                Level = normal ? ShaderDiagLevel.Normal : ShaderDiagLevel.Abnormal,
+                Summary = normal ? "着色器缓存合格（256MB NVPH + 另一个非空 NVPH）。"
+                    : $"着色器缓存不合格：需要一个 256MB NVPH 和另一个非空 NVPH；实际 256MB 文件 {exact256} 个、非空文件 {nonEmpty} 个。",
                 Details = details,
-                Advice = normal ? (asdHint ? "ASD 状态按缓存布局推断，未读取驱动开关或验证运行实效。无需为此清理缓存。" : "无需处理。")
-                    : "建议：一键清除旧着色器文件，然后进入游戏重新预热着色器。",
+                Advice = normal ? "无需处理；如需判断 ASD 是否激活，请使用手动 ASD 判定。"
+                    : "请按需清理缓存并进入游戏重新预热。ASD 状态请使用独立手动判定。",
             };
         }
 

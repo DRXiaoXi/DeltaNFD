@@ -4,7 +4,7 @@ using DeltaNFD.Services.Backends;
 
 namespace DeltaNFD.ViewModels;
 
-/// <summary>运行库防护、14.x 兼容性检测与仅修复 14.x（14.44 / 14.51 内置基线）。</summary>
+/// <summary>运行库防护、14.x 兼容性检测与仅修复 14.x（14.44 / 14.52 内置基线）。</summary>
 public partial class RuntimeViewModel : ObservableObject
 {
     public Task<RuntimeFileUseScan> ScanFileUseAsync(CancellationToken token, RuntimeFileUseScope scope = RuntimeFileUseScope.Vc14) => _guard.ScanFileUseAsync(token, scope);
@@ -117,7 +117,7 @@ public partial class RuntimeViewModel : ObservableObject
     public string BaselineDriverNotice { get => baselineDriverNotice; set => SetProperty(ref baselineDriverNotice, value); }
     private string repairStatusText = "修复前将预览全部 14.x 卸载清单；请先关闭运行库防护。";
     public string RepairStatusText { get => repairStatusText; set => SetProperty(ref repairStatusText, value); }
-    public Vc14Baseline SelectedBaseline => BaselineIndex == 1 ? Vc14Baseline.V151 : Vc14Baseline.V144;
+    public Vc14Baseline SelectedBaseline => BaselineIndex == 1 ? Vc14Baseline.V152 : Vc14Baseline.V144;
     public bool CanUseBaselineActions => !BaselineDriverChecking && GuardCleanupEnabled;
     public string SelectedBaselineLabel => SelectedBaseline.Label();
     public string SelectedBaselineVersion => SelectedBaseline.FullVersion();
@@ -151,8 +151,8 @@ public partial class RuntimeViewModel : ObservableObject
     {
         Hide144Baseline = false;
         BaselineDriverNotice = confirmed596
-            ? "已检测到 NVIDIA 596 系列驱动；可选择 14.44 / 14.51 基线。"
-            : driverUnknown ? "无法完整读取显卡驱动；不影响选择 14.44 / 14.51 基线。" : "";
+            ? "已检测到 NVIDIA 596 系列驱动；可选择 14.44 / 14.52 基线。"
+            : driverUnknown ? "无法完整读取显卡驱动；不影响选择 14.44 / 14.52 基线。" : "";
         BaselineDriverChecking = false;
     }
     private string abnormalText = "";

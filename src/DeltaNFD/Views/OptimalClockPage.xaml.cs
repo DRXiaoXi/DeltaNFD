@@ -173,6 +173,7 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
     private void RaiseAll()
     {
         RaiseCustom();
+        RaiseClockEnvironment();
         foreach (var name in new[] { nameof(Editable), nameof(CanScan), nameof(CanRefresh), nameof(Busy), nameof(GlobalIsOn),
             nameof(CanRegister), nameof(GlobalStatusText), nameof(StatusText), nameof(DetailText), nameof(FrameLinkText),
             nameof(ScanText), nameof(HistoryText), nameof(OperationText) }) Raise(name);

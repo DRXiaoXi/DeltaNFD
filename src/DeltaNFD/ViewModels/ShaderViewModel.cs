@@ -173,13 +173,13 @@ public partial class ShaderViewModel : ObservableObject
     }
 
 
-    public bool ClearEnabled => !IsBusy && !IsClearing && !IsGameRunning && CanClear;
+    public bool ClearEnabled => !ManualAsdBusy && !IsBusy && !IsClearing && !IsGameRunning && CanClear;
 
-    public bool CanRefresh => !IsBusy;
+    public bool CanRefresh => !ManualAsdBusy && !IsBusy;
 
-    public bool CanDiagnose => !DiagBusy && !IsGameRunning;
+    public bool CanDiagnose => !ManualAsdBusy && !DiagBusy && !IsGameRunning;
 
-    public bool CanCleanSystem => !IsCleaningSystem && !IsGameRunning;
+    public bool CanCleanSystem => !ManualAsdBusy && !IsCleaningSystem && !IsGameRunning;
 
     /// <summary>游戏运行状态（LoadAsync 回填；变更时联动刷新全部依赖按钮）。</summary>
     public bool IsGameRunning
@@ -220,18 +220,21 @@ public partial class ShaderViewModel : ObservableObject
 
     partial void OnDiagBusyChanged(bool value)
     {
+        RefreshManualFlags();
         OnPropertyChanged(nameof(DiagButtonText));
         OnPropertyChanged(nameof(CanDiagnose));
     }
 
     partial void OnIsCleaningSystemChanged(bool value)
     {
+        RefreshManualFlags();
         OnPropertyChanged(nameof(CleanSystemButtonText));
         OnPropertyChanged(nameof(CanCleanSystem));
     }
 
     private void RefreshFlags()
     {
+        RefreshManualFlags();
         OnPropertyChanged(nameof(ClearEnabled));
         OnPropertyChanged(nameof(ClearButtonText));
     }
@@ -313,6 +316,7 @@ public partial class ShaderViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+            await LoadManualAsdAsync();
         }
     }
 

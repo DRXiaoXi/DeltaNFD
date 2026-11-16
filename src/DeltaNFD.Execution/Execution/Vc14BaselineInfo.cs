@@ -4,7 +4,7 @@ namespace DeltaNFD.Services;
 
 /// <summary>
 /// 工具内置的官方 2015–2022 14.x 基线元数据。载荷来源为微软官方 vc_redist 原包及其
-/// MSI/CAB；各文件固定哈希并在预览/执行前复核。支持 14.44 / 14.51；14.42 仅用于历史身份识别。
+/// MSI/CAB；各文件固定哈希并在预览/执行前复核。支持 14.44 / 14.52；14.42 / 14.51 仅用于历史身份识别。
 /// </summary>
 internal sealed class Vc14BaselineInfo
 {
@@ -65,7 +65,20 @@ internal sealed class Vc14BaselineInfo
             ["x86"] = "{9a6ce18d-11c0-4452-aa35-9f2b8437c686}",
         });
 
-    internal static IReadOnlyList<Vc14BaselineInfo> All { get; } = [V142, V144, V151];
+    internal static Vc14BaselineInfo V152 { get; } = new(
+        Vc14Baseline.V152, "14.52.37029.0", "Vc14Baseline14.52", "Vc14FileRepair14.52",
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["x64"] = "9C02C9ED120F671B900E6B9471D890E3B2414117A7E53F4AE2E855466FA2B7C9",
+            ["x86"] = "7B0117E6E20E9E349029C000A8A2715A52CF37C15B6BB697B2908E8BC7066CDF",
+        },
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["x64"] = "{be2c4202-8de2-4274-95c7-ef71b2bfdcad}",
+            ["x86"] = "{a88f8d56-9d66-4c09-a714-3c6d83981361}",
+        });
+
+    internal static IReadOnlyList<Vc14BaselineInfo> All { get; } = [V142, V144, V151, V152];
     internal static Vc14BaselineInfo Default => V144;
 
     internal static Vc14BaselineInfo For(Vc14Baseline baseline) => baseline switch
@@ -73,6 +86,7 @@ internal sealed class Vc14BaselineInfo
         Vc14Baseline.V142 => V142,
         Vc14Baseline.V144 => V144,
         Vc14Baseline.V151 => V151,
+        Vc14Baseline.V152 => V152,
         _ => throw new ArgumentOutOfRangeException(nameof(baseline), "未知的 14.x 基线。"),
     };
 

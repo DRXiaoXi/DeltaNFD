@@ -19,14 +19,16 @@ public sealed class ShaderService : IShaderService
     private readonly Func<IEnumerable<string>> _psoPaths;
     private readonly Func<bool> _gameRunning;
     private readonly Func<string> _localAppData;
-    public ShaderService(GameTargetService? target = null) : this(target, ReadNvidiaDriver) { }
+    private readonly Action? _invalidateManualAsd;
+    public ShaderService(GameTargetService? target = null) : this(target, ReadNvidiaDriver, invalidateManualAsd: ManualAsdStore.InvalidateForCleanup) { }
     internal ShaderService(GameTargetService? target, Func<ShaderDriverReading> driverReader,
-        Func<IEnumerable<string>>? psoPaths = null, Func<bool>? gameRunning = null, Func<string>? localAppData = null)
+        Func<IEnumerable<string>>? psoPaths = null, Func<bool>? gameRunning = null, Func<string>? localAppData = null, Action? invalidateManualAsd = null)
     {
         _target = target ?? GameTargetService.Default; _driverReader = driverReader;
         _psoPaths = psoPaths ?? (() => DeltaForceLocator.FindPsoCachePaths());
         _gameRunning = gameRunning ?? DeltaForceLocator.IsGameRunning;
         _localAppData = localAppData ?? (() => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+        _invalidateManualAsd = invalidateManualAsd;
     }
     private const string DisplayClassPath = @"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
 
@@ -39,6 +41,7 @@ public sealed class ShaderService : IShaderService
         using var operation = _target.BeginOperation();
         if (_target.IsCustom) return OperationResult.Fail(GameTargetService.DeltaOnlyMessage);
         using var shaderGate = ShaderCacheOperationGate.Acquire();
+        _invalidateManualAsd?.Invoke();
         var driver = _driverReader();
         var includeSystem = GameInstallationScope.AllowsSharedCleanup &&
             ShaderCacheCleanupPolicy.IncludesSystemD3DCache(driver.State, driver.Version);

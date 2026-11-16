@@ -9,6 +9,24 @@
                 <ui:PageHeader Title="钟摆计划"/>
                 <TextBlock Text="{x:Bind PageDescription, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
             </StackPanel>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="AMD · 计时源与 HPET（实验性）" Style="{StaticResource SectionTitleStyle}"/>
+                    <TextBlock Text="HPET 禁用仅操作设备管理器中的设备，先备份原状态并逐项回读；不修改 BCD 启动计时源，动态节拍保持原样。修改后手动重启并重新验证钟摆精度。旧版联动备份仍按原记录恢复。" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}"/>
+                    <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Message="{x:Bind ClockEnvironmentMessage, Mode=OneWay}"/>
+                    <TextBlock Text="{x:Bind ClockEnvironmentDetail, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" Style="{StaticResource NoteStyle}"/>
+                    <Button Content="检测计时源与设备" Click="ReadClockEnvironment_Click" IsEnabled="{x:Bind CanReadClockEnvironment, Mode=OneWay}" HorizontalAlignment="Left" Style="{StaticResource SecondaryButtonStyle}"/>
+                    <Grid ColumnSpacing="12" RowSpacing="8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <Button Content="备份并恢复默认计时源" Click="DefaultClockSource_Click" IsEnabled="{x:Bind CanDefaultClockSource, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}"/>
+                        <Button Grid.Column="1" Content="还原计时源原始状态" Click="RestoreClockSource_Click" IsEnabled="{x:Bind CanRestoreClockSource, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}"/>
+                        <Button Grid.Row="1" Content="备份并禁用 HPET 设备" Click="DisableHpetDevice_Click" IsEnabled="{x:Bind CanDisableHpetDevice, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}"/>
+                        <Button Grid.Row="1" Grid.Column="1" Content="按备份还原 HPET" Click="RestoreHpetDevice_Click" IsEnabled="{x:Bind CanRestoreHpetDevice, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}"/>
+                    </Grid>
+                    <TextBlock Text="{x:Bind ClockEnvironmentResult, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}" AutomationProperties.LiveSetting="Polite"/>
+                </StackPanel>
+            </Border>
             <Border Style="{StaticResource CardBorderStyle}" Visibility="{x:Bind ExperimentalVisibility, Mode=OneWay}">
                 <StackPanel Spacing="10">
                     <TextBlock Text="Windows 10 · 自备 DPC EXE" Style="{StaticResource SectionTitleStyle}"/>

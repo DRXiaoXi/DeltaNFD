@@ -16,8 +16,8 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>0.9390</Version>
-    <InformationalVersion>Beta0.939</InformationalVersion>
+    <Version>0.9392</Version>
+    <InformationalVersion>Beta0.939-RC2</InformationalVersion>
     <WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
 
@@ -44,9 +44,11 @@
     <EmbeddedResource Include="Execution\Vc14FileRepair.catalog.json" LogicalName="Vc14FileRepair.catalog.json" />
     <EmbeddedResource Include="Execution\Vc14FileRepair14.44.catalog.json" LogicalName="Vc14FileRepair14.44.catalog.json" />
     <EmbeddedResource Include="Execution\Vc14FileRepair14.51.catalog.json" LogicalName="Vc14FileRepair14.51.catalog.json" />
+    <EmbeddedResource Include="Execution\Vc14FileRepair14.52.catalog.json" LogicalName="Vc14FileRepair14.52.catalog.json" />
     <EmbeddedResource Include="Execution\Vc14ForceReplace.catalog.json" LogicalName="Vc14ForceReplace.catalog.json" />
     <EmbeddedResource Include="Execution\Vc14ForceReplace14.44.catalog.json" LogicalName="Vc14ForceReplace14.44.catalog.json" />
     <EmbeddedResource Include="Execution\Vc14ForceReplace14.51.catalog.json" LogicalName="Vc14ForceReplace14.51.catalog.json" />
+    <EmbeddedResource Include="Execution\Vc14ForceReplace14.52.catalog.json" LogicalName="Vc14ForceReplace14.52.catalog.json" />
     <EmbeddedResource Include="Execution\Vc14OwnershipOriginals.catalog.json" LogicalName="Vc14OwnershipOriginals.catalog.json" />
     <EmbeddedResource Include="Execution\NonCppRuntime.catalog.json" LogicalName="NonCppRuntime.catalog.json" />
   </ItemGroup>

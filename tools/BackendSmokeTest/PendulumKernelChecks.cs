@@ -71,6 +71,7 @@ internal static class PendulumKernelChecks
         }
         var global = PendulumGlobalInspection.EvaluateWindows10(new Version(10, 0, 19045, 6093), new PendulumWin10DriverStatus { Readable = true, TestSigningEnabled = true, DriverRegistered = true, DriverRunning = true, DriverIdentityVerified = true });
         Check(global.PlatformId.StartsWith("win10-kernel-resolution-v3/"), "Old Sleep-based provenance cannot authorize this path");
+        global = global with { ClockEnvironmentRevision = "fixture-environment" };
         h = new Holder(); var frame = false;
         using var engine = new ProcmanEngine(Path.Combine(root, "changes.json"), Path.Combine(root, "rules.json"),
             clockHolder: h, clockMeasurement: new NoSleep(), clockCurrentResolution: () => h.Current100ns);
@@ -99,6 +100,7 @@ internal static class PendulumKernelChecks
             "Compatibility-only driver route works without Sleep");
         Check(!h.Holding && JsonSerializer.Serialize(AppSettingsStore.Read()) == before, "Probe releases and leaves selection unchanged");
         Check(engine.ScanOptimalClockAsync(false).GetAwaiter().GetResult().Success, "Selection saves without latency scanner");
+        Check(AppSettingsStore.Read().OptimalClockScanEnvironment == global.ClockEnvironmentRevision, "Numerical proof saves environment identity");
         Check(!h.Holding && AppSettingsStore.Read().OptimalClockResolution100ns == 5000
             && AppSettingsStore.Read().OptimalClockScanPlatform == global.PlatformId,
             $"Saves platform-bound 0.5ms after release: holding={h.Holding}, saved={AppSettingsStore.Read().OptimalClockResolution100ns}, platform={AppSettingsStore.Read().OptimalClockScanPlatform}, expected={global.PlatformId}");
