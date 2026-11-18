@@ -16,7 +16,7 @@
                 </StackPanel>
             </Border>
             <StackPanel Spacing="12">
-                <ItemsControl ItemsSource="{x:Bind ViewModel.Bx.Sections}">
+                <ItemsControl ItemsSource="{x:Bind ViewModel.Bx.Sections}" IsEnabled="{x:Bind ViewModel.Bx.BatchControlsEnabled, Mode=OneWay}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <StackPanel Orientation="Horizontal" Spacing="8"/>
@@ -47,7 +47,7 @@
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Grid.Row="1">
                                 <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.Bx.IsBusy, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}"/>
-                                <Button Content="刷新状态" Click="BxRefreshButton_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                                <Button Content="刷新状态" IsEnabled="{x:Bind ViewModel.Bx.BatchControlsEnabled, Mode=OneWay}" Click="BxRefreshButton_Click" Style="{StaticResource SecondaryButtonStyle}"/>
                                 <Button Style="{StaticResource PrimaryButtonStyle}" Content="一键恢复" IsEnabled="{x:Bind ViewModel.Bx.ExecutionEnabled, Mode=OneWay}" Command="{x:Bind ViewModel.Bx.RestoreAllCommand}"/>
                             </StackPanel>
                         </Grid>

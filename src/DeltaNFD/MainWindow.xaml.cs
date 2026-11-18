@@ -1094,14 +1094,21 @@ public sealed partial class MainWindow : Window
     private bool _deploymentInProgress, _factoryResetInProgress;
     internal Task<DeploymentHandover> PrepareDeploymentAsync(bool uninstall) => PrepareDeploymentAsync(uninstall, null);
 
-    internal async Task<DeploymentHandover> PrepareDeploymentAsync(bool uninstall, string? purpose)
+    internal Task<DeploymentHandover> PrepareDeploymentAsync(bool uninstall, string? purpose) =>
+        PrepareDeploymentCoreAsync(uninstall, purpose, preserveAppliedSettings: false);
+
+    internal Task<DeploymentHandover> PrepareRemovalAsync() =>
+        PrepareDeploymentCoreAsync(true, null, preserveAppliedSettings: true);
+
+    private async Task<DeploymentHandover> PrepareDeploymentCoreAsync(bool uninstall, string? purpose, bool preserveAppliedSettings)
     {
         if (_pluginExitInProgress || _deploymentInProgress || _factoryResetInProgress) throw new InvalidOperationException("正在处理退出或配置重置，请稍后重试安装/卸载。");
         _deploymentInProgress = true;
         if (Content is UIElement root) root.IsHitTestVisible = false;
         try
         {
-            var result = await DeploymentHandover.PrepareAsync(uninstall, purpose);
+            var result = preserveAppliedSettings ? await DeploymentHandover.PrepareForUninstallAsync()
+                : await DeploymentHandover.PrepareAsync(uninstall, purpose);
             if (result.Ready) return result;
             _deploymentInProgress = false;
             if (Content is UIElement content) content.IsHitTestVisible = true;

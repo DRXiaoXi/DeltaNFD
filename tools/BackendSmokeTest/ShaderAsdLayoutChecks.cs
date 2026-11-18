@@ -10,16 +10,20 @@ internal static class ShaderAsdLayoutChecks
     {
         var count=0;void Check(bool ok,string message){if(!ok)throw new Exception(message);count++;}
         var root=Path.Combine(Path.GetTempPath(),"DeltaNFD-asd-capacity-"+Guid.NewGuid().ToString("N"));
-        var cache=Path.Combine(root,"GameVer","SM6","DXCache");Directory.CreateDirectory(cache);
+        var psoRoot=Path.Combine(root,"PSOCache");
+        var cache=Path.Combine(psoRoot,"GameVer","SM6","DXCache");Directory.CreateDirectory(cache);
+        var testId=Guid.NewGuid();File.WriteAllText(Path.Combine(root,"isolated-test.marker"),testId.ToString("D"));
+        AppDataPaths.ConfigureIsolatedDataRoot(root,testId);
         const long mb=1024L*1024;
         ShaderStatus Status(string version)=>new(){IsNvidia=true,DriverState=ShaderDriverState.Ok,DriverVersion=version,DriverAdvice="fixture",IsGameRunning=false};
         NvShaderCacheReport Good()=>new(){Scopes=[new("全局设置","default",null,"fixture"),new("三角洲程序设置","default",null,"fixture")]};
         foreach(var version in new[]{"621.00","621.14","621.99","622.00","700.00"})
-        foreach(var sizes in new long[][]{[256*mb,1],[256*mb,256*mb],[256*mb,mb,0],[256*mb,512*mb,1]})
+        foreach(var sizes in new long[][]{[256*mb,1],[256*mb,256*mb],[256*mb,mb,0],[256*mb,512*mb,1],
+            [256*mb+1,1],[512*mb,1],[512*mb,512*mb],[1024*mb,1],[512*mb,mb,0]})
         {
             foreach(var f in Directory.GetFiles(cache))File.Delete(f);
             for(var i=0;i<sizes.Length;i++)NvphFixtureFiles.Raw(Path.Combine(cache,i+".nvph"),sizes[i]);
-            var diag=new ShaderInspection(null,()=>new(ShaderGpuDetectionState.Nvidia,version)).DiagnoseAt(root,true);
+            var diag=new ShaderInspection(null,()=>new(ShaderGpuDetectionState.Nvidia,version)).DiagnoseAt(psoRoot,true);
             Check(diag.Level==ShaderDiagLevel.Normal&&diag.CacheLayout==ShaderCacheLayout.Unspecified&&diag.SystemCache is null,"size rule is green without automatic ASD inspection");
             Check(!diag.Summary.Contains("ASD"),"summary never advertises ASD from a layout");
             var health=DashboardShaderHealth.Evaluate(Status(version),diag,Good(),true);
@@ -29,8 +33,8 @@ internal static class ShaderAsdLayoutChecks
             var wire=JsonSerializer.Deserialize<ShaderDiagnosis>(JsonSerializer.Serialize(diag))!;
             Check(wire.CacheLayout==ShaderCacheLayout.Unspecified&&wire.Level==ShaderDiagLevel.Normal,"IPC does not invent ASD");
         }
-        Directory.CreateDirectory(Path.Combine(root,"OldGameVer"));
-        Check(new ShaderInspection(null,()=>new(ShaderGpuDetectionState.Nvidia,"621.14")).DiagnoseAt(root).Level==ShaderDiagLevel.Abnormal,"version residue remains abnormal");
+        Directory.CreateDirectory(Path.Combine(psoRoot,"OldGameVer"));
+        Check(new ShaderInspection(null,()=>new(ShaderGpuDetectionState.Nvidia,"621.14")).DiagnoseAt(psoRoot).Level==ShaderDiagLevel.Abnormal,"version residue remains abnormal");
         Check((int)ShaderDiagLevel.Warning==5&&(int)ShaderCacheLayout.Asd==2,"historical protocol values retained");
         Console.WriteLine($"Automatic/manual ASD separation: {count} checks passed. Owned sparse fixtures only: {root}");
     }

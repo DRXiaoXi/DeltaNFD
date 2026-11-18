@@ -29,7 +29,13 @@ internal static class LowMemoryRepairEngine
         try
         {
             var result = args.RestorePrefetch ? await env.RestorePrefetchAsync() : await env.ApplyAsync(args.Action);
-            if (!result.Success) return args.Action == LowMemoryAction.Prefetch ? Unconfirmed(result.Message) : result;
+            if (!result.Success)
+            {
+                // Restore can continue with registry backups after an MMAgent failure.
+                // Disable returns a regular failure only when it stopped before system writes.
+                return args.Action == LowMemoryAction.Prefetch && (args.RestorePrefetch || result.OutcomeUnknown)
+                    ? Unconfirmed(result.Message) : result;
+            }
             var after = await env.ReadAsync();
             if (!after.IsLowCapacity || !after.CanCheckTarget(args.Action) || !args.RestorePrefetch && after.Needs(args.Action) != false)
                 return Unconfirmed("已提交设置，但复检未通过。");

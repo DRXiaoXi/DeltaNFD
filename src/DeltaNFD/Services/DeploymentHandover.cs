@@ -40,14 +40,22 @@ internal sealed class DeploymentHandover : IDisposable
 
     public static Task<DeploymentHandover> PrepareAsync(bool uninstall) => PrepareAsync(uninstall, null);
 
-    public static async Task<DeploymentHandover> PrepareAsync(bool uninstall, string? purpose)
+    // Removal keeps persistent settings and their recovery evidence. Factory reset and legacy
+    // recovery retain their original full-recovery contract through PrepareAsync(uninstall: true).
+    public static Task<DeploymentHandover> PrepareForUninstallAsync() =>
+        PrepareCoreAsync(false, "卸载（保留已应用设置）", preserveAppliedSettings: true);
+
+    public static Task<DeploymentHandover> PrepareAsync(bool uninstall, string? purpose) =>
+        PrepareCoreAsync(uninstall, purpose ?? (uninstall ? "完整恢复" : "安装更新"), preserveAppliedSettings: false);
+
+    private static async Task<DeploymentHandover> PrepareCoreAsync(bool restorePersistentSettings, string reason,
+        bool preserveAppliedSettings)
     {
         var permit = new DeploymentHandover();
         try
         {
             using var control = BackendOperationGate.AllowControlOperations();
             var failures = new List<string>();
-            var reason = purpose ?? (uninstall ? "卸载" : "安装更新");
             async Task Attempt(string name, Func<Task> action)
             {
                 try { await action(); }
@@ -56,7 +64,7 @@ internal sealed class DeploymentHandover : IDisposable
             await Attempt("插件交接", async () =>
             {
                 var error = await PluginLifecycleGuard.PrepareHandoverAsync(ServiceLocator.Plugins,
-                    ServiceLocator.PluginRuntime, reason, restoreChanges: uninstall);
+                    ServiceLocator.PluginRuntime, reason, restoreChanges: restorePersistentSettings);
                 if (error.Length > 0) throw new InvalidOperationException(error);
             });
             // Stop first, even when a historical record exists. Otherwise recovery cannot start.
@@ -77,7 +85,7 @@ internal sealed class DeploymentHandover : IDisposable
             if (failures.Count == 0)
             {
                 // CPU history must complete its supported full recovery; never discard in-memory originals.
-                if (uninstall && reviews.SingleOrDefault(r => r.Module == BackendModules.CpuFrame) is { } cpu)
+                if (restorePersistentSettings && reviews.SingleOrDefault(r => r.Module == BackendModules.CpuFrame) is { } cpu)
                     await Attempt("CPU/帧格旧记录恢复", async () =>
                     {
                         if (VolatileCpuStateMayRemain(cpu))
@@ -87,10 +95,10 @@ internal sealed class DeploymentHandover : IDisposable
                     });
                 if (failures.Count == 0) await Attempt("脱机助手交接", async () =>
                 {
-                    var result = await new OfflineModeCoordinator().PrepareForRemovalAsync(restoreCpuSets: uninstall);
+                    var result = await new OfflineModeCoordinator().PrepareForRemovalAsync(restoreCpuSets: restorePersistentSettings);
                     if (!result.Success) throw new InvalidOperationException(result.Message);
                 });
-                if (uninstall)
+                if (restorePersistentSettings)
                 {
                     if (failures.Count == 0) await Attempt("CPU/帧格持久状态恢复", async () => await RecoverAsync(BackendModules.CpuFrame, "all"));
                     await Attempt("运行库防护关闭", async () => await RecoverAsync(BackendModules.Runtime, "guard"));
@@ -114,8 +122,11 @@ internal sealed class DeploymentHandover : IDisposable
             if (File.Exists(Path.Combine(AppDataPaths.Root, "safe-installer-active.json"))
                 || Directory.Exists(Path.Combine(AppDataPaths.Root, "safe-installer-active.json")))
                 failures.Add("临时 Installer 设置仍待恢复，请在运行库页点击“恢复临时 Installer 设置”；未允许替换或移除程序及恢复记录。");
-            permit.ExitCode = failures.Count > 0 ? 2 : reviews.Count > 0 ? 10 : 0;
+            permit.ExitCode = failures.Count > 0 ? 2 : preserveAppliedSettings || reviews.Count > 0 ? 10 : 0;
             permit.Detail = failures.Count > 0 ? string.Join(Environment.NewLine, failures.Distinct())
+                : preserveAppliedSettings ? "执行者已停止，可以卸载程序。临时功能已按正常退出流程收尾，不额外执行 CPU／帧格完整恢复、脱机 CPU 集恢复或关闭运行库防护。\n"
+                    + "设置、插件、日志和恢复备份保留在原数据目录；卸载不代表系统设置已还原。"
+                    + (reviews.Count > 0 ? "\n以下历史操作仍待核对：\n" + string.Join(Environment.NewLine, reviews.Select(r => r.Description)) : "")
                 : reviews.Count > 0 ? "执行者已停止，仍有历史操作待人工核对。保留全部数据和原始证据；这不代表历史操作已还原。\n"
                     + string.Join(Environment.NewLine, reviews.Select(r => r.Description)) : "安全交接完成。";
             Log.Info(reason + "交接结果=" + permit.ExitCode + "；" + permit.Detail);

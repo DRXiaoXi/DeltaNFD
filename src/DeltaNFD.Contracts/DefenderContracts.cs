@@ -81,12 +81,12 @@ public interface IDefenderGuardService
     /// <summary>应用前预检：返回 null = 批次无安全类条目，无需关注。</summary>
     Task<DefenderPreflightReport?> PreflightAsync(IReadOnlyList<DefenderBatchItem> batchItems);
 
-    /// <summary>重新查询防护状态；返回 (实时保护仍开?, 篡改防护仍开?)。查询失败返回 (false,false)。</summary>
+    /// <summary>重新查询防护状态；返回 (实时保护仍开?, 篡改防护仍开?)。查询失败不视为已关闭。</summary>
     Task<(bool RealTimeOn, bool TamperOn)> RefreshProtectionStateAsync();
 
     /// <summary>把后端自身解析的建议目录加入 Defender 排除列表（会话内记录）。</summary>
     Task AddSessionExclusionsAsync();
 
     /// <summary>应用完成后收尾：移除会话排除项；必要时尽力恢复实时保护。返回是否需要提醒。</summary>
-    Task<DefenderPostApplyResult> PostApplyAsync();
+    Task<DefenderPostApplyResult> PostApplyAsync(bool batchNotStarted = false);
 }

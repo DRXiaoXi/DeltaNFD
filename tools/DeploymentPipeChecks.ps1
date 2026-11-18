@@ -40,7 +40,7 @@ try {
     $server = [DeploymentPipeFixture]::Start((Get-DeploymentPipeName $root), ('10|' + $encoded))
     $reply = Request-CooperativeExit $root 'uninstall' $owner
     if ($reply.Code -ne 10 -or $reply.Detail -ne $detail) { throw ('Production response parsing failed: ' + ($reply | ConvertTo-Json -Compress)) }
-    if (-not $server.Wait(5000) -or $server.Result -ne 'UNINSTALL/1') { throw 'Production request encoding failed' }
+    if (-not $server.Wait(5000) -or $server.Result -ne 'UNINSTALL/2') { throw 'Production request encoding failed' }
     Write-Output 'PASS: Production pipe authenticates server PID/start time and preserves history result'
     $server = [DeploymentPipeFixture]::Start((Get-DeploymentPipeName $root), 'bad-response')
     $rejected = $false

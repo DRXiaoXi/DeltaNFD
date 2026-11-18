@@ -4,6 +4,8 @@ $source = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\installer\DeltaNFD
 $app = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\src\DeltaNFD\App.xaml.cs'))
 $handover = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\src\DeltaNFD\Services\DeploymentHandover.cs'))
 $control = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\installer\DeploymentControl.ps1'))
+$pipe = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\src\DeltaNFD\Native\DeploymentPipe.cs'))
+$window = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\src\DeltaNFD\MainWindow.xaml.cs'))
 function Assert-Safety([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
     Write-Output "PASS: $Message"
@@ -17,10 +19,12 @@ Assert-Safety (-not $source.Contains('Check: WizardSilent')) 'Silent installatio
 Assert-Safety ($control.Contains("if (`$Operation -ne 'uninstall')")) 'Standalone recovery cannot run the installed frontend during setup'
 Assert-Safety ($source.Contains("PrepareDeployment('install', False)")) 'Setup completes the same safe handover before replacement'
 Assert-Safety ($pre.Contains("PrepareDeployment('uninstall', True)") -and $pre.Contains('Abort;')) 'Uninstall verifies safe preparation before file deletion'
-Assert-Safety ($pre.Contains('PreserveAllData()') -and $pre.Contains('完整备份复制或校验失败')) 'Copy failure aborts before program removal'
+Assert-Safety ($pre.Contains('PreserveAllData()') -and $pre.Contains('原始数据目录和恢复备份仍保留')) 'Optional export failure preserves original recovery data'
 Assert-Safety ($source.Contains('CopyFile(Src, Dst, True)') -and $source.Contains('GetSHA256OfFile(Src) <> GetSHA256OfFile(Dst)')) 'Backup never overwrites and verifies bytes'
 Assert-Safety ($source.Contains('PreserveBackupFiles(Src, Dst)') -and -not $source.Contains('PreserveFiles =')) 'Full data tree includes all recovery evidence rather than four filenames'
-Assert-Safety ($source.Contains('if not PreserveDeploymentHistory then')) 'Historical records keep original data directories after uninstall'
+Assert-Safety (-not $source.Contains('DelTree(DataDir, DataDir)') -and -not $source.Contains('DelTree(LegacyDataDir, LegacyDataDir)') -and -not $source.Contains('DelTree(LocalDataDir, LocalDataDir)') -and -not $source.Contains('DelTree(LocalLegacyDir, LocalLegacyDir)')) 'Removal always retains current and legacy recovery data directories'
+Assert-Safety ($source.Contains('Result := (ResultCode = 0) or (ResultCode = 10);')) 'Mandatory data preservation cannot turn a failed handover into permission'
+Assert-Safety (-not $source.Contains('完全清除：') -and $source.Contains('仅保留原数据目录')) 'Export choice cannot erase still-needed original backups'
 Assert-Safety ($source.Contains('function DelTree(const Path, Root: String)') -and $source.Contains('if HasReparseAncestor(Path) then')) 'Recursive deletion keeps root and ancestor guards'
 Assert-Safety ($source.Contains('FindRec.Attributes and ReparsePointAttribute')) 'Copy and cleanup refuse reparse traversal'
 Assert-Safety (-not $control.Contains('Get-CimInstance') -and $control.Contains('QueryFullProcessImageName')) 'Process identity lookup works independently of WMI'
@@ -32,6 +36,9 @@ $prepareIndex = $app.IndexOf('"--prepare-deployment"')
 $singleInstanceIndex = $app.IndexOf('SingleInstanceGuard.TryBecomePrimary(')
 Assert-Safety ($prepareIndex -ge 0 -and $singleInstanceIndex -gt $prepareIndex) 'Headless preparation is handled before GUI single-instance logic'
 Assert-Safety ($app.Contains('DeploymentPipe.Start')) 'Running tray application implements cooperative deployment exit'
+Assert-Safety ($control.Contains("'UNINSTALL/2'") -and $pipe.Contains('"UNINSTALL/2" => prepareRemoval')) 'Uninstall requests the versioned keep-settings handover without falling back to full recovery'
+Assert-Safety ($control.Contains('--prepare-removal-preserving-settings') -and $app.Contains('permit = preserveAppliedSettings ? await DeploymentHandover.PrepareForUninstallAsync()')) 'Cold uninstall uses the same dedicated keep-settings preparation'
+Assert-Safety ($window.Contains('preserveAppliedSettings: true') -and $window.Contains('await DeploymentHandover.PrepareForUninstallAsync()')) 'Running application routes removal through keep-settings preparation'
 Assert-Safety ($app.Contains('DeploymentInProgress()') -and $source.Contains('ReleaseDeploymentMutex()')) 'Installer mutex blocks new GUI launches and releases on failure or completion'
 $postInstall = [regex]::Match($source, 'procedure CurStepChanged\([\s\S]+?function InitializeUninstall').Value
 Assert-Safety ($postInstall.Contains('ReleaseDeploymentMutex();')) 'Successful setup releases launch gate before postinstall Run entries'
@@ -44,7 +51,8 @@ Assert-Safety ($update.Contains('DeploymentHandover.PrepareAsync(uninstall: fals
 Assert-Safety ($handover.Contains('BackendOperationGate.BlockNewOperations()') -and $handover.Contains('BlockNewOperations()')) 'New calls are gated throughout preparation'
 Assert-Safety ($handover.Contains('InvokeReconcileAsync') -and $handover.Contains('"guard"') -and -not $handover.Contains('Guard.DisableAsync')) 'Uninstall guard recovery bypasses old intent self-lock and verifies state'
 Assert-Safety ($handover.Contains('BackendRecovery.RestoreAsync(cpu, "all")')) 'CPU unknown record uses full verified recovery'
-Assert-Safety ($handover.Contains('restoreCpuSets: uninstall')) 'Offline helper is drained for setup and restored for uninstall'
+Assert-Safety ($handover.Contains('restoreCpuSets: restorePersistentSettings') -and $handover.Contains('PrepareCoreAsync(false, "卸载（保留已应用设置）", preserveAppliedSettings: true)')) 'Keep-settings removal drains helper without restoring persistent CPU sets'
+Assert-Safety ($handover.Contains('restoreChanges: restorePersistentSettings') -and $handover.Contains('if (restorePersistentSettings)')) 'Full plugin, CPU and runtime-guard recovery remains an explicit operation'
 Assert-Safety ($handover.Contains('!c.ExitConfirmed') -and $handover.Contains('!CanPreserveHistory(r)')) 'Active or unidentifiable evidence remains a blocker'
 $tokens = $null; $errors = $null
 [void][Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '..\installer\DeploymentControl.ps1'), [ref]$tokens, [ref]$errors)

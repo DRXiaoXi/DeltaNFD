@@ -42,6 +42,23 @@ function Test-UnderRoot([string]$ImagePath, [string]$Root) {
     return [IO.Path]::GetFullPath($ImagePath).StartsWith($Root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)
 }
 
+function Format-DeploymentFailure([string]$Stage, [Exception]$Failure) {
+    $detail = $Failure.Message
+    for ($inner = $Failure; $null -ne $inner; $inner = $inner.InnerException) {
+        if ($inner -is [ComponentModel.Win32Exception]) {
+            $detail += ' (Win32=' + $inner.NativeErrorCode + ')'
+            break
+        }
+    }
+    return $Stage + '：' + $detail
+}
+
+function Get-ScopedProcessIdentity($Process, [string]$Image, [string]$Root) {
+    if (-not (Test-UnderRoot $Image $Root)) { return }
+    $started = $Process.StartTime.ToUniversalTime().Ticks
+    return [pscustomobject]@{ Process = $Process; Image = $Image; StartTicks = $started }
+}
+
 function Get-ProductProcesses([string]$Root) {
     $names = @('DeltaNFD', 'DeltaOptimizer', 'DeltaNFD.Backend.Ace', 'DeltaNFD.Backend.Runtime',
         'DeltaNFD.Backend.Gpu', 'DeltaNFD.Backend.CpuFrame', 'DeltaNFD.Backend.SystemMaintenance', 'DeltaNFD.Backend.Procman',
@@ -49,16 +66,18 @@ function Get-ProductProcesses([string]$Root) {
     foreach ($name in $names) {
         foreach ($process in [Diagnostics.Process]::GetProcessesByName($name)) {
             try {
-                if ($process.HasExited) { continue }
                 try {
+                    if ($process.HasExited) { continue }
                     $image = [DeltaDeployment.Native]::Image($process.Id)
-                    $started = $process.StartTime.ToUniversalTime().Ticks
-                }
-                catch { if ($process.HasExited) { continue }; throw }
-                if (Test-UnderRoot $image $Root) {
-                    # StartTime plus a retained Process handle protects against PID reuse.
-                    [pscustomobject]@{ Process = $process; Image = $image; StartTicks = $started }
-                    $process = $null
+                    $identity = Get-ScopedProcessIdentity $process $image $Root
+                    if ($null -ne $identity) {
+                        $identity
+                        $process = $null # The caller now owns the Process object.
+                    }
+                } catch {
+                    $failure = $_.Exception
+                    if ($process.HasExited) { continue }
+                    throw (Format-DeploymentFailure ("核对 $name 的进程身份，PID=" + $process.Id) $failure)
                 }
             } finally { if ($null -ne $process) { $process.Dispose() } }
         }
@@ -98,9 +117,12 @@ function Request-CooperativeExit([string]$Root, [string]$Operation, $Owner) {
         $reader = New-Object IO.StreamReader($pipe, [Text.Encoding]::UTF8, $false, 1024, $true)
         try {
             $writer.AutoFlush = $true
-            $writer.WriteLine($Operation.ToUpperInvariant() + '/1')
+            # Version 2 explicitly requests retaining persistent settings. An old frontend
+            # must reject it rather than silently performing the old full recovery.
+            $requestLine = if ($Operation -eq 'uninstall') { 'UNINSTALL/2' } else { 'INSTALL/1' }
+            $writer.WriteLine($requestLine)
             $read = $reader.ReadLineAsync()
-            if (-not $read.Wait(600000)) { throw '安全恢复仍未完成（10 分钟）。未强杀恢复进程，请查看应用日志后重试。' }
+            if (-not $read.Wait(600000)) { throw '安全交接仍未完成（10 分钟）。未强杀执行进程，请查看应用日志后重试。' }
             $response = $read.Result
             if ($response -notmatch '^(0|2|10)\|([A-Za-z0-9+/=]*)$') { throw '未收到有效的安全交接结果。' }
             return [pscustomobject]@{ Code = [int]$Matches[1]; Detail = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Matches[2])) }
@@ -121,39 +143,46 @@ function Invoke-HeadlessRecovery([string]$Root, [string]$Operation) {
     $report = Join-Path ([Environment]::GetFolderPath('ApplicationData')) ('Delta NFD\logs\deployment-' + $request + '.txt')
     $start = New-Object Diagnostics.ProcessStartInfo
     $start.FileName = Join-Path $Root 'DeltaNFD.exe'
-    $start.Arguments = '--prepare-deployment --deployment-mode ' + $Operation + ' --deployment-request ' + $request
+    $start.Arguments = '--prepare-removal-preserving-settings --deployment-mode ' + $Operation + ' --deployment-request ' + $request
     $start.WorkingDirectory = $Root
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true
     $child = [Diagnostics.Process]::Start($start)
     try {
-        if (-not $child.WaitForExit(600000)) { throw '恢复程序仍未退出（10 分钟）。尚未替换或删除文件，未强杀恢复进程。' }
-        if (-not [IO.File]::Exists($report)) { throw ('恢复程序未生成本次报告，退出码=' + $child.ExitCode + '。请修复安装后重试。') }
+        if (-not $child.WaitForExit(600000)) { throw '交接程序仍未退出（10 分钟）。尚未替换或删除文件，未强杀执行进程。' }
+        if (-not [IO.File]::Exists($report)) { throw ('交接程序未生成本次报告，退出码=' + $child.ExitCode + '。请修复安装后重试。') }
         $lines = [IO.File]::ReadAllLines($report)
-        if ($lines.Length -lt 1 -or $lines[0] -ne ($request + '|' + $child.ExitCode)) { throw '恢复报告身份或退出码不匹配。' }
+        if ($lines.Length -lt 1 -or $lines[0] -ne ($request + '|' + $child.ExitCode)) { throw '交接报告身份或退出码不匹配。' }
         return [pscustomobject]@{ Code = $child.ExitCode; Detail = ($lines | Select-Object -Skip 1) -join [Environment]::NewLine }
     } finally { $child.Dispose() }
 }
 
 function Invoke-Deployment([string]$Root, [string]$Operation) {
     $Root = [IO.Path]::GetFullPath($Root).TrimEnd('\')
-    $identities = @(Get-ProductProcesses $Root)
+    $stage = '首次检查安装目录的运行进程'
+    $identities = @()
     $result = $null
     try {
+        $identities = @(Get-ProductProcesses $Root)
         $mains = @($identities | Where-Object { [IO.Path]::GetDirectoryName($_.Image) -ieq $Root -and [IO.Path]::GetFileName($_.Image) -in @('DeltaNFD.exe', 'DeltaOptimizer.exe') })
         foreach ($main in $mains) {
+            $ownerLabel = $main.Image + '，PID=' + $main.Process.Id
+            $stage = '联系运行中的旧版（' + $ownerLabel + '）'
             if ($main.Process.HasExited) { continue }
             try { $result = Request-CooperativeExit $Root $Operation $main }
             catch { if ($main.Process.HasExited) { continue }; throw }
             if ($null -eq $result) {
                 # Older builds do not implement the protocol. Closing may minimize to tray;
                 # explicitly explain that case, rather than destroying in-memory restore data.
+                $stage = '等待旧版正常关闭（' + $ownerLabel + '）'
                 try { if (-not $main.Process.HasExited) { [void]$main.Process.CloseMainWindow() } }
                 catch { if (-not $main.Process.HasExited) { throw } }
                 if (-not (Wait-ProductExit $main 10000)) { throw ('旧版程序不支持安全交接，请从托盘选择退出后重试。PID=' + $main.Process.Id + '；路径=' + $main.Image) }
             } else {
+                $stage = '旧版返回交接结果（' + $ownerLabel + '）'
                 if ($result.Code -notin @(0, 10)) { throw $result.Detail }
-                if (-not (Wait-ProductExit $main)) { throw ('已恢复，但主程序尚未退出：PID=' + $main.Process.Id + '；' + $main.Image) }
+                $stage = '等待已交接的旧版退出（' + $ownerLabel + '）'
+                if (-not (Wait-ProductExit $main)) { throw ('交接已完成，但主程序尚未退出：PID=' + $main.Process.Id + '；' + $main.Image) }
             }
         }
         if ($null -eq $result) {
@@ -161,24 +190,28 @@ function Invoke-Deployment([string]$Root, [string]$Operation) {
                 # Upgrade retains all settings and journals. An exited old version needs no cold start.
                 $result = [pscustomobject]@{ Code = 0; Detail = '安装目录主程序已退出；设置和恢复证据保留，未启动旧程序。' }
             } elseif (Test-Path -LiteralPath (Join-Path $Root 'DeltaNFD.exe') -PathType Leaf) {
+                $stage = '运行卸载前退出检查'
                 $result = Invoke-HeadlessRecovery $Root $Operation
                 if ($result.Code -notin @(0, 10)) { throw $result.Detail }
-            } else { throw '主程序缺失，无法执行系统恢复。请在原目录修复安装后再卸载；数据未删除。' }
+            } else { throw '主程序缺失，无法确认后台组件已安全退出。请在原目录修复安装后再卸载；数据未删除。' }
         }
         # Enumerate again: workers may have appeared while the first snapshot was taken.
+        $stage = '写入前再次核对安装目录的运行进程'
         $remaining = @(Get-ProductProcesses $Root)
         try {
             $live = @($remaining | Where-Object { -not $_.Process.HasExited })
             if ($live.Count) { throw ('安装目录仍有执行者，未强杀、未替换文件：' + (($live | ForEach-Object { $_.Image + ' (PID=' + $_.Process.Id + ')' }) -join '；')) }
         } finally { foreach ($identity in $remaining) { $identity.Process.Dispose() } }
         return $result
+    } catch {
+        throw (Format-DeploymentFailure $stage $_.Exception)
     } finally { foreach ($identity in $identities) { $identity.Process.Dispose() } }
 }
 
 if ($LibraryOnly) { return }
 try {
     if (-not $InstallRoot -or -not $ReportPath) { throw '交接参数缺失。' }
-    Initialize-ProcessQuery
+    try { Initialize-ProcessQuery } catch { throw (Format-DeploymentFailure '初始化进程身份检查' $_.Exception) }
     $result = Invoke-Deployment $InstallRoot $Mode
     # Inno LoadStringsFromFile reads UTF-8, not UTF-16. BOM also protects Chinese diagnostics.
     [IO.File]::WriteAllText($ReportPath, $result.Detail, (New-Object Text.UTF8Encoding($true)))

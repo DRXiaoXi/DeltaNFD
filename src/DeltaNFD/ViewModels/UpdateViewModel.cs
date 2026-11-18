@@ -13,19 +13,23 @@ namespace DeltaNFD.ViewModels;
 /// 行为约定（见 HANDOFF §32）：
 ///   · 只提醒，不自动装——下载与安装都必须用户点确认；
 ///   · 安装包必须先通过 SHA256 与长度校验才会被执行；
-///   · 确认框由页面通过 <see cref="ConfirmHook"/> 注入（ViewModel 不能直接弹 ContentDialog，§3.2）。
+///   · 更新任务属于应用；页面只挂接当前确认框，不拥有下载的生命周期。
 /// </summary>
 public partial class UpdateViewModel : ObservableObject
 {
-    private readonly IUpdateService _update = ServiceLocator.Update;
-    private readonly DispatcherQueue? _dispatcher = DispatcherQueue.GetForCurrentThread();
+    private static readonly Lazy<UpdateViewModel> Shared = new(() => new UpdateViewModel());
+    public static UpdateViewModel Current => Shared.Value;
+
+    private readonly IUpdateService _update;
+    private readonly DispatcherQueue? _dispatcher;
 
     private UpdateManifest? _manifest;
     private CancellationTokenSource? _downloadCts;
-    private bool _attached;
-
-    /// <summary>确认框钩子（由页面构造时赋值）：title, message, primaryButtonText → 是否确认。</summary>
-    public Func<string, string, string, Task<bool>>? ConfirmHook { get; set; }
+    private object? _confirmationOwner;
+    private Func<string, string, string, Task<bool>>? _confirmHook;
+    private long _confirmationVersion;
+    private long _statusVersion;
+    private long _progressVersion;
 
     private string currentVersionText = "";
     public string CurrentVersionText { get => currentVersionText; set => SetProperty(ref currentVersionText, value); }
@@ -151,7 +155,7 @@ public partial class UpdateViewModel : ObservableObject
         get => updateChannelIndex;
         set
         {
-            if (EqualityComparer<int>.Default.Equals(updateChannelIndex, value)) return;
+            if (IsBusy || value is not (0 or 1) || updateChannelIndex == value) return;
             OnPropertyChanging(nameof(UpdateChannelIndex));
             OnPropertyChanging(nameof(UpdateChannelDescription));
             updateChannelIndex = value;
@@ -172,7 +176,7 @@ public partial class UpdateViewModel : ObservableObject
         get => updateServerIndex;
         set
         {
-            if (EqualityComparer<int>.Default.Equals(updateServerIndex, value)) return;
+            if (IsBusy || value is < 0 or > 2 || updateServerIndex == value) return;
             OnPropertyChanging(nameof(UpdateServerIndex));
             OnPropertyChanging(nameof(UpdateServerDescription));
             OnPropertyChanging(nameof(SourceHint));
@@ -194,7 +198,7 @@ public partial class UpdateViewModel : ObservableObject
         get => updateModeIndex;
         set
         {
-            if (EqualityComparer<int>.Default.Equals(updateModeIndex, value)) return;
+            if (IsBusy || value is not (0 or 1) || updateModeIndex == value) return;
             OnPropertyChanging(nameof(UpdateModeIndex));
             OnPropertyChanging(nameof(UpdateModeDescription));
             OnPropertyChanging(nameof(SourceHint));
@@ -250,8 +254,12 @@ public partial class UpdateViewModel : ObservableObject
 
     public bool DetailsVisible => UpdateAvailable && (Notes.Length > 0 || ReleasePageUrl.Length > 0);
 
-    public UpdateViewModel()
+    private UpdateViewModel() : this(ServiceLocator.Update, DispatcherQueue.GetForCurrentThread()) { }
+
+    internal UpdateViewModel(IUpdateService update, DispatcherQueue? dispatcher)
     {
+        _update = update;
+        _dispatcher = dispatcher;
         // 直接写字段：构造期赋值不应触发 OnAutoCheckChanged 的持久化
         autoCheck = AppSettingsStore.Read().AutoUpdateCheckEnabled;
         emergencyPolicyEnabled = AppSettingsStore.Read().EmergencyPolicyEnabled;
@@ -260,34 +268,36 @@ public partial class UpdateViewModel : ObservableObject
         updateModeIndex = (int)UpdateModePolicy.Normalize(AppSettingsStore.Read().UpdateMode);
         CurrentVersionText = AppVersion.Text;
         RenderLastResult();
-    }
-
-    /// <summary>页面挂树时订阅服务广播（页面会随主题色切换重建，必须成对挂接/解挂）。</summary>
-    public void Attach()
-    {
-        if (_attached)
-        {
-            return;
-        }
-
-        _attached = true;
+        // 与共享控制器同寿命：离开设置页后仍接收状态，不保留页面引用。
         _update.AvailabilityChanged += OnAvailabilityChanged;
         EmergencyPolicyUpdateService.Changed += OnEmergencyPolicyChanged;
     }
 
-    public void Detach()
+    /// <summary>页面只提供当前确认框；进度、取消入口和任务在页面重建后继续共用。</summary>
+    public void Attach(object owner, Func<string, string, string, Task<bool>> confirm)
     {
-        if (!_attached)
-        {
-            return;
-        }
-
-        _attached = false;
-        _update.AvailabilityChanged -= OnAvailabilityChanged;
-        EmergencyPolicyUpdateService.Changed -= OnEmergencyPolicyChanged;
+        _confirmationOwner = owner;
+        _confirmHook = confirm;
+        _confirmationVersion++;
     }
 
-    private void OnAvailabilityChanged(bool available) => _dispatcher?.TryEnqueue(() => { if (!IsBusy) RenderLastResult(); });
+    public void Detach(object owner)
+    {
+        if (!ReferenceEquals(_confirmationOwner, owner)) return;
+        _confirmationOwner = null;
+        _confirmHook = null;
+        _confirmationVersion++;
+    }
+
+    private void OnAvailabilityChanged(bool available)
+    {
+        var version = Volatile.Read(ref _statusVersion);
+        var result = _update.LastResult;
+        _dispatcher?.TryEnqueue(() =>
+        {
+            if (!IsBusy && version == _statusVersion && ReferenceEquals(result, _update.LastResult)) RenderLastResult();
+        });
+    }
 
     private void OnEmergencyPolicyChanged() => _dispatcher?.TryEnqueue(() => OnPropertyChanged(nameof(EmergencyPolicyStatus)));
 
@@ -348,6 +358,17 @@ public partial class UpdateViewModel : ObservableObject
         }
 
         IsBusy = true;
+        Interlocked.Increment(ref _statusVersion);
+        try { await CheckCoreAsync(); }
+        finally
+        {
+            IsBusy = false;
+            Interlocked.Increment(ref _statusVersion);
+        }
+    }
+
+    private async Task CheckCoreAsync()
+    {
         InfoBarOpen = true;
         Severity = InfoBarSeverity.Informational;
         StatusText = "正在检查更新…";
@@ -366,10 +387,6 @@ public partial class UpdateViewModel : ObservableObject
             StatusText = "检查更新失败：" + ex.Message;
             Severity = InfoBarSeverity.Error;
         }
-        finally
-        {
-            IsBusy = false;
-        }
     }
 
     [RelayCommand]
@@ -380,40 +397,54 @@ public partial class UpdateViewModel : ObservableObject
             return;
         }
 
-        if (!UpdateAvailable || _manifest is null)
+        IsBusy = true;
+        Interlocked.Increment(ref _statusVersion);
+        try
         {
-            await CheckAsync();
-            return;
+            var hadUpdate = UpdateAvailable && _manifest is not null;
+
+            // Refresh before confirmation so an old notification does not install a superseded release.
+            await CheckCoreAsync();
+            if (!hadUpdate || !UpdateAvailable || _manifest is null) return;
+            var manifest = _manifest;
+            var sizeHint = manifest.Installers is { Count: > 0 } installers && installers[0].SizeBytes > 0
+                ? $"（约 {FormatBytes(installers[0].SizeBytes)}）"
+                : "";
+
+            var confirmedSelection = AppSettingsStore.Read();
+            var confirmedMode = UpdateModePolicy.Normalize(confirmedSelection.UpdateMode);
+            var confirmationVersion = _confirmationVersion;
+            var confirm = _confirmHook;
+            var confirmed = confirm is not null &&
+                            await confirm(
+                                "下载并安装更新",
+                                $"将更新到 {AvailableVersionText}。" + (confirmedMode == UpdateMode.FullInstaller
+                                    ? $"通过所选服务器下载完整安装包{sizeHint}。" : $"优先下载并替换变化文件；失败时自动从所选服务器下载完整安装包{sizeHint}并更新。") + "\n\n" +
+                                "安装前本工具会退出，安装完成后请从快捷方式重新打开；设置、备份与日志保存在 %APPDATA%，不会被删除。\n" +
+                                "更新期间帧格 / CPU 调度等后台监控会暂停，请等待更新完成。",
+                                "下载并安装");
+
+            if (!confirmed || confirmationVersion != _confirmationVersion)
+            {
+                Log.Info("更新：用户在确认框取消");
+                return;
+            }
+            if (!UpdateModePolicy.SameSelection(confirmedSelection, AppSettingsStore.Read()))
+            { StatusText = "更新方式、服务器或通道已变化，请重新确认。"; return; }
+
+            await RunConfirmedUpdateAsync(manifest);
         }
-
-        // Refresh before confirmation so an old notification does not install a superseded release.
-        await CheckAsync();
-        if (!UpdateAvailable || _manifest is null) return;
-        var manifest = _manifest;
-        var sizeHint = manifest.Installers is { Count: > 0 } installers && installers[0].SizeBytes > 0
-            ? $"（约 {FormatBytes(installers[0].SizeBytes)}）"
-            : "";
-
-        var confirmedSelection = AppSettingsStore.Read();
-        var confirmedMode = UpdateModePolicy.Normalize(confirmedSelection.UpdateMode);
-        var confirmed = ConfirmHook is not null &&
-                        await ConfirmHook(
-                            "下载并安装更新",
-                            $"将更新到 {AvailableVersionText}。" + (confirmedMode == UpdateMode.FullInstaller
-                                ? $"通过所选服务器下载完整安装包{sizeHint}。" : $"优先下载并替换变化文件；失败时自动从所选服务器下载完整安装包{sizeHint}并更新。") + "\n\n" +
-                            "安装前本工具会退出，安装完成后请从快捷方式重新打开；设置、备份与日志保存在 %APPDATA%，不会被删除。\n" +
-                            "更新期间帧格 / CPU 调度等后台监控会暂停，请等待更新完成。",
-                            "下载并安装");
-
-        if (!confirmed)
+        catch (Exception ex)
         {
-            Log.Info("更新：用户在确认框取消");
-            return;
+            Log.Error("更新：确认更新失败", ex);
+            StatusText = "无法确认更新：" + ex.Message;
+            Severity = InfoBarSeverity.Error;
         }
-        if (!UpdateModePolicy.SameSelection(confirmedSelection, AppSettingsStore.Read()))
-        { StatusText = "更新方式、服务器或通道已变化，请重新确认。"; return; }
-
-        await RunConfirmedUpdateAsync(manifest);
+        finally
+        {
+            IsBusy = false;
+            Interlocked.Increment(ref _statusVersion);
+        }
     }
 
     public Task ResumeFullFallbackAsync(string session, string nonce) => IsBusy ? Task.CompletedTask
@@ -422,8 +453,10 @@ public partial class UpdateViewModel : ObservableObject
     private async Task RunConfirmedUpdateAsync(UpdateManifest? manifest, string? resumeSession = null, string? nonce = null)
     {
         IsBusy = true;
-        _downloadCts = new CancellationTokenSource();
-        var progress = new DispatcherProgress(_dispatcher, OnProgress);
+        Interlocked.Increment(ref _statusVersion);
+        using var cts = new CancellationTokenSource();
+        _downloadCts = cts;
+        var token = cts.Token;
 
         try
         {
@@ -436,13 +469,15 @@ public partial class UpdateViewModel : ObservableObject
             ProgressText = "";
 
             if (resumeSession is not null)
-                manifest = await _update.ResumeFullFallbackAsync(resumeSession, nonce!, _downloadCts.Token);
+                manifest = await _update.ResumeFullFallbackAsync(resumeSession, nonce!, token);
             if (manifest is null) throw new InvalidOperationException("缺少更新版本信息。");
             var selection = AppSettingsStore.Read();
+            var progress = CreateDownloadProgress(cts, token);
             var download = resumeSession is null
-                ? await _update.DownloadAsync(manifest, progress, _downloadCts.Token)
-                : await _update.DownloadFullFallbackAsync(manifest, progress, _downloadCts.Token);
+                ? await _update.DownloadAsync(manifest, progress, token)
+                : await _update.DownloadFullFallbackAsync(manifest, progress, token);
             IsDownloading = false;
+            token.ThrowIfCancellationRequested();
 
             if (!download.Success)
             {
@@ -455,21 +490,22 @@ public partial class UpdateViewModel : ObservableObject
             ActionButtonText = "重新尝试安装";
             StatusText = download.Message + (download.IsIncremental ? " 正在启动独立更新器…" : " 正在启动安装程序…");
 
-            _downloadCts.Token.ThrowIfCancellationRequested();
+            token.ThrowIfCancellationRequested();
             var launch = await _update.LaunchInstallerAsync(manifest, download.InstallerPath);
             if (!launch.Success && download.IsIncremental && launch.CanFallbackToFull
                 && UpdateModePolicy.SameSelection(selection, AppSettingsStore.Read()))
             {
-                _downloadCts.Token.ThrowIfCancellationRequested();
+                token.ThrowIfCancellationRequested();
                 StatusText = launch.Message;
                 IsDownloading = true;
                 ProgressPercent = 0;
                 ProgressText = "正在回退全量更新…";
-                download = await _update.DownloadFullFallbackAsync(manifest, progress, _downloadCts.Token);
+                download = await _update.DownloadFullFallbackAsync(manifest, CreateDownloadProgress(cts, token), token);
                 IsDownloading = false;
+                token.ThrowIfCancellationRequested();
                 if (!download.Success)
                 { StatusText = download.Message; Severity = InfoBarSeverity.Error; return; }
-                _downloadCts.Token.ThrowIfCancellationRequested();
+                token.ThrowIfCancellationRequested();
                 StatusText = download.Message + " 正在启动安装程序…";
                 launch = await _update.LaunchInstallerAsync(manifest, download.InstallerPath);
             }
@@ -501,25 +537,25 @@ public partial class UpdateViewModel : ObservableObject
         {
             IsDownloading = false;
             IsBusy = false;
-            _downloadCts?.Dispose();
             _downloadCts = null;
+            Interlocked.Increment(ref _statusVersion);
         }
     }
 
     [RelayCommand]
     private void CancelDownload()
     {
-        if (_downloadCts is { IsCancellationRequested: false } cts)
+        if (IsDownloading && _downloadCts is { IsCancellationRequested: false } cts)
         {
-            cts.Cancel();
             StatusText = "正在取消下载…";
+            cts.Cancel();
         }
     }
 
     [RelayCommand]
     private void SkipVersion()
     {
-        if (_manifest is not { } manifest)
+        if (IsBusy || _manifest is not { } manifest)
         {
             return;
         }
@@ -649,6 +685,17 @@ public partial class UpdateViewModel : ObservableObject
             ? $"{FormatBytes(info.BytesReceived)} / {FormatBytes(info.TotalBytes)}（{info.Fraction:P0}）· {FormatBytes((long)info.BytesPerSecond)}/s"
             : $"{FormatBytes(info.BytesReceived)} · {FormatBytes((long)info.BytesPerSecond)}/s";
         if (info.Stage.Length > 0) StatusText = info.Stage;
+    }
+
+    private IProgress<UpdateProgressInfo> CreateDownloadProgress(CancellationTokenSource cts, CancellationToken token)
+    {
+        var version = ++_progressVersion;
+        return new DispatcherProgress(_dispatcher, info =>
+        {
+            // 已排队的旧进度不能覆盖取消、完成或新一轮/全量回退的状态。
+            if (ReferenceEquals(_downloadCts, cts) && IsDownloading && !token.IsCancellationRequested
+                && version == _progressVersion) OnProgress(info);
+        });
     }
 
     private static void OpenUrl(string url)

@@ -125,7 +125,7 @@ public sealed partial class LowMemoryRecoveryPage : Page
         await RefreshAsync();
         if (!_active || generation != _generation) return;
         Progress.Value = result.Success ? 1 : 0;
-        ProgressText.Text = result.Success ? "已重新检测当前配置，请手动重启后再检测。" : "本项未完成，请核对结果和保留的备份。";
+        ProgressText.Text = result.Success ? "已重新检测当前配置，请手动重启后再检测。" : result.OutcomeUnknown || response.RequiresReview ? "本项结果待核对，已保留原始备份。" : "本项未完成，请查看原因并重新检测。";
     }
     private async void Apply_Click(object sender, RoutedEventArgs e) => await RunAsync(async () =>
     {
@@ -156,7 +156,11 @@ public sealed partial class LowMemoryRecoveryPage : Page
                 var result = response.Data is { } data ? BackendJson.Deserialize<OperationResult>(data) : OperationResult.Fail(response.Message);
                 OptimizationScan.Invalidate();
                 messages.Add(result.Message); ResultText.Text = string.Join("\n", messages);
-                if (!result.Success) { await RefreshAsync(); return; }
+                if (!result.Success)
+                {
+                    ProgressText.Text = result.OutcomeUnknown || response.RequiresReview ? "本步结果待核对，未继续后续步骤。" : "本步未完成，未继续后续步骤；请查看原因并重新检测。";
+                    await RefreshAsync(); return;
+                }
             }
             Progress.Value = (int)action + 1;
         }

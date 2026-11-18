@@ -27,7 +27,7 @@ public sealed partial class SettingsPage : Page
 
     public SettingsViewModel ViewModel { get; } = new();
     /// <summary>「软件更新」卡的 ViewModel（检查 / 下载 / 安装交接）。</summary>
-    public UpdateViewModel Update { get; } = new();
+    public UpdateViewModel Update { get; } = UpdateViewModel.Current;
 
     /// <summary>主题色预设（含默认天空蓝与历史用色）。</summary>
     private static readonly (string Name, string Hex)[] AccentPresets =
@@ -71,21 +71,6 @@ public sealed partial class SettingsPage : Page
         DimSlider.Value = BackgroundManager.DimOpacity * 100;
         _suppressDimSlider = false;
 
-        // 更新确认框（ViewModel 不能直接弹 ContentDialog，通过钩子注入，见 HANDOFF §3.2）
-        Update.ConfirmHook = async (title, message, primaryText) =>
-        {
-            var dialog = new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = title,
-                Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
-                PrimaryButtonText = primaryText,
-                CloseButtonText = "取消",
-                DefaultButton = ContentDialogButton.Close,
-            };
-            return await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
-        };
-
         var current = BackgroundManager.ResolveCurrent();
         BackgroundStatusText.Text = DescribeBackground(current);
         // 背景图片模式开关切换后状态文字跟随刷新（否则显示与现实相反）
@@ -97,7 +82,7 @@ public sealed partial class SettingsPage : Page
             BackgroundManager.Changed -= OnBackgroundChanged;
             BackgroundManager.Changed += OnBackgroundChanged;
             OnBackgroundChanged();
-            Update.Attach();
+            Update.Attach(this, ConfirmUpdateAsync);
             RefreshLegacyRecoveryControls();
 
         };
@@ -106,7 +91,7 @@ public sealed partial class SettingsPage : Page
             _feedbackCancellation?.Cancel();
             ServiceLocator.GameTarget.Changed -= OnGameTargetChanged;
             BackgroundManager.Changed -= OnBackgroundChanged;
-            Update.Detach();
+            Update.Detach(this);
         };
 
         BuildAccentSwatches();
@@ -115,6 +100,20 @@ public sealed partial class SettingsPage : Page
         var overridePath = AppSettingsStore.Read().GameRootOverride;
         GamePathBox.Text = overridePath ?? "";
         RefreshGameRootsList();
+    }
+
+    private async Task<bool> ConfirmUpdateAsync(string title, string message, string primaryText)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = title,
+            Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = primaryText,
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        return await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
     }
 
     private void RefreshLegacyRecoveryControls()

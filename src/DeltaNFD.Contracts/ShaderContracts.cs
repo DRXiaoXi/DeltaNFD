@@ -132,7 +132,7 @@ public interface IShaderService
     /// PSOCache 健康检测（纯只读），判定优先级：
     /// ① GameVer 达到 2 个及以上 → AMD / Intel / NVIDIA 通用异常判据；
     /// ② 单版本下 SM6\DXCache（缺少目录时回退 SM5\DXCache）的 NVPH 结构判定（仅 N 卡且驱动 ≥576.88）；
-    ///    621.00 起只要求一个精确256MiB NVPH与另一个非空NVPH，不自动判定ASD；ASD使用独立手动清理/预热流程。
+    ///    621.00 起只要求一个≥256MiB NVPH与另一个非空NVPH，不自动判定ASD；ASD使用独立手动清理/预热流程。
     ///    更早驱动需恰好两个 ≥256MiB 大文件且无空文件，但不再接受两个大文件均恰好 256MiB。
     ///    无缓存时提示预热；读取失败拒绝下结论。缓存异常不归因驱动版本。
     /// </summary>

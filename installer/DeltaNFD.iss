@@ -1,11 +1,11 @@
 ﻿; 三角帧不掉洲（Delta No FPS Drops / Delta NFD）安装脚本 · Inno Setup 6
 ; 编译：ISCC.exe DeltaNFD.iss
-; 产物：三角帧不掉洲_DeltaNFD_安装包_0.9392_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
+; 产物：三角帧不掉洲_DeltaNFD_安装包_0.9393_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
 ;
-; 当前源码版本：0.9392 / Beta0.939-RC2。内部更新数值保持递增；显示为 Beta0.939-RC2。
+; 当前源码版本：0.9393 / Beta0.939-RC3。内部更新数值保持递增；显示为 Beta0.939-RC3。
 ;
-; 安装/卸载统一安全交接：先封锁新启动，通知主程序完成恢复并退出，再核对所有官方执行者。
-; 卸载保留备份时，在删除程序前复制并校验完整数据；历史记录仍待核对时保留原目录。
+; 安装/卸载先封锁新启动，通知主程序排空执行者并退出，再逐项核对。
+; 卸载保留已应用的持久设置和原数据目录，可另存校验副本；无需先完整恢复系统设置。
 ;   历史坑：0.82 的 unins000.exe 没有 [UninstallDelete] 段，卸载后 %APPDATA%\Delta NFD、
 ;   %APPDATA%\DeltaOptimizer、%LOCALAPPDATA%\Delta NFD 及登录任务全部残留。
 
@@ -14,8 +14,8 @@
 #define MyAppShortName "Delta NFD"
 #define MyAppEnglishName "Delta No FPS Drops"
 #define MyAppDisplayName "三角帧不掉洲（Delta NFD）"
-#define MyAppVersion "0.9392"
-#define MyAppDisplayVersion "Beta0.939-RC2"
+#define MyAppVersion "0.9393"
+#define MyAppDisplayVersion "Beta0.939-RC3"
 #define MyAppExeName "DeltaNFD.exe"
 ; 登录任务名（与 AppControlService / FrameService 创建的一致）
 #define AutoStartTaskName "DeltaNFD_AutoStart"
@@ -261,8 +261,8 @@ begin
   if Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Args,
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
-    PreserveDeploymentHistory := ResultCode = 10;
-    Result := (ResultCode = 0) or PreserveDeploymentHistory;
+    Result := (ResultCode = 0) or (ResultCode = 10);
+    PreserveDeploymentHistory := Result and (ForUninstall or (ResultCode = 10));
   end;
   if LoadStringsFromFile(ReportPath, Lines) then
   begin
@@ -591,7 +591,7 @@ end;
 
 { ============================ 卸载阶段 ============================ }
 
-{ 用户的卸载选择：True = 额外保留还原备份（默认 False = 完全清除）。 }
+{ 原数据始终保留；用户仅选择是否额外导出桌面副本。 }
 var
   UninstallKeepBackups: Boolean;
 
@@ -604,7 +604,7 @@ var
 function InitializeUninstall(): Boolean;
 begin
   Result := True;
-  UninstallKeepBackups := UninstallSilent;  { 静默卸载无法询问 → 安全默认保留备份 }
+  UninstallKeepBackups := False;  { 静默卸载保留原目录，不依赖桌面导出 }
   { 提前捕获卸载器路径：usPostUninstall 阶段文件定位用 }
   UninstallerExePath := ExpandConstant('{uninstallexe}');
 end;
@@ -613,15 +613,12 @@ end;
   必须先于 AskWhatToKeep 声明：Pascal 不做前向引用。 }
 function SelectUninstallHint(): String;
 begin
-  if UninstallKeepBackups then
-    Result := '正在清理程序与数据（已选择保留还原备份）…'
-  else
-    Result := '正在清理程序与全部数据…';
+  Result := '正在卸载程序（保留已应用设置和原始备份）…';
 end;
 
 { 在卸载进度窗口上弹出二选一询问，并同步改进度窗口的文字。
   只有交互式卸载（非 /SILENT、非 /VERYSILENT）才会问；
-  静默卸载走 InitializeUninstall 里的安全默认，避免无人值守时误删还原备份。 }
+  静默卸载始终保留原始数据，不依赖交互导出。 }
 procedure AskWhatToKeep();
 var
   Form: TUninstallProgressForm;
@@ -635,13 +632,14 @@ begin
   if Form <> nil then
   begin
     Form.PageNameLabel.Caption := '正在卸载 ' + ExpandConstant('{#MyAppDisplayName}');
-    Form.PageDescriptionLabel.Caption := '请选择数据清理方式';
+    Form.PageDescriptionLabel.Caption := '保留已应用的设置及恢复备份';
   end;
 
-  Answer := MsgBox('是否保留系统优化还原备份？' + #13#10 + #13#10 +
-    '「是」= 保留备份（推荐）：先把全部设置、日志和恢复证据复制并校验到桌面'
-    + '「Delta NFD 备份」文件夹，再删除数据目录。' + #13#10 + #13#10 +
-    '「否」= 完全清除：连同设置、日志与全部备份一并删除，之后重装将无法一键还原系统优化。',
+  Answer := MsgBox(DeploymentDetail + #13#10 + #13#10 +
+    '原始设置和恢复备份会保留在 AppData 的 Delta NFD / DeltaOptimizer 数据目录，机器级备份也不删除。'
+    + #13#10 + '正在运行的临时功能按正常退出流程收尾，已应用的持久设置继续保留。'
+    + #13#10#13#10 + '是否额外导出一份完整数据副本到桌面的「Delta NFD 备份」文件夹？'
+    + #13#10 + '「是」= 另存并校验副本；「否」= 仅保留原数据目录。',
     mbConfirmation, MB_YESNO);
 
   UninstallKeepBackups := (Answer = idYes);
@@ -650,7 +648,7 @@ begin
     Form.PageDescriptionLabel.Caption := SelectUninstallHint();
 end;
 
-{ 用户最终选择：保留备份返回 True。 }
+{ 用户最终选择：额外导出桌面副本返回 True。 }
 function ShouldKeepBackups(): Boolean;
 begin
   Result := UninstallKeepBackups;
@@ -658,10 +656,9 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  RootDir, DataDir, LegacyDataDir, LocalDataDir, LocalLegacyDir: String;
   CleanFailures: String;
 begin
-  { 卸载刚开始：先问用户怎么处理数据（交互式卸载才问）。 }
+  { 卸载刚开始：先排空执行者，再询问是否额外导出副本。 }
   if CurUninstallStep = usUninstall then
   begin
     if not PrepareDeployment('uninstall', True) then
@@ -670,26 +667,14 @@ begin
         MsgBox('卸载前安全交接未完成，程序和数据尚未删除。' + #13#10#13#10 + DeploymentDetail, mbError, MB_OK);
       Abort;
     end;
-    if PreserveDeploymentHistory then
-    begin
-      UninstallKeepBackups := True;
-      if not UninstallSilent then
-        if MsgBox(DeploymentDetail + #13#10#13#10 +
-          '继续卸载将保留原数据目录，并另存一份完整备份。历史记录仍待核对，是否继续？', mbConfirmation, MB_YESNO) <> idYes then
-        begin
-          ReleaseDeploymentMutex();
-          Abort;
-        end;
-    end
-    else AskWhatToKeep();
-    { Backup failure aborts BEFORE Inno deletes the first program file. }
+    AskWhatToKeep();
+    { Export is optional: its failure never authorizes deleting the original data. }
     if ShouldKeepBackups() then
       if not PreserveAllData() then
       begin
         if not UninstallSilent then
-          MsgBox('完整备份复制或校验失败。已停止卸载，程序和原始数据均保留。', mbError, MB_OK);
-        ReleaseDeploymentMutex();
-        Abort;
+          MsgBox('桌面副本未能完整复制或校验，将继续卸载程序。原始数据目录和恢复备份仍保留；本次桌面副本不应作为完整备份使用。', mbError, MB_OK);
+        Log('卸载：桌面副本未完成，原始数据目录和恢复备份保留；不完整副本目录=' + VerifiedBackupDir);
       end;
     Exit;
   end;
@@ -707,28 +692,9 @@ begin
   DeleteTask(LegacyAutoStartTaskName);
   DeleteTask(LegacyFrameTaskName);
 
-  { 3. AppData 数据目录 }
-  RootDir := ExpandConstant('{userappdata}');
-  DataDir := AddBackslash(RootDir) + DataDirName;
-  LegacyDataDir := AddBackslash(RootDir) + LegacyDataDirName;
-  LocalDataDir := AddBackslash(ExpandConstant('{localappdata}')) + DataDirName;
-  LocalLegacyDir := AddBackslash(ExpandConstant('{localappdata}')) + LegacyDataDirName;
-
-  if not PreserveDeploymentHistory then
-  begin
-  if not DelTree(DataDir, DataDir) then
-    CleanFailures := CleanFailures + ExpandConstant('{userappdata}\') + DataDirName + '；';
-  { 旧版数据目录：应用首次启动已把它迁移进新目录，卸载时不应残留。 }
-  if not DelTree(LegacyDataDir, LegacyDataDir) then CleanFailures := CleanFailures + LegacyDataDir + '；';
-  if not DelTree(LocalDataDir, LocalDataDir) then CleanFailures := CleanFailures + LocalDataDir + '；';
-  if not DelTree(LocalLegacyDir, LocalLegacyDir) then CleanFailures := CleanFailures + LocalLegacyDir + '；';
-
-  end
-  else Log('卸载：历史证据与全部原数据目录保留；完整副本=' + VerifiedBackupDir);
-
-  { 4. 旧安装目录里遗留的 DeltaOptimizer 子目录（安装目录本体交给 Inno 自己删） }
-  RootDir := AddBackslash(ExpandConstant('{app}')) + LegacyDataDirName;
-  if not DelTree(RootDir, RootDir) then CleanFailures := CleanFailures + RootDir + '；';
+  { 3. 保留新旧 AppData、LocalAppData 和机器级备份，也不递归删除安装目录内的旧数据。
+       程序文件由 Inno 按安装清单删除；保留数据不表示系统设置已恢复。 }
+  Log('卸载：已应用的持久设置和全部原数据目录保留；桌面副本目录（如选）=' + VerifiedBackupDir);
 
   { 5. 删不掉时明确告知用户，避免「以为卸干净了」 }
   if CleanFailures <> '' then
@@ -740,7 +706,7 @@ begin
   end;
 
   { 记录一行日志，便于排障 }
-  Log('卸载完成：Delta NFD 数据目录与登录任务清理结束。');
+  Log('卸载完成：程序和登录任务已清理，设置与恢复数据保留。');
 
   { 6. 注册表兜底：Inno 自己会删卸载登记项，这里显式再删一次，
        避免历史版本残留的 _is1 键在「已安装的应用」里留下幽灵条目。

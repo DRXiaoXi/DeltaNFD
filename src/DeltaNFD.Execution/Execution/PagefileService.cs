@@ -61,9 +61,8 @@ public sealed class PagefileService : IPagefileService
         Log.Info($"虚拟内存：设置固定页面文件 {drive}:\\pagefile.sys {minMb} MB / {maxMb} MB");
         try
         {
-            BackupCurrent();
             using var key = OpenWritable();
-            key.SetValue(PagingFilesValue, new[] { $"{drive}:\\pagefile.sys {minMb} {maxMb}" }, RegistryValueKind.MultiString);
+            SetWithBackup(key, TweakBackupStore.Default, new[] { $"{drive}:\\pagefile.sys {minMb} {maxMb}" });
             return OperationResult.Ok(
                 $"虚拟内存已设置：{drive}:\\pagefile.sys 最小 {minMb / 1024} GB / 最大 {maxMb / 1024} GB。重启电脑后生效。",
                 requiresReboot: true);
@@ -86,7 +85,7 @@ public sealed class PagefileService : IPagefileService
         try
         {
             using var key = OpenWritable();
-            key.SetValue(PagingFilesValue, new[] { AutoManagedData }, RegistryValueKind.MultiString);
+            SetWithBackup(key, TweakBackupStore.Default, new[] { AutoManagedData });
             return OperationResult.Ok("已恢复为系统托管（自动管理所有驱动器的分页文件大小）。重启电脑后生效。", requiresReboot: true);
         }
         catch (Exception ex)
@@ -187,12 +186,15 @@ public sealed class PagefileService : IPagefileService
     }
 
     /// <summary>把当前 PagingFiles 原值备份进 TweakBackupStore（首次改动前记录，MultiString 以分号合并存储）。</summary>
-    private void BackupCurrent()
+    internal static void SetWithBackup(RegistryKey key, TweakBackupStore store, string[] entries)
     {
-        using var key = Registry.LocalMachine.OpenSubKey(MemoryKeyPath);
-        var raw = key?.GetValue(PagingFilesValue) as string[];
+        var exists = key.GetValueNames().Contains(PagingFilesValue, StringComparer.OrdinalIgnoreCase);
+        if (exists && key.GetValueKind(PagingFilesValue) != RegistryValueKind.MultiString)
+            throw new InvalidDataException("当前分页文件登记不是多字符串，未修改。");
+        var raw = exists ? key.GetValue(PagingFilesValue, null, RegistryValueOptions.DoNotExpandEnvironmentNames) as string[]
+            ?? throw new IOException("无法读取分页文件原配置，未修改。") : null;
 
-        TweakBackupStore.Default.Save(new RegistryValueBackup
+        store.SaveStrict(new RegistryValueBackup
         {
             Hive = "HKLM",
             Id = TweakBackupStore.MakeId("HKLM", MemoryKeyPath, PagingFilesValue),
@@ -203,5 +205,6 @@ public sealed class PagefileService : IPagefileService
             StringData = raw,
             CreatedAt = DateTimeOffset.Now,
         });
+        key.SetValue(PagingFilesValue, entries, RegistryValueKind.MultiString);
     }
 }

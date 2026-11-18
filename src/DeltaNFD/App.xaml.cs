@@ -74,7 +74,8 @@ public partial class App : Application
             Environment.Exit(FileUpdateHealth.Verify(commandLine[2], commandLine[3]));
             return;
         }
-        if (commandLine.Contains("--prepare-deployment", StringComparer.Ordinal)
+        if (commandLine.Contains("--prepare-removal-preserving-settings", StringComparer.Ordinal)
+            || commandLine.Contains("--prepare-deployment", StringComparer.Ordinal)
             || commandLine.Contains("--restore-runtime-guard-for-uninstall", StringComparer.Ordinal))
         {
             ExitAlreadyPrepared = true;
@@ -129,7 +130,7 @@ public partial class App : Application
                 Log.Warn("单实例：主窗口 Dispatcher 已停止，无法恢复窗口");
             }
         });
-        DeploymentPipe.Start(dispatcherQueue, mainWindow.PrepareDeploymentAsync, mainWindow.ExitForDeployment);
+        DeploymentPipe.Start(dispatcherQueue, mainWindow.PrepareDeploymentAsync, mainWindow.PrepareRemovalAsync, mainWindow.ExitForDeployment);
         mainWindow.PresentOnStartup(StartupPresentation.ShouldStartHidden(commandLine,
             AppSettingsStore.Read().SilentStartupEnabled,
             OfflineModeGuard.BlocksNormalAutomation || AppDataPaths.MigrationWarning is not null || PendingFileFallback is not null));
@@ -155,17 +156,18 @@ public partial class App : Application
         _ = mainWindow.StartMcpOnStartupAsync();
     }
 
-    /// <summary>卸载前恢复的分项报告文件（与卸载日志同目录，供安装器读取并分项列出阻塞子系统）。</summary>
+    /// <summary>部署交接的分项报告文件；保留旧文件名以兼容已有诊断工具。</summary>
     private static string UninstallReportPath =>
         Path.Combine(AppDataPaths.Root, "logs", "uninstall-restore-report.txt");
 
-    /// <summary>无 UI 的安装/卸载恢复入口；请求身份写入报告，避免安装器读取旧结果。</summary>
+    /// <summary>无 UI 的部署交接入口；保留设置卸载与旧版完整恢复使用不同开关。</summary>
     private static async Task RestoreRuntimeGuardForUninstallAsync()
     {
         var args = Environment.GetCommandLineArgs();
         string? Argument(string name) => Array.IndexOf(args, name) is var i && i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
         var request = Argument("--deployment-request");
         var uninstall = Argument("--deployment-mode") != "install";
+        var preserveAppliedSettings = args.Contains("--prepare-removal-preserving-settings", StringComparer.Ordinal);
         var code = 2;
         var detail = "交接未完成。";
         DeploymentHandover? permit = null;
@@ -173,11 +175,12 @@ public partial class App : Application
         {
             // A standalone recovery process cannot restore the original main process's in-memory state.
             // The installer must complete cooperative exit before reaching this entry point.
-            permit = await DeploymentHandover.PrepareAsync(uninstall);
+            permit = preserveAppliedSettings ? await DeploymentHandover.PrepareForUninstallAsync()
+                : await DeploymentHandover.PrepareAsync(uninstall);
             code = permit.ExitCode;
             detail = permit.Detail;
         }
-        catch (Exception ex) { Log.Error("安装/卸载前恢复异常", ex); detail = ex.Message; }
+        catch (Exception ex) { Log.Error("部署交接异常", ex); detail = ex.Message; }
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(UninstallReportPath)!);

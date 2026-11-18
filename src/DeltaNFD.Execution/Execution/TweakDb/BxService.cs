@@ -1768,27 +1768,21 @@ public sealed partial class BxService : IBxService
     private static void BackupReg(BxTweak op)
     {
         var (hive, sub) = ParsePath(op.Path);
-        BxBackupEntry entry;
-        try
-        {
-            entry = CaptureRegEntry(hive, sub, op.Key ?? "");
-        }
-        catch
-        {
-            entry = new BxBackupEntry
-            {
-                Kind = "Reg", Id = $"Reg|{hive.Name}|{sub}|{op.Key}",
-                KeyPath = sub, ValueName = op.Key ?? "", ValueKind = 0,
-            };
-        }
-        BxBackupStore.SaveOnce(entry);
+        BxBackupStore.SaveOnce(CaptureRegEntry(hive, sub, op.Key ?? ""));
     }
 
     internal static BxBackupEntry CaptureRegEntry(RegistryKey hive, string sub, string valueName)
     {
         using var key = hive.OpenSubKey(sub);
-        var current = key?.GetValue(valueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+        var missing = new object();
+        var value = key is null ? missing : key.GetValue(valueName, missing, RegistryValueOptions.DoNotExpandEnvironmentNames);
+        if ((value is null || ReferenceEquals(value, missing)) && key?.GetValueNames().Contains(valueName, StringComparer.OrdinalIgnoreCase) == true)
+            throw new IOException("无法读取已有注册表值，未保存缺失记录。");
+        var current = ReferenceEquals(value, missing) ? null : value;
         var kind = current is null ? 0 : (int)key!.GetValueKind(valueName);
+        if (current is not null && (RegistryValueKind)kind is not (RegistryValueKind.DWord or RegistryValueKind.QWord
+            or RegistryValueKind.String or RegistryValueKind.ExpandString or RegistryValueKind.Binary or RegistryValueKind.MultiString))
+            throw new InvalidDataException("当前注册表类型不支持无损备份，未修改。");
         return new BxBackupEntry
         {
             Kind = "Reg", Id = $"Reg|{hive.Name}|{sub}|{valueName}",

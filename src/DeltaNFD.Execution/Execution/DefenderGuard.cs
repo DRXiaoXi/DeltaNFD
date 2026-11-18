@@ -188,15 +188,16 @@ public static class DefenderGuard
             return null;
         }
 
-        var (_, stdout, _) = await Task.Run(() => RunPowerShell(cfg.StatusQuery));
-        return ParseStatus(stdout);
+        var (code, stdout, _) = await Task.Run(() => RunPowerShell(cfg.StatusQuery));
+        return code == 0 ? ParseStatus(stdout) : null;
     }
 
     /// <summary>重新查询防护状态，不回写预检报告（报告里的 Initial* 必须保持预检当时的值）。</summary>
     public static async Task<(bool RealTimeOn, bool TamperOn)> RefreshProtectionStateAsync()
     {
         var status = await QueryStatusAsync();
-        return status is null ? (false, false) : (status.RealTimeProtectionOn, status.TamperProtectionOn);
+        return status is null ? throw new IOException("未能复核 Defender 防护状态，本次检查未通过。")
+            : (status.RealTimeProtectionOn, status.TamperProtectionOn);
     }
 
     private static DefenderStatus? ParseStatus(string? stdout)
@@ -215,15 +216,10 @@ public static class DefenderGuard
                 return null;
             }
 
-            bool Flag(string name) => root.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.True;
-            var queried = root.TryGetProperty("av", out var avEl)
-                && avEl.ValueKind is JsonValueKind.True or JsonValueKind.False;
-            if (!queried)
-            {
-                return null;
-            }
-
-            return new DefenderStatus(Flag("av"), Flag("rtp"), Flag("tamper"));
+            bool? Flag(string name) => root.TryGetProperty(name, out var flag)
+                && flag.ValueKind is JsonValueKind.True or JsonValueKind.False ? flag.GetBoolean() : null;
+            return Flag("av") is bool av && Flag("rtp") is bool rtp && Flag("tamper") is bool tamper
+                ? new DefenderStatus(av, rtp, tamper) : null;
         }
         catch
         {
@@ -337,7 +333,7 @@ public static class DefenderGuard
     /// 应用完成后的收尾：移除会话排除项；优化前防护在位且现在被关闭时，尽力恢复实时保护。
     /// 返回是否应提醒用户重新开启安全防护。
     /// </summary>
-    public static async Task<DefenderPostApplyResult> PostApplyAsync()
+    public static async Task<DefenderPostApplyResult> PostApplyAsync(bool batchNotStarted = false)
     {
         await SessionGate.WaitAsync();
         DefenderPostApplyResult? result = null;
@@ -349,7 +345,13 @@ public static class DefenderGuard
         {
             report = journal.Report ?? _lastReport;
         }
-        if (report is not null && !HasPendingSession) WriteJournal(new([], report));
+        if (batchNotStarted && report is not null)
+        {
+            // No optimization was submitted: never retain a planned disable as a completed change on retry.
+            report.DefenderOffTweakInBatch = report.DefenderRestoreTweakInBatch = false;
+            WriteJournal(journal with { Report = report });
+        }
+        else if (report is not null && !HasPendingSession) WriteJournal(new([], report));
         result = new DefenderPostApplyResult();
         try { RemoveSessionExclusions(); }
         catch (Exception ex)
@@ -432,9 +434,9 @@ public static class DefenderGuard
         }
     }
 
-    public static async Task<OperationResult> RestoreSessionAsync()
+    public static async Task<OperationResult> RestoreSessionAsync(bool batchNotStarted = false)
     {
-        var result = await PostApplyAsync();
+        var result = await PostApplyAsync(batchNotStarted);
         return result.CleanupSucceeded ? OperationResult.Ok("Defender 临时排除项已复核清理。") : OperationResult.Fail(result.Message);
     }
 

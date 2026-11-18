@@ -59,6 +59,18 @@ internal static class DefenderSessionChecks
             await DefenderGuard.PreflightAsync([new DefenderBatchItem { Name = "fixture", Ops = "windefend" }]);
             await DefenderGuard.AddSessionExclusionsAsync();
             rtp = false;
+            // First exercise cancellation, including a failed cleanup and a retry from disk alone.
+            failRemove = true;
+            var cancelled = await DefenderGuard.PostApplyAsync(batchNotStarted: true);
+            check(!cancelled.CleanupSucceeded && File.Exists(journal), "取消但清理失败：保留记录");
+            typeof(DefenderGuard).GetField("_lastReport", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.SetValue(null, null);
+            failRemove = false;
+            var cancelRetry = await DefenderGuard.PostApplyAsync();
+            check(cancelRetry.CleanupSucceeded && !cancelRetry.DefenderLeftOff && rtp && !File.Exists(journal)
+                && existing.SetEquals([original]), "重试不把取消的关闭意图当成已执行，不移除原排除项");
+            await DefenderGuard.PreflightAsync([new DefenderBatchItem { Name = "fixture", Ops = "windefend" }]);
+            await DefenderGuard.AddSessionExclusionsAsync();
+            rtp = false;
             var intentionallyOff = await DefenderGuard.PostApplyAsync();
             check(intentionallyOff.CleanupSucceeded && intentionallyOff.DefenderLeftOff && !rtp && !File.Exists(journal), "尊重关闭防护条目的意图，同时清理临时排除项");
         }

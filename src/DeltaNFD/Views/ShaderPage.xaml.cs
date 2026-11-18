@@ -18,7 +18,7 @@ public sealed partial class ShaderPage : Page
             XamlRoot = XamlRoot, Title = "清理缓存并开始手动 ASD 判定？",
             Content = GameInstallationPicker.Describe(selection)
                 + "将删除以上安装的 PSOCache 及当前用户系统 D3DSCache 中的缓存文件，保留目录本身。删除无法撤销，其他游戏首次启动也可能重新编译。\n\n"
-                + "请完全退出三角洲并关闭其他图形应用。清理全部完成后，再进入游戏预热；预热结束点击“预热完成”。D3DSCache 中出现一个大于100MB的NVPH即按本规则判定ASD已激活。",
+                + "请完全退出三角洲并关闭其他图形应用。清理全部完成后，再进入游戏预热；预热结束点击“预热完成”。D3DSCache 中出现一个大于100MB的文件即按本规则判定ASD已激活，不限制扩展名。",
             PrimaryButtonText = "清理并开始", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
         };
         if (await dialog.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) != ContentDialogResult.Primary) return;

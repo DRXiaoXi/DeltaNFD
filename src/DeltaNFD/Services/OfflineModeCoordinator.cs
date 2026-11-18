@@ -206,7 +206,7 @@ public sealed class OfflineModeCoordinator
         return null;
     }
 
-    /// <summary>更新前只排空助手；卸载前恢复已保留的 CPU 集，不重启任何普通自动功能。</summary>
+    /// <summary>交接前排空助手；仅显式完整恢复时还原 CPU 集，不重启任何普通自动功能。</summary>
     public async Task<OperationResult> PrepareForRemovalAsync(bool restoreCpuSets, CancellationToken token = default)
     {
         using var backendGate = Backends.BackendOperationGate.BlockNewOperations();
@@ -249,10 +249,10 @@ public sealed class OfflineModeCoordinator
             {
                 s.OfflineModeEnabled = wasEnabled;
                 s.Status = wasEnabled ? s.CpuSetChanges.Count > 0 ? OfflineModeStatus.Kept : OfflineModeStatus.Ready : OfflineModeStatus.RestorePending;
-                s.Message = "更新前已排空助手，原值记录和脱机配置保留。";
+                s.Message = "交接前已排空助手，原值记录和脱机配置保留。";
             }
         }, out error)) return OperationResult.Fail(error);
-        return OperationResult.Ok(restoreCpuSets ? "脱机恢复完成，可以继续卸载。" : "助手已退出，可以继续更新。");
+        return OperationResult.Ok(restoreCpuSets ? "脱机恢复完成，可以继续交接。" : "助手已退出，原值记录保留，可以继续交接。");
     }
 
     private Task<(OperationResult Result, RestoreLocks? Locks)> RestoreThroughBackendAsync(

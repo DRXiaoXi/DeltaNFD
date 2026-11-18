@@ -10,8 +10,19 @@ internal static class DeploymentPipe
     internal static string NameFor(string root) => "DeltaNFD.Deployment." + Convert.ToHexString(SHA256.HashData(
         Encoding.UTF8.GetBytes(Path.GetFullPath(root).TrimEnd('\\').ToUpperInvariant())))[..24];
 
-    public static void Start(Microsoft.UI.Dispatching.DispatcherQueue dispatcher, Func<bool, Task<DeploymentHandover>> prepare,
-        Action exit)
+    internal delegate Task<DeploymentHandover> PrepareDeployment(bool uninstall);
+
+    internal static Func<Task<DeploymentHandover>>? SelectPreparation(string? request, PrepareDeployment prepare,
+        Func<Task<DeploymentHandover>> prepareRemoval) => request switch
+    {
+        "INSTALL/1" => () => prepare(uninstall: false),
+        "UNINSTALL/1" => () => prepare(uninstall: true),
+        "UNINSTALL/2" => prepareRemoval,
+        _ => null
+    };
+
+    public static void Start(Microsoft.UI.Dispatching.DispatcherQueue dispatcher, PrepareDeployment prepare,
+        Func<Task<DeploymentHandover>> prepareRemoval, Action exit)
     {
         // Do not propagate a trusted backend control lease into the listener.
         using (ExecutionContext.SuppressFlow()) _ = Task.Run(async () =>
@@ -28,13 +39,14 @@ internal static class DeploymentPipe
                     using var reader = new StreamReader(pipe, Encoding.UTF8, false, 1024, leaveOpen: true);
                     using var writer = new StreamWriter(pipe, new UTF8Encoding(false), 1024, leaveOpen: true) { AutoFlush = true };
                     var request = await reader.ReadLineAsync(deadline.Token);
-                    if (request is not ("INSTALL/1" or "UNINSTALL/1")) continue;
+                    var preparation = SelectPreparation(request, prepare, prepareRemoval);
+                    if (preparation is null) continue;
                     try
                     {
                         var completion = new TaskCompletionSource<DeploymentHandover>(TaskCreationOptions.RunContinuationsAsynchronously);
                         if (!dispatcher.TryEnqueue(async () =>
                         {
-                            try { completion.SetResult(await prepare(request == "UNINSTALL/1")); }
+                            try { completion.SetResult(await preparation()); }
                             catch (Exception ex) { completion.SetException(ex); }
                         })) throw new InvalidOperationException("主窗口已停止响应。");
                         // Preparation is never cancelled/force-killed when a client disconnects.

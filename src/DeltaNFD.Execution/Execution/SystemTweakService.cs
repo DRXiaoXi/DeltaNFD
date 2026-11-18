@@ -161,7 +161,10 @@ public sealed partial class SystemTweakService : ISystemTweakService
         catch (Exception ex)
         {
             Log.Error($"深度优化：应用 {tweak} 异常", ex);
-            return OperationResult.Fail($"关闭失败：{ex.Message}");
+            // An unexpected exception may have escaped after a prefetch write.
+            return tweak == SystemTweak.Prefetch
+                ? new OperationResult { OutcomeUnknown = true, Message = $"关闭失败：{ex.Message}" }
+                : OperationResult.Fail($"关闭失败：{ex.Message}");
         }
     }
 
@@ -688,14 +691,16 @@ public sealed partial class SystemTweakService : ISystemTweakService
     });
     private async Task<OperationResult> ApplyPrefetchTrioOffAsync()
     {
-        var prelaunch = await PreLaunchControl().DisableAsync();
+        var attempt = new PrefetchWriteAttempt();
+        var prelaunch = await PreLaunchControl().DisableAsync(attempt);
         if (!prelaunch.Success)
-            return OperationResult.Fail("禁用预读取失败：" + prelaunch.Message);
+            return prelaunch;
         var problems = new List<string>();
         // 保留旧版的持久化注册表配置；它们不能替代 ApplicationPreLaunch 的实际 MMAgent 查询。
         try
         {
             BackupDword(MemoryManagementPath, "EnableApplicationLaunchPrefetching");
+            attempt.Mark();
             WriteDword(MemoryManagementPath, "EnableApplicationLaunchPrefetching", 0);
             BackupDword(MemoryManagementPath, "EnableOperationAPI");
             WriteDword(MemoryManagementPath, "EnableOperationAPI", 0);
@@ -710,6 +715,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
         try
         {
             BackupDword(PrefetchPath, "EnablePrefetcher");
+            attempt.Mark();
             WriteDword(PrefetchPath, "EnablePrefetcher", 0);
         }
         catch (Exception ex)
@@ -722,6 +728,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
         {
             var current = ReadDword("HKCU", ApplicationPreLaunchPath, "Enabled");
             _backups.Save(new RegistryValueBackup { Hive = "HKCU", Id = TweakBackupStore.MakeId("HKCU", ApplicationPreLaunchPath, "Enabled"), KeyPath = ApplicationPreLaunchPath, ValueName = "Enabled", ValueKind = current is null ? RegistryValueKind.None : RegistryValueKind.DWord, Data = current?.ToString() ?? "", CreatedAt = DateTimeOffset.Now, });
+            attempt.Mark();
             using var key = OpenWritableOrCreate("HKCU", ApplicationPreLaunchPath);
             key.SetValue("Enabled", 0, RegistryValueKind.DWord);
         }
@@ -732,7 +739,7 @@ public sealed partial class SystemTweakService : ISystemTweakService
 
         if (problems.Count > 0)
         {
-            return OperationResult.Fail($"禁用预读取部分失败：{string.Join("；", problems)}");
+            return attempt.Fail($"禁用预读取未完成：{string.Join("；", problems)}");
         }
 
         return OperationResult.Ok("ApplicationPreLaunch 已通过 MMAgent 定向关闭并复检；其余预读取注册表关闭值已写入，重启后重新检测。SysMain 未停止、未禁用，Windows Search 为独立开关。", requiresReboot: true);

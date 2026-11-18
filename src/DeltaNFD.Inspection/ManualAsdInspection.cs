@@ -44,7 +44,7 @@ public static class ManualAsdInspection
             || session.CleanedUtc is null || !Matches(session, context()))
             throw new InvalidOperationException("判定进度已失效或清理未完成，请重新开始。");
         token.ThrowIfCancellationRequested();
-        var match = FindLargeNvph(session.SystemRoot, token);
+        var match = FindLargeFile(session.SystemRoot, token);
         token.ThrowIfCancellationRequested();
         if (!Matches(session, context()) || store.Read()?.Id != session.Id)
             throw new InvalidOperationException("判定期间环境或进度已变化，未保存结论。");
@@ -53,8 +53,8 @@ public static class ManualAsdInspection
             Stage = match.Bytes > ManualAsdPolicy.ThresholdBytes ? ManualAsdStage.Activated : ManualAsdStage.NotDetected,
             CheckedUtc = DateTimeOffset.UtcNow, MatchedFile = match.Path, MatchedBytes = match.Bytes,
             Message = match.Bytes > ManualAsdPolicy.ThresholdBytes
-                ? $"ASD已激活：本次清理后 D3DSCache 出现大于 100MB 的 NVPH（{match.Bytes / 1024.0 / 1024.0:0.00} MB）。"
-                : "本次未检测到大于 100MB 的 NVPH，尚未确认 ASD 激活。可继续预热后再次点击“预热完成”。",
+                ? $"ASD已激活：本次清理后 D3DSCache 出现大于 100MB 的文件（{match.Bytes / 1024.0 / 1024.0:0.00} MB）。"
+                : "本次未检测到大于 100MB 的文件，尚未确认 ASD 激活。可继续预热后再次点击“预热完成”。",
         };
         store.Save(result); return result;
     }
@@ -68,7 +68,7 @@ public static class ManualAsdInspection
         store.Save(cancelled); return cancelled;
     }
 
-    public static (string Path, long Bytes) FindLargeNvph(string root, CancellationToken token = default)
+    public static (string Path, long Bytes) FindLargeFile(string root, CancellationToken token = default)
     {
         DriverPriorityStore.RejectLinks(root);
         try { if ((File.GetAttributes(root) & FileAttributes.Directory) == 0) throw new IOException("D3DSCache 不是目录。"); }
@@ -92,7 +92,6 @@ public static class ManualAsdInspection
                         DriverPriorityStore.RejectLinks(path);
                         var attributes = File.GetAttributes(path);
                         if ((attributes & FileAttributes.Directory) != 0) { folders.Push(path); continue; }
-                        if (!Path.GetExtension(path).Equals(".nvph", StringComparison.OrdinalIgnoreCase)) continue;
                         // Only metadata is needed. The game may retain an exclusive content handle after warmup.
                         var length = new FileInfo(path).Length;
                         if (length > ManualAsdPolicy.ThresholdBytes) return (Path.GetRelativePath(root, path), length);

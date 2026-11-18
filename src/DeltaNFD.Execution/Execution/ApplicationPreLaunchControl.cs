@@ -2,6 +2,16 @@ using Microsoft.Win32;
 
 namespace DeltaNFD.Services;
 
+// One instance covers both the MMAgent command and the subsequent registry writes.
+internal sealed class PrefetchWriteAttempt
+{
+    private bool attempted;
+    internal void Mark() => attempted = true;
+    internal OperationResult Fail(string message) => attempted
+        ? new OperationResult { OutcomeUnknown = true, Message = message + " 已尝试写入，结果待核对；已有备份保留。" }
+        : OperationResult.Fail(message + " 本次未写入预读取设置；请重新检测后再试。");
+}
+
 internal sealed class ApplicationPreLaunchControl(TweakBackupStore backups,
     Func<string, Task<(int Code, string? Output, string? Error)>> execute)
 {
@@ -11,14 +21,27 @@ internal sealed class ApplicationPreLaunchControl(TweakBackupStore backups,
     internal static bool? Parse(int code, string? output) => code == 0 ? output?.Trim() switch
     { "0" => false, "1" => true, _ => null } : null;
 
+    // PowerShell may return an empty stderr with an error code or malformed stdout.
+    private static string Diagnostic((int Code, string? Output, string? Error) result)
+    {
+        static string Summary(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return "无";
+            var value = string.Join(" ", text.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+            return value.Length <= 180 ? value : value[..180] + "…";
+        }
+        return $"PowerShell 退出码 {result.Code}；标准错误：{Summary(result.Error)}；标准输出：{Summary(result.Output)}";
+    }
+
     private async Task<bool> ReadAsync()
     {
         var result = await execute(Query);
-        return Parse(result.Code, result.Output) ?? throw new IOException("ApplicationPreLaunch 状态无法读取：" + (result.Error ?? result.Output));
+        return Parse(result.Code, result.Output) ?? throw new IOException("ApplicationPreLaunch 状态无法读取：" + Diagnostic(result));
     }
 
-    internal async Task<OperationResult> DisableAsync()
+    internal async Task<OperationResult> DisableAsync(PrefetchWriteAttempt? attempt = null)
     {
+        attempt ??= new PrefetchWriteAttempt();
         try
         {
             var before = await ReadAsync();
@@ -32,15 +55,20 @@ internal sealed class ApplicationPreLaunchControl(TweakBackupStore backups,
             Log.Info($"预读取：ApplicationPreLaunch 原状态={before}；仅操作此 MMAgent 参数，不停止或禁用 SysMain。");
             if (before)
             {
+                attempt.Mark();
                 var result = await execute(Command(false));
-                if (result.Code != 0) throw new IOException("定向关闭失败：" + (result.Error ?? result.Output));
+                if (result.Code != 0) throw new IOException("定向关闭失败：" + Diagnostic(result));
             }
             var after = await ReadAsync();
             Log.Info("预读取：ApplicationPreLaunch 关闭后复检=" + after);
-            return after ? OperationResult.Fail("ApplicationPreLaunch 复检仍为开启，未宣称关闭；原状态备份保留。")
-                : OperationResult.Ok("ApplicationPreLaunch 实际状态已关闭；SysMain 未执行停止或禁用。");
+            if (after) throw new IOException("ApplicationPreLaunch 复检仍为开启。");
+            return OperationResult.Ok("ApplicationPreLaunch 实际状态已关闭；SysMain 未执行停止或禁用。");
         }
-        catch (Exception ex) { Log.Error("ApplicationPreLaunch 定向关闭失败", ex); return OperationResult.Fail(ex.Message + "；未执行 SysMain 停止/禁用，已有备份保留。"); }
+        catch (Exception ex)
+        {
+            Log.Error("ApplicationPreLaunch 定向关闭失败", ex);
+            return attempt.Fail(ex.Message);
+        }
     }
 
     internal async Task<OperationResult> RestoreAsync()
@@ -54,7 +82,7 @@ internal sealed class ApplicationPreLaunchControl(TweakBackupStore backups,
             if (await ReadAsync() != expected)
             {
                 var result = await execute(Command(expected));
-                if (result.Code != 0) throw new IOException("还原失败：" + (result.Error ?? result.Output));
+                if (result.Code != 0) throw new IOException("还原失败：" + Diagnostic(result));
             }
             if (await ReadAsync() != expected) throw new IOException("ApplicationPreLaunch 还原后复检不匹配。");
             backups.RemoveStrict("State", "MMAgent", "ApplicationPreLaunch");

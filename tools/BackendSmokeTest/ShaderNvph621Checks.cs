@@ -10,7 +10,12 @@ internal static class ShaderNvph621Checks
         var root = Path.GetFullPath(Path.Combine(tempRoot, "DeltaNFD_Nvph621_" + Guid.NewGuid().ToString("N")));
         if (!root.StartsWith(Path.TrimEndingDirectorySeparator(tempRoot) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
             throw new Exception("Fixture path must stay inside temporary directory");
-        var gameVer = Path.Combine(root, "GameVer_Test");
+        Directory.CreateDirectory(root);
+        var testId = Guid.NewGuid();
+        File.WriteAllText(Path.Combine(root,"isolated-test.marker"),testId.ToString("D"));
+        AppDataPaths.ConfigureIsolatedDataRoot(root,testId);
+        var psoRoot = Path.Combine(root, "PSOCache");
+        var gameVer = Path.Combine(psoRoot, "GameVer_Test");
         var cache = Path.Combine(gameVer, "SM5", "DXCache");
         int count = 0;
         void Check(bool pass, string message)
@@ -41,8 +46,8 @@ internal static class ShaderNvph621Checks
         {
             var inspection = new ShaderInspection(null, () => new(gpu, version));
             var execution = new ShaderService(null, () => new DeltaNFD.Services.ShaderDriverReading(gpu, version));
-            var result = inspection.DiagnoseAt(root);
-            var backend = execution.DiagnoseAt(root);
+            var result = inspection.DiagnoseAt(psoRoot);
+            var backend = execution.DiagnoseAt(psoRoot);
             Check(result.Level == expected, $"{version}/{gpu}: expected {expected}, got {result.Level}: {result.Summary}");
             Check(result.Summary == backend.Summary && result.Level == backend.Level && result.CacheLayout == backend.CacheLayout
                 && result.Details.SequenceEqual(backend.Details),
@@ -59,15 +64,23 @@ internal static class ShaderNvph621Checks
             foreach (var second in values)
             {
                 Fixture(first, second);
-                var expected = (first == 256 * mb && second > 0) || (second == 256 * mb && first > 0);
+                var expected = (first >= 256 * mb && second > 0) || (second >= 256 * mb && first > 0);
                 var diag = Diagnose(version, expected ? ShaderDiagLevel.Normal : ShaderDiagLevel.Abnormal);
                 Check(diag.CacheLayout == ShaderCacheLayout.Unspecified && !diag.IsLayoutUncertain && diag.SystemCache is null,
                     "automatic diagnosis never infers ASD or associates system cache");
                 Check(!diag.Summary.Contains("ASD已激活") && !diag.Summary.Contains("未激活ASD"), "capacity result is distinct from manual ASD");
             }
+            foreach(var primary in new long[]{256*mb,256*mb+1,512*mb,1024*mb})
             foreach(var extra in new long[]{0,1,mb,256*mb,512*mb})
             {
-                Fixture(256*mb,1,extra);Diagnose("621.14",ShaderDiagLevel.Normal);
+                Fixture(primary,1,extra);Diagnose("621.14",ShaderDiagLevel.Normal);
+            }
+            foreach(var primary in new long[]{256*mb,256*mb+1,512*mb,1024*mb})
+            {
+                Fixture(primary);Diagnose("621.14",ShaderDiagLevel.Abnormal);
+                NvphFixtureFiles.Raw(Path.Combine(cache,"unrelated.bin"),1);
+                Diagnose("621.14",ShaderDiagLevel.Abnormal);
+                Fixture(primary,0);Diagnose("621.14",ShaderDiagLevel.Abnormal);
             }
             Fixture(256*mb,1); var capacity=Diagnose("621.14",ShaderDiagLevel.Normal);
             FixtureB(256*mb,256*mb);Check(Diagnose("621.14",ShaderDiagLevel.Normal).CacheLayout==ShaderCacheLayout.Unspecified,"B-layer contents do not change the capacity rule");
@@ -104,10 +117,10 @@ internal static class ShaderNvph621Checks
             Diagnose("invalid", ShaderDiagLevel.NotApplicable);
             Diagnose("621.01", ShaderDiagLevel.Info, ShaderGpuDetectionState.NotPresent);
             Diagnose("621.01", ShaderDiagLevel.NotApplicable, ShaderGpuDetectionState.Unknown);
-            Directory.CreateDirectory(Path.Combine(root, "GameVer_Old"));
+            Directory.CreateDirectory(Path.Combine(psoRoot, "GameVer_Old"));
             Diagnose("621.01", ShaderDiagLevel.Abnormal);
             Diagnose("621.01", ShaderDiagLevel.Abnormal, ShaderGpuDetectionState.NotPresent);
-            Directory.Delete(Path.Combine(root, "GameVer_Old"));
+            Directory.Delete(Path.Combine(psoRoot, "GameVer_Old"));
 
             Fixture(); Diagnose("621.01", ShaderDiagLevel.Info);
             Fixture(256 * mb, mb);
@@ -115,7 +128,7 @@ internal static class ShaderNvph621Checks
             cache = Path.Combine(gameVer, "SM6", "DXCache"); Directory.CreateDirectory(cache);
             Diagnose("621.01", ShaderDiagLevel.Info); Fixture(256 * mb, 1);
             Check(Diagnose("621.01", ShaderDiagLevel.Normal).Details.Any(d => d.Contains("SM6\\DXCache")), "621 prefers SM6");
-            FixtureB(512 * mb, 512 * mb); Diagnose("621.01", ShaderDiagLevel.Abnormal);
+            FixtureB(512 * mb, 512 * mb); Diagnose("621.01", ShaderDiagLevel.Normal);
             Fixture(256 * mb, 256 * mb);Check(Diagnose("621.01", ShaderDiagLevel.Normal).CacheLayout == ShaderCacheLayout.Unspecified,"pair is green without ASD claim");
             var status = await new ShaderInspection(null, () => new(ShaderGpuDetectionState.Nvidia, "617.14")).GetStatusAsync();
             Check(status.DriverState == ShaderDriverState.Ok && !status.DriverAdvice.Contains("问题驱动"), "public status no longer marks 617.14 problematic");

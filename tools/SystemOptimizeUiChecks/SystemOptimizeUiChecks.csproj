@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <ProjectReference Include="../../src/DeltaNFD.Inspection/DeltaNFD.Inspection.csproj" />
+    <Compile Include="../../src/DeltaNFD/ViewModels/BxDbViewModel.cs" Link="BxDbViewModel.cs" />
+    <Compile Include="../../src/DeltaNFD/ViewModels/SystemOptimizeViewModel.cs" Link="SystemOptimizeViewModel.cs" />
+  </ItemGroup>
+</Project>

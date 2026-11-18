@@ -16,6 +16,7 @@ internal static class SystemCommands
 {
     // A read-only/other-owner worker must not restore another page's Defender journal on exit.
     private static bool _ownsDefenderCleanup;
+    private static bool _awaitingFirstBatchWrite;
     /// <summary>一次批量状态读取的条目上限，防止超大请求耗尽内存。</summary>
     private const int MaxBxBatch = 2000;
 
@@ -31,7 +32,7 @@ internal static class SystemCommands
         GameInstallationScopeVersion = GameInstallationProtocol.Version,
         ManualAsdVersion = ManualAsdPolicy.Version,
         ClockEnvironmentVersion = ClockEnvironmentPolicy.Version,
-        OnStopping = () => _ownsDefenderCleanup ? DefenderGuard.RestoreSessionAsync() : Task.FromResult(OperationResult.Ok("本会话无 Defender 恢复责任。")),
+        OnStopping = () => _ownsDefenderCleanup ? DefenderGuard.RestoreSessionAsync(_awaitingFirstBatchWrite) : Task.FromResult(OperationResult.Ok("本会话无 Defender 恢复责任。")),
         Handlers = new Dictionary<string, Func<BackendCommandContext, Task<BackendResult>>>(StringComparer.Ordinal)
         {
             [BackendCommands.SystemCleanupScan] = CleanupScanAsync,
@@ -543,6 +544,7 @@ internal static class SystemCommands
         context.CancellationToken.ThrowIfCancellationRequested();
         var args = context.ArgsAs<TweakArgs>();
         if (args.Tweak is null || !Enum.IsDefined(args.Tweak.Value)) return BackendResult.Failed(context.Command, "优化项缺失或无效，未执行。");
+        _awaitingFirstBatchWrite = false;
         var service = new SystemTweakService();
         return Wrap(context.Command, restore ? await service.RestoreAsync(args.Tweak.Value) : await service.DisableAsync(args.Tweak.Value));
     }
@@ -615,6 +617,7 @@ internal static class SystemCommands
             return BackendResult.Failed(context.Command, $"未知或伪造条目「{args.SectionId}/{args.Name}」，已拒绝执行。");
 
         context.ReportProgress($"正在应用：{item.Name}…", null, "bx.apply");
+        _awaitingFirstBatchWrite = false;
         var result = await new BxService().ApplyItemAsync(item, args.TurnOn);
         return MapBxResult(context.Command, result);
     }
@@ -628,6 +631,7 @@ internal static class SystemCommands
         if (args.GearIndex < 0)
             return BackendResult.Failed(context.Command, "档位下标无效，已拒绝执行。");
 
+        _awaitingFirstBatchWrite = false;
         var result = await new BxService().ApplyGearAsync(item, args.GearIndex);
         return MapBxResult(context.Command, result);
     }
@@ -656,6 +660,7 @@ internal static class SystemCommands
             return BackendResult.Failed(context.Command, $"未知或伪造服务组「{args.GroupId}」，已拒绝执行。");
 
         context.ReportProgress($"正在应用服务组：{group.Id}…", null, "bx.service-group");
+        _awaitingFirstBatchWrite = false;
         var outcome = await new BxService().ApplyServiceGroupDetailedAsync(group, args.TurnOn);
         var data = outcome.Result ?? (outcome.Success ? OperationResult.Ok(outcome.Message) : OperationResult.Fail(outcome.Message));
         var items = outcome.Items.Select(i => new BackendResultItem(i.Id, i.Status, i.Message)).ToList();
@@ -741,6 +746,7 @@ internal static class SystemCommands
 
         var report = await DefenderGuard.PreflightAsync(args.Items);
         _ownsDefenderCleanup |= report is not null;
+        _awaitingFirstBatchWrite = report is not null;
         return BackendResult.Ok(context.Command, report is null ? "批次不含安全类条目，无需引导。" : "已生成 Defender 预检报告。", report);
     }
 
@@ -768,7 +774,8 @@ internal static class SystemCommands
     private static async Task<BackendResult> DefenderPostApplyAsync(BackendCommandContext context)
     {
         _ownsDefenderCleanup = true;
-        var result = await DefenderGuard.PostApplyAsync();
+        var result = await DefenderGuard.PostApplyAsync(_awaitingFirstBatchWrite || context.ArgBool("batchNotStarted"));
+        if (result.CleanupSucceeded) { _ownsDefenderCleanup = false; _awaitingFirstBatchWrite = false; }
         return result.CleanupSucceeded
             ? BackendResult.Ok(context.Command, result.Remind ? "请重新开启安全防护。" : "安全防护无需恢复提醒。", result)
             : BackendResult.PartialResult(context.Command, result.Message, [], result, pendingRestore: true);

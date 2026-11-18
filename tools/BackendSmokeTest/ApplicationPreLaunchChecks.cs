@@ -31,8 +31,35 @@ internal static class ApplicationPreLaunchChecks
         Check((await old.Control.RestoreAsync()).IsSkipped && old.Agent.Commands.Count == 0, "旧版本只有注册表备份时不猜测 MMAgent 原状态");
         var unread = New(); unread.Agent.FailRead = true;
         Check(!(await unread.Control.DisableAsync()).Success && unread.Agent.Enabled && unread.Agent.Writes == 0, "读不到原状态时不执行写入");
+        var feedback = New();
+        var env = new PrefetchEnvironment(feedback.Control);
+        Task<OperationResult> Apply() => LowMemoryRepairEngine.RunAsync(env,
+            new(LowMemoryAction.Prefetch, env.Status.Fingerprint), CancellationToken.None);
+        feedback.Agent.ReadFailure = (0, " unexpected\r\nstate ", "");
+        var unreadable = await Apply();
+        Check(!unreadable.Success && !unreadable.OutcomeUnknown && !unreadable.RequiresReboot
+            && feedback.Agent.Writes == 0 && feedback.Store.GetStrict("State", "MMAgent", "ApplicationPreLaunch") is null,
+            "复现反馈：空 stderr 且无法解析的首次查询，在任何系统写入或原值备份前停止，无需核对或重启");
+        Check(unreadable.Message.Contains("退出码 0") && unreadable.Message.Contains("unexpected state") && !unreadable.Message.Contains('\n'),
+            "错误流空时仍保留失败输出，压为单行");
+        feedback.Agent.ReadFailure = (5, null, new string('x', 500));
+        var diagnostic = await Apply();
+        Check(diagnostic.Message.Contains("退出码 5") && diagnostic.Message.Contains("…") && diagnostic.Message.Length < 400
+            && !diagnostic.OutcomeUnknown && feedback.Agent.Writes == 0, "失败退出码与有界错误摘要");
+        feedback.Agent.ReadFailure = null;
+        Check((await Apply()).Success && feedback.Agent.Writes == 1 && feedback.Store.GetStrict("State", "MMAgent", "ApplicationPreLaunch")?.Data == "1",
+            "重新检测后再次申请，正常备份、关闭及复检");
+        foreach (var initiallyOn in new[] { false, true })
+        {
+            var lost = New(initiallyOn); lost.Agent.FailSecondRead = true;
+            var envLost = new PrefetchEnvironment(lost.Control);
+            var check = await LowMemoryRepairEngine.RunAsync(envLost, new(LowMemoryAction.Prefetch, envLost.Status.Fingerprint), CancellationToken.None);
+            Check(!check.Success && check.OutcomeUnknown == initiallyOn && check.RequiresReboot == initiallyOn
+                && lost.Agent.Writes == (initiallyOn ? 1 : 0) && lost.Store.GetStrict("State", "MMAgent", "ApplicationPreLaunch")?.Data == (initiallyOn ? "1" : "0"),
+                "同一复检错误只在已发出写入时进入待核对，保留真实原值");
+        }
         var fail = New(); fail.Agent.FailWrite = true;
-        Check(!(await fail.Control.DisableAsync()).Success && fail.Store.GetStrict("State", "MMAgent", "ApplicationPreLaunch")?.Data == "1", "关闭报错保留原状态");
+        Check(await fail.Control.DisableAsync() is { Success: false, OutcomeUnknown: true } && fail.Store.GetStrict("State", "MMAgent", "ApplicationPreLaunch")?.Data == "1", "关闭报错保留原状态");
         var noEffect = New(); noEffect.Agent.IgnoreWrites = true;
         Check(!(await noEffect.Control.DisableAsync()).Success && noEffect.Agent.Enabled, "命令退出零但状态仍开启不能报成功");
         var restoreFailed = New(); await restoreFailed.Control.DisableAsync(); restoreFailed.Agent.FailWrite = true;
@@ -49,7 +76,7 @@ internal static class ApplicationPreLaunchChecks
         blocked.Store.SaveStrict(new RegistryValueBackup { Hive="State",KeyPath="fixture",ValueName="original",Data="keep" });
         var path = (string)typeof(TweakBackupStore).GetField("_filePath", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(blocked.Store)!;
         using (var locked = new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read))
-            Check(!(await blocked.Control.DisableAsync()).Success && blocked.Agent.Writes == 0, "备份写入失败不得关闭真实功能");
+            Check(await blocked.Control.DisableAsync() is { Success: false, OutcomeUnknown: false } && blocked.Agent.Writes == 0, "备份写入失败不得关闭真实功能");
         foreach (var output in new string?[] { null, "", "unknown", "False", "2", "0\n1" })
             Check(ApplicationPreLaunchControl.Parse(0,output) is null, "坏输出不当成关闭");
         Check(ApplicationPreLaunchControl.Parse(1,"0") is null, "失败退出码不采信状态输出");
@@ -73,16 +100,38 @@ internal static class ApplicationPreLaunchChecks
         Console.WriteLine($"ApplicationPreLaunch 检查通过：{count} 项；所有写入为模拟，备份为临时 JSON，没有修改 SysMain 或 MMAgent。");
     }
 
+    private sealed class PrefetchEnvironment(ApplicationPreLaunchControl control) : ILowMemoryRepairEnvironment
+    {
+        internal LowMemoryStatus Status = new(LowMemoryStatus.LimitBytes, 2, true, true, true, false);
+        public string? Blocker() => null;
+        public Task<LowMemoryStatus> ReadAsync() => Task.FromResult(Status);
+        public bool HasPrefetchBackup() => false;
+        public Task<OperationResult> RestorePrefetchAsync() => throw new NotSupportedException();
+        public async Task<OperationResult> ApplyAsync(LowMemoryAction action)
+        {
+            if (action != LowMemoryAction.Prefetch) throw new NotSupportedException();
+            var result = await control.DisableAsync();
+            if (result.Success) Status = Status with { PrefetchDisabled = true };
+            return result;
+        }
+    }
+
     private sealed class Fake
     {
         internal bool Enabled, FailRead, FailWrite, IgnoreWrites;
-        internal int Writes;
+        internal int Writes, Reads;
+        internal bool FailSecondRead;
+        internal (int Code,string? Output,string? Error)? ReadFailure;
         internal List<string> Commands = [];
         internal Task<(int Code,string? Output,string? Error)> Execute(string command)
         {
             Commands.Add(command);
             if (command == ApplicationPreLaunchControl.Query)
-                return Task.FromResult<(int,string?,string?)>(FailRead ? (1,null,"unsupported") : (0,Enabled ? "1" : "0",null));
+            {
+                Reads++;
+                return Task.FromResult<(int,string?,string?)>(ReadFailure ?? (FailRead || FailSecondRead && Reads == 2
+                    ? (1,null,"unsupported") : (0,Enabled ? "1" : "0",null)));
+            }
             Writes++;
             if (FailWrite) return Task.FromResult<(int,string?,string?)>((1,null,"write failed"));
             if (!IgnoreWrites) Enabled = command == ApplicationPreLaunchControl.Command(true);

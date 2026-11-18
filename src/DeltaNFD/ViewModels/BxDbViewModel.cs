@@ -133,7 +133,13 @@ public partial class BxItemVm : ObservableObject
     }
     partial void OnGameReadOnlyChanged(bool value);
     partial void OnGameReadOnlyChanged(bool value) { OnPropertyChanged(nameof(CanEdit)); OnPropertyChanged(nameof(PendingChange)); }
-    public bool CanEdit => !IsBusy && !GameReadOnly && !Unsupported &&
+    private bool batchLocked;
+    internal bool BatchLocked
+    {
+        get => batchLocked;
+        set { if (SetProperty(ref batchLocked, value)) OnPropertyChanged(nameof(CanEdit)); }
+    }
+    public bool CanEdit => !BatchLocked && !IsBusy && !GameReadOnly && !Unsupported &&
         (ActualState is BxState.On or BxState.Off or BxState.Mixed) &&
         !(Id == "debloat/OneDrive" && ActualState == BxState.On);
 
@@ -326,6 +332,7 @@ public partial class BxDbViewModel : ObservableObject
         get => selectedSection;
         set
         {
+            if (IsApplyingBatch) return;
             if (!EqualityComparer<BxSectionChipVm?>.Default.Equals(selectedSection, value))
             {
                 OnPropertyChanging(nameof(SelectedSection));
@@ -401,7 +408,12 @@ public partial class BxDbViewModel : ObservableObject
         set => SetProperty(ref applyProgressText, value);
     }
 
-    partial void OnIsApplyingBatchChanged(bool value) => OnPropertyChanged(nameof(ApplyChangesEnabled));
+    partial void OnIsApplyingBatchChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ApplyChangesEnabled));
+        OnPropertyChanged(nameof(BatchControlsEnabled));
+        OnPropertyChanged(nameof(ExecutionEnabled));
+    }
 
     partial void OnSelectedSectionChanged(BxSectionChipVm? value)
     {
@@ -481,6 +493,7 @@ public partial class BxDbViewModel : ObservableObject
     /// <summary>加载当前子栏目的全部条目与状态（主页扫描有缓存时直接顺延，避免重复查询）。</summary>
     public async Task LoadItemsAsync()
     {
+        if (IsApplyingBatch) return;
         var section = SelectedSection?.Section;
         if (section is null)
         {
@@ -849,6 +862,7 @@ public partial class BxDbViewModel : ObservableObject
     /// <summary>开关拨动：仅记录用户意图，不写系统。真正应用由 ApplyChangesAsync 统一执行。</summary>
     public async Task ToggleAsync(BxItemVm row, bool isOn)
     {
+        if (IsApplyingBatch) return;
         if (!row.CanEdit)
         {
             row.IsOn = row.ActualOn;
@@ -874,7 +888,7 @@ public partial class BxDbViewModel : ObservableObject
     /// <summary>多档位条目档位切换：仅记录用户意图（页面 SelectionChanged 调用）。</summary>
     public void GearChanged(BxItemVm row, int selectedIndex)
     {
-        if (!row.CanEdit || !row.HasGears || selectedIndex < 0 || selectedIndex >= row.GearOptions.Count) return;
+        if (IsApplyingBatch || !row.CanEdit || !row.HasGears || selectedIndex < 0 || selectedIndex >= row.GearOptions.Count) return;
         row.SelectedGearIndex = selectedIndex;
         row.HasUserIntent = selectedIndex != row.ActualGearIndex;
         if (row.HasUserIntent) ClearOtherHagsIntents(row);
@@ -888,7 +902,8 @@ public partial class BxDbViewModel : ObservableObject
 
     public int PendingCount => AllRows.Count(i => i.PendingChange);
 
-    public bool ExecutionEnabled => !GameReadOnly;
+    public bool BatchControlsEnabled => !IsApplyingBatch;
+    public bool ExecutionEnabled => !GameReadOnly && !IsApplyingBatch;
     private bool gameReadOnly = true;
     public bool GameReadOnly
     {
@@ -952,19 +967,19 @@ public partial class BxDbViewModel : ObservableObject
         row.DeepTweak == SystemTweak.HyperVAndVbs;
 
     /// <summary>页面通过此委托注入服务禁用影响警告弹窗（返回要排除的行 Id 集合；null = 取消应用）。</summary>
-    public static Func<List<ServiceGroupWarning>, Task<HashSet<string>?>>? ServiceGroupWarningHook { get; set; }
+    public Func<List<ServiceGroupWarning>, Task<HashSet<string>?>>? ServiceGroupWarningHook { get; set; }
 
     /// <summary>页面通过此委托注入 Windows Hello 操作引导弹窗（「关闭 Hyper-V/VBS」准备禁用时调用；true = 继续禁用）。</summary>
-    public static Func<Task<bool>>? WindowsHelloGuidanceHook { get; set; }
+    public Func<Task<bool>>? WindowsHelloGuidanceHook { get; set; }
 
     /// <summary>页面通过此委托注入 Defender 预检引导弹窗（批次含安全类条目时在应用前调用）。</summary>
-    public static Func<DefenderPreflightReport, Task<DefenderGuardDecision>>? DefenderGuardHook { get; set; }
+    public Func<DefenderPreflightReport, Task<DefenderGuardDecision>>? DefenderGuardHook { get; set; }
 
     /// <summary>页面通过此委托注入应用完成后的「重新开启防护」提醒弹窗。</summary>
-    public static Func<DefenderPostApplyResult, Task>? DefenderRestoreRemindHook { get; set; }
+    public Func<DefenderPostApplyResult, Task>? DefenderRestoreRemindHook { get; set; }
 
     /// <summary>页面通过此委托注入确认弹窗（避免 ViewModel 依赖 UI 类型）。</summary>
-    public static Func<string, Task<bool>>? ConfirmHook { get; set; }
+    public Func<string, Task<bool>>? ConfirmHook { get; set; }
 
     /// <summary>把条目的全部底层操作拼成一段文本，供 DefenderGuard 做安全类关键词匹配。</summary>
     private static string DescribeOpsForGuard(BxItemVm row)
@@ -1010,126 +1025,123 @@ public partial class BxDbViewModel : ObservableObject
             return;
         }
 
-        if (pending.Count(IsHagsRow) > 1)
+        // Capture directions and gear indices before opening any asynchronous confirmation.
+        var intent = pending.ToDictionary(row => row, row => (On: row.IsOn, Gear: row.HasGears ? (int?)row.SelectedGearIndex : null));
+        var lockedRows = AllRows.ToArray();
+        bool needsCleanup = false, submitted = false;
+        IsApplyingBatch = true;
+        foreach (var row in lockedRows) row.BatchLocked = true;
+        ApplyProgress = 0;
+        ApplyProgressText = "正在核对本批操作…";
+        try
         {
-            StatusText = "HAGS 多个入口存在冲突，请只保留一个待应用操作。";
-            return;
-        }
-        if (pending.Count(IsMouseRow) > 1)
-        {
-            StatusText = "鼠标设置多个入口存在冲突，请只保留一个待应用操作。";
-            return;
-        }
+            if (pending.Count(IsHagsRow) > 1)
+            {
+                StatusText = "HAGS 多个入口存在冲突，请只保留一个待应用操作。";
+                return;
+            }
+            if (pending.Count(IsMouseRow) > 1)
+            {
+                StatusText = "鼠标设置多个入口存在冲突，请只保留一个待应用操作。";
+                return;
+            }
 
-        if (pending.Any(r => r.Id == "debloat/OneDrive" && r.IsOn) &&
-            (ConfirmHook is null ||
-             !await ConfirmHook("移除 OneDrive 后无法通过一键恢复自动重装，需从微软官网手动下载安装。仍要继续吗？")))
-        {
-            return;
-        }
-
-        // 批次含危险项时一次确认（列出全部危险项名称）
-        var dangerous = pending.Where(IsDangerous).Select(i => i.DisplayName).ToList();
-        if (dangerous.Count > 0)
-        {
-            var confirmed = ConfirmHook is not null &&
-                await ConfirmHook("本次应用包含高危项：" + string.Join("、", dangerous));
-            if (!confirmed)
+            if (pending.Any(r => r.Id == "debloat/OneDrive" && intent[r].On) &&
+                (ConfirmHook is null ||
+                 !await ConfirmHook("移除 OneDrive 后无法通过一键恢复自动重装，需从微软官网手动下载安装。仍要继续吗？")))
             {
                 return;
             }
-        }
 
-        // 服务禁用影响警告：批次包含要禁用的服务组时，把警告清单（数据库 WillBrake，已译中文）分组弹出让用户确认；
-        // 用户可在弹窗里取消勾选部分组——被排除的组本次跳过（勾选意图保留，留待下次）。
-        var serviceGroupPending = pending.Where(p => p.Group is not null && p.IsOn).ToList();
-        if (serviceGroupPending.Count > 0)
-        {
-            var warnings = new List<ServiceGroupWarning>();
-            foreach (var row in serviceGroupPending)
+            // 批次含危险项时一次确认（列出全部危险项名称）
+            var dangerous = pending.Where(IsDangerous).Select(i => i.DisplayName).ToList();
+            if (dangerous.Count > 0)
             {
-                var lines = new List<string>();
-                foreach (var name in await _bx.ResolveServiceGroupAsync(row.Group!))
+                var confirmed = ConfirmHook is not null &&
+                    await ConfirmHook("本次应用包含高危项：" + string.Join("、", dangerous));
+                if (!confirmed)
                 {
-                    var willBrake = BxCatalog.GetServiceWillBrake(name);
-                    if (willBrake.Count > 0)
+                    return;
+                }
+            }
+
+            // 服务禁用影响警告：批次包含要禁用的服务组时，把警告清单（数据库 WillBrake，已译中文）分组弹出让用户确认；
+            // 用户可在弹窗里取消勾选部分组——被排除的组本次跳过（勾选意图保留，留待下次）。
+            var serviceGroupPending = pending.Where(p => p.Group is not null && intent[p].On).ToList();
+            if (serviceGroupPending.Count > 0)
+            {
+                var warnings = new List<ServiceGroupWarning>();
+                foreach (var row in serviceGroupPending)
+                {
+                    var lines = new List<string>();
+                    foreach (var name in await _bx.ResolveServiceGroupAsync(row.Group!))
                     {
-                        lines.Add("· " + name + "：" + string.Join("、", willBrake));
+                        var willBrake = BxCatalog.GetServiceWillBrake(name);
+                        if (willBrake.Count > 0)
+                        {
+                            lines.Add("· " + name + "：" + string.Join("、", willBrake));
+                        }
+                    }
+
+                    if (lines.Count > 0)
+                    {
+                        warnings.Add(new ServiceGroupWarning(row.Id, row.DisplayName, lines));
                     }
                 }
 
-                if (lines.Count > 0)
+                if (warnings.Count > 0)
                 {
-                    warnings.Add(new ServiceGroupWarning(row.Id, row.DisplayName, lines));
+                    Log.Info($"扩展库：服务禁用影响警告 —— {warnings.Count} 组（{string.Join("；", warnings.SelectMany(w => w.Lines))}）");
+                    var excluded = ServiceGroupWarningHook is null
+                        ? null
+                        : await ServiceGroupWarningHook(warnings);
+                    if (excluded is null)
+                    {
+                        Log.Info("扩展库：用户在服务禁用影响警告中取消应用");
+                        StatusText = "已取消应用。";
+                        return;
+                    }
+
+                    if (excluded.Count > 0)
+                    {
+                        var excludedNames = pending.Where(p => excluded.Contains(p.Id)).Select(p => p.DisplayName).ToList();
+                        Log.Info("扩展库：用户在警告弹窗中排除 " + excluded.Count + " 项（" + string.Join("、", excludedNames) + "）");
+                        pending = pending.Where(p => !excluded.Contains(p.Id)).ToList();
+                    }
                 }
             }
 
-            if (warnings.Count > 0)
+            if (pending.Count == 0)
             {
-                Log.Info($"扩展库：服务禁用影响警告 —— {warnings.Count} 组（{string.Join("；", warnings.SelectMany(w => w.Lines))}）");
-                var excluded = ServiceGroupWarningHook is null
-                    ? new HashSet<string>()
-                    : await ServiceGroupWarningHook(warnings);
-                if (excluded is null)
-                {
-                    Log.Info("扩展库：用户在服务禁用影响警告中取消应用");
-                    StatusText = "已取消应用。";
-                    return;
-                }
-
-                if (excluded.Count > 0)
-                {
-                    var excludedNames = pending.Where(p => excluded.Contains(p.Id)).Select(p => p.DisplayName).ToList();
-                    Log.Info("扩展库：用户在警告弹窗中排除 " + excluded.Count + " 项（" + string.Join("、", excludedNames) + "）");
-                    pending = pending.Where(p => !excluded.Contains(p.Id)).ToList();
-                }
-            }
-        }
-
-        if (pending.Count == 0)
-        {
-            StatusText = "全部服务组已被排除，没有需要应用的项目。";
-            return;
-        }
-
-        // Defender 预检：批次含安全防护类条目且本机防护在位时，先引导用户临时关闭（优化完成后提醒恢复）。
-        // 背景：Defender 篡改防护会拦截这类写入并记为病毒拦截，代码无法绕过，只能引导用户手动操作。
-        DefenderPreflightReport? preflight = null;
-        try
-        {
-            preflight = await _defender.PreflightAsync(
-                pending.Select(p => new DefenderBatchItem { Name = p.DisplayName, Ops = DescribeOpsForGuard(p), TurnOn = p.IsOn }).ToList());
-        }
-        catch (Exception ex)
-        {
-            Log.Warn("DefenderGuard：预检异常（不阻塞应用）—— " + ex.Message);
-        }
-
-        if (preflight is { NeedsGuidance: true })
-        {
-            var decision = DefenderGuardHook is null
-                ? DefenderGuardDecision.ProceedAnyway
-                : await DefenderGuardHook(preflight);
-            if (decision == DefenderGuardDecision.Cancel)
-            {
-                Log.Info("扩展库：用户在 Defender 预检引导中取消应用");
-                StatusText = "已取消。可先在 Windows 安全中心临时关闭「实时保护 / 篡改防护」后再重新应用。";
+                StatusText = "全部服务组已被排除，没有需要应用的项目。";
                 return;
             }
-        }
 
-        IsBusy = true;
-        IsApplyingBatch = true;
-        ApplyProgress = 0;
-        var appliedOk = 0;
-        var appliedFail = 0;
-        var appliedPartial = 0;
-        var partialDetails = new List<string>();
-        var appliedSkipped = 0;
-        var rebootNeeded = new List<string>();
-        Log.Info($"扩展库：应用 {pending.Count} 项（{string.Join("、", pending.Select(p => p.DisplayName))}）");
-        try
-        {
+            var preflight = await _defender.PreflightAsync(pending.Select(p => new DefenderBatchItem
+                { Name = p.DisplayName, Ops = DescribeOpsForGuard(p), TurnOn = intent[p].On }).ToList());
+            needsCleanup = true;
+            if (preflight is { NeedsGuidance: true })
+            {
+                var decision = DefenderGuardHook is null
+                    ? DefenderGuardDecision.Cancel
+                    : await DefenderGuardHook(preflight);
+                if (decision == DefenderGuardDecision.Cancel)
+                {
+                    Log.Info("扩展库：用户在 Defender 预检引导中取消应用");
+                    StatusText = "已取消，本批优化未执行。";
+                    return;
+                }
+            }
+
+            if (Services.Backends.PageBackendSessions.SystemWriteBlocker is { } reason) { StatusText = reason; return; }
+            submitted = true;
+            var appliedOk = 0;
+            var appliedFail = 0;
+            var appliedPartial = 0;
+            var partialDetails = new List<string>();
+            var appliedSkipped = 0;
+            var rebootNeeded = new List<string>();
+            Log.Info($"扩展库：应用 {pending.Count} 项（{string.Join("、", pending.Select(p => p.DisplayName))}）");
             for (var index = 0; index < pending.Count; index++)
             {
                 var row = pending[index];
@@ -1143,22 +1155,22 @@ public partial class BxDbViewModel : ObservableObject
                     {
                         // 深度优化行：意图开 = 禁用该功能，意图关 = 恢复默认
                         var deepTweak = row.DeepTweak.Value;
-                        result = row.IsOn
+                        result = intent[row].On
                             ? await _tweaks.DisableAsync(deepTweak)
                             : await _tweaks.RestoreAsync(deepTweak);
                     }
-                    else if (row.HasGears)
+                    else if (intent[row].Gear is int gear)
                     {
                         // 多档位条目：应用选中的档位
-                        result = await _bx.ApplyGearAsync(row.Item!, row.SelectedGearIndex);
+                        result = await _bx.ApplyGearAsync(row.Item!, gear);
                     }
                     else if (row.Group is not null)
                     {
-                        result = await _bx.ApplyServiceGroupAsync(row.Group, row.IsOn);
+                        result = await _bx.ApplyServiceGroupAsync(row.Group, intent[row].On);
                     }
                     else
                     {
-                        result = await _bx.ApplyItemAsync(row.Item!, row.IsOn);
+                        result = await _bx.ApplyItemAsync(row.Item!, intent[row].On);
                     }
 
                     if (result.IsSkipped)
@@ -1176,7 +1188,7 @@ public partial class BxDbViewModel : ObservableObject
                     {
                         appliedOk++;
                         if (result.RequiresReboot) rebootNeeded.Add(row.DisplayName);
-                        if (row.Item is not null && DeltaNFD.Inspection.SecurityFeatureInspection.Handles(row.Item.Name) && !row.IsOn)
+                        if (row.Item is not null && DeltaNFD.Inspection.SecurityFeatureInspection.Handles(row.Item.Name) && !intent[row].On)
                             row.HasUserIntent = false;
                     }
                     else
@@ -1206,92 +1218,107 @@ public partial class BxDbViewModel : ObservableObject
             StatusText = $"已应用 {appliedOk} 项，安全跳过 {appliedSkipped} 项" + (appliedFail > 0 ? $"，失败 {appliedFail} 项（详情见上）。" : "。");
             if (appliedPartial > 0) StatusText += $" 部分完成 {appliedPartial} 项：" + string.Join("；", partialDetails);
             if (rebootNeeded.Count > 0) StatusText += " 以下配置已保存，需重启后核实生效：" + string.Join("、", rebootNeeded.Distinct()) + "。";
-            await UpdateBackupSummaryAsync();
-
-            // 优化后收尾：移除会话排除项 + 需要时恢复实时保护（结果在状态刷新后提醒）
-            DefenderPostApplyResult? guardResult = null;
-            try
-            {
-                guardResult = await _defender.PostApplyAsync();
-            }
-            catch (Exception ex)
-            {
-                Log.Warn("DefenderGuard：收尾异常 —— " + ex.Message);
-            }
-
-            // 统一重读状态（真实状态回填 ActualOn，待应用标记自动消失；结果回写主页扫描缓存）：
-            // 本轮应用的行（含其他子栏目）+ 当前栏目全部行；其他栏目未改动的行在下次进入时刷新
-            var toRefresh = pending.Concat(Items).Concat(AllRows.Where(r => IsHagsRow(r) || IsMouseRow(r))).Distinct().ToList();
-
-            // 深度行：重读真实状态并回写扫描缓存
-            List<TweakStatus>? freshDeep = null;
-            if (toRefresh.Any(r => r.DeepTweak is not null))
-            {
-                freshDeep = await _tweaks.GetStatusesAsync();
-            }
-
-            var refreshItems = toRefresh.Where(r => r.Item is not null).Select(r => r.Item!).ToList();
-            if (refreshItems.Count > 0)
-            {
-                var states = await _bx.GetItemStatesAsync(refreshItems);
-                foreach (var row in toRefresh)
-                {
-                    if (row.Item is null)
-                    {
-                        continue;
-                    }
-
-                    if (states.TryGetValue(row.Item, out var state))
-                    {
-                        Fill(row, state);
-                        var sectionId = row.Id[..row.Id.IndexOf('/')];
-                        OptimizationScan.SetItemState(sectionId, row.Item.Name, row.ActualState);
-                    }
-
-                    // 多档位条目：回填档位信息与状态文字
-                    var gear = await _bx.GetGearInfoAsync(row.Item);
-                    if (gear is not null)
-                    {
-                        row.SetGears(gear);
-                    }
-                }
-            }
-
-            foreach (var row in toRefresh.Where(r => r.Group is not null))
-            {
-                var state = await _bx.GetServiceGroupStateAsync(row.Group!);
-                Fill(row, state);
-                OptimizationScan.SetGroupState(row.Group!.Id, state);
-            }
-
-            foreach (var row in toRefresh.Where(r => r.DeepTweak is not null))
-            {
-                var status = freshDeep!.First(s => s.Tweak == row.DeepTweak);
-                Fill(row, OptimizationScan.Uncertain(status) ? BxState.Unknown : status.IsOptimized ? BxState.On : BxState.Off);
-                OptimizationScan.SetTweakState(status.Tweak, status.IsOptimized);
-            }
-
-            RefreshPendingFlags();
-
-            // 提醒用户重新开启安全防护（引导关闭过防护 / 批次含关闭 Defender 条目时）
-            if (guardResult is { Remind: true })
-            {
-                if (DefenderRestoreRemindHook is not null)
-                {
-                    await DefenderRestoreRemindHook(guardResult);
-                }
-                else
-                {
-                    StatusText += " 请重新开启实时保护/篡改防护与杀软，恢复系统防护。";
-                }
-            }
+        }
+        catch (Exception ex)
+        {
+            StatusText = "本批操作未完成：" + ex.Message;
+            Log.Error("扩展库：批次中断", ex);
         }
         finally
         {
-            IsBusy = false;
-            IsApplyingBatch = false;
-            RefreshPendingFlags();
+            try
+            {
+                if (needsCleanup) await FinishGuardAsync(batchNotStarted: !submitted);
+                if (submitted)
+                {
+                    await UpdateBackupSummaryAsync();
+                    await RefreshBatchRowsAsync(pending);
+                }
+            }
+            catch (Exception ex) { StatusText += " 状态核对未完成：" + ex.Message; }
+            finally
+            {
+                foreach (var row in lockedRows) { row.BatchLocked = false; row.RefreshStateText(row.ActualState); }
+                IsApplyingBatch = false;
+                RefreshPendingFlags();
+            }
         }
+    }
+
+    private async Task FinishGuardAsync(bool batchNotStarted)
+    {
+        try
+        {
+            var result = await _defender.PostApplyAsync(batchNotStarted);
+            if (!result.CleanupSucceeded) StatusText += " 安全收尾待核对：" + result.Message;
+            if (result.Remind)
+            {
+                if (DefenderRestoreRemindHook is not null) await DefenderRestoreRemindHook(result);
+                else StatusText += " 请核对实时保护、篡改防护与杀软状态。";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusText += " 安全收尾未确认，请核对防护状态：" + ex.Message;
+            Log.Error("DefenderGuard：收尾未确认", ex);
+        }
+    }
+
+    private async Task RefreshBatchRowsAsync(List<BxItemVm> pending)
+    {
+        // 统一重读状态（真实状态回填 ActualOn，待应用标记自动消失；结果回写主页扫描缓存）：
+        // 本轮应用的行（含其他子栏目）+ 当前栏目全部行；其他栏目未改动的行在下次进入时刷新
+        var toRefresh = pending.Concat(Items).Concat(AllRows.Where(r => IsHagsRow(r) || IsMouseRow(r))).Distinct().ToList();
+
+        // 深度行：重读真实状态并回写扫描缓存
+        List<TweakStatus>? freshDeep = null;
+        if (toRefresh.Any(r => r.DeepTweak is not null))
+        {
+            freshDeep = await _tweaks.GetStatusesAsync();
+        }
+
+        var refreshItems = toRefresh.Where(r => r.Item is not null).Select(r => r.Item!).ToList();
+        if (refreshItems.Count > 0)
+        {
+            var states = await _bx.GetItemStatesAsync(refreshItems);
+            foreach (var row in toRefresh)
+            {
+                if (row.Item is null)
+                {
+                    continue;
+                }
+
+                if (states.TryGetValue(row.Item, out var state))
+                {
+                    Fill(row, state);
+                    var sectionId = row.Id[..row.Id.IndexOf('/')];
+                    OptimizationScan.SetItemState(sectionId, row.Item.Name, row.ActualState);
+                }
+
+                // 多档位条目：回填档位信息与状态文字
+                var gear = await _bx.GetGearInfoAsync(row.Item);
+                if (gear is not null)
+                {
+                    row.SetGears(gear);
+                }
+            }
+        }
+
+        foreach (var row in toRefresh.Where(r => r.Group is not null))
+        {
+            var state = await _bx.GetServiceGroupStateAsync(row.Group!);
+            Fill(row, state);
+            OptimizationScan.SetGroupState(row.Group!.Id, state);
+        }
+
+        foreach (var row in toRefresh.Where(r => r.DeepTweak is not null))
+        {
+            var status = freshDeep!.First(s => s.Tweak == row.DeepTweak);
+            Fill(row, OptimizationScan.Uncertain(status) ? BxState.Unknown : status.IsOptimized ? BxState.On : BxState.Off);
+            OptimizationScan.SetTweakState(status.Tweak, status.IsOptimized);
+        }
+
+        RefreshPendingFlags();
     }
 
     /// <summary>一键恢复全部 扩展优化库 备份。</summary>
@@ -1304,15 +1331,10 @@ public partial class BxDbViewModel : ObservableObject
             return;
         }
 
-        var confirmed = ConfirmHook is null || await ConfirmHook("一键恢复全部备份");
-        if (!confirmed)
-        {
-            return;
-        }
-
         IsBusy = true;
         try
         {
+            if (ConfirmHook is null || !await ConfirmHook("一键恢复全部备份")) return;
             Log.Info("扩展库：一键恢复全部备份");
             StatusText = "正在一键恢复…";
             var bx = await _bx.RestoreAllAsync();

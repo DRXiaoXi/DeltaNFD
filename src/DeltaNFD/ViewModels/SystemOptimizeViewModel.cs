@@ -139,18 +139,12 @@ public partial class SystemOptimizeViewModel : ObservableObject
     public ObservableCollection<string> PagefileDriveChoices { get; } = new();
 
     /// <summary>页面通过此委托注入机械盘/游戏盘建议弹窗（true = 仍要执行）。</summary>
-    public static Func<string, Task<bool>>? PagefileDriveWarningHook { get; set; }
+    public Func<string, Task<bool>>? PagefileDriveWarningHook { get; set; }
 
     /// <summary>与 PagefileDriveChoices 平行的底层数据（应用时取盘符与类型判定）。</summary>
     private sealed record DriveChoice(char Letter, string Label, bool IsMechanical, bool IsGameDrive, bool IsSystem);
 
     private readonly List<DriveChoice> _pagefileDrives = new();
-
-    /// <summary>当前所选盘符文本（如 "C:"，确认弹窗用；未就绪返回 null）。</summary>
-    public string? PagefileSelectedDriveText =>
-        SelectedDriveIndex >= 0 && SelectedDriveIndex < _pagefileDrives.Count
-            ? $"{_pagefileDrives[SelectedDriveIndex].Letter}:"
-            : null;
 
     /// <summary>枚举固定磁盘生成目标盘符下拉（系统盘排最前且默认选中）。</summary>
     public async Task LoadPagefileDrivesAsync()
@@ -239,61 +233,42 @@ public partial class SystemOptimizeViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// 应用自定义虚拟内存大小（GB）。约束：最小/最大均不得低于 16 GB，最大不小于最小。
-    /// 返回 null 表示校验未通过（错误信息已写入状态文本）。
-    /// </summary>
-    public async Task<OperationResult?> ApplyPagefileAsync()
+    internal sealed record PagefileRequest(int MinMb, int MaxMb, char Drive, bool IsMechanical, bool IsGameDrive);
+
+    internal PagefileRequest? PreparePagefile()
     {
-        if (Services.Backends.PageBackendSessions.SystemWriteBlocker is { } blocked) { PagefileStatusText = blocked; return OperationResult.Fail(blocked); }
-        if (PagefileBusy)
+        const int maxGb = int.MaxValue / 1024;
+        if (!int.TryParse(PagefileMinText, out var min) || min < 16 || min > maxGb ||
+            !int.TryParse(PagefileMaxText, out var max) || max < 16 || max > maxGb)
         {
+            PagefileStatusText = $"请输入 16 至 {maxGb} 之间的整数 GB。";
             return null;
         }
+        if (max < min) { PagefileStatusText = "最大值不能小于最小值。"; return null; }
+        if (SelectedDriveIndex < 0 || SelectedDriveIndex >= _pagefileDrives.Count)
+        { PagefileStatusText = "请先选择目标盘符（正在加载或未检测到固定磁盘）。"; return null; }
+        var drive = _pagefileDrives[SelectedDriveIndex];
+        return new(checked(min * 1024), checked(max * 1024), drive.Letter, drive.IsMechanical, drive.IsGameDrive);
+    }
 
-        if (!int.TryParse(PagefileMinText.Trim(), out var minGb) || minGb < 16)
-        {
-            var result = OperationResult.Fail("最小值不能低于 16 GB。");
-            PagefileStatusText = result.Message;
-            return result;
-        }
-
-        if (!int.TryParse(PagefileMaxText.Trim(), out var maxGb) || maxGb < 16)
-        {
-            var result = OperationResult.Fail("最大值不能低于 16 GB。");
-            PagefileStatusText = result.Message;
-            return result;
-        }
-
-        if (maxGb < minGb)
-        {
-            var result = OperationResult.Fail("最大值不能小于最小值。");
-            PagefileStatusText = result.Message;
-            return result;
-        }
-
+    internal async Task<OperationResult?> ApplyPagefileAsync(PagefileRequest request)
+    {
+        if (Services.Backends.PageBackendSessions.SystemWriteBlocker is { } blocked) { PagefileStatusText = blocked; return OperationResult.Fail(blocked); }
+        if (PagefileBusy) return null;
         PagefileBusy = true;
         try
         {
-            if (SelectedDriveIndex < 0 || SelectedDriveIndex >= _pagefileDrives.Count)
+            if (request.IsMechanical || request.IsGameDrive)
             {
-                var noDrive = OperationResult.Fail("请先选择目标盘符（正在加载或未检测到固定磁盘）。");
-                PagefileStatusText = noDrive.Message;
-                return noDrive;
-            }
-
-            var drive = _pagefileDrives[SelectedDriveIndex];
-            if (drive.IsMechanical || drive.IsGameDrive)
-            {
-                var roleText = drive.IsMechanical && drive.IsGameDrive
+                var roleText = request.IsMechanical && request.IsGameDrive
                     ? "机械硬盘，且是三角洲游戏安装盘"
-                    : drive.IsMechanical
+                    : request.IsMechanical
                         ? "机械硬盘"
                         : "三角洲游戏安装盘";
-                var warning = $"检测到所选盘符 {drive.Letter}: 是{roleText}。\n\n"
+                var warning = $"检测到所选盘符 {request.Drive}: 是{roleText}。\n\n"
                               + "页面文件需要频繁随机读写：放在机械盘会明显拖慢加载，放在游戏盘会与游戏读写抢带宽。"
                               + "建议改选固态系统盘（默认项）。\n\n仍要写入该盘吗？";
-                var proceed = PagefileDriveWarningHook is null || await PagefileDriveWarningHook.Invoke(warning);
+                var proceed = PagefileDriveWarningHook is not null && await PagefileDriveWarningHook.Invoke(warning);
                 if (!proceed)
                 {
                     PagefileStatusText = "已取消：建议在「目标盘符」中改选固态系统盘后再应用。";
@@ -301,7 +276,7 @@ public partial class SystemOptimizeViewModel : ObservableObject
                 }
             }
 
-            var result = await _pagefile.SetCustomAsync(minGb * 1024, maxGb * 1024, drive.Letter);
+            var result = await _pagefile.SetCustomAsync(request.MinMb, request.MaxMb, request.Drive);
             Log.Info("虚拟内存：" + (result.Success ? "设置成功" : "设置失败") + " —— " + result.Message);
             PagefileStatusText = result.Success ? result.Message : "设置失败 —— " + result.Message;
             await LoadPagefileAsync();

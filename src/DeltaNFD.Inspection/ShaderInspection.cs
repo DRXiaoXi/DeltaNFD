@@ -399,7 +399,7 @@ public sealed class ShaderInspection
             }
         }).OrderByDescending(f => f.Size).ToList();
         if (nvphFiles.Any(f => f.Size < 0) && (versionNumber.Value < Driver621Version
-            || !nvphFiles.Any(f => f.Size == NvphMinBytes) || nvphFiles.Count(f => f.Size > 0) < 2))
+            || !nvphFiles.Any(f => f.Size >= NvphMinBytes) || nvphFiles.Count(f => f.Size > 0) < 2))
         {
             return new ShaderDiagnosis
             {
@@ -429,15 +429,15 @@ public sealed class ShaderInspection
         // 621+ 只检查容量和非空配对；ASD 仅由独立的手动清理/预热流程判定。
         if (versionNumber.Value >= Driver621Version)
         {
-            var exact256 = nvphFiles.Count(f => f.Size == NvphMinBytes);
+            var primaryFiles = nvphFiles.Count(f => f.Size >= NvphMinBytes);
             var nonEmpty = nvphFiles.Count(f => f.Size > 0);
-            var normal = exact256 > 0 && nonEmpty >= 2;
-            details.Add("621 及以上：至少一个精确 256MB（268435456 字节）的 NVPH，另有一个非 0KB 的 NVPH；允许额外中间文件。普通检测不判断 ASD 状态。");
+            var normal = primaryFiles > 0 && nonEmpty >= 2;
+            details.Add("621 及以上：至少一个 ≥256MB（268435456 字节）的 NVPH，另有一个非 0KB 的 NVPH；允许额外中间文件。普通检测不判断 ASD 状态。");
             return new ShaderDiagnosis
             {
                 Level = normal ? ShaderDiagLevel.Normal : ShaderDiagLevel.Abnormal,
-                Summary = normal ? "着色器缓存合格（256MB NVPH + 另一个非空 NVPH）。"
-                    : $"着色器缓存不合格：需要一个 256MB NVPH 和另一个非空 NVPH；实际 256MB 文件 {exact256} 个、非空文件 {nonEmpty} 个。",
+                Summary = normal ? "着色器缓存合格（≥256MB NVPH + 另一个非空 NVPH）。"
+                    : $"着色器缓存不合格：需要一个 ≥256MB NVPH 和另一个非空 NVPH；实际 ≥256MB 文件 {primaryFiles} 个、非空文件 {nonEmpty} 个。",
                 Details = details,
                 Advice = normal ? "无需处理；如需判断 ASD 是否激活，请使用手动 ASD 判定。"
                     : "请按需清理缓存并进入游戏重新预热。ASD 状态请使用独立手动判定。",

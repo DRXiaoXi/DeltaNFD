@@ -90,7 +90,7 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Spacing="4">
-                            <TextBlock Text="着色器健康检测" Style="{StaticResource H2Style}" ui:HelpTip.Text="检查 PSOCache 版本残留。NVIDIA 621 及以上只需一个精确256MB NVPH和另一个非0KB NVPH即可合格，允许额外中间文件；普通检测不判断ASD。较早驱动保留原容量规则。ASD请使用下方手动判定。"/>
+                            <TextBlock Text="着色器健康检测" Style="{StaticResource H2Style}" ui:HelpTip.Text="检查 PSOCache 版本残留。NVIDIA 621 及以上只需一个≥256MB NVPH和另一个非0KB NVPH即可合格，允许额外中间文件；普通检测不判断ASD。较早驱动保留原容量规则。ASD请使用下方手动判定。"/>
                                 <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="检测 PSOCache 版本残留；N 卡按驱动版本检查 NVPH 数量与大小。"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
@@ -106,7 +106,7 @@
                 <StackPanel Spacing="10">
                     <TextBlock Text="手动 ASD 判定 · NVIDIA 621 及以上" Style="{StaticResource H2Style}"/>
                     <TextBlock Text="1. 开始判定并清理缓存 → 2. 进入游戏完成预热 → 3. 返回点击“预热完成”。" Style="{StaticResource BodyStyle}" TextWrapping="Wrap"/>
-                    <TextBlock Text="D3DSCache 为系统共享缓存；判定期间请关闭其他图形应用。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap" ui:HelpTip.Text="按本次清理后出现大于100MB的NVPH判定；该容量规则不能单独证明文件归属，其他应用可能影响结果。"/>
+                    <TextBlock Text="D3DSCache 为系统共享缓存；判定期间请关闭其他图形应用。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap" ui:HelpTip.Text="按本次清理后出现大于100MB的文件判定，不限制扩展名；该容量规则不能单独证明文件归属，其他应用可能影响结果。"/>
                     <InfoBar IsOpen="True" IsClosable="False" Severity="{x:Bind ViewModel.ManualAsdSeverity, Mode=OneWay}" Message="{x:Bind ViewModel.ManualAsdText, Mode=OneWay}" AutomationProperties.LiveSetting="Polite"/>
                     <ProgressRing Width="24" Height="24" HorizontalAlignment="Left" IsActive="{x:Bind ViewModel.ManualAsdBusy, Mode=OneWay}"/>
                     <Button Content="开始判定（清理缓存）" IsEnabled="{x:Bind ViewModel.CanStartManualAsd, Mode=OneWay}" Click="StartManualAsd_Click" Style="{StaticResource DangerButtonStyle}"/>

@@ -29,7 +29,7 @@ public sealed partial class SystemOptimizePage : Page
         Unloaded += (_, _) => ViewModel.Bx.DetachPreload();
 
         // 扩展优化库高危操作确认弹窗（ViewModel 不依赖 UI 类型，通过钩子注入）
-        BxDbViewModel.ConfirmHook = async name =>
+        ViewModel.Bx.ConfirmHook = async name =>
         {
             var dialog = new ContentDialog
             {
@@ -46,7 +46,7 @@ public sealed partial class SystemOptimizePage : Page
         };
 
         // 服务禁用影响警告弹窗：逐组复选框（默认勾选=应用），取消勾选的组本次跳过（勾选意图保留）
-        BxDbViewModel.ServiceGroupWarningHook = async warnings =>
+        ViewModel.Bx.ServiceGroupWarningHook = async warnings =>
         {
             var excluded = new HashSet<string>();
             var panel = new StackPanel { Spacing = 12 };
@@ -100,11 +100,11 @@ public sealed partial class SystemOptimizePage : Page
         };
 
         // Defender 预检引导弹窗 + 应用完成后的防护恢复提醒（见 DefenderGuard 类型注释）
-        BxDbViewModel.DefenderGuardHook = ShowDefenderGuardDialogAsync;
-        BxDbViewModel.DefenderRestoreRemindHook = ShowDefenderRestoreDialogAsync;
+        ViewModel.Bx.DefenderGuardHook = ShowDefenderGuardDialogAsync;
+        ViewModel.Bx.DefenderRestoreRemindHook = ShowDefenderRestoreDialogAsync;
 
         // 虚拟内存：所选盘为机械盘/游戏安装盘时，应用前的建议更换弹窗（true = 仍要执行）
-        SystemOptimizeViewModel.PagefileDriveWarningHook = async message =>
+        ViewModel.PagefileDriveWarningHook = async message =>
         {
             var dialog = new ContentDialog
             {
@@ -118,8 +118,8 @@ public sealed partial class SystemOptimizePage : Page
             return await dialog.ShowWithBackendRecoveryAsync(pageOwner: _pageOwner) == ContentDialogResult.Primary;
         };
 
-        // 关闭 Hyper-V/VBS 前的 Windows Hello 操作引导（见 BxDbViewModel.WindowsHelloGuidanceHook 注释）
-        BxDbViewModel.WindowsHelloGuidanceHook = ShowWindowsHelloGuidanceAsync;
+        // 关闭 Hyper-V/VBS 前的 Windows Hello 操作引导（见 ViewModel.Bx.WindowsHelloGuidanceHook 注释）
+        ViewModel.Bx.WindowsHelloGuidanceHook = ShowWindowsHelloGuidanceAsync;
     }
 
     private static string BuildGroupHeader(string groupName, int warningCount) =>
@@ -225,30 +225,15 @@ public sealed partial class SystemOptimizePage : Page
 
     private async void ApplyPagefileButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!int.TryParse(ViewModel.PagefileMinText.Trim(), out var minGb) || minGb < 16)
-        {
-            ViewModel.PagefileStatusText = "最小值不能低于 16 GB。";
-            return;
-        }
-
-        if (!int.TryParse(ViewModel.PagefileMaxText.Trim(), out var maxGb) || maxGb < 16)
-        {
-            ViewModel.PagefileStatusText = "最大值不能低于 16 GB。";
-            return;
-        }
-
-        if (maxGb < minGb)
-        {
-            ViewModel.PagefileStatusText = "最大值不能小于最小值。";
-            return;
-        }
+        var request = ViewModel.PreparePagefile();
+        if (request is null) return;
 
         var confirm = new ContentDialog
         {
             XamlRoot = XamlRoot,
             Title = "设置虚拟内存？",
-            Content = $"将在 {ViewModel.PagefileSelectedDriveText ?? "系统盘"} 创建固定大小页面文件：\n"
-                      + $"· 最小 {minGb} GB / 最大 {maxGb} GB（关闭系统自动管理）\n"
+            Content = $"将在 {request.Drive}: 创建固定大小页面文件：\n"
+                      + $"· 最小 {request.MinMb / 1024} GB / 最大 {request.MaxMb / 1024} GB（关闭系统自动管理）\n"
                       + "· 重启电脑后生效\n"
                       + "· 随时可点「恢复系统托管」交还给 Windows 自动管理\n\n"
                       + "确定继续？",
@@ -262,7 +247,7 @@ public sealed partial class SystemOptimizePage : Page
             return;
         }
 
-        var result = await ViewModel.ApplyPagefileAsync();
+        var result = await ViewModel.ApplyPagefileAsync(request);
         if (result is { Success: false })
         {
             await new ContentDialog
@@ -282,7 +267,7 @@ public sealed partial class SystemOptimizePage : Page
         {
             XamlRoot = XamlRoot,
             Title = "恢复系统托管？",
-            Content = "将交还 Windows 自动管理所有驱动器的分页文件大小（重启电脑后生效）。\n\n确定继续？",
+            Content = "将先保存首次修改前的配置，再交还 Windows 自动管理所有驱动器的分页文件大小（重启电脑后生效）。\n\n确定继续？",
             PrimaryButtonText = "恢复",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
@@ -387,11 +372,6 @@ public sealed partial class SystemOptimizePage : Page
             switch (choice)
             {
                 case ContentDialogResult.Primary:
-                    if (addExclusion)
-                    {
-                        await _pageDefender.AddSessionExclusionsAsync();
-                    }
-
                     if (!report.DefenderPresent)
                     {
                         return DefenderGuardDecision.Proceed;
@@ -401,6 +381,7 @@ public sealed partial class SystemOptimizePage : Page
                     (rtpStillOn, tamperStillOn) = await _pageDefender.RefreshProtectionStateAsync();
                     if (!rtpStillOn && !tamperStillOn)
                     {
+                        if (addExclusion) await _pageDefender.AddSessionExclusionsAsync();
                         Log.Info("DefenderGuard：重新检测通过（实时保护与篡改防护均已关闭），继续应用");
                         return DefenderGuardDecision.Proceed;
                     }

@@ -16,7 +16,8 @@ internal sealed class BackendDefenderGuardService : IDefenderGuardService
     public async Task<DefenderPreflightReport?> PreflightAsync(IReadOnlyList<DefenderBatchItem> batchItems)
     {
         var result = await Invoke(BackendCommands.SystemDefenderPreflight, new DefenderPreflightArgs { Items = batchItems.ToList() });
-        if (result.Status != BackendResultStatuses.Ok || result.Data is null ||
+        if (result.Status != BackendResultStatuses.Ok) throw new InvalidOperationException(result.Message);
+        if (result.Data is null ||
             result.Data.Value.ValueKind == System.Text.Json.JsonValueKind.Null)
         {
             return null;
@@ -38,6 +39,6 @@ internal sealed class BackendDefenderGuardService : IDefenderGuardService
         if (result.Status != BackendResultStatuses.Ok) throw new InvalidOperationException(result.Message);
     }
 
-    public async Task<DefenderPostApplyResult> PostApplyAsync() =>
-        BackendResults.RequireData<DefenderPostApplyResult>(await Invoke(BackendCommands.SystemDefenderPostApply), "Defender 收尾");
+    public async Task<DefenderPostApplyResult> PostApplyAsync(bool batchNotStarted = false) =>
+        BackendResults.RequireData<DefenderPostApplyResult>(await Invoke(BackendCommands.SystemDefenderPostApply, new { batchNotStarted }), "Defender 收尾");
 }

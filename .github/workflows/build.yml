@@ -328,6 +328,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Brightness regression" }
           dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --ace-default-delta-checks
           if ($LASTEXITCODE -ne 0) { throw "Default Delta ACE regression" }
+          dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --system-optimize-safety-checks
+          if ($LASTEXITCODE -ne 0) { throw "System optimization backup/cleanup regression" }
+          dotnet run --project tools/SystemOptimizeUiChecks -c Release
+          if ($LASTEXITCODE -ne 0) { throw "System optimization confirmation and bounds regression" }
           dotnet run --project tools/NvSettingsChecks -c Release
           if ($LASTEXITCODE -ne 0) { throw "NVIDIA settings regression" }
           dotnet run --project tools/GameModificationChecks -c Release

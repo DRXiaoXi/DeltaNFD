@@ -13,6 +13,9 @@ internal static class ManualAsdChecks
         void Reject(Action work, string why) { try { work(); } catch { checks++; return; } throw new Exception(why); }
         var root = Path.Combine(Path.GetTempPath(), "DeltaNFD-manual-asd-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
+        var testId = Guid.NewGuid();
+        File.WriteAllText(Path.Combine(root,"isolated-test.marker"),testId.ToString("D"));
+        AppDataPaths.ConfigureIsolatedDataRoot(root,testId);
         var game = Path.Combine(root, "game"); var pso = Path.Combine(game, "PSOCache"); var system = Path.Combine(root, "D3DSCache");
         Directory.CreateDirectory(pso); Directory.CreateDirectory(system);
         var store = new ManualAsdStore(Path.Combine(root, "software", "session.json"));
@@ -44,7 +47,11 @@ internal static class ManualAsdChecks
             FileAt(Path.Combine(system,"threshold.nvph"),ManualAsdPolicy.ThresholdBytes);
             Check(ManualAsdInspection.Finish(store,session.Id,Read).Stage==ManualAsdStage.NotDetected,"exactly100MiB is not greater than100MiB");
             FileAt(Path.Combine(system,"large.bin"),ManualAsdPolicy.ThresholdBytes+1);
-            Check(ManualAsdInspection.Finish(store,session.Id,Read).Stage==ManualAsdStage.NotDetected,"wrong extension cannot activate");
+            var anyFile=ManualAsdInspection.Finish(store,session.Id,Read);
+            Check(anyFile.Stage==ManualAsdStage.Activated && anyFile.MatchedFile=="large.bin","a non-NVPH file greater than100MiB activates");
+            Check(anyFile.Message.Contains("文件") && !anyFile.Message.Contains("NVPH"),"manual result describes extension-independent evidence");
+            Check(new ManualAsdStore(store.FilePath).Read()?.MatchedFile=="large.bin","non-NVPH activation evidence survives record reload");
+            session=Start();
             FileAt(Path.Combine(system,"nested","large.NVPH"),ManualAsdPolicy.ThresholdBytes+1);
             var active=ManualAsdInspection.Finish(store,session.Id,Read);
             Check(active.Stage==ManualAsdStage.Activated&&active.MatchedBytes==ManualAsdPolicy.ThresholdBytes+1,"nested NVPH100MiB+1 activates");
@@ -52,6 +59,24 @@ internal static class ManualAsdChecks
             Reject(()=>ManualAsdInspection.Finish(store,session.Id,Read),"completed session cannot be replayed");
             Check(ManualAsdInspection.Read(store,Read)?.Stage==ManualAsdStage.Activated,"status reads saved manual result");
             store.Invalidate(); Check(store.Read()?.Stage==ManualAsdStage.Cancelled,"later cleanup invalidates manual result");
+
+            foreach(var name in new[]{"cache.bin","cache.dat","cache.db","cache","cache.NVPH","cache.nvph",".cache"})
+            foreach(var bytes in new[]{ManualAsdPolicy.ThresholdBytes-1,ManualAsdPolicy.ThresholdBytes,ManualAsdPolicy.ThresholdBytes+1})
+            {
+                session=Start(); var relative=Path.Combine("nested",name); FileAt(Path.Combine(system,relative),bytes);
+                var result=ManualAsdInspection.Finish(store,session.Id,Read);
+                Check(result.Stage==(bytes>ManualAsdPolicy.ThresholdBytes?ManualAsdStage.Activated:ManualAsdStage.NotDetected),
+                    $"{name}/{bytes}: strict size threshold applies independently of extension");
+                Check(bytes<=ManualAsdPolicy.ThresholdBytes || result.MatchedFile==relative&&result.MatchedBytes==bytes,
+                    "positive evidence records the observed relative file path and exact byte count");
+                Check(store.Read()?.Stage==result.Stage,"all filename and size cases persist their actual result");
+            }
+            session=Start();
+            Directory.CreateDirectory(Path.Combine(system,"large.nvph"));
+            FileAt(Path.Combine(system,"first.bin"),60L*1024*1024); FileAt(Path.Combine(system,"second.dat"),60L*1024*1024);
+            FileAt(Path.Combine(pso,"outside-system.bin"),ManualAsdPolicy.ThresholdBytes+1);
+            Check(ManualAsdInspection.Finish(store,session.Id,Read).Stage==ManualAsdStage.NotDetected,
+                "directory names, aggregate file size and files outside D3DSCache cannot activate");
             session=Start(); var before=store.Read();
             foreach (var changed in new[] {context with{Supported=false},context with{DriverKey=new string('C',64)},
                 context with{Owner=new string('D',64)},context with{SystemRoot=Path.Combine(root,"other")},
@@ -97,7 +122,7 @@ internal static class ManualAsdChecks
             var legacyJson=json.Replace(",\"manualAsdVersion\":0","");
             Check(BackendMessages.ParseReady(JsonDocument.Parse(legacyJson).RootElement).ManualAsdVersion==0,"missing capability remains unsupported");
             session=Start();
-            var lockedPath=Path.Combine(system,"locked.nvph");FileAt(lockedPath,ManualAsdPolicy.ThresholdBytes+1);
+            var lockedPath=Path.Combine(system,"locked.bin");FileAt(lockedPath,ManualAsdPolicy.ThresholdBytes+1);
             using(var locked=new FileStream(lockedPath,FileMode.Open,FileAccess.ReadWrite,FileShare.None))
             {
                 Check(ManualAsdInspection.Finish(store,session.Id,Read).Stage==ManualAsdStage.Activated,"content lock does not block the size-only check while the game remains open");
@@ -125,6 +150,12 @@ internal static class ManualAsdChecks
             var inspectionSource=File.ReadAllText(Path.Combine(repo.FullName,"src/DeltaNFD.Inspection/ShaderInspection.cs"));
             Check(!inspectionSource.Contains("NvphLayoutProbe.Read(")&&!inspectionSource.Contains("D3dsCacheInspection.Combine("),"ordinary diagnosis no longer calls structural/ASD association probes");
             var page=XDocument.Load(Path.Combine(repo.FullName,"src/DeltaNFD/Views/ShaderPage.xaml"));
+            var pageSource=page.ToString();
+            Check(pageSource.Contains("一个≥256MB NVPH")&&!pageSource.Contains("精确256MB")&&pageSource.Contains("大于100MB的文件")&&pageSource.Contains("不限制扩展名"),
+                "health and manual help describe the relaxed size rules");
+            var pageCode=File.ReadAllText(Path.Combine(repo.FullName,"src/DeltaNFD/Views/ShaderPage.xaml.cs"));
+            Check(pageCode.Contains("大于100MB的文件")&&pageCode.Contains("不限制扩展名")&&!pageCode.Contains("大于100MB的NVPH"),
+                "cleanup confirmation uses the same extension-independent criterion");
             foreach(var action in new[]{"StartManualAsd_Click","FinishManualAsd_Click","CancelManualAsd_Click"})
                 Check(page.Descendants().Count(x=>(string?)x.Attribute("Click")==action)==1,"exactly one action: "+action);
             var ui=File.ReadAllText(Path.Combine(repo.FullName,"src/DeltaNFD/ViewModels/ShaderViewModel.ManualAsd.cs"));

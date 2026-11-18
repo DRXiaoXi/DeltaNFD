@@ -14,10 +14,15 @@ $script:Recovery = [pscustomobject]@{ Code = 0; Detail = 'isolated recovery comp
 $script:HeadlessCalls = 0
 $script:ExitDuringRequest = $false
 function Get-ProductProcesses([string]$Root) {
-    if ($script:Snapshots.Count -gt 0) { $script:Snapshots.Dequeue() }
+    if ($script:Snapshots.Count -gt 0) {
+        $snapshot = $script:Snapshots.Dequeue()
+        if ($snapshot -is [Exception]) { throw $snapshot }
+        $snapshot
+    }
 }
 function Request-CooperativeExit([string]$Root, [string]$Operation, $Owner) {
     if ($script:ExitDuringRequest) { $Owner.Process.HasExited = $true; throw 'fixture transport closed during exit' }
+    if ($script:Cooperative -is [Exception]) { throw $script:Cooperative }
     return $script:Cooperative
 }
 function Invoke-HeadlessRecovery([string]$Root, [string]$Operation) {
@@ -104,5 +109,28 @@ Assert-Check $worker.Process.Disposed 'New worker snapshot is disposed on failur
 $script:Recovery = [pscustomobject]@{ Code = 2; Detail = 'Runtime guard failed to restore' }
 $script:Snapshots.Enqueue(@())
 Assert-Blocked { Invoke-Deployment $testRoot 'uninstall' } 'Runtime guard' 'Standalone recovery failure blocks uninstall with subsystem detail'
+
+$probe = [pscustomobject]@{ Reads = 0 }
+$probe | Add-Member ScriptProperty StartTime { $this.Reads++; return [DateTime]::UtcNow }
+$other = Get-ScopedProcessIdentity $probe ($testRoot + '-other\DeltaNFD.exe') $testRoot
+Assert-Check ($null -eq $other -and $probe.Reads -eq 0) 'Do not read start time of a same-name process in another installation'
+$owned = Get-ScopedProcessIdentity $probe (Join-Path $testRoot 'DeltaNFD.exe') $testRoot
+Assert-Check ($probe.Reads -eq 1 -and $owned.StartTicks -gt 0) 'Matching process must supply its actual creation time'
+
+$privilege = [ComponentModel.Win32Exception]::new(1314)
+$script:Snapshots.Enqueue($privilege)
+Assert-Blocked { Invoke-Deployment $testRoot 'install' } '首次检查安装目录的运行进程' 'Identity enumeration failure includes initial stage'
+$script:Snapshots.Enqueue(@()); $script:Snapshots.Enqueue($privilege)
+Assert-Blocked { Invoke-Deployment $testRoot 'install' } '写入前再次核对安装目录的运行进程' 'Final enumeration failure blocks replacement with distinct stage'
+$script:Cooperative = $privilege
+$main = New-FakeIdentity (Join-Path $testRoot 'DeltaNFD.exe') $false
+$script:Snapshots.Enqueue(@($main))
+$diagnostic = ''
+try { Invoke-Deployment $testRoot 'install' | Out-Null } catch { $diagnostic = $_.Exception.Message }
+Assert-Check ($diagnostic.Contains('联系运行中的旧版') -and $diagnostic.Contains('PID=123') -and $diagnostic.Contains('Win32=1314')) 'Transport privilege failure names stage, owner and native error'
+Assert-Check ($main.Process.Disposed -and $main.Process.Closes -eq 0 -and $main.Process.Waits -eq 0) 'Permission denial never falls through to legacy close or authorizes replacement'
+$script:Cooperative = [pscustomobject]@{ Code = 2; Detail = $privilege.Message }
+$script:Snapshots.Enqueue(@($main))
+Assert-Blocked { Invoke-Deployment $testRoot 'install' } '旧版返回交接结果' 'A refusal from the existing app is distinguishable from a local privilege failure'
 
 Write-Output ("Deployment control checks passed ($script:Passed assertions). Fixtures: $testRoot")

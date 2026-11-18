@@ -29,6 +29,12 @@
                     <TextBlock Text="洲洲时刻 · 录制组件" Style="{StaticResource H2Style}" ui:HelpTip.Text="分别备份 icreateDF.exe 和 recorder.exe，再以只读空文件占位阻止启动。会影响对应的录制与精彩时刻功能；未量化帧率收益。恢复时只认本工具记录的原件和空文件。游戏更新或修复后请重新核对，发现变化时不会覆盖新文件。"/>
                     <TextBlock Text="替换为只读空文件后，对应录制与精彩时刻功能将无法启动。新备份保存在软件数据目录，可按项恢复；帧率收益尚未实测。" TextWrapping="Wrap" Style="{StaticResource BodyStyle}"/>
                     <TextBlock Text="更新或修复游戏前建议先恢复原件；更新后请刷新核对。工具不会自动重做替换。" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                    <TextBlock TextWrapping="Wrap" Style="{StaticResource NoteStyle}">
+                        <Hyperlink NavigateUri="https://www.bilibili.com/video/BV1NJ436VEKW/">
+                            <Run Text="洲洲时刻文件替换视频（B 站）"/>
+                        </Hyperlink>
+                        <Run Text=" · 感谢 UP 主 Sh1r0ko_ 分享替换方法。"/>
+                    </TextBlock>
                 </StackPanel>
             </Border>
             <ItemsControl x:Name="RecordingItems">
