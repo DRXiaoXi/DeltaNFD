@@ -848,7 +848,7 @@
   "tools/BackendSmokeTest/Fixtures/Vc14BetaUninstall/vcred14_x86.inf": "1182e58c15d5effc452b8955350ad56fa845227df61466714e5d70a5abc3fa28",
   "tools/BackendSmokeTest/FrameAcceptanceFixChecks.cs": "c6323efcc02438366ad763cfcf87d16db0e12b3c5c562f1e677315e991fdcd12",
   "tools/BackendSmokeTest/FrameBackgroundChecks.cs": "2a811121890d79969bb8f89531269cd3dee684738cc05bb219716746ee8c0f38",
-  "tools/BackendSmokeTest/FrameBrightnessChecks.cs": "77a4ae0ddda708403355b138423615c42e07f29d3b563997fdaade3620e01d81",
+  "tools/BackendSmokeTest/FrameBrightnessChecks.cs": "12fd4dbe7e1c6be98f257aa017a2672ec4d550e6b43bd9c084c4c3b1da6d68a7",
   "tools/BackendSmokeTest/FrameCloseChecks.cs": "a6e5c0c0fc4b22f5fe1ebef90b5300cbd260b225fbdb58ddb5c7dd9d36eff27d",
   "tools/BackendSmokeTest/FrameEntryRecoveryChecks.cs": "8dc1d8c5652ca955b0ecef114ac42ff1dfb4452f114a94113809e21fc94781b5",
   "tools/BackendSmokeTest/FrameExitAdmissionChecks.cs": "453c284176d05e3753db2427c736f40781e502d8088a956767cf963ec0f945fe",

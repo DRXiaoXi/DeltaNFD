@@ -97,6 +97,11 @@ internal static class FrameBrightnessChecks
                 Check(fresh.Fake.BrightnessEquals(ac,dc),"manual AC/DC brightness and adaptive on/off changes are retained");
                 Check(fresh.Fake.Writes.Count==0,"brightness-only change does not write or reactivate the scheme");
             }
+            var missingIdentity=Fixture("missing-original-identity",legacy:true);
+            Check((await missingIdentity.Service.GetIncompletePowerBackupsAsync()).Count==1
+                && missingIdentity.Fake.Queries.Count==0&&missingIdentity.Fake.Writes.Count==0,
+                "legacy target content without original plan identity requires manual review before any power I/O");
+            AppSettingsStore.UpdateRequired(s=>s.FramePowerPreviousSchemeGuid=Scheme);
             foreach(var uppercase in new[]{false,true})
             {
                 var old=Fixture("legacy-"+uppercase,legacy:true,uppercase:uppercase);
@@ -139,6 +144,7 @@ internal static class FrameBrightnessChecks
             try { await cancel.Service.VerifyAndRestorePowerSchemeContentAsync(Scheme,cancelled.Token); throw new Exception("Cancellation ignored"); }
             catch(OperationCanceledException) { Check(cancel.Fake.Writes.Count==0,"cancellation precedes restoration writes"); }
 
+            AppSettingsStore.UpdateRequired(s=>s.FramePowerPreviousSchemeGuid="");
             var periodic=Fixture("periodic");
             using(var engine=new CpuFrameEngine(periodic.Fake,periodic.Service))
             {
