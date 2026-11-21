@@ -6,7 +6,7 @@ public sealed class NvGpuEnvironmentInfo
     /// <summary>是否检测到 NVIDIA 显卡。</summary>
     public required bool IsNvidia { get; init; }
 
-    /// <summary>显卡名（如 NVIDIA GeForce RTX 4070 Laptop GPU；非 N 卡为空）。</summary>
+    /// <summary>所选 NVIDIA 显卡由驱动登记的原型号；未检测到或原型号不可核实时为空。</summary>
     public required string GpuName { get; init; }
 
     /// <summary>NVAPI DRS 是否可用。</summary>
@@ -24,6 +24,9 @@ public sealed class NvGpuEnvironmentInfo
     /// <summary>只读核对全局及三角洲着色器缓存大小；旧后端缺失时不得当作默认。</summary>
     public NvShaderCacheReport? ShaderCache { get; init; }
 }
+
+/// <summary>Enabled 为 null 时不能确认开关状态；StoredValue 仅表示实际读取的 DWORD。</summary>
+public sealed record NvDlssIndicatorStatus(bool? Enabled, bool CanSet, string Detail, uint? StoredValue = null);
 
 public sealed record NvShaderCacheScope(string Scope, string State, uint? Value, string Detail);
 
@@ -136,6 +139,20 @@ public interface INvProfileService
 
     /// <summary>把 nvdrsdb0/1.bin 设为只读（true）或解除只读（false）。</summary>
     Task<OperationResult> SetDrsFilesReadOnlyAsync(bool readOnly);
+
+    Task<NvDisplayContainerStatus> ReadDisplayContainerAsync() =>
+        Task.FromResult(new NvDisplayContainerStatus("当前显卡后端不支持显示容器状态。"));
+
+    Task<OperationResult> ChangeDisplayContainerAsync(NvDisplayContainerChange args) =>
+        Task.FromResult(OperationResult.Fail("当前显卡后端不支持显示容器开关。"));
+
+    /// <summary>只读获取机器级 DLSS 指示器，不读写游戏 DRS。</summary>
+    Task<NvDlssIndicatorStatus> ReadDlssIndicatorAsync() =>
+        Task.FromResult(new NvDlssIndicatorStatus(null, false, "无法读取 DLSS 指示器状态。"));
+
+    /// <summary>单独保存机器级指示器，不更改目标游戏设置。</summary>
+    Task<OperationResult> SetDlssIndicatorAsync(bool enabled) =>
+        Task.FromResult(OperationResult.Fail("当前后端不支持设置 DLSS 模型指示器。"));
 }
 
 /// <summary>
@@ -285,8 +302,8 @@ public static class NvSettingsCatalog
         new()
         {
             Id = NvDriverSettingPolicy.RebarId,
-            Title = "Resizable BAR",
-            Description = "与 NVPI 的 rBAR - Enable 主项一致，与下方 v2 分别设置；修改或恢复默认只处理本项。本项目建议 621.01 及以上驱动开启，较旧或版本未知时需确认。仅控制游戏驱动配置，需要硬件和 BIOS 已支持并启用；读取为开启不代表已验证硬件状态或帧数提升。",
+            Title = "Resizable BAR V1",
+            Description = "原版 ReBAR。开启 V1 时会将 V2 切到「自动」（已是自动则保留），让驱动采用 V1 的判断。",
             Options =
             [
                 new() { Value = null, Label = "驱动默认（删除覆盖）" },
@@ -297,13 +314,13 @@ public static class NvSettingsCatalog
         new()
         {
             Id = NvDriverSettingPolicy.RebarPolicyId,
-            Title = "Resizable BAR v2",
-            Description = "对应 NVPI 的 rBAR - Enable v2，需 616.56 及以上驱动。开启使用 ReBAR 配置，自动使用驱动建议，关闭禁用 ReBAR 策略；驱动默认删除本项覆盖。与上方主项独立，不自动修改大小限制等其他 ReBAR 参数。硬件和 BIOS 仍需支持并启用；不保证性能提升。",
+            Title = "Resizable BAR V2",
+            Description = "「自动」跟随 V1；「关闭」覆盖 V1 并关闭这项驱动策略；「开启」使用 V2 策略，并将 V1 设为关闭。",
             Options =
             [
                 new() { Value = null, Label = "驱动默认（删除覆盖）" },
                 new() { Value = 0, Label = "关闭" },
-                new() { Value = 1, Label = "自动（驱动建议）" },
+                new() { Value = 1, Label = "自动（跟随 V1）" },
                 new() { Value = 2, Label = "开启" },
             ],
         },

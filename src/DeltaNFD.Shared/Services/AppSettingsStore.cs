@@ -21,6 +21,9 @@ public sealed class AppSettings
     public string GpuSpoofRegistryPath { get; set; } = "";
     public string GpuSpoofFakeName { get; set; } = "";
     public bool FrameModeActive { get; set; }
+    // Null migrates a previously enabled session; fresh installations never enable system changes on their own.
+    public bool? FrameResumeOnAppStart { get; set; }
+    public bool FrameStartupRecoveryPending { get; set; }
     /// <summary>帧格功能选项；只有此开关和 FrameModeActive 同时开启才执行。</summary>
     public bool FrameAutomaticMemoryEnabled { get; set; }
 
@@ -47,9 +50,11 @@ public sealed class AppSettings
     // 新偏好独立于已退休的 EcoQos 字段，避免升级时自动恢复旧开启选择。
     public bool FrameGamePowerThrottlingDisabled { get; set; }
 
-    // ---- 帧格：让系统忽略三角洲定时器分辨率请求（Windows 11 起，默认关） ----
-    /// <summary>对经身份核验的三角洲主进程设置 IGNORE_TIMER_RESOLUTION 位；关闭或退出时恢复原值。</summary>
+    /// <summary>旧版独立忽略偏好；不再用于决定钟摆联动。</summary>
     public bool FrameGameTimerIgnoreEnabled { get; set; }
+
+    /// <summary>帧格启用且准备通过时联动钟摆和游戏计时请求忽略；旧配置保持原自动联动。</summary>
+    public bool FramePendulumEnabled { get; set; } = true;
 
     // ---- 帧格：定时器精度请求忽略列表（Windows 11 起，默认空） ----
     /// <summary>用户手动加入忽略列表的进程映像名（如 TimerPrecision.App.exe）；为空表示不启用。
@@ -58,7 +63,7 @@ public sealed class AppSettings
 
     // ---- 钟摆计划：全局锁定系统最佳计时器分辨率（仅 Windows 11，默认关） ----
     /// <summary>启用后由进程管理后端用独立持有进程全局锁定最佳分辨率。</summary>
-    // Historical JSON field only. Execution follows FrameModeActive; this value grants no authority.
+    // Historical JSON field only. FrameModeActive and FramePendulumEnabled govern the link instead.
     public bool OptimalClockEnabled { get; set; }
     public int OptimalClockScanLoadThreads { get; set; }
 
@@ -297,7 +302,7 @@ public sealed class AppSettings
         return new AppSettings();
     }
 
-    public static bool Save(string path, AppSettings settings)
+    public static bool Save(string path, AppSettings settings, bool durable = false)
     {
         try
         {
@@ -311,6 +316,7 @@ public sealed class AppSettings
             using (var stream = File.Create(tempPath))
             {
                 JsonSerializer.Serialize(stream, settings);
+                if (durable) stream.Flush(flushToDisk: true);
             }
 
             File.Move(tempPath, path, overwrite: true);
@@ -434,7 +440,7 @@ public static class AppSettingsStore
                 ? JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? throw new IOException("设置文件为空，未覆盖原配置。")
                 : ReadCore(path);
             mutate(settings);
-            var saved = AppSettings.Save(path, settings);
+            var saved = AppSettings.Save(path, settings, durable: required);
             if (saved)
             {
                 if (required && !JsonSerializer.SerializeToUtf8Bytes(settings).SequenceEqual(

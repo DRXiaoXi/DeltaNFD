@@ -44,6 +44,19 @@ internal static class BackendRecoveryGuidanceChecks
         Check(BackendRecoveryGuidance.ForReview(dll, null).Title.Contains("原始备份"), "DLL replacement keeps original manual restoration requirements");
         var reset = record with { Module = BackendModules.Gpu, Command = BackendCommands.GpuDriverProfileReset };
         Check(!BackendRecoveryGuidance.ForReview(reset, Snapshot(BackendModules.Gpu)).Title.Contains("有可信备份"), "driver reset never offers unrelated spoof backup");
+        foreach (var command in new[] { "system.driver-priority.change", "system.driver-priority.restore-all" })
+        {
+            var retired = record with { Command = command };
+            Check(!BackendModules.IsAllowed(BackendModules.System, command)
+                && BackendRecovery.RecoveryChoices(retired, snapshot).Count == 0
+                && BackendRecoveryGuidance.ForReview(retired, snapshot).Steps.Contains("原版本"),
+                "retired device interrupt review is retained without an executable or unrelated recovery route");
+            var rejected = false;
+            try { BackendUnconfirmedStore.ArchiveAfterRecovery(retired, "tweaks", true, "fixture no-op", snapshot); }
+            catch (IOException ex) when (ex.Message.Contains("本版本已移除")) { rejected = true; }
+            Check(rejected, "retired device interrupt record cannot be falsely marked restored");
+        }
+        Check(!BackendModules.IsAllowed(BackendModules.System, "system.driver-priority.list"), "retired interrupt enumeration is no longer allowed");
         var cpu = record with { Module = BackendModules.CpuFrame, Command = "cpuframe.future.unknown" };
         Check(!BackendRecoveryGuidance.ForReview(cpu, Snapshot(BackendModules.CpuFrame)).Title.Contains("有可信备份"), "unknown CPU write is not assigned a guessed restore scope");
         var cpuKnown = cpu with { Command = BackendCommands.CpuFramePowerUnlock };

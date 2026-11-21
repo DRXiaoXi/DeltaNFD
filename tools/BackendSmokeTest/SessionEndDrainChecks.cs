@@ -77,6 +77,9 @@ internal static class SessionEndDrainChecks
 
     private static void NativeMessages()
     {
+        Check(SessionEndHook.IsNormalShutdown(0), "normal shutdown and restart can show frame drain reason");
+        Check(!SessionEndHook.IsNormalShutdown(unchecked((nint)0x80000000)) && !SessionEndHook.IsNormalShutdown(0x40000000)
+            && !SessionEndHook.IsNormalShutdown(1), "logoff, critical shutdown and close-app updates do not take the extended wait");
         // Synthetic messages target only our own hidden test window, never the desktop/session.
         var window = CreateWindowExW(0, "STATIC", "DeltaNFD owned session test", 0, 0, 0, 0, 0, 0, 0, 0, 0);
         Check(window != 0, "owned native test window created");
@@ -132,11 +135,14 @@ internal static class SessionEndDrainChecks
             var client = await BackendClient.StartAsync(BackendModules.CpuFrame, default);
             var started = await client.InvokeAsync(BackendCommands.CpuFrameMonitorStart, new { }, null, default);
             Check(started.Status == BackendResultStatuses.Ok, "owned monitor started through actual protocol");
-            using (var drain = new SessionEndDrain(() => BackendLifecycle.PrepareHandoverAsync("模拟注销", TimeSpan.FromSeconds(3)),
+            AppSettingsStore.UpdateRequired(s => FrameSessionState.UserSetActive(s, true));
+            using (var drain = new SessionEndDrain(() => BackendLifecycle.PrepareHandoverAsync("模拟注销", TimeSpan.FromSeconds(3), windowsSessionEnd: true),
                 BackendOperationGate.BlockNewOperations, _ => { }))
             {
                 Check(drain.Query(TimeSpan.FromSeconds(5)), "real client restores and drains behind session admission gate");
                 Check(client.ExitConfirmed, "actual worker exit confirmed");
+                Check(!AppSettingsStore.Read().FrameModeActive && FrameSessionState.CanResume(AppSettingsStore.Read()),
+                    "shutdown clears only actual running intent and allows next launch after verified drain");
                 Check(BackendUnconfirmedStore.PendingModules().Count == 0, "clean session drain creates no review record");
                 try { BackendOperationGate.Check(); throw new Exception("admitted new operation during session-end"); }
                 catch (InvalidOperationException) { Check(true, "new operations remain blocked until cancellation"); }
@@ -149,10 +155,13 @@ internal static class SessionEndDrainChecks
             var failed = await BackendClient.StartAsync(BackendModules.CpuFrame, default);
             Environment.SetEnvironmentVariable("DELTANFD_TEST_RESTORE_FAIL_ONCE", null);
             await failed.InvokeAsync(BackendCommands.CpuFrameMonitorStart, new { }, null, default);
-            using (var drain = new SessionEndDrain(() => BackendLifecycle.PrepareHandoverAsync("模拟失败注销", TimeSpan.FromSeconds(3)),
+            AppSettingsStore.UpdateRequired(s => FrameSessionState.UserSetActive(s, true));
+            using (var drain = new SessionEndDrain(() => BackendLifecycle.PrepareHandoverAsync("模拟失败注销", TimeSpan.FromSeconds(3), windowsSessionEnd: true),
                 BackendOperationGate.BlockNewOperations, _ => { }))
             {
                 Check(!drain.Query(TimeSpan.FromSeconds(5)), "failed real-pipe restore stays unconfirmed");
+                Check(AppSettingsStore.Read().FrameStartupRecoveryPending && !FrameSessionState.CanResume(AppSettingsStore.Read()),
+                    "failed session drain does not grant next-launch activation");
                 Check(BackendUnconfirmedStore.PendingModules().Contains(BackendModules.CpuFrame), "failed restore retains original review protection");
                 var path = BackendUnconfirmedStore.RecordPathForTests(BackendModules.CpuFrame);
                 var bytes = File.ReadAllBytes(path);

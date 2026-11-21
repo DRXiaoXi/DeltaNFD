@@ -7,7 +7,7 @@ namespace DeltaNFD.Execution.OptimalClock;
 /// 原生测量实现：每个候选都在**全新子进程**里完成，规避 Win11 对长驻进程反复改值的静默忽略。
 /// 全局语义下 = 「一个进程持有 + 另一个不请求的进程测量」；按进程语义下 = 「同一新进程自请求自测」。
 /// </summary>
-internal sealed class NativeOptimalClockMeasurementApi(string executablePath,
+internal sealed partial class NativeOptimalClockMeasurementApi(string executablePath,
     Func<ProcessStartInfo, IOptimalClockChildProcess>? startChild = null,
     Action<string, object?>? diagnostics = null) : IOptimalClockMeasurementApi
 {

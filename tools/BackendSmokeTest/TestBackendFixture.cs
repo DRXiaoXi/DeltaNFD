@@ -107,9 +107,9 @@ internal static class TestBackendFixture
                 }
                 if (moduleId == BackendModules.CpuFrame && recoveryScenario is not null)
                 {
-                    if (context.Command == BackendCommands.CpuFramePowerIncomplete && recoveryScenario == "power-review")
-                        return BackendResult.Ok(context.Command, "隔离旧电源备份", new[] {
-                            new DeltaNFD.Services.FrameIncompletePowerBackup("frame_usb_power.json", "owned-fixture", "owned-fingerprint", "owned missing plan") });
+                    if (context.Command == BackendCommands.CpuFramePowerIncomplete)
+                        return BackendResult.Ok(context.Command, "隔离旧电源备份", recoveryScenario == "power-review" ? new[] {
+                            new DeltaNFD.Services.FrameIncompletePowerBackup("frame_usb_power.json", "owned-fixture", "owned-fingerprint", "owned missing plan") } : []);
                     if (context.Command == BackendCommands.CpuFrameReconcile)
                         return BackendResult.Ok(context.Command, "隔离核对", RecoverySnapshot());
                     if (context.Command == BackendCommands.CpuFrameRecover)

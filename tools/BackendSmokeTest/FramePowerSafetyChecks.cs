@@ -105,6 +105,47 @@ internal static class FramePowerSafetyChecks
                 Assert((await engine.SetPowerLockAsync(false, "")).Success, "新会话可完整关闭恢复");
             }
 
+            using (var engine = new DeltaNFD.Execution.CpuFrame.CpuFrameEngine(new FakePowerService(fake), service))
+            {
+                fake.Active = Other;
+                Assert((await engine.SetPowerLockAsync(true, Scheme)).Success, "新锁定先保存两个计划身份");
+                Assert(JsonDocument.Parse(File.ReadAllText(snapshot)).RootElement.GetProperty("PreviousScheme").GetString() == Other,
+                    "内容快照额外记录原活动计划，不把目标当作原计划");
+                AppSettingsStore.UpdateRequired(s => s.FramePowerPreviousSchemeGuid = "");
+                Assert((await engine.SetPowerLockAsync(false, "")).Success && fake.Active == Other, "设置中丢失原 GUID 时可按新快照恢复");
+
+                await service.SnapshotPowerSchemeContentAsync(Scheme);
+                AppSettingsStore.UpdateRequired(s => { s.FramePowerRestorePending = true; s.FramePowerLockedSchemeGuid = Scheme; });
+                fake.Active = Scheme; fake.Ac = 99; fake.Writes.Clear();
+                var legacy = File.ReadAllBytes(snapshot);
+                Assert(!(await engine.SetPowerLockAsync(false, "")).Success && File.ReadAllBytes(snapshot).SequenceEqual(legacy)
+                    && fake.Writes.Count == 0 && fake.Active == Scheme, "反馈场景：可读旧快照缺原计划时无写入并保留证据");
+                var review = await engine.GetIncompletePowerBackupsAsync();
+                Assert(review.Count == 1 && review[0].Reason.Contains("原活动"), "可读旧快照进入人工核对");
+                AppSettingsStore.UpdateRequired(s => s.FramePowerLockedSchemeGuid = Other);
+                Assert(!(await engine.PreserveCurrentPowerValuesAsync(review)).Success && File.Exists(snapshot), "计划身份变化后拒用旧人工确认");
+                review = await engine.GetIncompletePowerBackupsAsync();
+                Assert((await engine.PreserveCurrentPowerValuesAsync(review)).Success && !File.Exists(snapshot)
+                    && !AppSettingsStore.Read().FramePowerRestorePending && fake.Writes.Count == 0, "用户确认后仅保留当前值并归档");
+
+                AppSettingsStore.UpdateRequired(s => { s.FramePowerRestorePending = true; s.FramePowerLockEnabled = true; });
+                review = await engine.GetIncompletePowerBackupsAsync();
+                Assert(review is [{ FileName: FrameTweaksService.MissingPlanRecord }], "只剩待恢复标记也可人工核对");
+                Assert((await engine.PreserveCurrentPowerValuesAsync(review)).Success && !AppSettingsStore.Read().FramePowerRestorePending
+                    && !AppSettingsStore.Read().FramePowerLockEnabled && fake.Writes.Count == 0, "待恢复标记先归档再停用锁定");
+                AppSettingsStore.UpdateRequired(s =>
+                {
+                    s.FramePowerRestorePending = true;
+                    s.FramePowerPreviousSchemeGuid = "88888888-8888-8888-8888-888888888888";
+                });
+                Assert(!(await engine.SetPowerLockAsync(false, "")).Success && fake.Active == Scheme && fake.Writes.Count == 0,
+                    "原计划不存在时不能猜测、重建或者切换活动计划");
+                review = await engine.GetIncompletePowerBackupsAsync();
+                Assert(review is [{ FileName: FrameTweaksService.MissingPlanRecord }] &&
+                    (await engine.PreserveCurrentPowerValuesAsync(review)).Success, "已删除原计划可人工核对并保留当前值");
+                fake.Ac = 10;
+            }
+
             // 卓越性能模板 GUID 必须归一化为导入副本 GUID；旧设置里的模板 GUID 不能再造成目标/实际错位。
             AppSettingsStore.Update(s =>
             {

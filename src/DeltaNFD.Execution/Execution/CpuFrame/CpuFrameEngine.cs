@@ -220,9 +220,9 @@ public sealed class CpuFrameEngine : IDisposable
         frameActive = settings.FrameModeActive && !OfflineModeGuard.BlocksNormalAutomation;
         if (frameActive && settings.FramePowerLockEnabled)
         {
-            if (!_powerLockReady || !_powerLockActive)
-                await ApplyPowerLockCoreAsync(settings, resume: true).ConfigureAwait(false);
-            else if (++_powerGuardCount >= 15)
+            // Only an explicit, checked activation may take ownership. A heartbeat must not replay
+            // an interrupted lock, race the startup recovery or overwrite an old original plan.
+            if (_powerLockReady && _powerLockActive && ++_powerGuardCount >= 15)
             {
                 _powerGuardCount = 0;
                 await GuardPowerLockCoreAsync(settings, token).ConfigureAwait(false);
@@ -534,7 +534,10 @@ public sealed class CpuFrameEngine : IDisposable
     }
 
     public Task<IReadOnlyList<FrameIncompletePowerBackup>> GetIncompletePowerBackupsAsync()
-        => _tweaks.GetIncompletePowerBackupsAsync();
+        => _tweaks.GetIncompletePowerBackupsAsync(OriginalPowerPlanExistsAsync);
+
+    private async Task<bool> OriginalPowerPlanExistsAsync(string guid) =>
+        (await _power.GetSchemesAsync().ConfigureAwait(false)).Any(p => string.Equals(p.Guid, guid, StringComparison.OrdinalIgnoreCase));
 
     public async Task<OperationResult> PreserveCurrentPowerValuesAsync(IReadOnlyList<FrameIncompletePowerBackup> confirmed)
     {
@@ -542,15 +545,15 @@ public sealed class CpuFrameEngine : IDisposable
         try
         {
         if (AppSettingsStore.Read().FrameModeActive || _powerLockActive) return OperationResult.Fail("请先停用帧格及电源守护，再核对保留当前值。");
-        var result = await _tweaks.PreserveCurrentPowerValuesAsync(confirmed).ConfigureAwait(false);
+        var result = await _tweaks.PreserveCurrentPowerValuesAsync(confirmed, OriginalPowerPlanExistsAsync).ConfigureAwait(false);
         if (result.Success)
         {
             // Match the user's explicit confirmation: no reapplication of the failed power tweak
             // on the next activation/heartbeat. Keep other feature preferences and valid backups.
             _tweaksDesired = false;
             _tweaksArgs = new();
-            var snapshotArchived = confirmed.Any(c => c.FileName == "frame_power_scheme_snapshot.json");
-            AppSettingsStore.Update(s =>
+            var snapshotArchived = confirmed.Any(c => c.FileName is "frame_power_scheme_snapshot.json" or FrameTweaksService.MissingPlanRecord);
+            AppSettingsStore.UpdateRequired(s =>
             {
                 s.FramePowerSaveLatencyEnabled = false;
                 if (snapshotArchived)
@@ -579,27 +582,25 @@ public sealed class CpuFrameEngine : IDisposable
         await _powerGate.WaitAsync().ConfigureAwait(false);
         try
         {
-        if (!enabled) return await RevertPowerLockCoreAsync(AppSettingsStore.Read()).ConfigureAwait(false);
-        AppSettingsStore.Update(s => s.FramePowerLockTargetGuid = targetGuid ?? "");
-        return await ApplyPowerLockCoreAsync(AppSettingsStore.Read(), resume: false).ConfigureAwait(false);
+        if (!enabled) return await RevertPowerLockCoreAsync(AppSettingsStore.ReadRequired()).ConfigureAwait(false);
+        AppSettingsStore.UpdateRequired(s => s.FramePowerLockTargetGuid = targetGuid ?? "");
+        return await ApplyPowerLockCoreAsync(AppSettingsStore.Read()).ConfigureAwait(false);
         }
         finally { _powerGate.Release(); }
     }
 
-    private async Task<OperationResult> ApplyPowerLockCoreAsync(AppSettings settings, bool resume)
+    private async Task<OperationResult> ApplyPowerLockCoreAsync(AppSettings settings)
     {
         if (_powerLockReady && _powerLockActive && (string.IsNullOrWhiteSpace(settings.FramePowerLockTargetGuid)
             || settings.FramePowerLockTargetGuid.Equals(_powerLockedGuid, StringComparison.OrdinalIgnoreCase))) return OperationResult.Ok("电源锁定已生效。");
         try
         {
             // Never overwrite a pending original plan with a new attempt. Recover the snapshot's actual plan first.
-            if ((!resume && (settings.FramePowerRestorePending || _tweaks.HasPowerSchemeContentSnapshot))
-                || (resume && _tweaks.PowerSchemeSnapshotGuid is { } snapshotGuid
-                    && !snapshotGuid.Equals(settings.FramePowerLockedSchemeGuid, StringComparison.OrdinalIgnoreCase)))
+            if (settings.FramePowerRestorePending || _tweaks.HasPowerSchemeContentSnapshot)
             {
                 var recovered = await RevertPowerLockCoreAsync(settings).ConfigureAwait(false);
                 if (!recovered.Success) return OperationResult.Fail("旧电源锁定尚未恢复，未覆盖原记录：" + recovered.Message);
-                settings = AppSettingsStore.Read(); resume = false;
+                settings = AppSettingsStore.Read();
             }
             var schemes = await _power.GetSchemesAsync().ConfigureAwait(false);
             var active = schemes.FirstOrDefault(s => s.IsActive);
@@ -609,26 +610,19 @@ public sealed class CpuFrameEngine : IDisposable
                 return OperationResult.Fail("无法读取当前电源计划。");
             }
 
-            var savedPrevious = settings.FramePowerPreviousSchemeGuid;
-            var requested = resume
-                ? (!string.IsNullOrWhiteSpace(settings.FramePowerLockedSchemeGuid) ? settings.FramePowerLockedSchemeGuid
-                    : !string.IsNullOrWhiteSpace(settings.FramePowerLockTargetGuid) ? settings.FramePowerLockTargetGuid : savedPrevious)
-                : settings.FramePowerLockTargetGuid;
+            var requested = settings.FramePowerLockTargetGuid;
 
             // 卓越性能模板 GUID 不是可直接激活的计划：首次导入后的真实计划是随机副本 GUID。
             // 必须在快照/守护/还原之前归一化为真实 GUID，否则会出现“目标=模板、实际=副本”的错位。
             if (!string.IsNullOrWhiteSpace(requested) &&
                 requested.Equals(PowerSchemes.UltimateSchemeTemplateGuid, StringComparison.OrdinalIgnoreCase))
             {
-                if (!resume)
+                AppSettingsStore.UpdateRequired(s =>
                 {
-                    AppSettingsStore.Update(s =>
-                    {
-                        s.FramePowerPreviousSchemeGuid = active.Guid;
-                        s.FramePowerLockedSchemeGuid = "";
-                        s.FramePowerRestorePending = true;
-                    });
-                }
+                    s.FramePowerPreviousSchemeGuid = active.Guid;
+                    s.FramePowerLockedSchemeGuid = "";
+                    s.FramePowerRestorePending = true;
+                });
                 var imported = await _power.SetSchemeAsync(PowerSchemes.UltimateSchemeTemplateGuid).ConfigureAwait(false);
                 if (!imported.Success)
                 {
@@ -661,36 +655,31 @@ public sealed class CpuFrameEngine : IDisposable
 
             if (!string.IsNullOrWhiteSpace(requested) && schemes.All(s => !s.Guid.Equals(requested, StringComparison.OrdinalIgnoreCase)))
             {
-                if (resume) { SetError("原锁定计划已不存在，未切换。"); return OperationResult.Fail("原锁定计划已不存在。"); }
                 // 不再静默改成“当前计划”：用户选择已失效时明确失败，避免“显示成功但计划没有写入”。
                 SetError("选择的电源计划已不存在：" + requested);
                 return OperationResult.Fail("选择的电源计划已不存在，请刷新电源计划列表后重新选择。");
             }
-            if (resume && string.IsNullOrWhiteSpace(savedPrevious)) return OperationResult.Fail("原计划恢复记录缺失。");
             var lockGuid = string.IsNullOrWhiteSpace(requested) ? active.Guid : requested;
-            if (!resume)
+            AppSettingsStore.UpdateRequired(s =>
             {
-                AppSettingsStore.Update(s =>
-                {
-                    s.FramePowerPreviousSchemeGuid = active.Guid;
-                    s.FramePowerLockedSchemeGuid = lockGuid;
-                    s.FramePowerRestorePending = true;
-                });
-            }
+                s.FramePowerPreviousSchemeGuid = active.Guid;
+                s.FramePowerLockedSchemeGuid = lockGuid;
+                s.FramePowerRestorePending = true;
+            });
             var saved = AppSettingsStore.Read();
             if (!saved.FramePowerRestorePending) return OperationResult.Fail("原计划恢复记录保存失败，未切换计划。");
-            var set = await _power.SetSchemeAsync(lockGuid).ConfigureAwait(false);
-            if (!set.Success) { SetError("电源计划锁定失败：" + set.Message); return set; }
-
             var snapshot = await _tweaks.SnapshotPowerSchemeContentAsync(lockGuid,
                 settings.FramePowerSaveLatencyEnabled && settings.FrameUsbSuspendOffEnabled,
-                settings.FramePowerSaveLatencyEnabled && settings.FramePcieAspmOffEnabled).ConfigureAwait(false);
+                settings.FramePowerSaveLatencyEnabled && settings.FramePcieAspmOffEnabled,
+                saved.FramePowerPreviousSchemeGuid).ConfigureAwait(false);
             if (!snapshot.Success)
             {
                 GameTargetService.Default.SetRestoreFailure("帧格电源计划", true);
                 SetError("电源计划内容快照失败：" + snapshot.Message);
                 return OperationResult.Fail("电源计划内容快照失败，守护未启动：" + snapshot.Message);
             }
+            var set = await _power.SetSchemeAsync(lockGuid).ConfigureAwait(false);
+            if (!set.Success) { SetError("电源计划锁定失败：" + set.Message); return set; }
             _powerLockedGuid = lockGuid;
             _powerLockReady = true;
             _powerLockActive = true;
@@ -717,19 +706,29 @@ public sealed class CpuFrameEngine : IDisposable
         }
         try
         {
-            var previous = settings.FramePowerPreviousSchemeGuid;
+            var previous = await _tweaks.ReadPreviousSchemeAsync(settings).ConfigureAwait(false);
+            if (!Guid.TryParse(previous, out var previousId) || previousId == Guid.Empty
+                || string.Equals(previous, PowerSchemes.UltimateSchemeTemplateGuid, StringComparison.OrdinalIgnoreCase))
+            {
+                GameTargetService.Default.SetRestoreFailure("帧格电源计划", true);
+                return OperationResult.Fail("电源计划还原未完成：原计划记录缺失或冲突，已保留记录。请人工核对。");
+            }
+            var plans = await _power.GetSchemesAsync().ConfigureAwait(false);
+            if (plans.Count(p => p.IsActive) != 1 || !plans.Any(p => string.Equals(p.Guid, previous, StringComparison.OrdinalIgnoreCase)))
+            {
+                GameTargetService.Default.SetRestoreFailure("帧格电源计划", true);
+                return OperationResult.Fail("无法核实原活动电源计划，已保留记录。请人工核对。");
+            }
             var expected = _tweaks.PowerSchemeSnapshotGuid
                 ?? (!string.IsNullOrWhiteSpace(_powerLockedGuid) ? _powerLockedGuid
                     : !string.IsNullOrWhiteSpace(settings.FramePowerLockedSchemeGuid) ? settings.FramePowerLockedSchemeGuid : previous);
             var content = _tweaks.HasPowerSchemeContentSnapshot
                 ? await _tweaks.VerifyAndRestorePowerSchemeContentAsync(expected).ConfigureAwait(false)
                 : OperationResult.Ok("");
-            if (string.IsNullOrWhiteSpace(previous))
-            {
-                GameTargetService.Default.SetRestoreFailure("帧格电源计划", true);
-                return OperationResult.Fail("电源计划还原未完成：原计划记录缺失，已保留快照。" + content.Message);
-            }
-            var restore = await _power.SetSchemeAsync(previous).ConfigureAwait(false);
+            var restore = !content.Success || plans.Any(p => p.IsActive && string.Equals(p.Guid, previous, StringComparison.OrdinalIgnoreCase))
+                ? OperationResult.Ok("") : await _power.SetSchemeAsync(previous!).ConfigureAwait(false);
+            if (restore.Success && content.Success)
+                AppSettingsStore.UpdateRequired(s => s.FramePowerPreviousSchemeGuid = previous!);
             var cleanup = restore.Success && content.Success ? _tweaks.DiscardPowerSchemeContentSnapshot() : OperationResult.Ok("");
             var complete = restore.Success && content.Success && cleanup.Success;
             if (complete)
@@ -737,7 +736,7 @@ public sealed class CpuFrameEngine : IDisposable
                 _powerLockedGuid = "";
                 _powerLockActive = false;
                 _powerLockReady = false;
-                AppSettingsStore.Update(s =>
+                AppSettingsStore.UpdateRequired(s =>
                 {
                     s.FramePowerPreviousSchemeGuid = "";
                     s.FramePowerLockedSchemeGuid = "";

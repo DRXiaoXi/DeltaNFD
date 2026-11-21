@@ -275,10 +275,10 @@ internal static class FrameTimerIgnoreChecks
             InstanceCount = 1, IgnoreApplied = true, LegacyGlobalReachable = true,
         });
         var appliedText = FrameStatusPresentation.TimerIgnore(true, true, appliedClock, now, "");
-        Check(appliedText.Contains("已忽略三角洲的精度请求") && appliedText.Contains("最佳时钟"),
-            "已施加时须说明三角洲改用系统当前最佳时钟");
+        Check(appliedText.Contains("已回读三角洲的忽略策略") && appliedText.Contains("仍需复核") && !appliedText.Contains("最佳时钟"),
+            "仅有策略回读时，不声称游戏实际采用系统时钟或目标值");
         Check(appliedText.Contains("当前系统定时器读数 1 ms"), "已施加时仍须保留只读系统读数");
-        Check(!FrameStatusPresentation.TimerIgnore(true, true, appliedClock, now.AddSeconds(11), "").Contains("已忽略三角洲的精度请求"),
+        Check(!FrameStatusPresentation.TimerIgnore(true, true, appliedClock, now.AddSeconds(11), "").Contains("已回读三角洲的忽略策略"),
             "过期的已施加快照不能冒充当前生效");
         var skipped = Present(readable.FrameTimerIgnore with
         {

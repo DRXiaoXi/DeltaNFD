@@ -31,8 +31,11 @@ internal sealed class GameProcessMonitor : IDisposable
         _service.StatusUpdated += OnStatusUpdated;
         _service.ConnectionEnded += OnConnectionEnded;
         GameTargetService.Default.Changed += OnTargetChanged;
-        _ = _state.ConnectAsync(bootstrapAutomation: true);
+        if (!AppSettingsStore.Read().FrameStartupRecoveryPending &&
+            !Backends.BackendUnconfirmedStore.PendingModules().Contains(DeltaNFD.Backends.BackendModules.CpuFrame))
+            _ = _state.ConnectAsync(bootstrapAutomation: true);
     }
+    internal Task StartAfterRecoveryAsync() => _state.ConnectAsync(bootstrapAutomation: true);
     internal Task ReconnectAsync() => _state.ConnectAsync(); // Observation-only; no mutation replay.
     internal IDisposable PauseConnections() => _state.PauseConnections();
     private void OnTargetChanged(GameTarget target) => Dispatch(() => { IsRunning = false; ProcessId = null; Notify(Tick, false, null); });

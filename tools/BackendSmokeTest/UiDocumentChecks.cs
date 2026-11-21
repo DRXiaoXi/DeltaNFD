@@ -63,6 +63,15 @@ internal static class UiDocumentChecks
             && repair.Descendants().Any(e => (string?)e.Attribute("Click") == "OpenShaderRecovery_Click"), "cache module only shows status and opens confirmed repair flow");
         Check(nv.Descendants().Any(e => Tip(e).Contains("TitleHelpText")) && nv.Descendants().Any(e => ((string?)e.Attribute("Visibility"))?.Contains("ShowDescription") == true), "DLSS row uses title help and conditional description");
         var main = XElement.Load(Path.Combine(app, "MainWindow.xaml"));
+        var menu = main.Descendants().Single(e => e.Name.LocalName == "NavigationView.MenuItems");
+        void CheckSidebarSection(string tag, string section)
+        {
+            var item = menu.Elements().Single(e => e.Name.LocalName == "NavigationViewItem" && (string?)e.Attribute("Tag") == tag);
+            var header = item.ElementsBeforeSelf().LastOrDefault(e => e.Name.LocalName == "NavigationViewItemHeader");
+            Check((string?)header?.Attribute("Content") == section, $"{tag} belongs to the {section} sidebar section");
+        }
+        CheckSidebarSection("clock", "系统优化");
+        CheckSidebarSection("crashlogs", "高级功能");
         var sidebar = main.Descendants().Single(e => (string?)e.Attribute("Tag") == "shader");
         var title = shader.Descendants().Single(e => e.Name.LocalName == "PageHeader");
         Check((string?)sidebar.Attribute("Content") == (string?)title.Attribute("Title"), "shader sidebar and page title match");

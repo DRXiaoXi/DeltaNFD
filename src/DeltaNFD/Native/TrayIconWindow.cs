@@ -36,14 +36,17 @@ internal sealed class TrayIconWindow : IDisposable
     /// <summary>任务栏重建广播（Explorer 重启时发给所有顶层窗口）。</summary>
     private static readonly uint TaskbarCreatedMessage = RegisterWindowMessageW("TaskbarCreated");
 
-    private static readonly string ClassName = "DeltaNFD_Tray_" + Guid.NewGuid().ToString("N");
+    private readonly string _className = "DeltaNFD_Tray_" + Guid.NewGuid().ToString("N");
 
     private readonly string _tooltip;
     private readonly Action _clicked;
     private readonly Action _exitRequested;
+    private readonly Action? _iconLost;
     private readonly ManualResetEvent _windowReadyEvent = new(initialState: false);
 
     private nint _hwnd;
+    private Thread? _windowThread;
+    private volatile bool _disposed;
     private nint _hIcon;
     private volatile bool _iconAdded;
     private WndProcDelegate? _wndProcDelegate;
@@ -73,6 +76,7 @@ internal sealed class TrayIconWindow : IDisposable
         public uint time;
         public int ptX;
         public int ptY;
+        public uint lPrivate;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -97,14 +101,23 @@ internal sealed class TrayIconWindow : IDisposable
 
     private delegate nint WndProcDelegate(nint hwnd, uint msg, nint wparam, nint lparam);
 
-    public TrayIconWindow(string tooltip, Action clicked, Action exitRequested)
+    public TrayIconWindow(string tooltip, Action clicked, Action exitRequested, Action? iconLost = null)
     {
         _tooltip = tooltip;
         _clicked = clicked;
         _exitRequested = exitRequested;
+        _iconLost = iconLost;
     }
 
-    public void Dispose() => Hide();
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        var hwnd = _hwnd;
+        if (hwnd != nint.Zero) _ = PostMessageW(hwnd, WmClose, nint.Zero, nint.Zero);
+        if (_windowThread is null || _windowThread != Thread.CurrentThread && _windowThread.Join(TimeSpan.FromSeconds(2)))
+            _windowReadyEvent.Dispose();
+    }
 
     /// <summary>
     /// 显示托盘图标（首次调用时启动后台消息窗口线程；重复调用无副作用）。
@@ -113,6 +126,7 @@ internal sealed class TrayIconWindow : IDisposable
     /// </summary>
     public bool Show()
     {
+        if (_disposed) return false;
         if (_iconAdded)
         {
             return true;
@@ -137,9 +151,12 @@ internal sealed class TrayIconWindow : IDisposable
             return;
         }
 
-        _windowReadyEvent.Reset();
-        var thread = new Thread(RunMessageLoop) { IsBackground = true };
-        thread.Start();
+        if (_windowThread?.IsAlive != true)
+        {
+            _windowReadyEvent.Reset();
+            _windowThread = new Thread(RunMessageLoop) { IsBackground = true };
+            _windowThread.Start();
+        }
 
         if (!_windowReadyEvent.WaitOne(TimeSpan.FromSeconds(5)))
         {
@@ -155,26 +172,29 @@ internal sealed class TrayIconWindow : IDisposable
         var wndClass = new WndClassW
         {
             lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_wndProcDelegate),
-            lpszClassName = ClassName,
+            lpszClassName = _className,
             hInstance = hInstance,
         };
-        if (RegisterClassW(ref wndClass) == 0 && Marshal.GetLastWin32Error() != 1410)
+        if (RegisterClassW(ref wndClass) == 0)
         {
-            // 1410 = ERROR_CLASS_ALREADY_EXISTS（进程内已注册，可忽略）；其余失败记日志
             Log.Error($"托盘：RegisterClassW 失败（Win32Error {Marshal.GetLastWin32Error()}）");
+            _windowReadyEvent.Set();
+            return;
         }
 
         // 普通隐藏顶层窗口（不能用 HWND_MESSAGE：消息专用窗口收不到 TaskbarCreated 广播，
         // Explorer 重启后托盘图标会永久丢失）
-        _hwnd = CreateWindowExW(0, ClassName, "", 0, 0, 0, 0, 0, nint.Zero, nint.Zero, hInstance, nint.Zero);
+        _hwnd = CreateWindowExW(0, _className, "", 0, 0, 0, 0, 0, nint.Zero, nint.Zero, hInstance, nint.Zero);
         if (_hwnd == nint.Zero)
         {
             Log.Error($"托盘：CreateWindowExW 失败（Win32Error {Marshal.GetLastWin32Error()}）");
+            _ = UnregisterClassW(_className, hInstance);
             _windowReadyEvent.Set();
             return;
         }
 
         _windowReadyEvent.Set();
+        if (_disposed) _ = PostMessageW(_hwnd, WmClose, nint.Zero, nint.Zero);
 
         while (GetMessageW(out var msg, nint.Zero, 0, 0) > 0)
         {
@@ -183,6 +203,7 @@ internal sealed class TrayIconWindow : IDisposable
         }
 
         _hwnd = nint.Zero;
+        _ = UnregisterClassW(_className, hInstance);
     }
 
     private nint WndProc(nint hwnd, uint msg, nint wparam, nint lparam)
@@ -206,13 +227,14 @@ internal sealed class TrayIconWindow : IDisposable
         {
             Log.Info("托盘：检测到任务栏重建，重新注册托盘图标");
             RemoveIcon();
-            AddIconWithRetry();
+            if (!AddIconWithRetry() && _iconLost is not null) InvokeUi(_iconLost);
             return nint.Zero;
         }
 
         if (msg == WmClose)
         {
             RemoveIcon();
+            ReleaseIconHandle();
             _ = DestroyWindow(hwnd);
             PostQuitMessage(0);
             return nint.Zero;
@@ -291,15 +313,14 @@ internal sealed class TrayIconWindow : IDisposable
 
     private bool AddNotifyIcon()
     {
-        var exePath = Environment.ProcessPath ?? "";
-        var smallIcons = new nint[1];
-        if (ExtractIconExW(exePath, 0, null, smallIcons, 1) == 0)
+        if (_hIcon == nint.Zero)
         {
-            Log.Error($"托盘：ExtractIconExW 未从 exe 提取到图标（{exePath}）");
-        }
-        else
-        {
-            _hIcon = smallIcons[0];
+            var exePath = Environment.ProcessPath ?? "";
+            var smallIcons = new nint[1];
+            if (ExtractIconExW(exePath, 0, null, smallIcons, 1) == 0)
+                Log.Error($"托盘：ExtractIconExW 未从 exe 提取到图标（{exePath}）");
+            else
+                _hIcon = smallIcons[0];
         }
 
         var data = new NotifyIconDataW
@@ -334,7 +355,11 @@ internal sealed class TrayIconWindow : IDisposable
         }
 
         _iconAdded = false;
+        ReleaseIconHandle();
+    }
 
+    private void ReleaseIconHandle()
+    {
         if (_hIcon != nint.Zero)
         {
             _ = DestroyIcon(_hIcon);
@@ -350,6 +375,10 @@ internal sealed class TrayIconWindow : IDisposable
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern ushort RegisterClassW(ref WndClassW lpWndClass);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnregisterClassW(string lpClassName, nint hInstance);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern uint RegisterWindowMessageW(string lpString);

@@ -25,6 +25,9 @@ public static class BackendCommands
     public const string GpuDriverRestore = "gpu.driver.restore";
     public const string GpuDriverProfileReset = "gpu.driver.profile-reset";
     public const string GpuDriverLock = "gpu.driver.lock";
+    public const string GpuDlssIndicatorSet = "gpu.dlss-indicator.set";
+    public const string GpuNvDisplayContainerStatus = "gpu.nv-display-container.status";
+    public const string GpuNvDisplayContainerChange = "gpu.nv-display-container.change";
     public const string GpuShaderCacheApply = "gpu.shader-cache.apply";
     public const string SystemShaderRecoveryClean = "system.shader.recovery-clean";
     public const string SystemPendulumGlobalConfigure = "system.pendulum.global.configure";
@@ -36,9 +39,6 @@ public static class BackendCommands
     public const string SystemStartupList = "system.startup.list";
     public const string SystemStartupChange = "system.startup.change";
     public const string SystemStartupRestoreAll = "system.startup.restore-all";
-    public const string SystemDriverPriorityList = "system.driver-priority.list";
-    public const string SystemDriverPriorityChange = "system.driver-priority.change";
-    public const string SystemDriverPriorityRestoreAll = "system.driver-priority.restore-all";
     public const string GpuReconcile = "gpu.reconcile";
     public const string GpuRecover = "gpu.recover";
 
@@ -138,6 +138,7 @@ public static class BackendCommands
     // 钟摆计划（独立功能，仅 Windows 11）：全局锁定系统最佳计时器分辨率
     public const string ProcmanClockApply = "procman.clock.apply";
     public const string ProcmanClockRelease = "procman.clock.release";
+    public const string ProcmanClockCompare = "procman.clock.compare.v1";
     public const string ProcmanClockScan = "procman.clock.scan";
     public const string ProcmanClockValue = "procman.clock.value";
     public const string ProcmanClockDpcConfigure = "procman.clock.dpc.configure";
@@ -276,6 +277,9 @@ public static class BackendModules
                     [BackendCommands.GpuDriverRestore] = FiveMinutes,
                     [BackendCommands.GpuDriverProfileReset] = FiveMinutes,
                     [BackendCommands.GpuDriverLock] = TwoMinutes,
+                    [BackendCommands.GpuDlssIndicatorSet] = TwoMinutes,
+                    [BackendCommands.GpuNvDisplayContainerStatus] = TwoMinutes,
+                    [BackendCommands.GpuNvDisplayContainerChange] = TwoMinutes,
                     [BackendCommands.GpuShaderCacheApply] = TwoMinutes,
                     [BackendCommands.GpuReconcile] = FiveMinutes,
                     [BackendCommands.GpuRecover] = FifteenMinutes,
@@ -367,6 +371,7 @@ public static class BackendModules
                     [BackendCommands.ProcmanClockApply] = TwoMinutes,
                     [BackendCommands.ProcmanClockRelease] = TwoMinutes,
                     [BackendCommands.ProcmanClockDpcConfigure] = TwoMinutes,
+                    [BackendCommands.ProcmanClockCompare] = FifteenMinutes,
                     [BackendCommands.ProcmanClockScan] = FifteenMinutes,
                     [BackendCommands.ProcmanClockValue] = TwoMinutes,
                 }, TwoMinutes),
@@ -409,9 +414,6 @@ public static class BackendModules
                     [BackendCommands.SystemStartupList] = TwoMinutes,
                     [BackendCommands.SystemStartupChange] = TwoMinutes,
                     [BackendCommands.SystemStartupRestoreAll] = FiveMinutes,
-                    [BackendCommands.SystemDriverPriorityList] = TwoMinutes,
-                    [BackendCommands.SystemDriverPriorityChange] = TwoMinutes,
-                    [BackendCommands.SystemDriverPriorityRestoreAll] = FiveMinutes,
                     [BackendCommands.SystemPendulumGlobalConfigure] = TwoMinutes,
                     [BackendCommands.SystemPendulumDriverPrepare] = TwoMinutes,
                     [BackendCommands.SystemPagefileStatus] = TwoMinutes,
@@ -475,7 +477,7 @@ public static class BackendModules
         BackendCommands.AceScan, BackendCommands.AceCoreCheck, BackendCommands.AceReconcile,
         BackendCommands.AceVirtCheck,
         BackendCommands.GpuSpoofStatus, BackendCommands.GpuDriverNamePreview, BackendCommands.GpuWatchEvaluate,
-        BackendCommands.GpuDriverStatus, BackendCommands.GpuDriverRead, BackendCommands.GpuReconcile,
+        BackendCommands.GpuDriverStatus, BackendCommands.GpuDriverRead, BackendCommands.GpuNvDisplayContainerStatus, BackendCommands.GpuReconcile,
         BackendCommands.RuntimeStatus, BackendCommands.RuntimeReconcile, BackendCommands.Vc14Scan, BackendCommands.Vc14Preview,
         BackendCommands.Vc14ForceReplacePreview,
         BackendCommands.RuntimeHighFpsPreview, BackendCommands.RuntimeFileUseScan,
@@ -488,7 +490,7 @@ public static class BackendModules
         BackendCommands.ProcmanDetail, BackendCommands.ProcmanCapability,
         BackendCommands.ProcmanCpuTopology, BackendCommands.ProcmanReconcile,
         BackendCommands.ProcmanNativeProbe,
-        BackendCommands.ProcmanClockScan,
+        BackendCommands.ProcmanClockCompare, BackendCommands.ProcmanClockScan,
         BackendCommands.ProcmanRulesList,
         BackendCommands.RuntimeSafeUninstallPreview,
         BackendCommands.SystemCleanupScan, BackendCommands.SystemTweaksStatus,
@@ -498,7 +500,6 @@ public static class BackendModules
         BackendCommands.SystemShaderStatus, BackendCommands.SystemShaderDiagnose,
         BackendCommands.SystemGameRecordingStatus,
         BackendCommands.SystemStartupList,
-        BackendCommands.SystemDriverPriorityList,
         BackendCommands.SystemClockEnvironmentRead,
         BackendCommands.SystemPagefileStatus, BackendCommands.SystemReconcile,
         // T3：扩展优化库/Defender/内存的只读命令
@@ -539,7 +540,6 @@ public static class BackendModules
         or BackendCommands.SystemPowerIntelPcores or BackendCommands.SystemTimerRecover or BackendCommands.SystemPendulumGlobalConfigure
         or BackendCommands.SystemGameRecordingChange or BackendCommands.SystemLowMemoryApply or BackendCommands.SystemPendulumDriverPrepare
         or BackendCommands.SystemStartupChange or BackendCommands.SystemStartupRestoreAll
-        or BackendCommands.SystemDriverPriorityChange or BackendCommands.SystemDriverPriorityRestoreAll
         or BackendCommands.SystemClockEnvironmentChange;
 
     /// <summary>公开只读集合（只读命令的负向校验用）。</summary>

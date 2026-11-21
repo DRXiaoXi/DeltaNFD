@@ -246,6 +246,15 @@ internal static class BackendContractChecks
         var env = BackendJson.Deserialize<NvGpuEnvironmentInfo>(environment.Data!.Value);
         Check(env.GpuName is not null, "驱动环境对象可反序列化");
 
+        var indicator = await client.InvokeAsync(BackendCommands.GpuReconcile, new RecoverArgs { Scope = "dlss-indicator" }, null, CancellationToken.None);
+        var snapshot = BackendResults.RequireData<ReconcileSnapshot>(indicator, "读取 DLSS 指示器");
+        Check(snapshot.Module == BackendModules.Gpu && snapshot.Items is [{ Id: "dlss-indicator" }]
+            && snapshot.RecoveryScopes.Count == 0, "指示器真实 IPC 只读核对不混入显卡型号恢复");
+        var invalidIndicator = await client.InvokeAsync(BackendCommands.GpuDlssIndicatorSet, new { }, null, CancellationToken.None);
+        Check(invalidIndicator.Status == BackendResultStatuses.Failed && invalidIndicator.Code != "backend.nv-settings-unsupported"
+            && !invalidIndicator.PendingRestore && !invalidIndicator.RequiresReview,
+            "真实握手支持指示器命令，但缺布尔参数时在写入前拒绝");
+
         // 伪造路径必须被后端拒绝（不触碰任何注册表写）。
         var badPath = await client.InvokeAsync(BackendCommands.GpuSpoofApply,
             new GpuSpoofApplyArgs { RegistryPath = "", FakeName = "x" }, null, CancellationToken.None);

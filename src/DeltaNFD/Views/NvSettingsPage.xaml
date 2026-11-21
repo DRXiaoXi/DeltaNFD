@@ -5,7 +5,7 @@
             <StackPanel Spacing="4">
                 <ui:PageHeader Title="NVIDIA显卡设置"/>
                 <TextBlock Text="{x:Bind TargetLabel}" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
-                <TextBlock Text="只写入目标游戏进程的 NVIDIA 驱动配置。" Style="{StaticResource NoteStyle}"/>
+                <TextBlock Text="游戏驱动配置和整机 DLSS 指示器分别保存。" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
             </StackPanel>
             <!-- 环境状态 + 数据库锁定 -->
             <Grid RowSpacing="12" ColumnSpacing="12" ui:AdaptiveColumns.Enabled="True" ui:AdaptiveColumns.Threshold="900" ui:AdaptiveColumns.LeftWeight="3" ui:AdaptiveColumns.RightWeight="2">
@@ -20,10 +20,10 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <StackPanel Spacing="4" VerticalAlignment="Center" Grid.Row="0">
-                                <TextBlock Text="驱动环境" Style="{StaticResource H2Style}" ui:HelpTip.Text="驱动配置数据库 = C:\ProgramData\NVIDIA Corporation\Drs\nvdrsdb0.bin 与 nvdrsdb1.bin。锁定为只读后，驱动更新 / NVIDIA App / 其他工具都无法改写驱动配置，本工具写入的优化不会被重置；需要修改任何驱动级设置（含本页）前请先解锁。"/>
+                                <TextBlock Text="驱动环境" Style="{StaticResource H2Style}" ui:HelpTip.Text="驱动配置数据库 = C:\ProgramData\NVIDIA Corporation\Drs\nvdrsdb0.bin 与 nvdrsdb1.bin。锁定为只读后，驱动更新 / NVIDIA App / 其他工具都无法改写驱动配置，本工具写入的优化不会被重置；修改游戏驱动配置前请先解锁；整机 DLSS 指示器不受此锁影响。"/>
                                 <TextBlock Text="{x:Bind ViewModel.GpuSummaryText, Mode=OneWay}" Style="{StaticResource BodyStyle}" TextWrapping="Wrap"/>
                                 <TextBlock Text="{x:Bind ViewModel.LockStatusText, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" Style="{StaticResource H3Style}"/>
-                                <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="锁定为只读后驱动更新与其他工具都无法改写配置；修改任何驱动级设置前请先解锁。"/>
+                                <TextBlock Style="{StaticResource CardDescStyle}" TextWrapping="Wrap" Text="锁定为只读后驱动更新与其他工具都无法改写配置；修改游戏驱动配置前请先解锁。"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Grid.Row="1">
                                 <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.LockBusy, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}"/>
@@ -31,8 +31,8 @@
                                 <Button Content="解除只读" IsEnabled="{x:Bind CanUnlock, Mode=OneWay}" Click="UnlockButton_Click" Style="{StaticResource SecondaryButtonStyle}"/>
                             </StackPanel>
                         </Grid>
-                        <InfoBar IsOpen="{x:Bind ViewModel.DrsFilesLocked, Mode=OneWay}" Severity="Warning" Title="数据库处于只读锁定状态" Message="当前无法应用设置：请先点「解除只读」，设置完成后再重新锁定。" IsClosable="False"/>
-                        <InfoBar IsOpen="{x:Bind ShowNoNvidia, Mode=OneWay}" Severity="Error" Title="未检测到 NVIDIA 显卡" Message="本页功能仅面向 N 卡；A 卡 / Intel 显卡无需这些设置。" IsClosable="False"/>
+                        <InfoBar IsOpen="{x:Bind ViewModel.DrsFilesLocked, Mode=OneWay}" Severity="Warning" Title="数据库处于只读锁定状态" Message="无法保存游戏驱动配置。请先解除只读；DLSS 指示器仍可单独保存。" IsClosable="False"/>
+                        <InfoBar IsOpen="{x:Bind ShowNoNvidia, Mode=OneWay}" Severity="Error" Title="游戏驱动配置暂不可用" Message="请在上方查看显卡与 NVAPI 检测结果。" IsClosable="False"/>
                     </StackPanel>
                 </Border>
                 <Border Style="{StaticResource CardBorderStyle}" ui:AdaptiveColumns.WideRow="0" ui:AdaptiveColumns.WideColumn="1" ui:AdaptiveColumns.WideSpan="1">
@@ -40,8 +40,8 @@
                         <TextBlock Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" Style="{StaticResource NoteStyle}" VerticalAlignment="Center" TextWrapping="Wrap"/>
                         <StackPanel Orientation="Vertical" Spacing="12" VerticalAlignment="Center" HorizontalAlignment="Stretch">
                             <ProgressRing Width="24" Height="24" IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" Foreground="{StaticResource AppAccentBrush}"/>
-                            <Button Content="刷新状态" Click="RefreshButton_Click" IsEnabled="{x:Bind CanRefresh, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch"/>
-                            <Button Content="全部恢复默认" Click="ResetButton_Click" IsEnabled="{x:Bind CanReset, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch"/>
+                            <Button Content="刷新状态" Click="RefreshButton_Click" IsEnabled="{x:Bind ViewModel.CanRefresh, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch"/>
+                            <Button Content="游戏设置恢复默认" Click="ResetButton_Click" IsEnabled="{x:Bind CanReset, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch"/>
                             <Button Content="防闪屏性重置" Click="ProfileResetButton_Click" IsEnabled="{x:Bind ViewModel.CanResetProfile, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}" HorizontalAlignment="Stretch"/>
                             <TextBlock Text="针对三角洲模型消失、闪烁：备份并完整清除游戏驱动覆盖。退出游戏后使用；不保证解决所有闪屏原因。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                             <Button Style="{StaticResource PrimaryButtonStyle}" Content="{x:Bind ViewModel.ApplyButtonText, Mode=OneWay}" IsEnabled="{x:Bind ViewModel.ApplyEnabled, Mode=OneWay}" Click="ApplyButton_Click" HorizontalAlignment="Stretch"/>
@@ -49,6 +49,37 @@
                     </StackPanel>
                 </Border>
             </Grid>
+            <!-- NGX 指示器是整机设置，独立于下方游戏 DRS 批量应用。 -->
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="游戏内 DLSS 模型指示器" Style="{StaticResource H2Style}" TextWrapping="Wrap"/>
+                    <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap"
+                               Text="整机生效。保存后请重进游戏；不会替你开启 DLSS。具体显示内容取决于游戏和 DLSS 版本。"/>
+                    <TextBlock Text="{x:Bind ViewModel.DlssIndicatorStateText, Mode=OneWay}" Style="{StaticResource CaptionStyle}" TextWrapping="Wrap"/>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <ui:PageScrollComboBox AutomationProperties.Name="游戏内 DLSS 模型指示器" MinWidth="92"
+                                  ItemsSource="{x:Bind ViewModel.DlssIndicatorChoices}"
+                                  SelectedIndex="{x:Bind ViewModel.DlssIndicatorSelectedIndex, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind ViewModel.CanEditDlssIndicator, Mode=OneWay}"/>
+                        <Button Content="保存指示器" Style="{StaticResource SecondaryButtonStyle}" Click="SaveDlssIndicator_Click"
+                                IsEnabled="{x:Bind ViewModel.CanSaveDlssIndicator, Mode=OneWay}"/>
+                    </StackPanel>
+                    <TextBlock Text="{x:Bind ViewModel.DlssIndicatorResultText, Mode=OneWay}" Style="{StaticResource NoteStyle}"
+                               TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="NVIDIA 显示容器 · 日志写入" Style="{StaticResource H2Style}" TextWrapping="Wrap"/>
+                    <TextBlock Text="整机生效，不影响 NVIDIA App 容器。停用期间 NVIDIA 控制面板可能打不开。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <TextBlock Text="621.14 / 621.24 持续写入 nvlog.nvlgstg 时可尝试停用。请先退出游戏。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{x:Bind ViewModel.DisplayContainerText, Mode=OneWay}" Style="{StaticResource CaptionStyle}" TextWrapping="Wrap"/>
+                    <Button Content="{x:Bind ViewModel.DisplayContainerButton, Mode=OneWay}" Click="DisplayContainer_Click"
+                            IsEnabled="{x:Bind ViewModel.CanChangeDisplayContainer, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}"/>
+                    <TextBlock Text="{x:Bind ViewModel.DisplayContainerResult, Mode=OneWay}" Style="{StaticResource NoteStyle}"
+                               TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                </StackPanel>
+            </Border>
             <!-- 设置条目 -->
             <Grid RowSpacing="12" ColumnSpacing="12" ui:AdaptiveColumns.Enabled="True" ui:AdaptiveColumns.Threshold="1100" ui:AdaptiveColumns.LeftWeight="4" ui:AdaptiveColumns.RightWeight="2">
                 <Border Style="{StaticResource CardBorderStyle}" ui:HoverLift.Enabled="False" ui:AdaptiveColumns.WideRow="0" ui:AdaptiveColumns.WideColumn="0" ui:AdaptiveColumns.WideSpan="1">
@@ -66,7 +97,7 @@
                                             <TextBlock Text="{x:Bind Description}" Visibility="{x:Bind ShowDescription}" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
                                             <TextBlock Text="{x:Bind StateText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource CaptionStyle}"/>
                                         </StackPanel>
-                                        <ComboBox Grid.Column="1" Tag="{x:Bind Id}" AutomationProperties.Name="{x:Bind Title}" MinWidth="230" MaxWidth="330" VerticalAlignment="Center" Visibility="{x:Bind ShowComboBox, Mode=OneWay}" ItemsSource="{x:Bind OptionLabels}" SelectedIndex="{x:Bind SelectedIndex, Mode=OneWay}" SelectionChanged="RowCombo_SelectionChanged"/>
+                                        <ui:PageScrollComboBox Grid.Column="1" Tag="{x:Bind Id}" AutomationProperties.Name="{x:Bind Title}" MinWidth="230" MaxWidth="330" VerticalAlignment="Center" Visibility="{x:Bind ShowComboBox, Mode=OneWay}" ItemsSource="{x:Bind OptionLabels}" SelectedIndex="{x:Bind SelectedIndex, Mode=OneWay}" SelectionChanged="RowCombo_SelectionChanged"/>
                                         <!-- 百分比缩放行（DLSS 超分渲染比例）：覆盖开关 + 33–100% 滑条任意调节 -->
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center" Visibility="{x:Bind IsScale, Mode=OneWay}">
                                             <ToggleSwitch OnContent="覆盖" OffContent="默认" IsOn="{x:Bind ScaleOverride, Mode=TwoWay}" Toggled="ScaleToggle_Toggled" MinWidth="0" Margin="0"/>
@@ -81,9 +112,10 @@
                 </Border>
                 <Border Style="{StaticResource CardBorderStyle}" Padding="20,14" ui:AdaptiveColumns.WideRow="0" ui:AdaptiveColumns.WideColumn="1" ui:AdaptiveColumns.WideSpan="1">
                     <StackPanel Spacing="6">
-                        <TextBlock Text="使用说明" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="· 全部设置只写入目标游戏进程（DeltaForceClient-Win64-Shipping.exe）的独立驱动配置，不影响其他游戏；首次应用时自动创建配置。&#10;&#10;· 设置立即保存到驱动配置数据库，对之后启动的游戏会话生效；游戏正在运行时建议重启游戏后确认效果。&#10;&#10;· 「恢复默认」= 删除该设置的覆盖，交还给游戏内选项 / 驱动默认值。&#10;&#10;· 锁定数据库只读是防重置手段：驱动更新或 NVIDIA App 不会覆盖你的优化；换驱动 / 需要改设置时记得先解锁。&#10;&#10;· DLSS 超分模型/渲染比例与帧生成模型的覆盖需要驱动 545 以上；Smooth Motion 档位需要支持该功能的显卡与驱动。设置项不被当前驱动支持时应用会如实报错。"/>
+                        <TextBlock Text="使用说明" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="· 「应用更改」保存目标游戏的驱动配置。整机 DLSS 指示器独立保存，不参与游戏设置恢复默认。&#10;&#10;· 设置立即保存到驱动配置数据库，对之后启动的游戏会话生效；游戏正在运行时建议重启游戏后确认效果。&#10;&#10;· 「恢复默认」= 删除该设置的覆盖，交还给游戏内选项 / 驱动默认值。&#10;&#10;· 锁定数据库只读是防重置手段：驱动更新或 NVIDIA App 不会覆盖你的优化；换驱动 / 需要改设置时记得先解锁。&#10;&#10;· DLSS 超分模型/渲染比例与帧生成模型的覆盖需要驱动 545 以上；Smooth Motion 档位需要支持该功能的显卡与驱动。设置项不被当前驱动支持时应用会如实报错。"/>
                         <TextBlock Style="{StaticResource NoteStyle}" Text="设置对之后启动的游戏生效；「恢复默认」会删除该项覆盖。"/>
-                        <TextBlock Style="{StaticResource NoteStyle}" Text="ReBAR 与 v2 独立设置；v2 需 616.56+，开启建议 621.01+。" TextWrapping="Wrap"/>
+                        <TextBlock Style="{StaticResource NoteStyle}" Text="用 V1：V1 开启、V2 自动。用 V2：V2 开启。V2 显式关闭会盖过 V1。" TextWrapping="Wrap"/>
+                        <TextBlock Style="{StaticResource NoteStyle}" Text="V2 需 616.56 及以上驱动。开启 ReBAR 建议使用 621.01 及以上驱动。" TextWrapping="Wrap"/>
                         <TextBlock Style="{StaticResource NoteStyle}" Text="硬件和 BIOS 需已支持并启用 ReBAR；保存游戏策略不代表硬件已经启用。" TextWrapping="Wrap"/>
                         <TextBlock Style="{StaticResource WarningTextStyle}" Text="数据库锁定为只读时，换驱动或修改设置前需先解锁。"/>
                     </StackPanel>

@@ -3,7 +3,7 @@ using DeltaNFD.Backends;
 namespace DeltaNFD.Services.Backends;
 /// <summary>
  
-/// 前端侧 NVIDIA 驱动设置服务：环境/覆盖读取与写入全部经显卡后端 EXE 完成；
+/// 前端只读检测环境；游戏配置读取与系统写入经显卡后端 EXE 完成；
  
 /// 设置目录为合同层静态展示数据，无需 IPC。
  
@@ -34,6 +34,21 @@ internal sealed class BackendNvProfileService : INvProfileService
             Message = operation.Message };
     }
     public async Task<OperationResult> SetShaderCacheSizeAsync(string scope, uint? value) => Map(await InvokeAsync(BackendCommands.GpuShaderCacheApply, new NvShaderCacheApplyArgs { Scope = scope, Value = value }, CancellationToken.None), "设置着色器缓存大小");
+    public Task<NvDlssIndicatorStatus> ReadDlssIndicatorAsync() => Task.Run(DeltaNFD.Inspection.NvDlssIndicatorInspection.Read);
+
+    public async Task<OperationResult> SetDlssIndicatorAsync(bool enabled) => Map(
+        await InvokeAsync(BackendCommands.GpuDlssIndicatorSet, new NvDlssIndicatorArgs { Enabled = enabled }, CancellationToken.None), "设置 DLSS 指示器");
+
+    public async Task<NvDisplayContainerStatus> ReadDisplayContainerAsync()
+    {
+        var result = await InvokeAsync(BackendCommands.GpuNvDisplayContainerStatus, new { }, CancellationToken.None);
+        return result is { Status: BackendResultStatuses.Ok, Data: { } data }
+            ? BackendJson.Deserialize<NvDisplayContainerStatus>(data) : new NvDisplayContainerStatus(result.Message);
+    }
+
+    public async Task<OperationResult> ChangeDisplayContainerAsync(NvDisplayContainerChange args) => Map(
+        await InvokeAsync(BackendCommands.GpuNvDisplayContainerChange, args, CancellationToken.None), "调整显示容器服务");
+
     private async Task<BackendClient> EnsureClientAsync(CancellationToken cancellationToken)
     {
         if (_client is { IsUsable: true })
@@ -108,10 +123,21 @@ internal sealed class BackendNvProfileService : INvProfileService
         return Map(result, readOnly ? "锁定驱动配置数据库" : "解除只读锁定");
     }
 
-    private static OperationResult Map(BackendResult result, string what)
+    internal static OperationResult Map(BackendResult result, string what)
     {
-        if (result.Data is { } data)
-            return BackendJson.Deserialize<OperationResult>(data);
-        return result.Status is BackendResultStatuses.Ok or BackendResultStatuses.Partial ? OperationResult.Ok(result.Message) : OperationResult.Fail($"{what}失败：{result.Message}");
+        var operation = result.Data is { } data ? BackendJson.Deserialize<OperationResult>(data) : null;
+        var unknown = operation?.OutcomeUnknown == true || result.RequiresReview || result.PendingRestore
+            || result.Code is "backend.timeout" or "backend.cancel-unconfirmed" or "backend.transport-unconfirmed" or "backend.disconnected"
+            // An OK envelope without a usable receipt cannot establish what was persisted.
+            || result.Status == BackendResultStatuses.Ok && operation?.Success != true;
+        var partial = operation?.IsPartial == true || result.Status == BackendResultStatuses.Partial;
+        var success = result.Status == BackendResultStatuses.Ok && operation?.Success == true && !partial && !unknown;
+        var message = operation?.Message is { Length: > 0 } detail ? detail : result.Message;
+        return new OperationResult
+        {
+            Success = success, IsSkipped = success && operation!.IsSkipped, IsPartial = partial, OutcomeUnknown = unknown,
+            DiagnosticsDirectory = operation?.DiagnosticsDirectory ?? "",
+            Message = success ? message : $"{what}{(unknown || partial ? "未确认完成" : "未完成")}：{message}",
+        };
     }
 }

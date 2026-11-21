@@ -44,7 +44,7 @@ $postInstall = [regex]::Match($source, 'procedure CurStepChanged\([\s\S]+?functi
 Assert-Safety ($postInstall.Contains('ReleaseDeploymentMutex();')) 'Successful setup releases launch gate before postinstall Run entries'
 Assert-Safety ($postInstall.Contains('UpdateChannelInstallationId') -and $postInstall.Contains('UpdateChannelAlphaInstallationId')) 'Installer records one-shot update-channel policy without launching the app'
 Assert-Safety ($app.IndexOf('UpdateChannelInstallation.ApplyCurrentInstallation()') -lt $app.IndexOf('var mainWindow = new MainWindow()')) 'Install channel policy runs before UI and automatic update checks'
-Assert-Safety ($app.Contains('if (ExitAlreadyPrepared) return;')) 'Completed or rejected launch cannot start new recovery during ProcessExit'
+Assert-Safety ($app.Contains('if (ExitAlreadyPrepared || _windowsSessionEnding) return;')) 'Completed or rejected launch cannot start new recovery during ProcessExit'
 $update = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\src\DeltaNFD\Services\UpdateService.cs'))
 $updateUi = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\src\DeltaNFD\ViewModels\UpdateViewModel.cs'))
 Assert-Safety ($update.Contains('DeploymentHandover.PrepareAsync(uninstall: false)') -and -not $updateUi.Contains('RequestExitForUpdate()')) 'Automatic update uses shared preparation and cannot exit on a timer during installer recovery'

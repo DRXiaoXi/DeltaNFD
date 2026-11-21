@@ -52,7 +52,8 @@ public sealed partial class MainWindow : Window
                 // Allow the calling page to present its own error first; that dialog gets the same action.
                 await Task.Delay(500);
                 if (_exitRequested || Content.XamlRoot is null) return;
-                if (Services.Backends.BackendAttention.Snapshot(onlyUnshown: true).Count == 0) return;
+                RefreshFrameRecoveryNotice();
+                if (!BackendDialogExtensions.HasUnsolicitedNotice()) return;
                 ActivateFromSecondLaunch();
                 await BackendDialogExtensions.ShowUnconfirmedAsync(Content.XamlRoot);
                 completedNormally = true;
@@ -62,10 +63,76 @@ public sealed partial class MainWindow : Window
             {
                 Volatile.Write(ref _backendAttentionQueued, 0);
                 if (completedNormally && !_exitRequested && !BackendReviewFlow.IsReviewing
-                    && Services.Backends.BackendAttention.Snapshot(onlyUnshown: true).Count > 0) OnBackendAttention();
+                    && BackendDialogExtensions.HasUnsolicitedNotice()) OnBackendAttention();
             }
         })) Volatile.Write(ref _backendAttentionQueued, 0);
     }
+    internal void RefreshFrameRecoveryNotice()
+    {
+        FrameRecoveryNotice.IsOpen = AppSettingsStore.Read().FrameStartupRecoveryPending || BackendsNeedFrameReview();
+        FrameRecoveryNotice.Message = AppSettingsStore.Read().FrameModeActive
+            ? "帧格有设置尚待核对。" : "帧格暂未开启。需要时可核对上次的设置。";
+    }
+
+    private static bool BackendsNeedFrameReview() => Services.Backends.BackendAttention.Snapshot()
+        .Any(n => n.Module == DeltaNFD.Backends.BackendModules.CpuFrame);
+
+    internal void RefreshFrameAfterCancelledShutdown()
+    {
+        if (ServiceLocator.Frame is FrameService frame) frame.RefreshActiveState();
+        RefreshFrameRecoveryNotice();
+    }
+
+    private async Task InitializeFrameSessionAsync()
+    {
+        try
+        {
+            if (OfflineModeGuard.BlocksNormalAutomation || ServiceLocator.Frame is not FrameService frame) return;
+            if (BackendsNeedFrameReview() && !AppSettingsStore.Read().FrameStartupRecoveryPending)
+                AppSettingsStore.UpdateRequired(s => s.FrameStartupRecoveryPending = true);
+            if (AppSettingsStore.Read().FrameStartupRecoveryPending)
+            {
+                if (!ElevationHelper.IsElevated || !await Services.Backends.BackendRecovery.TryRecoverStartupFrameAsync()) return;
+                AppSettingsStore.UpdateRequired(s => s.FrameStartupRecoveryPending = false);
+                GameTargetService.Default.SetRestoreFailure("帧格电源计划", false);
+                await ServiceLocator.GameMonitor.StartAfterRecoveryAsync();
+            }
+            var procmanReady = await Services.Backends.BackendProcmanService.Instance.ActivateSavedRulesAsync();
+            await frame.RestorePersistentCpuSchedulingAsync();
+            if (procmanReady && FrameSessionState.CanResume(AppSettingsStore.Read()) && !frame.IsGpuSpoofInFrame
+                && !AppSettingsStore.Read().TempSpoofRestorePending)
+            {
+                var result = await frame.ActivateFrameModeAsync(automatic: true);
+                if (!result.Success || result.IsPartial)
+                    Log.Warn("打开软件后帧格未完整开启：" + result.Message);
+            }
+        }
+        catch (Exception ex) { Log.Warn("启动时未完成帧格核对，保留原记录：" + ex.Message); }
+        finally
+        {
+            RefreshFrameRecoveryNotice();
+        }
+    }
+
+    private async void ReviewPreviousFrame_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var cpu = DeltaNFD.Backends.BackendModules.CpuFrame;
+            if (Services.Backends.BackendUnconfirmedStore.PendingModules().Contains(cpu))
+            {
+                await BackendReviewFlow.RunAsync(Content.XamlRoot, [cpu]);
+            }
+            else
+            {
+                if (Content.XamlRoot is { } root && ServiceLocator.Frame is FrameService frame)
+                    await FramePage.ReviewPowerBackupAsync(root, frame);
+            }
+        }
+        catch (Exception ex) { Log.Warn("人工核对尚未完成，原记录保留：" + ex.Message); }
+        finally { RefreshFrameRecoveryNotice(); }
+    }
+
     private bool _gpuWatchReady;
     private bool _gpuWatchInFlight;
     private IReadOnlyList<GpuSpoofInvalidation> _gpuWatchItems = [];
@@ -88,7 +155,6 @@ public sealed partial class MainWindow : Window
         InitializeGameVersionWatch();
         RuntimeNavigationItem.Visibility = ReleaseFeatures.RuntimeUiEnabled ? Visibility.Visible : Visibility.Collapsed;
         ClockNavigationItem.Visibility = ReleaseFeaturePolicy.PendulumEnabled ? Visibility.Visible : Visibility.Collapsed;
-        DriverPriorityNavigationItem.Visibility = ReleaseFeaturePolicy.DriverPriorityEnabled ? Visibility.Visible : Visibility.Collapsed;
         Services.Backends.BackendAttention.Changed += OnBackendAttention;
         Closed += (_, _) => Services.Backends.BackendAttention.Changed -= OnBackendAttention;
         ServiceLocator.GameTarget.Changed += OnGameTargetChanged;
@@ -140,11 +206,7 @@ public sealed partial class MainWindow : Window
         if (App.PendingFileFallback is not null) NavigateByTag("settings");
         else NavView.SelectedItem = NavView.MenuItems[0];
 
-        // 背景图：启动应用一次，并监听设置页的实时变更；隐藏到托盘时释放位图
-        ApplyBackgroundImage();
-        BackgroundManager.Changed += ApplyBackgroundImage;
-        AppWindow.Changed += AppWindow_BackgroundChanged;
-        Closed += (_, _) => { BackgroundManager.Changed -= ApplyBackgroundImage; AppWindow.Changed -= AppWindow_BackgroundChanged; };
+        InitializeWindowPresentation();
 
         // 发现新版本时在「设置」导航项上挂提示徽标（服务可能在后台线程触发）
         ServiceLocator.Update.AvailabilityChanged += OnUpdateAvailabilityChanged;
@@ -293,7 +355,8 @@ public sealed partial class MainWindow : Window
         }
         _ = CheckGameVersionsAsync(force: true);
         // Win10 now uses a player-supplied DPC EXE; never resume legacy TESTSIGNING/certificate preparation.
-        if (retiredRecovery.Success) _ = Services.Backends.BackendProcmanService.Instance.ActivateSavedRulesAsync();
+        if (retiredRecovery.Success) await InitializeFrameSessionAsync();
+        else RefreshFrameRecoveryNotice();
 
         // 启动时主页可能在目录提示之前已创建；路径设置完成后立即使用真实游戏目录重扫。
         if (ContentFrame.Content is DashboardPage dashboard)
@@ -367,6 +430,7 @@ public sealed partial class MainWindow : Window
 
             // 内存限制警告排在最后：检测到 bcdedit removememory 时给出去除入口。
             await CheckMemoryLimitOnStartupAsync();
+            _startupChecksCompletedForTray = retiredRecovery.Success;
         }
     }
 
@@ -839,92 +903,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>
-    /// 应用背景：按 BackgroundManager 解析（自定义 > 内置 Assets\background.*）显示图片，
-    /// 并按设置里的遮罩浓度叠暗色遮罩保证可读；无背景时维持 Mica。
-    /// </summary>
-    private void ApplyBackgroundImage()
-    {
-        try
-        {
-            var path = BackgroundManager.ResolveCurrent();
-            if (path is null)
-            {
-                ReleaseBackgroundImage();
-                _backgroundPath = null;
-                BgImage.Visibility = Visibility.Collapsed;
-                BgDim.Visibility = Visibility.Collapsed;
-                return;
-            }
-
-            // 设置变更（含同名替换自定义图）一律重新解码；窗口隐藏（托盘 / 静默启动）时推迟到恢复显示。
-            ReleaseBackgroundImage();
-            if (path != _backgroundPath) _backgroundNaturalWidth = 0;
-            _backgroundPath = path;
-            if (AppWindow.IsVisible) LoadBackgroundBitmap(path, BackgroundDecodeWidth());
-            BgImage.Visibility = Visibility.Visible;
-
-            var alpha = (byte)Math.Round(255 * BackgroundManager.DimOpacity);
-            BgDim.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(alpha, 0, 0, 0));
-            BgDim.Visibility = alpha == 0 ? Visibility.Collapsed : Visibility.Visible;
-        }
-        catch
-        {
-            // 背景加载失败不影响主功能（保持 Mica）
-            ReleaseBackgroundImage();
-            BgImage.Visibility = Visibility.Collapsed;
-            BgDim.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private string? _backgroundPath;
-    private int _backgroundDecodeWidth;
-    private int _backgroundNaturalWidth;
-
-    /// <summary>按窗口物理像素宽度解码（320 档位，上限 2560）；UniformToFill 时按 16:10 换算高度需求。</summary>
-    private int BackgroundDecodeWidth()
-    {
-        var size = AppWindow.Size;
-        var needed = Math.Max(size.Width, (int)Math.Ceiling(size.Height * 1.6));
-        var width = Math.Clamp((needed + 319) / 320 * 320, 960, 2560);
-        return _backgroundNaturalWidth > 0 ? Math.Min(width, _backgroundNaturalWidth) : width;
-    }
-
-    private void LoadBackgroundBitmap(string path, int decodeWidth)
-    {
-        if (BgImage.Source is not null && decodeWidth <= _backgroundDecodeWidth) return;
-        var bitmap = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage { DecodePixelWidth = decodeWidth };
-        bitmap.ImageOpened += (_, _) =>
-        {
-            // 记录原始宽度，之后不再放大解码。
-            if (ReferenceEquals(BgImage.Source, bitmap) && bitmap.PixelWidth > 0) _backgroundNaturalWidth = bitmap.PixelWidth;
-        };
-        bitmap.UriSource = new Uri(path);
-        BgImage.Source = bitmap;
-        _backgroundDecodeWidth = decodeWidth;
-    }
-
-    private void ReleaseBackgroundImage()
-    {
-        BgImage.Source = null;
-        _backgroundDecodeWidth = 0;
-    }
-
-    /// <summary>窗口隐藏时释放背景位图，显示或变大时按新宽度重新解码。只影响外观。</summary>
-    private void AppWindow_BackgroundChanged(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowChangedEventArgs args)
-    {
-        if (!args.DidVisibilityChange && !args.DidSizeChange) return;
-        if (!sender.IsVisible)
-        {
-            if (args.DidVisibilityChange) ReleaseBackgroundImage();
-            return;
-        }
-        // 只在背景图模式下按上次解析的路径重载，不在拖动缩放时反复读取设置。
-        if (BgImage.Visibility != Visibility.Visible || _backgroundPath is null) return;
-        try { LoadBackgroundBitmap(_backgroundPath, BackgroundDecodeWidth()); }
-        catch { ReleaseBackgroundImage(); }
-    }
-
     private async void AppWindow_Closing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
     {
         if (_exitRequested)
@@ -953,7 +931,7 @@ public sealed partial class MainWindow : Window
         var settings = AppSettingsStore.Read();
         if (settings.CloseToTrayEnabled)
         {
-            // 已启用托盘驻留时，关闭窗口直接隐藏；注册失败则放行关闭，避免用户无法退出。
+            // 先确保有可用图标。空闲时尝试交接给轻量托盘，有后台任务时仍只隐藏。
             var tray = GetOrCreateTrayIcon();
             if (tray is null || !tray.Show())
             {
@@ -1069,19 +1047,9 @@ public sealed partial class MainWindow : Window
         return frameMonitoringActive || cpuSchedulingActive;
     }
 
-    private void HideToTray()
-    {
-        if (_trayIcon is null || !_trayIcon.Show())
-        {
-            Log.Error("托盘：图标注册失败，无法驻留托盘");
-            return;
-        }
-
-        AppWindow.Hide();
-    }
-
     private void RestoreFromTray()
     {
+        _lightweightTrayRequested = false;
         _trayIcon?.Hide();
         AppWindow.Show();
         Activate();
@@ -1128,7 +1096,9 @@ public sealed partial class MainWindow : Window
         if (Content is UIElement content) content.IsHitTestVisible = true;
     }
 
-    internal void ExitForDeployment()
+    internal void ExitForDeployment() => ExitAfterPreparedHandover();
+
+    private void ExitAfterPreparedHandover()
     {
         App.ExitAlreadyPrepared = true;
         _exitRequested = true;
@@ -1211,6 +1181,7 @@ public sealed partial class MainWindow : Window
                     CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
                 return;
             }
+            if (AppSettingsStore.Read().FrameModeActive) AppSettingsStore.UpdateRequired(FrameSessionState.CompleteExit);
             // 本次已完成可信排空，ProcessExit 兜底不应再次执行恢复流程。
             exitOperations.Commit();
             _committedExitOperations = exitOperations; // Keep admission closed through actual process termination.
@@ -1368,7 +1339,7 @@ public sealed partial class MainWindow : Window
         Type pageType = item.Tag?.ToString() switch
         {
             "system" => typeof(SystemOptimizePage),
-            "driverpriority" => typeof(DriverPriorityPage),
+            "crashlogs" => typeof(CrashDiagnosticsPage),
             "spoof" => typeof(GpuSpoofPage),
             "nvsettings" => typeof(NvSettingsPage),
             "gamemods" => typeof(GameModificationsPage),
@@ -1398,7 +1369,6 @@ public sealed partial class MainWindow : Window
     private bool _pendulumUnsupportedDialogOpen;
     private bool CanEnterPendulumPage(string tag)
     {
-        if (tag == "driverpriority" && !ReleaseFeaturePolicy.DriverPriorityEnabled) return false;
         if (tag == "clock" && !ReleaseFeaturePolicy.PendulumEnabled) return false;
         if (tag != "clock" || DeltaNFD.Inspection.PendulumGlobalInspection.Supported) return true;
         _ = ShowPendulumUnsupportedAsync();

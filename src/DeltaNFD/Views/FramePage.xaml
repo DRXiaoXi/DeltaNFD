@@ -114,7 +114,7 @@
                                 <Grid ColumnSpacing="16">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                     <StackPanel Spacing="4">
-                                        <TextBlock Text="NVIDIA 前后台 GPU 比例" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="采用 NVIDIA App 相同的后台 YieldPct 数值：前台优先 10%，默认 20%，后台优先 50%；前台显示为 100% 减去后台比例。此为全局调度偏好，影响所有前台和后台 GPU 应用，比例不代表实际占用或独占资源。需要当前驱动、HAGS 和已安装的 NVIDIA App 提供支持。先备份实际原值，写后回读，帧格或目标游戏结束后恢复；检测到外部改动时退出接管并保留原值备份，不覆盖 NVIDIA App 的新设置。"/>
+                                        <TextBlock Text="NVIDIA 前后台 GPU 比例" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="采用 NVIDIA App 相同的后台 YieldPct 数值：前台优先 10%，默认 20%，后台优先 50%；前台显示为 100% 减去后台比例。此为全局调度偏好，影响所有前台和后台 GPU 应用，比例不代表实际占用或独占资源。已核验的 621.14 驱动库配合单张 Blackwell 架构 NVIDIA 显卡，可直接通过驱动生效，无需安装 NVIDIA App；其他组合尝试已核验的 NVIDIA App 兼容模式。需要 HAGS 已生效。先备份实际原值，写后回读，帧格或目标游戏结束后恢复；检测到外部改动时退出接管并保留原值备份，不覆盖 NVIDIA App 的新设置。"/>
                                         <TextBlock Text="影响所有应用；游戏或帧格结束后恢复原值。需 HAGS、NVIDIA App 11.0.9.585。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
                                     </StackPanel>
                                     <ToggleSwitch Grid.Column="1" IsOn="{x:Bind FrameSrv.NvidiaGpuShareEnabled, Mode=TwoWay}" IsEnabled="{x:Bind FrameSrv.FeaturesEditable, Mode=OneWay}" OnContent="" OffContent="" MinWidth="0" AutomationProperties.Name="NVIDIA 前后台 GPU 比例"/>
@@ -187,12 +187,12 @@
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" VerticalAlignment="Center" AutomationProperties.Name="游戏进程禁用电源限制" IsOn="{x:Bind GamePowerSelected, Mode=TwoWay}" IsEnabled="{x:Bind FrameSrv.FeaturesEditable, Mode=OneWay}" OnContent="" OffContent="" MinWidth="0" HorizontalAlignment="Right"/>
                         </Grid>
-                        <!-- Prepared by the backend: no preparation prompt or independent ignore toggle here. -->
+                        <!-- Prepared by the backend: a single switch controls the clock and game policy together. -->
                         <Grid x:Name="PendulumFramePanel" Visibility="{x:Bind FrameSrv.PendulumPrepared, Mode=OneWay}" ColumnSpacing="16" Style="{StaticResource FeatureTileGridStyle}" Margin="0,4" ui:HoverLift.Enabled="True">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Spacing="4" VerticalAlignment="Center">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock Text="钟摆计划" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="完成当前系统的准备与检测保存后显示。开启帧格后先持有对应精度，再核验并忽略当前目标游戏的精度请求；自定义模式按所选 EXE 的完整路径核验。Windows 10 同时保持玩家自备的 DPC 在后台。&#10;&#10;Win10 先进行隔离策略能力自检；两系统均保留无请求进程的时钟可达性检测和目标进程回读。时钟过粗、持有失效或访问被拒绝时如实显示未生效。关闭帧格或退出工具时恢复忽略策略并释放请求。"/>
+                                    <TextBlock Text="钟摆计划" FontWeight="SemiBold" TextWrapping="Wrap" ui:HelpTip.Text="完成当前系统的准备与检测保存后显示。联动开关和帧格均开启时，先持有对应精度，再核验并忽略当前目标游戏的精度请求；自定义模式按所选 EXE 的完整路径核验。Windows 10 同时保持玩家自备的 DPC 在后台。&#10;&#10;Win10 先进行隔离策略能力自检；两系统均保留无请求进程的时钟可达性检测和目标进程回读。忽略后复测系统读数和无请求等待，不用系统读数猜测来源；若钟摆时钟不可用则恢复游戏原策略。关闭此开关、关闭帧格或退出工具时，先恢复游戏的原策略，再释放钟摆请求。"/>
                                     <Border Style="{StaticResource ChipBorderStyle}" Background="{ThemeResource ControlFillColorDefaultBrush}">
                                         <TextBlock Text="{x:Bind GameTimerIgnorePlatformText, Mode=OneWay}" Style="{StaticResource CaptionStyle}"/>
                                     </Border>
@@ -200,7 +200,9 @@
                                 <TextBlock Style="{StaticResource NoteStyle}" TextWrapping="Wrap" Text="{x:Bind FrameSrv.PendulumDescription, Mode=OneWay}"/>
                                 <TextBlock Text="{x:Bind GameTimerIgnoreStatusText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource CaptionStyle}" AutomationProperties.LiveSetting="Polite"/>
                             </StackPanel>
-                            <TextBlock Grid.Column="1" Text="随帧格启停" Style="{StaticResource CaptionStyle}" VerticalAlignment="Center"/>
+                            <ToggleSwitch Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" MinWidth="0" OnContent="" OffContent=""
+                                          AutomationProperties.Name="帧格钟摆计划联动" IsOn="{x:Bind FrameSrv.PendulumEnabled, Mode=TwoWay}"
+                                          IsEnabled="{x:Bind FrameSrv.CanTogglePendulum, Mode=OneWay}"/>
                         </Grid>
                         <!-- 功能：前台加速响应（总开关 + 两个子开关；退出帧格自动还原） -->
                         <StackPanel Spacing="4" Style="{StaticResource FeatureTilePanelStyle}" Margin="0,4" ui:HoverLift.Enabled="True">

@@ -72,6 +72,9 @@ internal sealed class FrameGameTimerIgnore
     internal Action? BeforeSaveForTests { get; set; }
     internal FrameTimerIgnoreSnapshot Snapshot => Volatile.Read(ref _snapshot);
     internal FrameTimerLegacyProbe Probe => _probe;
+    // Successful writes or writes with unknown outcome both require a new post-apply check.
+    private long _applyWriteRevision;
+    internal long ApplyWriteRevision => Interlocked.Read(ref _applyWriteRevision);
 
     /// <param name="accept">允许施加/维护的目标判定（默认只认经核验的三角洲主进程）。</param>
     /// <param name="validate">恢复记录的身份校验（与 accept 分开：从忽略列表移除名称后，已有原值记录仍必须能恢复）。</param>
@@ -321,6 +324,7 @@ internal sealed class FrameGameTimerIgnore
                             if (!allowed(identity) || !_accept(identity)) throw new IOException("提交前执行条件已失效，未写入");
                             try
                             {
+                                Interlocked.Increment(ref _applyWriteRevision);
                                 handle.Write(desired);
                                 if (!handle.Read().Forced) throw new IOException("忽略位回读未确认");
                             }

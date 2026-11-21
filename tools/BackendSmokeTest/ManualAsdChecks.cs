@@ -132,7 +132,7 @@ internal static class ManualAsdChecks
             }
             session=Start();
             Check(Path.GetFullPath(system).StartsWith(Path.GetFullPath(root)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase),"owned fixture deletion remains within its generated root");
-            DriverPriorityStore.RejectLinks(system); Directory.Delete(system,true); File.WriteAllText(system,"not a directory");
+            ManualAsdStore.RejectLinks(system); Directory.Delete(system,true); File.WriteAllText(system,"not a directory");
             Reject(()=>ManualAsdInspection.Finish(store,session.Id,Read),"invalid system-cache root is a read failure, not an absence result");
             Check(store.Read()?.Stage==ManualAsdStage.Warmup,"metadata read failure remains retryable");
             File.Delete(system);Directory.CreateDirectory(system);

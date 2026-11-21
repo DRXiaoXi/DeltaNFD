@@ -20,6 +20,9 @@ internal static class FolderPickerDialog
     public static string? PickExecutable(nint ownerHwnd, string? initialFile, string? title = null) =>
         PickCore(ownerHwnd, File.Exists(initialFile) ? Path.GetDirectoryName(initialFile) : null, false, executableTitle: title);
 
+    public static string? PickCrashDump(nint ownerHwnd) => PickCore(ownerHwnd,
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Minidump"), false, crashDump: true);
+
     public static string? PickPluginPackage(nint ownerHwnd)
     {
         if (ownerHwnd == nint.Zero) throw new InvalidOperationException("主窗口尚未就绪，无法显示插件选择窗口。");
@@ -35,7 +38,7 @@ internal static class FolderPickerDialog
         return path;
     }
 
-    private static string? PickCore(nint ownerHwnd, string? initialFolder, bool folderOnly, bool pluginPackage = false, string? executableTitle = null)
+    private static string? PickCore(nint ownerHwnd, string? initialFolder, bool folderOnly, bool pluginPackage = false, string? executableTitle = null, bool crashDump = false)
     {
         var ownerWasEnabled = ownerHwnd != nint.Zero && IsWindowEnabled(ownerHwnd);
         var dialog = (IFileOpenDialog)new FileOpenDialogCom();
@@ -46,9 +49,9 @@ internal static class FolderPickerDialog
                 : (options & ~FosPickfolders & ~0x200u) | FosForceFilesystem | 0x1000u | 0x800u | 0x4u);
             if (!folderOnly)
             {
-                dialog.SetFileTypes(1, [new FilterSpec { Name = pluginPackage ? "插件包 (*.dnfdplugin)" : "应用程序 (*.exe)", Pattern = pluginPackage ? "*.dnfdplugin" : "*.exe" }]);
-                dialog.SetDefaultExtension(pluginPackage ? "dnfdplugin" : "exe");
-                dialog.SetTitle(pluginPackage ? "选择拓展插件包" : executableTitle ?? "选择主进程 EXE");
+                dialog.SetFileTypes(1, [new FilterSpec { Name = crashDump ? "内核转储 (*.dmp)" : pluginPackage ? "插件包 (*.dnfdplugin)" : "应用程序 (*.exe)", Pattern = crashDump ? "*.dmp" : pluginPackage ? "*.dnfdplugin" : "*.exe" }]);
+                dialog.SetDefaultExtension(crashDump ? "dmp" : pluginPackage ? "dnfdplugin" : "exe");
+                dialog.SetTitle(crashDump ? "选择蓝屏转储" : pluginPackage ? "选择拓展插件包" : executableTitle ?? "选择主进程 EXE");
             }
 
             if (!string.IsNullOrEmpty(initialFolder) && Directory.Exists(initialFolder))

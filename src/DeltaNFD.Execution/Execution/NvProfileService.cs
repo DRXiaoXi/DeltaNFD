@@ -144,15 +144,8 @@ public sealed class NvProfileService : INvProfileService
     {
         using var targetOperation = GameTargetService.Default.BeginOperation();
         if (GameTargetService.Default.IsCustom && !File.Exists(GameExeName)) return null;
-        try
-        {
-            var raw = NvApiDrs.GetApplicationSettings(GameExeName, NvDriverSettingPolicy.ReadIds);
-            return raw is null ? null : NvDriverSettingPolicy.Project(raw);
-        }
-        catch (InvalidOperationException)
-        {
-            return null;
-        }
+        var raw = NvApiDrs.GetApplicationSettings(GameExeName, NvDriverSettingPolicy.ReadIds);
+        return raw is null ? null : NvDriverSettingPolicy.Project(raw);
     });
 
     public Task<OperationResult> ApplyGameSettingsAsync(IReadOnlyList<(uint Id, uint? Value)> changes, bool rebarWarningAccepted = false) => Task.Run(() =>
@@ -181,25 +174,33 @@ public sealed class NvProfileService : INvProfileService
             return OperationResult.Fail("驱动配置数据库（nvdrsdb）处于只读锁定状态——请先在上方解除只读锁定，再应用设置。");
         }
 
-        // 展开联动总开关：SR preset / SR 比例 任一非默认 → 开启 SR Enable；两者都默认 → 删除 SR Enable。FG 同理。
-        var current = NvApiDrs.GetApplicationSettings(GameExeName, NvDriverSettingPolicy.ReadIds);
-        if (current is null) return OperationResult.Fail("原设置读取失败，未写入驱动配置。");
-        var expanded = NvDriverSettingPolicy.Expand(changes, current, env.DriverVersion);
-
-        var (ok, message) = NvApiDrs.ApplyApplicationSettings(
-            GameExeName, GameTargetService.Default.Current.DisplayName, expanded);
-        if (ok)
-        {
-            Log.Info("NV设置：应用成功 —— " + message);
-        }
+        var result = NvApiDrs.ApplyApplicationSettings(GameExeName, changes, env.DriverVersion, rebarWarningAccepted, CanSaveGameProfile);
+        if (result.Success)
+            Log.Info("NV设置：" + (result.IsSkipped ? "跳过" : "应用成功") + " —— " + result.Message);
         else
-        {
-            Log.Warn("NV设置：应用失败 —— " + message);
-        }
+            Log.Warn("NV设置：" + (result.OutcomeUnknown ? "保存待核对" : "应用失败") + " —— " + result.Message);
+        return result;
+    });
 
-        return ok
-            ? OperationResult.Ok(message + "立即对之后启动的游戏会话生效。")
-            : OperationResult.Fail(message);
+    private static bool CanSaveGameProfile()
+    {
+        foreach (var path in DrsFiles)
+        {
+            try { if ((File.GetAttributes(path) & FileAttributes.ReadOnly) != 0) return false; }
+            catch (FileNotFoundException) { }
+            catch (DirectoryNotFoundException) { }
+        }
+        return true;
+    }
+
+    public Task<NvDlssIndicatorStatus> ReadDlssIndicatorAsync() => Task.Run(DeltaNFD.Inspection.NvDlssIndicatorInspection.Read);
+
+    public Task<OperationResult> SetDlssIndicatorAsync(bool enabled) => Task.Run(() =>
+    {
+        var result = NvDlssIndicatorService.Set(enabled);
+        if (result.Success) Log.Info("DLSS 指示器：" + result.Message);
+        else Log.Warn("DLSS 指示器：" + result.Message);
+        return result;
     });
 
     // ---------------- nvdrsdb 只读锁定 ----------------

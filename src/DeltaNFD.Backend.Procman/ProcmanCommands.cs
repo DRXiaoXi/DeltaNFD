@@ -91,6 +91,8 @@ internal static class ProcmanCommands
                 Task.FromResult(Wrap(context.Command, Engine.ReleaseOptimalClock())),
             [BackendCommands.ProcmanClockDpcConfigure] = context =>
                 Task.FromResult(Wrap(context.Command, Engine.ConfigureDpcPendulum(context.ArgsAs<DpcPendulumConfigureArgs>()))),
+            [BackendCommands.ProcmanClockCompare] = async context => Wrap(context.Command,
+                await Engine.CompareWakeAsync(context.ArgsAs<OptimalClockArgs>().Quick, context.CancellationToken)),
             [BackendCommands.ProcmanClockScan] = async context =>
             {
                 var args = context.ArgsAs<OptimalClockArgs>();

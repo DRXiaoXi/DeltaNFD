@@ -57,16 +57,16 @@ public static class ManualAsdStart
     {
         foreach (var root in roots)
         {
-            DriverPriorityStore.RejectLinks(root);
+            ManualAsdStore.RejectLinks(root);
             if (!Directory.Exists(root)) continue;
             var pending = new Stack<string>(); pending.Push(root); var count = 0;
             while (pending.TryPop(out var folder))
             {
                 if (++count > 4096) throw new IOException("缓存空目录核对达到上限。");
-                DriverPriorityStore.RejectLinks(folder);
+                ManualAsdStore.RejectLinks(folder);
                 foreach (var item in Directory.EnumerateFileSystemEntries(folder))
                 {
-                    DriverPriorityStore.RejectLinks(item);
+                    ManualAsdStore.RejectLinks(item);
                     if ((File.GetAttributes(item) & FileAttributes.Directory) != 0) pending.Push(item); else return true;
                 }
             }

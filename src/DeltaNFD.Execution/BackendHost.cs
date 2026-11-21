@@ -65,6 +65,8 @@ public sealed class BackendHostOptions
     public int ClockValueVersion { get; init; }
     public int ManualAsdVersion { get; init; }
     public int ClockEnvironmentVersion { get; init; }
+    public int NvSettingsSaveVersion { get; init; }
+    public int NvDisplayContainerVersion { get; init; }
     public required BackendModuleSpec Module { get; init; }
 
     /// <summary>命令 → 处理器。键必须全部位于 <see cref="BackendModuleSpec.Commands"/> 白名单内。</summary>
@@ -252,7 +254,7 @@ public static class BackendHost
             Environment.ProcessId,
             ProcessStartTicks(),
             Environment.ProcessPath ?? "",
-            SelfSha256(), options.GameInstallationScopeVersion, options.ClockValueVersion, options.ManualAsdVersion, options.ClockEnvironmentVersion);
+            SelfSha256(), options.GameInstallationScopeVersion, options.ClockValueVersion, options.ManualAsdVersion, options.ClockEnvironmentVersion, options.NvSettingsSaveVersion, options.NvDisplayContainerVersion);
         await writer.WriteAsync(BackendMessages.EncodeReady(options.Module.Id, sessionId, hello.RequestId, ready));
         Log.Info($"官方后端就绪：pid={ready.Pid}, version={ready.ModuleVersion}, session={sessionId:D}");
 

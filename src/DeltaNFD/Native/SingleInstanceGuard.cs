@@ -33,6 +33,8 @@ internal static class SingleInstanceGuard
     /// <summary>首个进程返回 true；后续进程通知主进程恢复窗口后退出。</summary>
     public static bool TryBecomePrimary(bool activateExisting = true)
     {
+        // The tray may already own the locks on this same entry thread when it opens WinUI.
+        if (_primaryMutex is not null && _legacyMutex is not null) return true;
         var activationEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ActivationEventName);
         var mutex = new Mutex(false, MutexName);
         if (!TryAcquire(mutex))
@@ -56,7 +58,7 @@ internal static class SingleInstanceGuard
             mutex.ReleaseMutex();
             mutex.Dispose();
             activationEvent.Dispose();
-            _ = MessageBoxW(nint.Zero, "检测到旧版三角帧不掉洲仍在运行。请从托盘退出旧版后，再启动 Delta NFD。", "三角帧不掉洲", 0x30);
+            if (activateExisting) _ = MessageBoxW(nint.Zero, "检测到旧版三角帧不掉洲仍在运行。请从托盘退出旧版后，再启动 Delta NFD。", "三角帧不掉洲", 0x30);
             return false;
         }
 
@@ -66,6 +68,9 @@ internal static class SingleInstanceGuard
         _legacyActivationEvent = legacyActivationEvent;
         return true;
     }
+
+    internal static int WaitForTrayActivation(WaitHandle exit, WaitHandle open, int milliseconds) =>
+        WaitHandle.WaitAny([exit, open, _activationEvent!, _legacyActivationEvent!], milliseconds);
 
     private static bool TryAcquire(Mutex mutex)
     {

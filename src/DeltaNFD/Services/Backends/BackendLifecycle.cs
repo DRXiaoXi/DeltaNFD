@@ -20,7 +20,7 @@ internal static class BackendLifecycle
     }
     /// <summary>排空全部后端并返回未确认退出者（空 = 全部排空）。异步版本供 UI 调用。</summary>
     public static async Task<IReadOnlyList<string>> PrepareHandoverAsync(string reason, TimeSpan? perBackendTimeout = null,
-        IProgress<string>? progress = null)
+        IProgress<string>? progress = null, bool windowsSessionEnd = false, bool idleTrayOnly = false)
     {
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
         void Report(string message)
@@ -50,9 +50,32 @@ internal static class BackendLifecycle
         using var starts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try { await BackendOperationGate.WaitForStartsAsync(starts.Token); }
         catch (OperationCanceledException) { Log.Warn("官方后端启动尚未收尾，交接暂缓。"); return BackendModules.All.Keys.ToArray(); }
-        foreach (var module in BackendUnconfirmedStore.PendingModules())
-            BackendUnconfirmedStore.ArchiveCompletedStaticBackup(module);
-        if (File.Exists(Path.Combine(AppDataPaths.Root, "defender-session.json"))
+        // Only the Windows session drain suspends live frame intent here. A cancelled shutdown
+        // never reactivates it in this process; completion on next launch requires verified recovery.
+        var stoppedFrame = windowsSessionEnd && AppSettingsStore.Read().FrameModeActive;
+        if (stoppedFrame) AppSettingsStore.UpdateRequired(FrameSessionState.BeginShutdown);
+        IReadOnlyList<string> Finish(string[] remaining)
+        {
+            if (!stoppedFrame || remaining.Length != 0) return remaining;
+            if (AppSettingsStore.ReadRequired().FramePowerRestorePending ||
+                File.Exists(Path.Combine(AppDataPaths.Root, "frame_power_scheme_snapshot.json"))) return [BackendModules.CpuFrame];
+            AppSettingsStore.UpdateRequired(s => s.FrameStartupRecoveryPending = false);
+            return remaining;
+        }
+        if (idleTrayOnly)
+        {
+            // Tray handoff may release established idle sessions, not initiate pending recovery.
+            var pending = BackendUnconfirmedStore.PendingModules();
+            if (File.Exists(Path.Combine(AppDataPaths.Root, "defender-session.json")))
+                return pending.Append(BackendModules.System).Distinct().ToArray();
+            if (pending.Count != 0) return pending;
+        }
+        else
+        {
+            foreach (var module in BackendUnconfirmedStore.PendingModules())
+                BackendUnconfirmedStore.ArchiveCompletedStaticBackup(module);
+        }
+        if (!idleTrayOnly && File.Exists(Path.Combine(AppDataPaths.Root, "defender-session.json"))
             && !BackendSessions.Snapshot().Any(c => c.ModuleId == BackendModules.System && !c.ExitConfirmed)
             && !BackendUnconfirmedStore.HasLiveBackend(BackendModules.System))
         {
@@ -65,7 +88,7 @@ internal static class BackendLifecycle
         }
         if (!BackendSessions.AnyActive)
         {
-            return BackendUnconfirmedStore.PendingModules();
+            return Finish(BackendUnconfirmedStore.PendingModules().ToArray());
         }
 
         Log.Info($"前后端分离：{reason}前开始排空官方后端。");
@@ -117,7 +140,7 @@ internal static class BackendLifecycle
             Log.Info($"前后端分离：{reason}前排空完成。");
         }
         Report(failed.Length == 0 ? "后台组件已安全退出。" : "收尾尚未确认，需要核对操作记录。");
-        return failed;
+        return Finish(failed);
         }
         finally { BackendOperationGate.Handover.Release(); }
     }

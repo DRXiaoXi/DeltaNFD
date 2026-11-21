@@ -153,6 +153,46 @@ internal static class FrameEntryRecoveryChecks
         check(FrameBackendReadiness.DescribeBlocker(false).Length == 0 && FrameBackendReadiness.DescribeBlocker(true).Length > 0,
             "仅配置显卡伪装的帧格流程需要处理旧 GPU 记录");
         File.Delete(gpu);
+
+        var fresh = new AppSettings();
+        check(!FrameSessionState.CanResume(fresh), "新装不擅自开启帧格");
+        var legacyStartup = new AppSettings { FrameModeActive = true };
+        FrameSessionState.BeginLaunch(legacyStartup);
+        check(legacyStartup.FrameResumeOnAppStart == true && !legacyStartup.FrameModeActive && legacyStartup.FrameStartupRecoveryPending
+            && !FrameSessionState.CanResume(legacyStartup), "旧真值迁移成偏好而不触发重放");
+        legacyStartup.FrameStartupRecoveryPending = false;
+        check(FrameSessionState.CanResume(legacyStartup), "仅实际复核成功后允许恢复偏好");
+        FrameSessionState.UserSetActive(legacyStartup, true);
+        FrameSessionState.BeginShutdown(legacyStartup);
+        check(!legacyStartup.FrameModeActive && legacyStartup.FrameResumeOnAppStart == true && !FrameSessionState.CanResume(legacyStartup), "退出前先撤销执行位而保留意愿");
+        legacyStartup.FrameStartupRecoveryPending = false;
+        check(FrameSessionState.CanResume(legacyStartup), "干净结束后下次打开可续用");
+        FrameSessionState.UserSetActive(legacyStartup, false);
+        check(!FrameSessionState.CanResume(legacyStartup), "用户手动关闭不再自动开启");
+        check(!BackendRecovery.CanAutoRestoreFrame(new(BackendModules.CpuFrame, "owned", "", false)
+            { Command = BackendCommands.CpuFrameRestore }), "未确认旧执行者不发恢复命令");
+        check(!BackendRecovery.CanAutoRestoreFrame(new(BackendModules.CpuFrame, "owned", "", true)
+            { Command = BackendCommands.CpuFrameRestore, CanRestore = true, ChildrenUnknown = true }), "未知子进程禁止自动恢复");
+
+        foreach (var scenario in new[] { "power-review", "failed", "remaining", "success" })
+        {
+            SeedCpuEvidence(path, BackendCommands.CpuFrameRestore);
+            var originalStartup = File.ReadAllBytes(path);
+            Environment.SetEnvironmentVariable("DELTANFD_TEST_RECOVERY_SCENARIO", scenario);
+            try
+            {
+                var verified = false;
+                try { verified = await BackendRecovery.TryRecoverStartupFrameAsync(); }
+                catch (InvalidOperationException) when (scenario is "failed" or "remaining") { }
+                check(verified == (scenario == "success"), "启动复用可信恢复及完整复核：" + scenario);
+                check(verified ? !File.Exists(path) : File.ReadAllBytes(path).SequenceEqual(originalStartup), "仅完整核验后归档：" + scenario);
+            }
+            finally { Environment.SetEnvironmentVariable("DELTANFD_TEST_RECOVERY_SCENARIO", null); }
+            if (File.Exists(path)) await BackendLifecycle.AcknowledgeCurrentStateAsync(BackendUnconfirmedStore.ReviewAll().Single());
+        }
+        Environment.SetEnvironmentVariable("DELTANFD_TEST_RECOVERY_SCENARIO", "success");
+        try { check(await BackendRecovery.TryRecoverStartupFrameAsync(), "没有外层记录时，仍可完整核对内部恢复状态"); }
+        finally { Environment.SetEnvironmentVariable("DELTANFD_TEST_RECOVERY_SCENARIO", null); }
     }
 
     private static void SeedCpuEvidence(string path, string command = BackendCommands.CpuFramePowerUnlock) => File.WriteAllText(path, JsonSerializer.Serialize(new

@@ -18,40 +18,64 @@ public sealed class PowerLockTargetItem
 
 public sealed partial class FramePage : Page, INotifyPropertyChanged
 {
-    private async void ReviewPowerBackup_Click(object sender, RoutedEventArgs e)
+    private async void ReviewPowerBackup_Click(object sender, RoutedEventArgs e) => await ReviewPowerBackupAsync(XamlRoot, FrameSrv);
+
+    internal static async Task ReviewPowerBackupAsync(XamlRoot root, IFrameService service)
     {
         try
         {
-            if (FrameSrv.FrameModeActive)
+            if (service.FrameModeActive)
             {
-                await new ContentDialog { XamlRoot = XamlRoot, Title = "先停用帧格", Content = "请先关闭一键帧格模式，再核对恢复记录，避免守护继续写入。", CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
+                await new ContentDialog { XamlRoot = root, Title = "先停用帧格", Content = "请先关闭一键帧格模式，再核对恢复记录，避免守护继续写入。", CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
                 return;
             }
-            var recovered = await FrameSrv.DeactivateFrameModeAsync();
-            var unresolved = await FrameSrv.GetIncompletePowerBackupsAsync();
+            var unresolved = await service.GetIncompletePowerBackupsAsync();
             if (unresolved.Count == 0)
             {
-                await new ContentDialog { XamlRoot = XamlRoot, Title = recovered.Success ? "电源记录已核对" : "恢复未完成", Content = recovered.Message, CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
+                if (!AppSettingsStore.Read().FrameStartupRecoveryPending)
+                {
+                    var restoreResult = await service.DeactivateFrameModeAsync();
+                    await new ContentDialog { XamlRoot = root, Title = restoreResult.Success ? "电源记录已核对" : "仍需核对",
+                        Content = restoreResult.Message, CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
+                    return;
+                }
+                var recovered = await Services.Backends.BackendRecovery.TryRecoverStartupFrameAsync();
+                if (recovered) FinishPreviousFrameReview();
+                await new ContentDialog { XamlRoot = root, Title = recovered ? "帧格记录已核对" : "仍需核对", Content = recovered ? "已按备份检查并还原。可手动重新开启帧格。" : "仍有未处理的记录，已保留原备份。", CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
                 return;
             }
-            var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "无法精确恢复的电源记录",
+            var dialog = new ContentDialog { XamlRoot = root, Title = "无法精确恢复的电源记录",
                 Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = string.Join("\n", unresolved.Select(r => r.Path + "\n" + r.Reason))
-                    + "\n\n先前恢复已尽力处理可读取项。若确认当前电源设置可以保留，可将列出的原记录归档并关闭“降低省电延迟”；若包含内容快照，也会关闭电源计划锁定。这不是恢复成功或恢复默认，不会在此步骤写入电源值或重建已删除的计划、原值；归档后原文件仍可用于排查。" },
+                    + "\n\n若确认当前电源设置可以保留，可将列出的原记录归档并关闭“降低省电延迟”；若涉及电源锁定记录，也会关闭电源计划锁定。这不是恢复成功或恢复默认，不会在此步骤写入电源值或重建已删除的计划、原值；归档后原文件仍可用于排查。" },
                 PrimaryButtonText = "保留当前值并归档", CloseButtonText = "继续保留待恢复", DefaultButton = ContentDialogButton.Close };
             if (await dialog.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary) return;
-            var result = await FrameSrv.PreserveCurrentPowerValuesAsync(unresolved);
-            await new ContentDialog { XamlRoot = XamlRoot, Title = result.Success ? "已归档证据" : "未完成", Content = result.Message, CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
+            var result = await service.PreserveCurrentPowerValuesAsync(unresolved);
+            if (result.Success && await Services.Backends.BackendRecovery.TryRecoverStartupFrameAsync())
+                FinishPreviousFrameReview();
+            await new ContentDialog { XamlRoot = root, Title = result.Success ? "已归档证据" : "未完成", Content = result.Message, CloseButtonText = "知道了" }.ShowWithBackendRecoveryAsync();
         }
         catch (Exception ex)
         {
             Log.Error("电源记录核对失败，证据保留", ex);
-            if (await new ContentDialog { XamlRoot = XamlRoot, Title = "电源记录尚未处理",
+            if (await new ContentDialog { XamlRoot = root, Title = "电源记录尚未处理",
                 Content = ex.Message + "\n\n若已有 CPU/帧格待核对记录，请先进入核对流程。无法恢复的旧电源备份可在其中选择保留当前值并归档，再完整复核其他状态。",
                 PrimaryButtonText = "核对未确认操作", CloseButtonText = "暂不处理", DefaultButton = ContentDialogButton.Close,
             }.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary)
-                await BackendReviewFlow.RunAsync(XamlRoot, [DeltaNFD.Backends.BackendModules.CpuFrame]);
+                await BackendReviewFlow.RunAsync(root, [DeltaNFD.Backends.BackendModules.CpuFrame]);
+        }
+        finally
+        {
+            if (service is FrameService frame) frame.RefreshPowerPreferences();
+            App.MainWindow?.RefreshFrameRecoveryNotice();
         }
     }
+    private static void FinishPreviousFrameReview()
+    {
+        AppSettingsStore.UpdateRequired(s => s.FrameStartupRecoveryPending = false);
+        GameTargetService.Default.SetRestoreFailure("帧格电源计划", false);
+        _ = ServiceLocator.GameMonitor.ReconnectAsync();
+    }
+
     public string TargetLabel => "当前主进程：" + DeltaNFD.Services.GameTargetService.Default.Current.DisplayName;
     public bool NormalModeControlsEnabled => !OfflineModeGuard.BlocksNormalAutomation;
     private static readonly SolidColorBrush GameRunningBrush =
@@ -240,7 +264,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
             or nameof(IFrameService.IsGameRunning) or nameof(IFrameService.DwmRestartOnGameStart) or nameof(IFrameService.DwmStatusText)
             or nameof(IFrameService.GamePowerThrottlingDisabled) or nameof(IFrameService.GamePowerStatusText) or nameof(IFrameService.GamePowerHasError)
             or nameof(IFrameService.GameTimerIgnoreEnabled) or nameof(IFrameService.GameTimerIgnoreStatusText) or nameof(IFrameService.GameTimerIgnoreSupported) or nameof(IFrameService.GameTimerIgnoreHasError)
-            or nameof(IFrameService.PendulumPrepared) or nameof(IFrameService.PendulumStatusText)
+            or nameof(IFrameService.PendulumPrepared) or nameof(IFrameService.PendulumEnabled) or nameof(IFrameService.PendulumStatusText)
             or nameof(IFrameService.GameProcessPriorityEnabled) or nameof(IFrameService.GameCpuPriority) or nameof(IFrameService.GameIoPriority) or nameof(IFrameService.GameMemoryPriority) or nameof(IFrameService.GamePriorityStatusText)
             or nameof(IFrameService.GameGpuPriorityEnabled) or nameof(IFrameService.GameGpuPriority) or nameof(IFrameService.GameGpuPriorityStatusText)
             or nameof(IFrameService.NvidiaGpuShareEnabled) or nameof(IFrameService.NvidiaGpuBackgroundPercent) or nameof(IFrameService.NvidiaGpuShareStatusText) or nameof(IFrameService.NvidiaGpuShareInfo)

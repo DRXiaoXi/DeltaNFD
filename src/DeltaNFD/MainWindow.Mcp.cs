@@ -108,7 +108,7 @@ public sealed partial class MainWindow
         bool? running = null;
         if (action.Module is "system" or "gpu" or "runtime" or "ace" || action.Name == "system.low-memory.status")
         { try { running = DeltaForceLocator.IsGameRunning(); } catch { } }
-        AgentAdmission.Check(action, McpEnabled, _exitRequested || _deploymentInProgress || _factoryResetInProgress,
+        AgentAdmission.Check(action, McpEnabled, _exitRequested || _deploymentInProgress || _factoryResetInProgress || _lightweightTrayTransition,
             ElevationHelper.IsElevated, running);
         BackendOperationGate.Check();
         if (BackendReviewFlow.IsReviewing && action.Name != "app.review") throw new InvalidOperationException("正在核对未确认操作，请先完成核对。");
@@ -132,8 +132,11 @@ public sealed partial class MainWindow
         {
             driver = (await ServiceLocator.NvProfile.GetEnvironmentAsync()).DriverVersion;
             var nv = BackendJson.Deserialize<NvDriverApplyArgs>(args);
+            var changes = nv.Changes.Select(c => (c.Id, c.Value)).ToArray();
             note = "\n当前驱动：" + NvDriverSettingPolicy.FormatDriver(driver) + "。\n"
-                + (NvDriverSettingPolicy.RebarWarning(driver, nv.Changes.Select(c => (c.Id, c.Value))) ?? "") + "\n";
+                + (changes.Any(c => NvDriverSettingPolicy.IsRebarEnable(c.Id, c.Value))
+                    ? NvDriverSettingPolicy.RebarSwitchNote + "\n" : "")
+                + (NvDriverSettingPolicy.RebarWarning(driver, changes) ?? "") + "\n";
         }
         var dialog = new ContentDialog
         {

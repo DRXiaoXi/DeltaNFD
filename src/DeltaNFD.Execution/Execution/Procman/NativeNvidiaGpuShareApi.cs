@@ -38,6 +38,7 @@ internal sealed class NativeNvidiaGpuShareApi : INvidiaGpuShareApi
     [UnmanagedFunctionPointer(CallingConvention.Winapi)] internal delegate int Setting(uint scope, ref ulong target, uint id, IntPtr data, uint size);
     [UnmanagedFunctionPointer(CallingConvention.Winapi)] private delegate int Init(uint flags, IntPtr reserved);
     [UnmanagedFunctionPointer(CallingConvention.Winapi)] private delegate int Close();
+    private DriverNvidiaGpuShareApi? _driver;
     private IntPtr _library;
     private FileStream? _pin;
     private Setting? _get, _set;
@@ -93,8 +94,13 @@ internal sealed class NativeNvidiaGpuShareApi : INvidiaGpuShareApi
     }
     private void EnsureLoaded()
     {
-        if (_library != IntPtr.Zero) return;
+        if (_driver != null || _library != IntPtr.Zero) return;
+        string directUnavailable;
+        try { _driver = DriverNvidiaGpuShareApi.Open(); return; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or EntryPointNotFoundException or System.Security.SecurityException)
+        { directUnavailable = ex.Message; }
         var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "NVIDIA Corporation", "NVIDIA app", "NvCpl", "nvcpl.dll");
+        if (!File.Exists(path)) throw new IOException($"独立驱动模式不可用：{directUnavailable} 未安装可供兼容模式使用的 NVIDIA App。");
         for (var current = path; !string.IsNullOrEmpty(current); current = Path.GetDirectoryName(current))
             if ((File.Exists(current) || Directory.Exists(current)) && (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
                 throw new IOException("NVIDIA App 库路径包含重解析点，未加载。");
@@ -121,7 +127,8 @@ internal sealed class NativeNvidiaGpuShareApi : INvidiaGpuShareApi
         lock (_gate)
         {
             EnsureLoaded();
-            return Query(_get!, HardwareKey()) with
+            var key = HardwareKey();
+            return (_driver != null ? _driver.Read(key) : Query(_get!, key)) with
             { HagsEnabled = DeltaNFD.Inspection.SystemSwitchInspection.ReadHags().State == DeltaNFD.Services.TweakDb.BxState.On };
         }
     }
@@ -132,7 +139,7 @@ internal sealed class NativeNvidiaGpuShareApi : INvidiaGpuShareApi
             var current = Read();
             if (expected.HardwareKey != current.HardwareKey || expected.Current != current.Current || !current.Allows(percent))
                 throw new IOException("NVIDIA 显卡、比例或支持范围在写入前已变化。");
-            Apply(_set!, percent);
+            if (_driver != null) _driver.Write(current, percent); else Apply(_set!, percent);
             var actual = Read();
             if (actual.HardwareKey != current.HardwareKey || actual.Current != percent) throw new IOException("NVIDIA 比例写后回读不一致。");
         }
@@ -141,13 +148,14 @@ internal sealed class NativeNvidiaGpuShareApi : INvidiaGpuShareApi
     {
         lock (_gate)
         {
+            _driver?.Dispose(); _driver = null;
             if (_library != IntPtr.Zero) { try { _close?.Invoke(); } finally { NativeLibrary.Free(_library); _library = IntPtr.Zero; _close = null; } }
             _pin?.Dispose(); _pin = null; _get = _set = null;
         }
     }
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr LoadLibraryEx(string name, IntPtr file, uint flags);
 
-    private static bool TrustedNvidia(string path)
+    internal static bool TrustedNvidia(string path)
     {
         var file = new TrustFile { Size = (uint)Marshal.SizeOf<TrustFile>(), Path = path };
         var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<TrustFile>());

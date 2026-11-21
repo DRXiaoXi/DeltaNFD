@@ -8,6 +8,20 @@ namespace DeltaNFD.Services;
 /// <summary>Per-user durable session; it grants no file paths or cleanup permission to callers.</summary>
 public sealed class ManualAsdStore(string path)
 {
+    public static void RejectLinks(string path)
+    {
+        for (var p = Path.GetFullPath(path); !string.IsNullOrEmpty(p); p = Path.GetDirectoryName(p))
+        {
+            try
+            {
+                if ((File.GetAttributes(p) & FileAttributes.ReparsePoint) != 0)
+                    throw new IOException("ASD 路径包含重解析点。");
+            }
+            catch (FileNotFoundException) { }
+            catch (DirectoryNotFoundException) { }
+        }
+    }
+
     public static ManualAsdStore Default => new(Path.Combine(AppDataPaths.Root, "Shader", "manual-asd.json"));
     public static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     public static string ContextId(ManualAsdContext context) => Hash(context.Owner + "|" + context.DriverKey + "|"
@@ -15,7 +29,7 @@ public sealed class ManualAsdStore(string path)
     public string FilePath { get; } = Path.GetFullPath(path);
     public ManualAsdSession? Read()
     {
-        DriverPriorityStore.RejectLinks(FilePath);
+        RejectLinks(FilePath);
         try
         {
             using var f = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
@@ -39,9 +53,9 @@ public sealed class ManualAsdStore(string path)
     }
     public void Save(ManualAsdSession session)
     {
-        DriverPriorityStore.RejectLinks(FilePath);
+        RejectLinks(FilePath);
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-        DriverPriorityStore.RejectLinks(FilePath);
+        RejectLinks(FilePath);
         var temp = FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {

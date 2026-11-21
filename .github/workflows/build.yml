@@ -330,10 +330,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Default Delta ACE regression" }
           dotnet run --project tools/BackendSmokeTest -c Release --no-build -- --system-optimize-safety-checks
           if ($LASTEXITCODE -ne 0) { throw "System optimization backup/cleanup regression" }
+          dotnet run --project tools/CrashDiagnosticsChecks -c Release
+          if ($LASTEXITCODE -ne 0) { throw "Crash diagnostics regression" }
           dotnet run --project tools/SystemOptimizeUiChecks -c Release
           if ($LASTEXITCODE -ne 0) { throw "System optimization confirmation and bounds regression" }
           dotnet run --project tools/NvSettingsChecks -c Release
           if ($LASTEXITCODE -ne 0) { throw "NVIDIA settings regression" }
+          dotnet run --project tools/NvDisplayContainerChecks -c Release
+          if ($LASTEXITCODE -ne 0) { throw "NVIDIA display container handshake and simulated service regression" }
           dotnet run --project tools/GameModificationChecks -c Release
           if ($LASTEXITCODE -ne 0) { throw "Recording review regression" }
 

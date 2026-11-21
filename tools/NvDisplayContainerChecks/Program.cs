@@ -1,0 +1,136 @@
+using DeltaNFD.Backends;
+using DeltaNFD.Services;
+using static DeltaNFD.Services.NvContainerMode;
+using static DeltaNFD.Services.NvContainerRun;
+
+if (args is ["--host-wire", var layout, var wireLog])
+{
+    try { await DisplayContainerWireProbe.RunAsync(layout, wireLog); }
+    catch (Exception ex) { File.WriteAllText(wireLog, ex.ToString()); Environment.ExitCode = 2; }
+    return;
+}
+if (args is ["--host-status"] or ["--host-status", _])
+{
+    var status = NvDisplayContainerService.Status();
+    string[] lines = [$"Elevated: {ElevationHelper.IsElevated}", status.Detail,
+        $"Fingerprint ready: {status.Fingerprint is not null}; restore: {status.Restore}"];
+    foreach (var line in lines) Console.WriteLine(line);
+    if (args.Length == 2) File.WriteAllLines(args[1], lines);
+    if (status.Fingerprint is null) Environment.ExitCode = 2;
+    return;
+}
+if (args is ["--host-read-only"])
+{
+    using var svc = new NvContainerScm(false);
+    // The protected backup store may require full administrator elevation; avoid opening it here.
+    var state = svc.Read();
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(state));
+    var image = NvDisplayContainerService.ParseImage(state.Image)!;
+    Console.WriteLine("NVIDIA signature: " + DeltaNFD.Execution.Procman.NativeNvidiaGpuShareApi.TrustedNvidia(image));
+    return;
+}
+var count = 0;
+void Check(bool value, string label)
+{
+    if (!value) throw new InvalidOperationException(label);
+    ++count;
+}
+await DisplayContainerReadyChecks.RunAsync(Check);
+var path = Path.Combine(NvDisplayContainerService.DriverStore, @"nv_test.inf_amd64_abcd\Display.NvContainer\NVDisplay.Container.exe");
+const string parameter = "-arg <ExeDir>\\arguments.txt";
+var imageName = path + " " + parameter;
+foreach (var raw in new[] { imageName, $"\"{path}\"  -arg \"<ExeDir>\\arguments.txt\"", path,
+    imageName.Replace(Path.GetDirectoryName(Environment.SystemDirectory)!, @"\SystemRoot"),
+    imageName.Replace(Path.GetDirectoryName(Environment.SystemDirectory)!, "%SystemRoot%"),
+    imageName.Replace(Path.GetDirectoryName(Environment.SystemDirectory)!, "%windir%") })
+    Check(NvDisplayContainerService.ParseImage(raw) == path, "equivalent SCM spelling rejected: " + raw);
+foreach (var raw in new[] { imageName + " -extra", imageName.Replace("nv_test", "..\\nv_test"), imageName.Replace(NvDisplayContainerService.DriverStore, @"C:\Users\Public"),
+    imageName.Replace("NVDisplay.Container.exe", "nvcontainer.exe"), $"\"{path} + {parameter}", "%TEMP%\\" + imageName,
+    imageName.Replace(".exe", ".exe:alt"), "\\\\?\\" + imageName, imageName.Replace("arguments.txt", "other.txt"), new string('a', 1025) })
+    Check(NvDisplayContainerService.ParseImage(raw) is null, "foreign path accepted: " + raw);
+Check(NvDisplayContainerService.ParseImage(imageName + " -extra", out var argumentReason) is null && argumentReason.Contains("启动参数"),
+    "unsupported arguments are identified separately");
+Check(NvDisplayContainerService.ParseImage(@"C:\Users\Public\NVDisplay.Container.exe " + parameter, out var pathReason) is null && pathReason.Contains("映像路径"),
+    "unsupported path is identified separately");
+foreach (var account in new[] { "LocalSystem", @"NT AUTHORITY\SYSTEM" })
+    Check(NvDisplayContainerService.IsLocalSystem(account), "system account alias");
+Check(!NvDisplayContainerService.IsLocalSystem(@"DOMAIN\LocalSystem"), "foreign account rejected");
+Check(BackendModules.IsReadOnly(BackendModules.Gpu, BackendCommands.GpuNvDisplayContainerStatus), "status must be read-only");
+Check(BackendModules.RequiresWriteIntent(BackendModules.Gpu, BackendCommands.GpuNvDisplayContainerChange), "writes require intent");
+
+OperationResult Apply(Fake f, bool? restore = null, string? fp = null, bool gate = true, bool trusted = true)
+{
+    var preview = NvDisplayContainerService.Describe(f.State, f.Saved);
+    return NvDisplayContainerService.Commit(f, f, new(restore ?? preview.Restore, fp ?? preview.Fingerprint ?? ""),
+        _ => trusted ? new MemoryStream() : throw new InvalidOperationException("untrusted"), () => gate);
+}
+foreach (var mode in new[] { Automatic, Manual })
+foreach (var delayed in new[] { true, false })
+foreach (var run in new[] { Running, Stopped })
+{
+    var original = new NvContainerState(imageName, mode, delayed, run, run == Running ? 71u : 0u);
+    var fake = new Fake(original);
+    Check(Apply(fake).Success && fake.State.Mode == Disabled && fake.State.Run == Stopped && fake.Saved != null, "disable");
+    var old = fake.Saved!;
+    Check(fake.Ops.SequenceEqual(run == Running ? ["save", "Disabled", "stop"] : ["save", "Disabled"]), "backup before write / never stops already-stopped state");
+    fake.Saved = NvContainerRegistryBackup.Decode(NvContainerRegistryBackup.Encode(old));
+    Check(fake.Saved == old, "legacy binary backup schema round trips");
+    fake.Ops.Clear();
+    Check(Apply(fake).Success && fake.State == original && fake.Saved == null, "restore verified");
+    Check(fake.Ops.SequenceEqual(run == Running ? [mode.ToString(), "start", "clear"] : [mode.ToString(), "clear"]), "restore running state only if originally running");
+}
+var fresh = new NvContainerState(imageName, Automatic, false, Running, 71);
+var f = new Fake(fresh);
+Check(!Apply(f, gate: false).Success && f.Ops.Count == 0, "running game denies operation");
+Check(!Apply(f, trusted: false).Success && f.Ops.Count == 0, "untrusted image denies operation");
+Check(!Apply(f, restore: true).Success && f.Ops.Count == 0, "stale polarity denied");
+Check(!Apply(f, fp: new string('0', 64)).Success && f.Ops.Count == 0, "stale preview denied");
+f.State = fresh with { Mode = Disabled, Run = Stopped, Pid = 0 };
+Check(!Apply(f).Success && f.Ops.Count == 0, "already disabled without ownership");
+f.State = fresh with { Run = StopPending };
+Check(!Apply(f).Success && f.Ops.Count == 0, "pending service state denied");
+f.State = fresh;
+f.Fail = "save";
+Check(Apply(f).OutcomeUnknown && f.State == fresh && f.Ops.SequenceEqual(["save"]), "backup failure never touches SCM");
+f.Ops.Clear(); f.Fail = "stop";
+Check(Apply(f).OutcomeUnknown && f.State.Mode == Disabled && f.State.Run == Running && f.Saved is not null, "partial stop preserves backup");
+f.Fail = null;
+Check(Apply(f).Success && f.State == fresh && f.Saved == null, "partial stop can restore");
+Check(Apply(f).Success, "repeat disable");
+f.State = f.State with { Image = imageName.Replace("abcd", "eeee") };
+Check(!Apply(f).Success && f.Saved != null, "driver update invalidates the old backup");
+f.State = f.State with { Image = imageName };
+f.Fail = "start";
+Check(Apply(f).OutcomeUnknown && f.State is { Mode: Automatic, Run: Stopped } && f.Saved != null, "partial restart preserves backup");
+f.Fail = null;
+Check(Apply(f).Success && f.State == fresh && f.Saved == null, "partial restart can retry");
+var previous = new NvContainerBackup(imageName, Automatic, false, true);
+var bytes = NvContainerRegistryBackup.Encode(previous);
+var legacyShape = Convert.ToHexString(bytes.AsSpan(0, 6));
+Check(legacyShape == "4E4453310202", "existing standalone backup magic, mode and flags");
+bytes[5] = 7;
+try { NvContainerRegistryBackup.Decode(bytes); throw new Exception("invalid flag accepted"); }
+catch (InvalidOperationException) { ++count; }
+Console.WriteLine($"PASS {count} assertions; simulated writes only.");
+
+sealed class Fake(NvContainerState state) : INvContainerScm, INvContainerBackupStore
+{
+    public NvContainerState State = state;
+    public NvContainerBackup? Saved;
+    public string? Fail;
+    public List<string> Ops = [];
+    private void Mutate(string action)
+    {
+        Ops.Add(action);
+        if (Fail == action) throw new IOException(action);
+    }
+    NvContainerState INvContainerScm.Read() => State;
+    NvContainerBackup? INvContainerBackupStore.Read() => Saved;
+    public void Save(NvContainerBackup backup) { Mutate("save"); Saved = backup; }
+    public void Clear() { Mutate("clear"); Saved = null; }
+    public void SetMode(NvContainerMode mode) { Mutate(mode.ToString()); State = State with { Mode = mode }; }
+    public void RequestStop() { Mutate("stop"); State = State with { Run = Stopped, Pid = 0 }; }
+    public void RequestStart() { Mutate("start"); State = State with { Run = Running, Pid = 71 }; }
+    public void WaitFor(NvContainerRun expected, NvContainerRun pending) { if (State.Run != expected) throw new IOException("unexpected run state"); }
+}
+

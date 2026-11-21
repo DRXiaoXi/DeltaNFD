@@ -23,6 +23,11 @@ internal static class BackendDialogExtensions
         public void Dispose() { if (Interlocked.Exchange(ref _disposed, 1) == 0) DialogGate.Release(); }
     }
 
+    private static IReadOnlyList<BackendAttentionItem> UnsolicitedNotices() => BackendAttention.Snapshot(onlyUnshown: true)
+        .Where(item => item.Module != DeltaNFD.Backends.BackendModules.CpuFrame).ToArray();
+
+    internal static bool HasUnsolicitedNotice() => UnsolicitedNotices().Count != 0;
+
     private static async Task<ContentDialogResult> ShowAsync(ContentDialog dialog, bool unsolicited, bool hasReviewAction = false, PageBackendLease? pageOwner = null)
     {
         var owner = unsolicited || BackendReviewFlow.IsReviewing ? null : pageOwner ?? PageBackendSessions.Manager.Current;
@@ -48,7 +53,7 @@ internal static class BackendDialogExtensions
         try
         {
             if (Revoked()) return ContentDialogResult.None;
-            pending = BackendAttention.Snapshot(onlyUnshown: unsolicited);
+            pending = unsolicited ? UnsolicitedNotices() : BackendAttention.Snapshot();
             if (unsolicited && (pending.Count == 0 || BackendReviewFlow.IsReviewing)) return ContentDialogResult.None;
             offersReview = pending.Count > 0 && string.IsNullOrEmpty(dialog.PrimaryButtonText)
                 && string.IsNullOrEmpty(dialog.SecondaryButtonText) && dialog.XamlRoot is not null;

@@ -5,5 +5,4 @@ public static class ReleaseFeaturePolicy
 {
     public static bool PendulumEnabled => false;
     public static bool FrameTimerIgnoreEnabled => false;
-    public static bool DriverPriorityEnabled => false;
 }

@@ -45,7 +45,7 @@ internal static class BackendReviewFlow
                 if (review.CanRestore)
                 {
                     try { snapshot = await BackendRecovery.ReconcileAsync(review.Module,
-                        scope: BackendRecovery.IsRuntimeInstallation(review) ? "repair-review" : null); }
+                        scope: BackendRecovery.IsRuntimeInstallation(review) ? "repair-review" : BackendRecovery.NvSettingsReviewScope(review)); }
                     catch (Exception ex) { readError = ex.Message; snapshotNote = "\n\n只读状态核对未能完成：" + readError; }
                 }
                 var scopes = BackendRecovery.RecoveryChoices(review, snapshot).ToList();
@@ -65,6 +65,10 @@ internal static class BackendReviewFlow
                 if (installationReview)
                     snapshotNote += "\n\n安装/系统修复不能按防护备份回滚。请等待安装进程结束，再点击“核对结束并恢复可用”；会扫描当前组件并归档旧事务，不会重新执行修复。"
                         + "\n若关机中断留下缺少安装器身份的旧记录，可先“建立重启核对点”，保存工作并在方便时使用 Windows 的“重启”，然后回来核对。建立核对点保留全部阻塞，不会自动重启。";
+                if (BackendRecovery.NvSettingsReviewScope(review) == "nv-display-container")
+                    snapshotNote += canKeep
+                        ? "\n\n归档只解除待核对提示，不会改动显示容器或清除备份。如要恢复，归档后回 NVIDIA 设置点击“恢复原设置”。"
+                        : "\n\n显示容器尚未完成只读核对，待核对记录与原设置备份均保留。请按上方原因排查后重试。";
                 if (review.Module == DeltaNFD.Backends.BackendModules.Ace && !canKeep)
                     snapshotNote += "\n\nACE 当前状态尚未完成核对，不能归档旧清理记录；请退出游戏并等待旧清理进程结束后重试。";
                 if (snapshot is { Complete: true } && scopes.Count == 0)
@@ -120,11 +124,19 @@ internal static class BackendReviewFlow
                             XamlRoot = root, Title = "保留当前电源值？",
                             Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock { TextWrapping = TextWrapping.Wrap,
                                 IsTextSelectionEnabled = true, Text = string.Join("\n\n", powerRecords.Select(p => p.Path + "\n" + p.Reason))
-                                    + "\n\n仅将列出的无法恢复备份原样归档，保留当前电源值并关闭降低省电延迟；涉及内容快照时也会关闭电源锁定。不会把旧计划值写入新的平衡计划，也不会重建已删除计划。此步骤不算还原成功；随后必须完整恢复、复核其他帧格状态，全部通过才处理待核对记录。" } },
+                                    + "\n\n仅将列出的无法恢复备份原样归档，保留当前电源值并关闭降低省电延迟；涉及电源锁定记录时也会关闭电源锁定。不会把旧计划值写入新的平衡计划，也不会重建已删除计划。此步骤不算还原成功；随后必须完整恢复、复核其他帧格状态，全部通过才处理待核对记录。" } },
                             PrimaryButtonText = "确认保留并继续核对", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
                         }.ShowAsync() != ContentDialogResult.Primary) continue;
                         var outcome = await BackendRecovery.RestoreAsync(review, scope.Id == "power-preserve" ? "all" : scope.Id,
                             confirmedPower: scope.Id == "power-preserve" ? powerRecords : null);
+                        if (outcome.Verified && review.Module == DeltaNFD.Backends.BackendModules.CpuFrame)
+                        {
+                            AppSettingsStore.UpdateRequired(s => s.FrameStartupRecoveryPending = false);
+                            GameTargetService.Default.SetRestoreFailure("帧格电源计划", false);
+                            if (ServiceLocator.Frame is FrameService frame) frame.RefreshPowerPreferences();
+                            _ = ServiceLocator.GameMonitor.ReconnectAsync();
+                            App.MainWindow?.RefreshFrameRecoveryNotice();
+                        }
                         var recoveryChoice = await new ContentDialog
                         {
                             XamlRoot = root, Title = restartCheckpoint && outcome.Success ? "重启核对点已建立"

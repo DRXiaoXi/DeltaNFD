@@ -89,6 +89,8 @@ public interface IFrameService : INotifyPropertyChanged
     /// <summary>旧独立选项的存储兼容；当前由已准备的钟摆和帧格生命周期决定执行。</summary>
     bool GameTimerIgnoreEnabled { get; set; }
     bool PendulumPrepared => false;
+    bool PendulumEnabled { get; set; }
+    bool CanTogglePendulum => false;
     string PendulumStatusText => "";
     string PendulumDescription => "";
 

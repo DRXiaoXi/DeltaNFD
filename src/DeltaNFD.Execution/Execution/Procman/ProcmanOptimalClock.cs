@@ -32,7 +32,7 @@ public sealed partial class ProcmanEngine
             : AppSettingsStore.Read().OptimalClockScanPlatform.Length == 0;
 
     private bool PendulumFeatureEnabled => ReleaseFeaturePolicy.PendulumEnabled || ExperimentalTimerFeaturesForTests;
-    private bool OptimalClockRequested => PendulumFeatureEnabled && FrameBackgroundActive;
+    private bool OptimalClockRequested => PendulumFeatureEnabled && FrameBackgroundActive && AppSettingsStore.Read().FramePendulumEnabled;
     private static uint OptimalClockResolution => PendulumFramePolicy.Resolution(AppSettingsStore.Read());
 
     private (bool Prepared, bool Windows10) ReadPendulumPreparation()
@@ -133,7 +133,7 @@ public sealed partial class ProcmanEngine
                 return OperationResult.Fail("钟摆检测或后端收尾进行中，未单独应用请求。");
             if (!OptimalClockSupported)
                 return OperationResult.Fail("此系统版本不在钟摆计划支持范围（Windows 10 1809 起）。");
-            if (!OptimalClockRequested) return OperationResult.Fail("钟摆计划随帧格开启，请先开启帧格；不再提供独立锁定开关。");
+            if (!OptimalClockRequested) return OperationResult.Fail("请先开启一键帧格及其中的「钟摆计划」开关。");
             var global = ReadGlobalPrecision();
             if (!global.Ready) return OperationResult.Fail(global.Message);
             if (!PendulumFramePolicy.Prepared(global, AppSettingsStore.Read()))

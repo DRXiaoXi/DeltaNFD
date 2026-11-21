@@ -11,6 +11,8 @@ public partial class App : Application
     public static MainWindow? MainWindow { get; private set; }
     private SessionEndHook? _sessionEndHook;
     internal static bool ExitAlreadyPrepared { get; set; }
+    private static bool _windowsSessionEnding;
+    internal static bool WindowsSessionEnding => _windowsSessionEnding;
     internal static (string Session, string Nonce)? PendingFileFallback { get; private set; }
 
     /// <summary>默认主题色（天空蓝，与 App.xaml 内置资源一致）。</summary>
@@ -38,7 +40,7 @@ public partial class App : Application
         // 前后端分离 C5：进程退出前排空官方后端（异步启动，短时间宽限后允许退出）。
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
-            if (ExitAlreadyPrepared) return;
+            if (ExitAlreadyPrepared || _windowsSessionEnding) return;
             // 优化：启动排空任务但不同步等待，给予 5 秒宽限期后允许进程退出
             var drainTask = Task.Run(async () =>
             {
@@ -99,20 +101,52 @@ public partial class App : Application
         Log.Startup();
         UpdateChannelInstallation.ApplyCurrentInstallation();
         Log.Info("主窗口启动");
+        // No worker may consume an orphaned active bit as permission to reapply changes.
+        if (PendingFileFallback is null)
+        {
+            try
+            {
+                var previous = AppSettingsStore.ReadRequired();
+                if (previous.FrameModeActive || previous.FramePowerRestorePending
+                    || Services.Backends.BackendUnconfirmedStore.AttentionFingerprint(Backends.BackendModules.CpuFrame) is not null
+                    || File.Exists(Path.Combine(AppDataPaths.Root, "frame_power_scheme_snapshot.json")))
+                    AppSettingsStore.UpdateRequired(s =>
+                    {
+                        FrameSessionState.BeginLaunch(s);
+                        s.FrameStartupRecoveryPending = true;
+                    });
+            }
+            catch (Exception ex)
+            {
+                Log.Error("上次帧格状态未能安全登记，未启动后台", ex);
+                ExitAlreadyPrepared = true;
+                Application.Current.Exit();
+                return;
+            }
+        }
         var mainWindow = new MainWindow();
         MainWindow = mainWindow;
         try
         {
             _sessionEndHook = new SessionEndHook(WinRT.Interop.WindowNative.GetWindowHandle(mainWindow),
                 new SessionEndDrain(
-                    () => Services.Backends.BackendLifecycle.PrepareHandoverAsync("Windows 注销/关机", TimeSpan.FromSeconds(4)),
-                    Services.Backends.BackendOperationGate.BlockNewOperations, Log.Info),
+                    async () =>
+                    {
+                        using var pause = ServiceLocator.PauseGameMonitorConnections();
+                        return await Services.Backends.BackendLifecycle.PrepareHandoverAsync(
+                            "Windows 注销/关机", TimeSpan.FromSeconds(20), windowsSessionEnd: true);
+                    },
+                    Services.Backends.BackendOperationGate.BlockNewOperations, Log.Info,
+                    () => mainWindow.DispatcherQueue.TryEnqueue(mainWindow.RefreshFrameAfterCancelledShutdown)),
                 success =>
                 {
-                    // Only a verified drain can suppress the existing exit fallback.
+                    // SessionEndHook already owns this drain, including an unconfirmed outcome.
+                    // Do not race it with a second ProcessExit drain or reissue any shutdown command.
+                    _windowsSessionEnding = true;
                     ExitAlreadyPrepared = success;
                     mainWindow.DispatcherQueue.TryEnqueue(() => Application.Current.Exit());
-                });
+                },
+                needsWait: () => AppSettingsStore.Read().FrameModeActive);
             mainWindow.Closed += (_, _) => _sessionEndHook?.Dispose();
             Log.Info("Windows 注销/关机收尾通知已登记。");
         }

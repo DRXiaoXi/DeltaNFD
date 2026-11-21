@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using DeltaNFD.Services;
 
 namespace DeltaNFD.Native;
 
@@ -97,7 +98,6 @@ public static partial class NvApiDrs
     private const uint IdDrsGetBaseProfile = 0xDA8466A0;
     private const uint IdDrsGetCurrentGlobalProfile = 0x617BFF9F;
     private const uint IdDrsRestoreProfileDefaultSetting = 0x53F0381E;
-    private const uint IdDrsSetProfileInfo = 0x16ABD3A9;
     private const uint IdDrsCreateProfile = 0xCC176068;
     private const uint IdDrsCreateApplication = 0x4347A9DE;
     private const uint IdDrsSetSetting = 0x8A2CF5F5;
@@ -149,9 +149,6 @@ public static partial class NvApiDrs
     private delegate int GetProfileInfoFn(IntPtr session, IntPtr profile, ref NvDrsProfile profileInfo);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate int SetProfileInfoFn(IntPtr session, IntPtr profile, ref NvDrsProfile profileInfo);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int CreateProfileFn(IntPtr session, ref NvDrsProfile profileInfo, ref IntPtr profile);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -188,7 +185,6 @@ public static partial class NvApiDrs
     private static GetProfileInfoFn? _getProfileInfo;
     private static GetGlobalProfileFn? _getBaseProfile;
     private static GetGlobalProfileFn? _getCurrentGlobalProfile;
-    private static SetProfileInfoFn? _setProfileInfo;
     private static CreateProfileFn? _createProfile;
     private static CreateAppFn? _createApp;
     private static SetSettingFn? _setSetting;
@@ -256,7 +252,6 @@ public static partial class NvApiDrs
             _getProfileInfo = Resolve<GetProfileInfoFn>(IdDrsGetProfileInfo, 0);
             _getBaseProfile = Resolve<GetGlobalProfileFn>(IdDrsGetBaseProfile, 0);
             _getCurrentGlobalProfile = Resolve<GetGlobalProfileFn>(IdDrsGetCurrentGlobalProfile, 0);
-            _setProfileInfo = Resolve<SetProfileInfoFn>(IdDrsSetProfileInfo, 0);
             _createProfile = Resolve<CreateProfileFn>(IdDrsCreateProfile, 0);
             _createApp = Resolve<CreateAppFn>(IdDrsCreateApplication, 0);
             _setSetting = Resolve<SetSettingFn>(IdDrsSetSetting, IdDrsSetSettingOld);
@@ -415,7 +410,7 @@ public static partial class NvApiDrs
     }
 
     /// <summary>读取指定程序配置里一组设置的当前值。
-    /// 返回：settingId → (是否有本配置覆盖值, 覆盖值)。读取失败返回 null。</summary>
+    /// 返回：settingId → (是否有本配置覆盖值, 当前有效值)。</summary>
     public static Dictionary<uint, (bool HasOverride, uint Value)>? GetApplicationSettings(
         string appExeName, IReadOnlyList<uint> settingIds)
     {
@@ -428,34 +423,18 @@ public static partial class NvApiDrs
 
             try
             {
-                var profile = FindOrCreateProfile(session, appExeName, createWhenMissing: false, out _);
-                if (profile == IntPtr.Zero)
+                var profile = FindBoundApplicationProfile(session, appExeName);
+                if (profile != IntPtr.Zero) return ReadApplicationSettings(session, profile, settingIds);
+
+                // A confirmed absence (not a lookup failure) can inherit a global ReBAR policy.
+                var result = settingIds.Where(id => !NvDriverSettingPolicy.IsRebarSetting(id)).ToDictionary(id => id, _ => (false, 0u));
+                var rebarIds = settingIds.Where(NvDriverSettingPolicy.IsRebarSetting).ToArray();
+                if (rebarIds.Length != 0)
                 {
-                    // 没有该程序的配置：全部视为「无覆盖」
-                    return settingIds.ToDictionary(id => id, _ => (false, 0u));
+                    var global = RequireProfileHandle(session, _getCurrentGlobalProfile, "全局");
+                    foreach (var (id, state) in ReadApplicationSettings(session, global, rebarIds))
+                        result[id] = (false, state.Value);
                 }
-
-                var result = new Dictionary<uint, (bool, uint)>();
-                foreach (var id in settingIds)
-                {
-                    var setting = NewSetting(id);
-                    var reserved = 0u;
-                    var st = _getSetting!(session, profile, id, ref setting, ref reserved);
-                    if (st == StatusSettingNotFound)
-                    {
-                        result[id] = (false, 0);
-                        continue;
-                    }
-                    if (st != StatusOk || setting.settingType != NvDrsSetting.TypeDword)
-                        throw new InvalidOperationException($"设置 0x{id:X8} 读取失败：{DescribeStatus(st)} / 类型 {setting.settingType}。");
-
-                    var hasOverride = setting.settingLocation == (int)NvDrsSetting.LocationCurrentProfile && setting.isCurrentPredefined == 0;
-                    var value = setting.currentValue is { Length: >= 4 }
-                        ? BitConverter.ToUInt32(setting.currentValue, 0)
-                        : 0u;
-                    result[id] = (hasOverride, value);
-                }
-
                 return result;
             }
             finally
@@ -465,74 +444,157 @@ public static partial class NvApiDrs
         }
     }
 
-    /// <summary>把一组设置写入指定程序的配置（value=null 表示删除覆盖、恢复默认）。完成后保存。</summary>
-    public static (bool Success, string Message) ApplyApplicationSettings(
-        string appExeName, string profileDisplayName, IReadOnlyList<(uint Id, uint? Value)> changes)
+    private static (int Status, bool IsDword, bool HasOverride, uint Value) ReadApplicationSetting(IntPtr session, IntPtr profile, uint id)
     {
+        var setting = NewSetting(id);
+        var reserved = 0u;
+        var status = _getSetting!(session, profile, id, ref setting, ref reserved);
+        var isDword = setting.settingType == NvDrsSetting.TypeDword && setting.currentValue is { Length: >= 4 }
+            && setting.settingLocation is >= 0 and <= 3 && setting.isCurrentPredefined is 0 or 1;
+        var hasOverride = setting.settingLocation == NvDrsSetting.LocationCurrentProfile && setting.isCurrentPredefined == 0;
+        return (status, isDword, hasOverride, isDword ? BitConverter.ToUInt32(setting.currentValue!, 0) : 0u);
+    }
+
+    private static Dictionary<uint, (bool HasOverride, uint Value)> ReadApplicationSettings(
+        IntPtr session, IntPtr profile, IReadOnlyList<uint> ids)
+    {
+        var result = new Dictionary<uint, (bool, uint)>();
+        foreach (var id in ids)
+        {
+            var current = ReadApplicationSetting(session, profile, id);
+            if (current.Status == StatusSettingNotFound) result[id] = (false, NvDriverSettingPolicy.MissingValue(id));
+            else if (current.Status == StatusOk && current.IsDword) result[id] = (current.HasOverride, current.Value);
+            else throw new InvalidOperationException($"设置 0x{id:X8} 无法读取为 DWORD：{DescribeStatus(current.Status)}。");
+        }
+        return result;
+    }
+
+    /// <summary>在一个会话内暂存并保存；销毁写会话后另建会话只读核对。</summary>
+    internal static OperationResult ApplyApplicationSettings(string appExeName,
+        IReadOnlyList<(uint Id, uint? Value)> changes, uint? driver, bool rebarWarningAccepted, Func<bool> canSave)
+    {
+        if (changes.Count == 0) return OperationResult.Fail("没有要应用的设置。");
+        if (NvDriverSettingPolicy.Validate(changes, driver, rebarWarningAccepted) is { } validation)
+            return OperationResult.Fail(validation);
         lock (Gate)
         {
-            if (!EnsureSession(out var session, out var error))
-            {
-                return (false, error);
-            }
-
+            if (!EnsureSession(out var session, out var error)) return OperationResult.Fail(error);
+            var verifySession = IntPtr.Zero;
+            var verifyProfile = IntPtr.Zero;
             try
             {
-                var profile = FindOrCreateProfile(session, appExeName, createWhenMissing: true, out var created, profileDisplayName);
+                var profile = FindBoundApplicationProfile(session, appExeName);
                 if (profile == IntPtr.Zero)
                 {
-                    return (false, System.IO.Path.IsPathFullyQualified(appExeName)
-                        ? "驱动无法建立与完整 EXE 路径一致的独立配置，已拒绝写入，不会改写同名应用配置。"
-                        : "未找到也无法创建该程序的驱动配置。");
+                    if (changes.All(c => c.Value is null))
+                        return OperationResult.Skip("目标 EXE 未登记游戏配置，没有本游戏覆盖可删除；未写入驱动数据库。");
+                    profile = CreateBoundApplicationProfile(session, appExeName);
                 }
 
-                return CommitApplicationWrites(changes, (id, value) =>
+                var current = ReadApplicationSettings(session, profile, NvDriverSettingPolicy.ReadIds);
+                var plan = NvDriverSettingPolicy.Expand(changes, current);
+                // Expand can add a V2 Auto write; apply the driver-version guard to it too.
+                var rebarPlan = plan.Where(c => NvDriverSettingPolicy.IsRebarSetting(c.Id)).ToArray();
+                if (NvDriverSettingPolicy.Validate(rebarPlan, driver, rebarWarningAccepted: true) is { } problem)
+                    return OperationResult.Fail(problem);
+                return CommitApplicationWrites(plan, (id, value) =>
                 {
-                    if (value is null)
-                        return _deleteSetting!(session, profile, id);
+                    if (value is null) return _deleteSetting!(session, profile, id);
                     var setting = NewSetting(id);
                     BitConverter.GetBytes(value.Value).CopyTo(setting.currentValue, 0);
                     return _setSetting!(session, profile, ref setting, 0, 0);
-                }, () => _saveSettings!(session), () => _loadSettings!(session), id =>
+                }, () => _saveSettings!(session), () =>
                 {
-                    var setting = NewSetting(id);
-                    var reserved = 0u;
-                    var status = _getSetting!(session, profile, id, ref setting, ref reserved);
-                    return (status, setting.settingType == NvDrsSetting.TypeDword,
-                        setting.settingLocation == NvDrsSetting.LocationCurrentProfile && setting.isCurrentPredefined == 0,
-                        BitConverter.ToUInt32(setting.currentValue, 0));
-                });
+                    var closed = _destroySession!(session);
+                    session = IntPtr.Zero;
+                    if (closed != StatusOk) return closed;
+                    if (!EnsureSession(out verifySession, out var verifyError)) throw new InvalidOperationException(verifyError);
+                    verifyProfile = FindBoundApplicationProfile(verifySession, appExeName);
+                    return verifyProfile != IntPtr.Zero ? StatusOk : StatusProfileNotFound;
+                }, id => verifySession == IntPtr.Zero ? ReadApplicationSetting(session, profile, id)
+                    : ReadApplicationSetting(verifySession, verifyProfile, id), canSave);
             }
+            catch (Exception ex) { return OperationResult.Fail("驱动配置未保存：" + ex.Message); }
             finally
             {
-                _destroySession!(session);
+                if (verifySession != IntPtr.Zero) CloseApplicationSession(verifySession);
+                if (session != IntPtr.Zero) CloseApplicationSession(session);
             }
         }
     }
 
-    internal static (bool Success, string Message) CommitApplicationWrites(IReadOnlyList<(uint Id, uint? Value)> changes,
-        Func<uint, uint?, int> set, Func<int> save, Func<int> reload,
-        Func<uint, (int Status, bool IsDword, bool HasOverride, uint Value)> read)
+    private static void CloseApplicationSession(IntPtr session)
     {
-        foreach (var (id, value) in changes)
+        try { _destroySession!(session); }
+        catch (Exception ex) { Log.Warn("无法释放 NVIDIA DRS 会话：" + ex.Message); }
+    }
+
+    internal static OperationResult CommitApplicationWrites(IReadOnlyList<(uint Id, uint? Value)> changes,
+        Func<uint, uint?, int> set, Func<int> save, Func<int> openVerification,
+        Func<uint, (int Status, bool IsDword, bool HasOverride, uint Value)> read, Func<bool>? canSave = null)
+    {
+        var saveAttempted = false;
+        OperationResult Unconfirmed(string message) => new() { OutcomeUnknown = true,
+            Message = message + "请核对实际状态，不要重复提交。" };
+        try
         {
-            var status = set(id, value);
-            if (status != StatusOk && !(value is null && status == StatusSettingNotFound))
-                return (false, $"0x{id:X8} 写入失败：{DescribeStatus(status)}。本次会话未保存，请刷新核对。");
+            var checkRebar = changes.Any(c => NvDriverSettingPolicy.IsRebarSetting(c.Id));
+            var enablingV1 = changes.Any(c => c.Id == NvDriverSettingPolicy.RebarId && c.Value == 1);
+            // Stage Auto/disable/deletion before enabling the requested version.
+            foreach (var (id, value) in changes.OrderBy(c => NvDriverSettingPolicy.IsRebarEnable(c.Id, c.Value)))
+            {
+                var status = set(id, value);
+                if (status != StatusOk && !(value is null && status == StatusSettingNotFound))
+                    return OperationResult.Fail($"0x{id:X8} 写入失败：{DescribeStatus(status)}。本次会话未保存。");
+            }
+            if (checkRebar && CheckEffectiveRebarPair(read, enablingV1) is { } before)
+                return OperationResult.Fail(before + "本次更改未保存。");
+            if (canSave is not null && !canSave())
+                return OperationResult.Fail("驱动数据库已变为只读或无法确认写入条件，本次更改未保存。");
+            saveAttempted = true;
+            var saved = save();
+            if (saved != StatusOk) return Unconfirmed($"驱动保存未确认：{DescribeStatus(saved)}。");
+            var loaded = openVerification();
+            if (loaded != StatusOk) return Unconfirmed($"驱动已接受保存，但新会话回读失败：{DescribeStatus(loaded)}。");
+            foreach (var (id, value) in changes)
+            {
+                var actual = read(id);
+                var verified = value is null
+                    ? actual.Status == StatusSettingNotFound || actual.Status == StatusOk && actual.IsDword && !actual.HasOverride
+                    : actual.Status == StatusOk && actual.IsDword && actual.HasOverride && actual.Value == value;
+                if (!verified) return Unconfirmed($"驱动已接受保存，但设置 0x{id:X8} 未通过回读核验。");
+            }
+            if (checkRebar && CheckEffectiveRebarPair(read, enablingV1) is { } after)
+                return Unconfirmed("驱动已接受保存，但 ReBAR 回读未通过。" + after);
+            return OperationResult.Ok($"已保存并回读核验 {changes.Count} 项驱动配置。请重新启动游戏后确认实际效果。");
         }
-        var saved = save();
-        if (saved != StatusOk) return (false, $"驱动保存失败：{DescribeStatus(saved)}，请刷新核对实际状态。");
-        var loaded = reload();
-        if (loaded != StatusOk) return (false, $"已保存，但回读失败：{DescribeStatus(loaded)}，请刷新核对。");
-        foreach (var (id, value) in changes)
+        catch (Exception ex)
         {
-            var actual = read(id);
-            var verified = value is null
-                ? actual.Status == StatusSettingNotFound || actual.Status == StatusOk && actual.IsDword && !actual.HasOverride
-                : actual.Status == StatusOk && actual.IsDword && actual.HasOverride && actual.Value == value;
-            if (!verified) return (false, $"已保存，但设置 0x{id:X8} 未通过回读核验，请刷新核对；不能确认全部生效。");
+            return saveAttempted ? Unconfirmed("保存结果未核验：" + ex.Message + "。")
+                : OperationResult.Fail("驱动配置未保存：" + ex.Message);
         }
-        return (true, $"已保存并回读核验 {changes.Count} 项驱动配置。");
+    }
+
+    private static string? CheckEffectiveRebarPair(Func<uint, (int Status, bool IsDword, bool HasOverride, uint Value)> read,
+        bool enablingV1)
+    {
+        uint? ValueOf(uint id)
+        {
+            var state = read(id);
+            return state.Status switch
+            {
+                StatusSettingNotFound => NvDriverSettingPolicy.MissingValue(id),
+                StatusOk when state.IsDword => state.Value,
+                _ => null,
+            };
+        }
+        var v1 = ValueOf(NvDriverSettingPolicy.RebarId);
+        var v2 = ValueOf(NvDriverSettingPolicy.RebarPolicyId);
+        if (v1 is null || v2 is null or > 2) return "无法确认 ReBAR V1 或 V2 的有效值。";
+        if (v1 == 1 && v2 == 2) return NvDriverSettingPolicy.RebarConflict;
+        if (enablingV1 && (v1 != 1 || v2 != NvDriverSettingPolicy.RebarV2Auto))
+            return "开启 V1 需要 V2 为自动，当前组合未达到所选策略。";
+        return null;
     }
 
     /// <summary>枚举本机驱动支持的设置名（用于按名称发现设置 ID；名称匹配子串）。</summary>
@@ -605,168 +667,123 @@ public static partial class NvApiDrs
             return false;
         }
 
-        if (_createSession!(ref session) != StatusOk)
+        try
         {
-            error = "创建 NVAPI DRS 会话失败。";
-            return false;
+            var created = _createSession!(ref session);
+            if (created == StatusOk && session != IntPtr.Zero)
+            {
+                var loaded = _loadSettings!(session);
+                if (loaded == StatusOk) return true;
+                error = "读取驱动配置数据库失败：" + DescribeStatus(loaded);
+            }
+            else error = "创建 NVAPI DRS 会话失败：" + DescribeStatus(created);
         }
-
-        if (_loadSettings!(session) != StatusOk)
+        catch (Exception ex) { error = "无法打开驱动配置会话：" + ex.Message; }
+        if (session != IntPtr.Zero)
         {
-            _destroySession!(session);
+            CloseApplicationSession(session);
             session = IntPtr.Zero;
-            error = "读取驱动配置数据库失败。";
-            return false;
         }
-
-        return true;
-    }
-
-    /// <summary>定位（或创建）包含指定应用程序的配置。</summary>
-    private static IntPtr FindOrCreateProfile(
-        IntPtr session, string appExeName, bool createWhenMissing, out bool created, string profileDisplayName = "Delta NFD")
-    {
-        created = false;
-        if (System.IO.Path.IsPathFullyQualified(appExeName))
-            return FindCustomProfile(session, appExeName, createWhenMissing, out created);
-        var app = NewApplication(appExeName);
-        var profile = IntPtr.Zero;
-        var st = _findApp!(session, appExeName, ref profile, ref app);
-        if (st == StatusOk && profile != IntPtr.Zero)
-        {
-            TryRenameLegacyProfile(session, profile);
-            return profile;
-        }
-
-        // 尝试按名字找本工具此前创建的配置
-        if (_findProfile is not null)
-        {
-            var byName = IntPtr.Zero;
-            var profileStatus = _findProfile(session, ProfileName, ref byName);
-            if (profileStatus != StatusOk || byName == IntPtr.Zero)
-            {
-                byName = IntPtr.Zero;
-                profileStatus = _findProfile(session, LegacyProfileName, ref byName);
-                if (profileStatus == StatusOk && byName != IntPtr.Zero)
-                    TryRenameLegacyProfile(session, byName);
-            }
-
-            if (profileStatus == StatusOk && byName != IntPtr.Zero)
-            {
-                profile = byName;
-                if (createWhenMissing)
-                {
-                    var addApp = NewApplication(appExeName);
-                    if (_createApp!(session, profile, ref addApp) is StatusOk or StatusError)
-                    {
-                        // 已存在该程序时驱动返回错误但配置仍可用
-                    }
-                }
-
-                return profile;
-            }
-        }
-
-        if (!createWhenMissing)
-        {
-            return IntPtr.Zero;
-        }
-
-        // 创建新配置 + 登记应用程序
-        var info = new NvDrsProfile
-        {
-            version = (uint)(Marshal.SizeOf<NvDrsProfile>() | (1 << 16)),
-            profileName = ProfileName,
-            gpuSupport = 0,
-            isPredefined = 0,
-            numOfApps = 0,
-            numOfSettings = 0,
-        };
-
-        var newProfile = IntPtr.Zero;
-        if (_createProfile!(session, ref info, ref newProfile) != StatusOk || newProfile == IntPtr.Zero)
-        {
-            return IntPtr.Zero;
-        }
-
-        var newApp = NewApplication(appExeName);
-        _createApp!(session, newProfile, ref newApp);
-        created = true;
-        return newProfile;
+        return false;
     }
 
     private const string ProfileName = "Delta NFD - 三角洲行动";
+    private const string LegacyProfileName = "DeltaOptimizer DeltaForce";
+
     internal static bool IsExactCustomApplication(string requested, string registered) =>
         System.IO.Path.IsPathFullyQualified(registered) &&
         System.IO.Path.GetFullPath(requested).Equals(System.IO.Path.GetFullPath(registered), StringComparison.OrdinalIgnoreCase);
 
-    private static IntPtr FindCustomProfile(IntPtr session, string path, bool create, out bool created)
+    private static IntPtr FindBoundApplicationProfile(IntPtr session, string appExeName)
     {
-        created = false;
-        if (_findProfile is null || _getProfileInfo is null) return IntPtr.Zero;
-        var name = DeltaNFD.Services.GameTargetService.CustomProfileName(path);
+        var app = NewApplication(appExeName);
         var profile = IntPtr.Zero;
-        var found = _findProfile(session, name, ref profile) == StatusOk && profile != IntPtr.Zero;
-        if (!found)
-        {
-            if (!create) return IntPtr.Zero;
-            var info = new NvDrsProfile { version = (uint)(Marshal.SizeOf<NvDrsProfile>() | (1 << 16)), profileName = name };
-            if (_createProfile!(session, ref info, ref profile) != StatusOk || profile == IntPtr.Zero) return IntPtr.Zero;
-            created = true;
-        }
-        var existing = NewApplication(path);
-        var associated = IntPtr.Zero;
-        var lookup = _findApp!(session, path, ref associated, ref existing);
-        if (lookup != StatusOk || associated != profile || !IsExactCustomApplication(path, existing.appName))
-        {
-            if (!create) return IntPtr.Zero;
-            var application = NewApplication(path);
-            if (_createApp!(session, profile, ref application) != StatusOk) return IntPtr.Zero;
-            existing = NewApplication(path);
-            associated = IntPtr.Zero;
-            if (_findApp(session, path, ref associated, ref existing) != StatusOk || associated != profile ||
-                !IsExactCustomApplication(path, existing.appName)) return IntPtr.Zero;
-        }
-        var check = new NvDrsProfile { version = (uint)(Marshal.SizeOf<NvDrsProfile>() | (1 << 16)), profileName = "" };
-        return _getProfileInfo(session, profile, ref check) == StatusOk && check.numOfApps == 1 && check.profileName == name
-            ? profile : IntPtr.Zero;
-    }
-    private const string LegacyProfileName = "DeltaOptimizer DeltaForce";
+        var status = _findApp!(session, appExeName, ref profile, ref app);
+        if (status == StatusExecutableNotFound) return IntPtr.Zero;
+        if (status != StatusOk || profile == IntPtr.Zero)
+            throw new InvalidOperationException("查询目标 EXE 的驱动关联失败：" + DescribeStatus(status));
 
-    /// <summary>Rename our former NVIDIA DRS profile in place so existing driver settings remain attached.</summary>
-    private static void TryRenameLegacyProfile(IntPtr session, IntPtr profile)
+        RequireIndependentProfile(session, profile);
+        if (System.IO.Path.IsPathFullyQualified(appExeName))
+        {
+            if (!IsExactCustomApplication(appExeName, app.appName))
+                throw new InvalidOperationException("驱动未返回与完整 EXE 路径一致的关联，已拒绝使用同名应用配置。");
+            RequireOwnedProfile(session, profile, GameTargetService.CustomProfileName(appExeName), appCount: 1);
+        }
+        else if (!string.Equals(System.IO.Path.GetFileName(app.appName), appExeName, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("驱动返回的应用关联与目标 EXE 不一致。");
+        return profile;
+    }
+
+    private static IntPtr CreateBoundApplicationProfile(IntPtr session, string appExeName)
     {
-        if (_getProfileInfo is null || _setProfileInfo is null)
-            return;
-
-        var info = new NvDrsProfile
+        var custom = System.IO.Path.IsPathFullyQualified(appExeName);
+        var name = custom ? GameTargetService.CustomProfileName(appExeName) : ProfileName;
+        var profile = FindNamedProfile(session, name);
+        if (profile == IntPtr.Zero && !custom)
         {
-            version = (uint)(Marshal.SizeOf<NvDrsProfile>() | (1 << 16)),
-            profileName = "",
-        };
-        if (_getProfileInfo(session, profile, ref info) != StatusOk ||
-            !info.profileName.Equals(LegacyProfileName, StringComparison.OrdinalIgnoreCase))
-            return;
-
-        var existingNewProfile = IntPtr.Zero;
-        if (_findProfile is not null &&
-            _findProfile(session, ProfileName, ref existingNewProfile) == StatusOk &&
-            existingNewProfile != IntPtr.Zero && existingNewProfile != profile)
-            return;
-
-        info.profileName = ProfileName;
-        var status = _setProfileInfo(session, profile, ref info);
-        if (status == StatusOk)
-        {
-            var saveStatus = _saveSettings!(session);
-            if (saveStatus == StatusOk)
-                DeltaNFD.Services.Log.Info("NVIDIA 驱动配置：已将旧 DeltaOptimizer 配置改名为 Delta NFD，保留原设置。");
-            else
-                DeltaNFD.Services.Log.Warn($"NVIDIA 驱动配置名称仅在当前会话内更新，保存失败：{DescribeStatus(saveStatus)}");
+            profile = FindNamedProfile(session, LegacyProfileName);
+            if (profile != IntPtr.Zero) name = LegacyProfileName; // Keep existing names; never do a separate save/rename.
         }
-        else
-            DeltaNFD.Services.Log.Warn($"NVIDIA 驱动配置改名失败：{DescribeStatus(status)}；原设置仍保留在旧配置中。");
+        if (profile == IntPtr.Zero)
+        {
+            var info = NewProfile(name);
+            var created = _createProfile!(session, ref info, ref profile);
+            if (created != StatusOk || profile == IntPtr.Zero)
+                throw new InvalidOperationException("创建游戏驱动配置失败：" + DescribeStatus(created));
+        }
+        RequireIndependentProfile(session, profile);
+        // A matching friendly name is not authority to attach to a populated or predefined profile.
+        RequireOwnedProfile(session, profile, name, appCount: 0);
+        var app = NewApplication(appExeName);
+        var added = _createApp!(session, profile, ref app);
+        if (added != StatusOk)
+            throw new InvalidOperationException("登记目标 EXE 失败：" + DescribeStatus(added));
+        if (FindBoundApplicationProfile(session, appExeName) != profile)
+            throw new InvalidOperationException("登记后无法确认目标 EXE 与该驱动配置的关联。");
+        return profile;
     }
+
+    private static IntPtr FindNamedProfile(IntPtr session, string name)
+    {
+        var profile = IntPtr.Zero;
+        var status = _findProfile?.Invoke(session, name, ref profile) ?? StatusError;
+        if (status == StatusProfileNotFound) return IntPtr.Zero;
+        if (status != StatusOk || profile == IntPtr.Zero)
+            throw new InvalidOperationException("查询驱动配置失败：" + DescribeStatus(status));
+        return profile;
+    }
+
+    private static void RequireIndependentProfile(IntPtr session, IntPtr profile)
+    {
+        if (profile == new IntPtr(-1) || profile == RequireProfileHandle(session, _getBaseProfile, "基础")
+            || profile == RequireProfileHandle(session, _getCurrentGlobalProfile, "全局"))
+            throw new InvalidOperationException("目标不是独立游戏配置，已拒绝使用全局或基础配置。");
+    }
+
+    private static IntPtr RequireProfileHandle(IntPtr session, GetGlobalProfileFn? get, string scope)
+    {
+        var handle = IntPtr.Zero;
+        var status = get?.Invoke(session, ref handle) ?? StatusError;
+        if (status != StatusOk || handle == IntPtr.Zero)
+            throw new InvalidOperationException($"无法核对{scope}驱动配置：{DescribeStatus(status)}。");
+        return handle;
+    }
+
+    private static void RequireOwnedProfile(IntPtr session, IntPtr profile, string name, uint appCount)
+    {
+        var info = NewProfile("");
+        var status = _getProfileInfo?.Invoke(session, profile, ref info) ?? StatusError;
+        if (status != StatusOk || !string.Equals(info.profileName, name, StringComparison.OrdinalIgnoreCase)
+            || info.isPredefined != 0 || info.numOfApps != appCount)
+            throw new InvalidOperationException("无法确认独立的程序专用配置；未复用同名或已关联其他应用的配置。");
+    }
+
+    private static NvDrsProfile NewProfile(string name) => new()
+    {
+        version = (uint)(Marshal.SizeOf<NvDrsProfile>() | (1 << 16)),
+        profileName = name,
+    };
 
     private static NvDrsSetting NewSetting(uint id) => new()
     {

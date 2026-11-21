@@ -94,9 +94,14 @@ internal static class FrameFeatureChecks
         foreach (var option in new[] { "GamePowerSelected", "ResponsivenessSelected",
             "PrioritySelected", "NicSelected", "UsbSelected" })
             Assert(toggles.Contains($"{{x:Bind {option}, Mode=TwoWay}}"), "缺少父子有效状态绑定：" + option);
-        Assert(!toggles.Any(t => t?.Contains("GameTimerIgnoreSelected") == true)
-            && doc.Descendants().Any(e => ((string?)e.Attribute("Visibility"))?.Contains("FrameSrv.PendulumPrepared") == true),
-            "钟摆在准备完成后自动联动，不保留独立忽略开关");
+        var pendulum = doc.Descendants().Single(e => (string?)e.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "PendulumFramePanel");
+        var toggle = pendulum.Descendants().Single(e => e.Name.LocalName == "ToggleSwitch");
+        Assert((string?)pendulum.Attribute("Visibility") == "{x:Bind FrameSrv.PendulumPrepared, Mode=OneWay}"
+            && (string?)toggle.Attribute("IsOn") == "{x:Bind FrameSrv.PendulumEnabled, Mode=TwoWay}"
+            && (string?)toggle.Attribute("IsEnabled") == "{x:Bind FrameSrv.CanTogglePendulum, Mode=OneWay}"
+            && (string?)toggle.Attribute("AutomationProperties.Name") == "帧格钟摆计划联动"
+            && !toggles.Any(t => t?.Contains("GameTimerIgnoreSelected") == true),
+            "准备完成后显示钟摆联动开关，帧格运行中仍能切换，不提供绕过钟摆的开关");
         Console.WriteLine("帧格独立状态检查通过：8 组父开关组合、子项关闭、配置/激活区分、DWM 单项持久化、偏好保留、旧配置退休字段清理、XAML 绑定。");
     }
 

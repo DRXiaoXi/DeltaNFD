@@ -86,6 +86,11 @@ internal static class FrameModeFlow
 
     private static async Task RunActivateCoreAsync(XamlRoot root, IFrameService frame)
     {
+        if (AppSettingsStore.Read().FrameStartupRecoveryPending)
+        {
+            App.MainWindow?.RefreshFrameRecoveryNotice();
+            return;
+        }
         // 硬拦截预检：目标显卡正在驱动显示器（或无法确认）时禁止重载——
         // 禁用正在输出画面的显卡会造成无法恢复的黑屏（内屏直连 dGPU 的机型尤其如此）。
         if (frame.GpuSpoofEnabled && frame.IsGpuSpoofInFrame &&
@@ -106,6 +111,11 @@ internal static class FrameModeFlow
         if (!await EnsureReviewedAsync(root, frame.GpuSpoofEnabled && frame.IsGpuSpoofInFrame)) return;
 
         var result = await frame.ActivateFrameModeAsync();
+        if (!result.Success && BackendAttention.Snapshot().Any(n => n.Module == DeltaNFD.Backends.BackendModules.CpuFrame))
+        {
+            App.MainWindow?.RefreshFrameRecoveryNotice();
+            return;
+        }
         if (!result.Success)
         {
             try
@@ -113,30 +123,9 @@ internal static class FrameModeFlow
                 var incomplete = await frame.GetIncompletePowerBackupsAsync();
                 if (incomplete.Count > 0)
                 {
-                    var details = string.Join("\n", incomplete.Select(x => x.Path + "\n" + x.Reason));
-                    var confirm = new ContentDialog
-                    {
-                        XamlRoot = root, Title = "旧电源记录无法精确恢复",
-                        Content = new ScrollViewer { MaxHeight = 420, Content = new TextBlock
-                        {
-                            TextWrapping = TextWrapping.Wrap,
-                            Text = details + "\n\n这些记录的原值不完整，或所属电源计划/设置当前不可读取。是否保留当前电源值，并将列出的旧记录移至证据目录？\n这不是恢复默认值或还原成功，归档步骤不会写入电源值，也不会重建已删除的计划或原值。\n同时关闭“降低省电延迟”；若包括内容快照，也会关闭电源计划锁定，再尝试其他帧格功能。原 JSON 保留用于后续排查；其他有效备份仍按原值恢复。",
-                        } },
-                        PrimaryButtonText = "保留当前值并继续", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
-                    };
-                    if (await confirm.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary)
-                    {
-                        var preserved = await frame.PreserveCurrentPowerValuesAsync(incomplete);
-                        result = preserved.Success ? await frame.ActivateFrameModeAsync() : preserved;
-                        if (preserved.Success) result = new OperationResult
-                        {
-                            Success = result.Success, Message = preserved.Message + "\n降低省电延迟已关闭。\n" + result.Message,
-                            RequiresReboot = result.RequiresReboot, RequiresLogoff = result.RequiresLogoff,
-                            RequiresDisplayConfirm = result.RequiresDisplayConfirm, IsSkipped = result.IsSkipped,
-                            IsPartial = result.IsPartial, OutcomeUnknown = result.OutcomeUnknown,
-                            DiagnosticsDirectory = result.DiagnosticsDirectory,
-                        };
-                    }
+                    AppSettingsStore.UpdateRequired(s => s.FrameStartupRecoveryPending = true);
+                    App.MainWindow?.RefreshFrameRecoveryNotice();
+                    return;
                 }
             }
             catch (Exception ex)
@@ -212,6 +201,11 @@ internal static class FrameModeFlow
     {
         var blocker = FrameBackendReadiness.DescribeBlocker(includesGpu);
         if (blocker.Length == 0) return true;
+        if (BackendAttention.Snapshot().Any(n => n.Module == DeltaNFD.Backends.BackendModules.CpuFrame))
+        {
+            App.MainWindow?.RefreshFrameRecoveryNotice();
+            return false;
+        }
         var choice = await new ContentDialog
         {
             XamlRoot = root, Title = "帧格需要先处理旧操作",

@@ -12,6 +12,8 @@ internal static class GpuCommands
     public static readonly BackendHostOptions Options = new()
     {
         Module = BackendModules.Require(BackendModules.Gpu),
+        NvSettingsSaveVersion = NvDriverSettingPolicy.SaveProtocolVersion,
+        NvDisplayContainerVersion = NvDisplayContainerChange.ProtocolVersion,
         Handlers = new Dictionary<string, Func<BackendCommandContext, Task<BackendResult>>>(StringComparer.Ordinal)
         {
             [BackendCommands.GpuSpoofStatus] = SpoofStatusAsync,
@@ -44,6 +46,23 @@ internal static class GpuCommands
                         System.Text.Json.JsonSerializer.SerializeToElement(result, BackendJson.SerializerOptions));
             },
             [BackendCommands.GpuDriverLock] = DriverLockAsync,
+            [BackendCommands.GpuDlssIndicatorSet] = async c =>
+            {
+                var args = c.ArgsAs<NvDlssIndicatorArgs>();
+                c.ReportProgress("正在保存 DLSS 指示器…", null, "dlss-indicator");
+                return WrapSettingSave(c.Command, await new NvProfileService().SetDlssIndicatorAsync(args.Enabled));
+            },
+            [BackendCommands.GpuNvDisplayContainerStatus] = c => Task.Run(() =>
+            {
+                var status = NvDisplayContainerService.Status();
+                return BackendResult.Ok(c.Command, status.Detail, status);
+            }),
+            [BackendCommands.GpuNvDisplayContainerChange] = c => Task.Run(() =>
+            {
+                var args = c.ArgsAs<NvDisplayContainerChange>();
+                c.ReportProgress("正在核验显示容器服务…", null, "nv-display-container");
+                return WrapSettingSave(c.Command, NvDisplayContainerService.Change(args));
+            }),
             [BackendCommands.GpuShaderCacheApply] = async c => {
                 var args = c.ArgsAs<NvShaderCacheApplyArgs>();
                 var result = await new NvProfileService().SetShaderCacheSizeAsync(args.Scope, args.Value);
@@ -60,8 +79,61 @@ internal static class GpuCommands
     private static async Task<BackendResult> ReconcileAsync(BackendCommandContext context)
     {
         context.ReportProgress("正在只读核对显卡状态…", null, "reconcile");
-        var snapshot = await BuildSnapshotAsync();
+        var scope = context.ArgsAs<RecoverArgs>().Scope;
+        var snapshot = scope switch
+        {
+            "dlss-indicator" => await ReadIndicatorReviewAsync(),
+            "nv-display-container" => ReadDisplayContainerReview(),
+            "driver-settings" => await ReadDriverSettingsReviewAsync(),
+            _ => await BuildSnapshotAsync(),
+        };
         return BackendResult.Ok("gpu.reconcile", snapshot.Summary, snapshot);
+    }
+
+    private static ReconcileSnapshot ReadDisplayContainerReview()
+    {
+        var status = NvDisplayContainerService.Status();
+        return new ReconcileSnapshot
+        {
+            Module = BackendModules.Gpu, Summary = status.Detail,
+            Complete = status.Fingerprint is not null,
+            Items = [new ReconcileItem { Id = "nv-display-container", Kind = "service", State = status.Detail }],
+        };
+    }
+
+    private static async Task<ReconcileSnapshot> ReadIndicatorReviewAsync()
+    {
+        var status = await new NvProfileService().ReadDlssIndicatorAsync();
+        return new ReconcileSnapshot
+        {
+            Module = BackendModules.Gpu, Summary = "DLSS 指示器（整机）：" + status.Detail,
+            Complete = status.CanSet,
+            Items = [new ReconcileItem { Id = "dlss-indicator", Kind = "driver-setting", State = status.Detail }],
+        };
+    }
+
+    private static async Task<ReconcileSnapshot> ReadDriverSettingsReviewAsync()
+    {
+        using var targetOperation = GameTargetService.Default.BeginOperation();
+        var service = new NvProfileService();
+        var values = await service.GetGameSettingValuesAsync();
+        var items = NvSettingsCatalog.Definitions.Select(def =>
+        {
+            var state = values is not null && values.TryGetValue(def.Id, out var actual)
+                ? actual.HasOverride
+                    ? def.Options.FirstOrDefault(o => o.Value == actual.Value)?.Label ?? $"覆盖值 0x{actual.Value:X8}"
+                    : NvDriverSettingPolicy.IsRebarSetting(def.Id) && def.Options.FirstOrDefault(o => o.Value == actual.Value) is { } inherited
+                        ? $"继承（{inherited.Label}）" : "驱动默认（无覆盖）"
+                : "未读取";
+            return new ReconcileItem { Id = $"{def.Id:X8}", Kind = "driver-setting", State = state, Detail = def.Title };
+        }).ToArray();
+        var target = GameTargetService.Default.Current.DisplayName;
+        return new ReconcileSnapshot
+        {
+            Module = BackendModules.Gpu, Summary = $"当前目标 {target} · 驱动设置只读核对（不代表已应用或还原）：\n"
+                + string.Join("\n", items.Select(i => i.Detail + "：" + i.State)),
+            Complete = values?.Count == NvSettingsCatalog.Definitions.Count, Items = items,
+        };
     }
 
     /// <summary>按可信备份恢复显卡原始型号，恢复后再次只读复核；复核不通过不报告成功。</summary>
@@ -200,7 +272,7 @@ internal static class GpuCommands
             return BackendResult.Failed("gpu.driver.apply", "没有要应用的设置。");
         context.ReportProgress("正在写入驱动设置…", null, "driver");
         var result = await new NvProfileService().ApplyGameSettingsAsync(changes, args.RebarWarningAccepted);
-        return Wrap("gpu.driver.apply", result);
+        return WrapSettingSave("gpu.driver.apply", result);
     }
 
     private static async Task<BackendResult> DriverRestoreAsync(BackendCommandContext context)
@@ -211,7 +283,7 @@ internal static class GpuCommands
         context.ReportProgress("正在恢复驱动设置…", null, "driver-restore");
         var changes = args.Ids.Distinct().Select(id => (id, (uint?)null)).ToList();
         var result = await new NvProfileService().ApplyGameSettingsAsync(changes);
-        return Wrap("gpu.driver.restore", result);
+        return WrapSettingSave("gpu.driver.restore", result);
     }
 
     private static async Task<BackendResult> DriverLockAsync(BackendCommandContext context)
@@ -222,8 +294,12 @@ internal static class GpuCommands
         return Wrap("gpu.driver.lock", result);
     }
 
-    private static BackendResult Wrap(string code, OperationResult result) =>
-        result.Success
-            ? BackendResult.Ok(code, result.Message, result)
-            : BackendResult.Failed(code, result.Message);
+    private static BackendResult Wrap(string code, OperationResult result) => result.Success
+        ? BackendResult.Ok(code, result.Message, result) : BackendResult.Failed(code, result.Message);
+
+    private static BackendResult WrapSettingSave(string code, OperationResult result) => result.OutcomeUnknown || result.IsPartial
+        ? BackendResult.PartialResult(code, result.Message, [], result, requiresReview: result.OutcomeUnknown)
+        : new BackendResult(result.Success ? BackendResultStatuses.Ok : BackendResultStatuses.Failed,
+            code, result.Message, [], false,
+            System.Text.Json.JsonSerializer.SerializeToElement(result, BackendJson.SerializerOptions));
 }

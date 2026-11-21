@@ -35,6 +35,8 @@ internal static class BackendRecoveryChecks
                 Check(snapshot.Module == module, $"{module} 核对快照模块一致");
                 Check(snapshot.RecoveryScopes.Count > 0, $"{module} 提供恢复范围说明");
                 Check(BackendModules.IsReadOnly(module, command!), $"{module} 核对命令被归类为只读");
+                if (module == BackendModules.System)
+                    Check(snapshot.RecoveryScopes.All(s => s.Id != "driver-priority"), "真实系统后端不再提供驱动优先级恢复范围");
             }
 
             // ACE 无可信备份恢复路径。
@@ -51,6 +53,11 @@ internal static class BackendRecoveryChecks
                 var result = await client.InvokeAsync(command, new RecoverArgs { Scope = "__invalid__" }, null, CancellationToken.None);
                 Check(result.Status == BackendResultStatuses.Failed && result.Code == module + ".recover",
                     $"{module} 拒绝未知恢复范围");
+                if (module == BackendModules.System)
+                {
+                    result = await client.InvokeAsync(command, new RecoverArgs { Scope = "driver-priority" }, null, CancellationToken.None);
+                    Check(result.Status == BackendResultStatuses.Failed && result.Code == "system.recover", "真实系统后端拒绝退休的恢复范围");
+                }
             }
             Check(BackendUnconfirmedStore.PendingModules().Count == 0, "只读核对与参数拒绝不留下未确认记录");
 

@@ -12,6 +12,7 @@
     <ProjectReference Include="../../src/DeltaNFD.Contracts/DeltaNFD.Contracts.csproj" />
     <ProjectReference Include="../../src/DeltaNFD.Shared/DeltaNFD.Shared.csproj" />
     <ProjectReference Include="../../src/DeltaNFD.Inspection/DeltaNFD.Inspection.csproj" />
+    <Compile Include="../../src/DeltaNFD.Execution/Execution/NvDlssIndicatorService.cs" Link="NvDlssIndicatorService.cs" />
     <Compile Include="../../src/DeltaNFD/ViewModels/NvSettingsViewModel.cs" Link="NvSettingsViewModel.cs" />
     <Compile Include="../../src/DeltaNFD/ViewModels/ShaderViewModel.cs" Link="ShaderViewModel.cs" />
     <Compile Include="../../src/DeltaNFD/Services/ShaderCacheStatusPresentation.cs" Link="ShaderCacheStatusPresentation.cs" />

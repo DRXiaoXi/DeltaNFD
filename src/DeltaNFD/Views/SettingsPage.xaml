@@ -166,7 +166,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Spacing="3" VerticalAlignment="Center">
                             <TextBlock Text="关闭时最小化到托盘" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                            <TextBlock Text="开启后关闭窗口将驻留托盘；未开启时，若帧格或 CPU 调度正在运行，关闭窗口会提示是否开启后台运行。" Style="{StaticResource NoteStyle}"/>
+                            <TextBlock Text="关闭后驻留托盘。空闲时释放界面；帧格、调度、下载等任务运行时保留界面进程，任务不中断。" Style="{StaticResource NoteStyle}"/>
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1" IsOn="{x:Bind ViewModel.MinimizeToTray, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.NormalAutomationSettingsEnabled, Mode=OneWay}" OnContent="" OffContent="" MinWidth="0" Margin="0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </Grid>

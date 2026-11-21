@@ -42,7 +42,7 @@ public sealed partial class MainWindow
 
     private async Task CheckGameVersionsAsync(bool force = false)
     {
-        if (_gameVersionClosed || _gameVersionChecking || !StartupGameDirectoryCheckCompleted || OfflineModeGuard.BlocksNormalAutomation) return;
+        if (_lightweightTrayTransition || _gameVersionClosed || _gameVersionChecking || !StartupGameDirectoryCheckCompleted || OfflineModeGuard.BlocksNormalAutomation) return;
         var tick = Environment.TickCount64;
         if (!force && _gameVersionLastCheck != long.MinValue && tick - _gameVersionLastCheck < 10000) return;
         _gameVersionChecking = true;

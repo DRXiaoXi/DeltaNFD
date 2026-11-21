@@ -8,11 +8,22 @@ internal static class FrameStatusPresentation
         && now - snapshot.UpdatedUtc <= TimeSpan.FromSeconds(10) && snapshot.OptimalClock?.Prepared == true;
 
     internal static string PendulumDescription(bool win10, string targetName = "三角洲") => (win10
-        ? "保持 DPC 在后台运行，忽略三角洲的精度请求，使用已保存的对应精度；随帧格启停。"
-        : "忽略三角洲的精度请求，使用已保存的对应精度；随帧格启停。").Replace("三角洲", targetName, StringComparison.Ordinal);
+        ? "开启后随帧格保持 DPC 在后台运行，持有已保存的精度，并在核验通过后忽略三角洲的精度请求。"
+        : "开启后随帧格持有已保存的精度，并在核验通过后忽略三角洲的精度请求。").Replace("三角洲", targetName, StringComparison.Ordinal);
 
-    internal static string Pendulum(bool active, ProcmanStatusSnapshot? snapshot, DateTimeOffset now, string error, string targetName = "三角洲")
+    internal static string Pendulum(bool active, ProcmanStatusSnapshot? snapshot, DateTimeOffset now, string error,
+        string targetName = "三角洲", bool enabled = true)
     {
+        if (!enabled)
+        {
+            if (snapshot?.FrameTimerIgnore.RestorePending == true || snapshot?.OptimalClock is { HasError: true, Holding: true })
+                return "钟摆联动已停用，恢复仍待核对：" + (snapshot.FrameTimerIgnore.RestorePending
+                    ? snapshot.FrameTimerIgnore.Message : snapshot.OptimalClock!.Message);
+            if (snapshot?.FrameTimerIgnore.BackupCount > 0 || snapshot?.OptimalClock?.Holding == true)
+                return "正在等待恢复游戏精度请求并释放钟摆，尚未确认完成";
+            if (active && !PendulumPrepared(snapshot, now, error)) return "钟摆联动已停用，后台状态待核对";
+            return "钟摆联动未启用";
+        }
         if (!PendulumPrepared(snapshot, now, error)) return "";
         var clock = snapshot!.OptimalClock!;
         var target = $"{clock.SavedResolution100ns / 10000.0:0.0000} ms";
@@ -22,10 +33,23 @@ internal static class FrameStatusPresentation
             || now - clock.UpdatedUtc > TimeSpan.FromSeconds(10)) return "等待后端核对钟摆持有状态，尚未确认生效";
         var verified = clock.ExperimentalWindows10 ? clock.DpcProcessVerified : clock.VerifiedGlobal;
         if (!verified || clock.Current100ns == 0) return "等待核对对应精度，尚未确认生效";
+        var policy = snapshot.FrameTimerIgnore;
         var prefix = clock.ExperimentalWindows10 ? "DPC 后台运行；" : "";
-        var value = Math.Abs((long)clock.Current100ns - clock.SavedResolution100ns) <= 50
-            ? $"对应精度 {target} 已持有；" : $"目标 {target}，当前 {clock.Current100ns / 10000.0:0.0000} ms；";
-        return prefix + value + TimerIgnore(true, true, snapshot, now, error, targetName);
+        var policyStatus = TimerIgnore(true, true, snapshot, now, error, targetName);
+        if (TimerSnapshotFresh(policy, now) && policy.PostApplyReachabilityConfirmed && policy.AfterPolicyClock100ns is > 0 and var after
+            && policy.Maintaining && !policy.HasError && !policy.RestorePending
+            && policy.InstanceCount > 0 && policy.AppliedCount == policy.InstanceCount)
+        {
+            var delta = (long)after - clock.SavedResolution100ns;
+            var diagnostic = delta < -50 ? "仍有更细读数，未达到目标，来源未确认"
+                : delta > 50 ? "读数比目标粗，未达到目标"
+                : policy.BeforePolicyClock100ns is > 0 and var before && before + 50L < clock.SavedResolution100ns
+                    ? $"忽略前 {before / 10000.0:0.0000} ms，复核读数已接近目标"
+                    : "复核读数与目标相符";
+            return prefix + $"已忽略{targetName}的精度请求（{policy.AppliedCount}/{policy.InstanceCount}）；"
+                + $"目标 {target}，忽略后系统读数 {after / 10000.0:0.0000} ms：{diagnostic}。";
+        }
+        return prefix + $"钟摆目标 {target}，持有监测读数 {clock.Current100ns / 10000.0:0.0000} ms；" + policyStatus;
     }
 
     internal static string Priority(bool selected, bool active, ProcmanStatusSnapshot? snapshot, DateTimeOffset now, string error, string targetName = "三角洲")
@@ -55,8 +79,7 @@ internal static class FrameStatusPresentation
         var fresh = snapshot is not null && snapshot.Module == DeltaNFD.Backends.BackendModules.Procman
             && snapshot.UpdatedUtc != default && snapshot.UpdatedUtc <= now.AddSeconds(2)
             && now - snapshot.UpdatedUtc <= TimeSpan.FromSeconds(10)
-            && state is not null && state.UpdatedUtc != default && state.UpdatedUtc <= now.AddSeconds(2)
-            && now - state.UpdatedUtc <= TimeSpan.FromSeconds(10);
+            && state is not null && TimerSnapshotFresh(state, now);
         var reading = Reading(fresh && error.Length == 0 ? state!.SystemCurrentMilliseconds : null);
         string WithReading(string message) => message + reading;
         if (error.Length > 0)
@@ -72,8 +95,10 @@ internal static class FrameStatusPresentation
         if (!snapshot!.RulesEngineRunning && state!.Maintaining) return WithReading($"监控已停止，{targetName}定时器请求忽略状态恢复仍待核对");
         if (state!.InstanceCount > 0 && !state.RestorePending)
         {
-            if (state.IgnoreApplied)
-                return WithReading($"已忽略{targetName}的精度请求，{targetName}使用系统当前最佳时钟");
+            if (state.IgnoreApplied && !state.HasError)
+                return WithReading(state.PostApplyReachabilityConfirmed
+                    ? $"已忽略{targetName}的精度请求（已复测时钟可达性）"
+                    : $"已回读{targetName}的忽略策略，仍需复核忽略后的时钟读数");
             if (state.LegacyGlobalReachable == false)
                 return WithReading($"已跳过忽略位：本系统按进程计时，忽略会让{targetName}回落到 15.625ms；{targetName}保留自身精度");
             if (state.LegacyGlobalReachable is null)
@@ -81,6 +106,9 @@ internal static class FrameStatusPresentation
         }
         return WithReading(state!.Message);
     }
+
+    private static bool TimerSnapshotFresh(FrameTimerIgnoreSnapshot state, DateTimeOffset now) => state.UpdatedUtc != default
+        && state.UpdatedUtc <= now.AddSeconds(2) && now - state.UpdatedUtc <= TimeSpan.FromSeconds(10);
 
     /// <summary>只读展示：当前系统定时器分辨率实际读数（不改写、不申请、不释放）。</summary>
     private static string Reading(double? milliseconds) => milliseconds is { } value && double.IsFinite(value) && value > 0

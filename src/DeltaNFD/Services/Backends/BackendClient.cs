@@ -37,6 +37,8 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
     private int _clockValueVersion;
     private int _manualAsdVersion;
     private int _clockEnvironmentVersion;
+    private int _nvSettingsSaveVersion;
+    private int _nvDisplayContainerVersion;
     private string? _lastCommand;
     private DateTimeOffset? _lastStatusUtc;
     /// <summary>最近一次带写前意图的写入命令；收尾失败时用它建立正确的恢复证据（而不是被只读轮询覆盖）。</summary>
@@ -80,6 +82,7 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
 
     public string ModuleId => _spec.Id;
     public bool RequiresAttention => _unconfirmedOperation;
+    internal bool HasInvocationInFlight => _invokeGate.CurrentCount == 0;
     internal bool CpuRestoreConfirmed => _cpuRestoreConfirmed;
     internal Guid SessionId => _sessionId;
 
@@ -496,6 +499,8 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
         _clockValueVersion = ready.ClockValueVersion;
         _manualAsdVersion = ready.ManualAsdVersion;
         _clockEnvironmentVersion = ready.ClockEnvironmentVersion;
+        _nvSettingsSaveVersion = ready.NvSettingsSaveVersion;
+        _nvDisplayContainerVersion = ready.NvDisplayContainerVersion;
     }
 
     /// <summary>
@@ -559,6 +564,12 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
                 || command == BackendCommands.SystemRecover && argsElement.TryGetProperty("scope", out var recoveryScope) && recoveryScope.GetString() == "clock-environment")
                 && _clockEnvironmentVersion != ClockEnvironmentPolicy.Version)
                 return BackendResult.Failed("backend.clock-environment-unsupported", "此后端不支持计时源与 HPET 功能，未发送操作。请使用完整新版程序。");
+            if ((command is BackendCommands.GpuNvDisplayContainerStatus or BackendCommands.GpuNvDisplayContainerChange
+                || command == BackendCommands.GpuReconcile && argsElement.TryGetProperty("scope", out var displayScope) && displayScope.GetString() == "nv-display-container")
+                && _nvDisplayContainerVersion != NvDisplayContainerChange.ProtocolVersion)
+                return BackendResult.Failed("backend.nv-display-container-unsupported", "旧显卡后端不支持显示容器开关，未操作。请使用完整新版程序目录。");
+            if (!SupportsNvSettingsSave(command, _nvSettingsSaveVersion))
+                return BackendResult.Failed("backend.nv-settings-unsupported", "当前后端不支持此版本的 NVIDIA 设置保存，未发送操作。请使用完整新版程序目录。");
             var invoke = new BackendInvoke(command, argsElement);
             var invokeFrame = BackendMessages.EncodeInvoke(_spec.Id, _sessionId, requestId, invoke);
             using var sending = BackendOperationGate.EnterStart();
@@ -824,6 +835,10 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
             return Task.CompletedTask;
         }
     }
+
+    internal static bool SupportsNvSettingsSave(string command, int version) => command is not
+        (BackendCommands.GpuDriverApply or BackendCommands.GpuDriverRestore or BackendCommands.GpuDlssIndicatorSet)
+        || version == NvDriverSettingPolicy.SaveProtocolVersion;
 
     private bool NeedsEvidence(string command) => BackendModules.IsMutating(ModuleId, command)
         || ModuleId == BackendModules.CpuFrame && _cpuMayNeedRestore && !_cpuRestoreConfirmed;
