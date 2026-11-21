@@ -488,6 +488,10 @@ internal static class BackendUnconfirmedStore
         return Archive(confirmed.Module, bytes, "kept-current-state");
     }
 
+    // 只识别旧记录，防止已移除的操作被无关恢复范围归档为已恢复。
+    internal static bool IsRetiredDriverPriorityOperation(Review review) => review.Module == BackendModules.System
+        && review.Command is "system.driver-priority.change" or "system.driver-priority.restore-all";
+
     /// <summary>恢复成功后归档原始记录，并写入复核证据（恢复动作、复核快照、结果）。</summary>
     public static string ArchiveAfterRecovery(Review confirmed, string scope, bool verified, string message, ReconcileSnapshot? snapshot)
     {
@@ -496,11 +500,8 @@ internal static class BackendUnconfirmedStore
             && (scope != "clock-environment" || snapshot is not { Complete: true, Module: BackendModules.System }
                 || !snapshot.RecoveryScopes.Any(s => s.Id == "clock-environment" && !s.Available && s.AffectedCount == 0)))
             throw new IOException("计时源与 HPET 操作未通过对应范围复核，原始记录保留。");
-        if (confirmed.Module == BackendModules.System
-            && (confirmed.Command is BackendCommands.SystemDriverPriorityChange or BackendCommands.SystemDriverPriorityRestoreAll)
-            && (scope != "driver-priority" || snapshot is not { Complete: true, Module: BackendModules.System }
-                || !snapshot.RecoveryScopes.Any(s => s.Id == "driver-priority" && !s.Available && s.AffectedCount == 0)))
-            throw new IOException("设备中断操作未通过对应范围完整复核，保留原始记录。");
+        if (IsRetiredDriverPriorityOperation(confirmed))
+            throw new IOException("本版本已移除驱动优先级恢复；保留原始记录与备份。");
         if (confirmed.Module == BackendModules.System
             && (confirmed.Command is BackendCommands.SystemStartupChange or BackendCommands.SystemStartupRestoreAll)
             && (scope != "startup" || snapshot is not { Complete: true, Module: BackendModules.System }

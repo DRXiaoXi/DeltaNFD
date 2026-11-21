@@ -170,12 +170,19 @@ public sealed partial class ProcessPage : Page
         RebuildRuleValues();
         ProcessList.ItemsSource = _rows;
         HeldList.ItemsSource = _held;
-        _timer.Tick += (_, _) => { if (AutoRefreshToggle.IsChecked == true && IsProcessTab) _ = RefreshListAsync(preserveSelection: true); };
+        _timer.Tick += (_, _) =>
+        {
+            if (_timer.IsEnabled && App.MainWindow?.IsUiPresented != false && AutoRefreshToggle.IsChecked == true && IsProcessTab)
+                _ = RefreshListAsync(preserveSelection: true);
+        };
         Loaded += (_, _) =>
         {
             _detachedFromWindow = false;
-            _timer.Start();
-            _ = RefreshListAsync(preserveSelection: false);
+            if (App.MainWindow?.IsUiPresented != false)
+            {
+                _timer.Start();
+                _ = RefreshListAsync(preserveSelection: false);
+            }
             _ = LoadTopologyAsync();
             _ = LoadRulesAsync();
             _ = LoadBackgroundAsync(syncControls: true);
@@ -184,6 +191,16 @@ public sealed partial class ProcessPage : Page
         Unloaded += (_, _) => StopPolling();
         _lastProcessTab = ProcessTabs.SelectedItem;
         _workspaceReady = true;
+    }
+
+    internal void SetWindowPresented(bool presented)
+    {
+        // Pause display polling without detaching the page or changing any running rule.
+        if (!IsLoaded || _detachedFromWindow) return;
+        if (!presented) { _timer.Stop(); return; }
+        if (_timer.IsEnabled) return;
+        _timer.Start();
+        if (AutoRefreshToggle.IsChecked == true) _ = RefreshListAsync(preserveSelection: true);
     }
 
     private void StopPolling()

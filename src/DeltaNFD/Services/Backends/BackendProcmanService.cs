@@ -21,6 +21,12 @@ internal sealed class BackendProcmanService
     internal ProcmanStatusSnapshot? LatestStatus => Volatile.Read(ref _latestStatus);
     internal string StatusError => _observedClient is not { IsUsable: true } ? "进程管理后端连接已中断" : Volatile.Read(ref _statusFailure);
     internal bool HasCurrentStatus => StatusError.Length == 0 && LatestStatus is { } status && IsFresh(status.UpdatedUtc);
+    internal bool IsConfirmedIdleForTray => HasCurrentStatus && LatestStatus is
+    {
+        RulesEngineRunning: false, HeldChangeCount: 0, UnreconciledCount: 0,
+        DualCcdSchedulingActive: false, SingleCcdExcludeActive: false,
+        OptimalClock: { Holding: false, Enabled: false, CustomResolutionActive: false }
+    };
     internal static bool IsFresh(DateTimeOffset utc)
     {
         var age = DateTimeOffset.UtcNow - utc;
@@ -88,9 +94,9 @@ internal sealed class BackendProcmanService
         catch (Exception ex) { Log.Error("帧格后台功能同步未完成", ex); return OperationResult.Fail(ex.Message); }
     }
 
-    internal async Task ActivateSavedRulesAsync()
+    internal async Task<bool> ActivateSavedRulesAsync()
     {
-        if (OfflineModeGuard.BlocksNormalAutomation) return;
+        if (OfflineModeGuard.BlocksNormalAutomation) return false;
         var settings = AppSettingsStore.Read();
         if (!File.Exists(Path.Combine(AppDataPaths.Root, "procman-rules.json")) && !File.Exists(Path.Combine(AppDataPaths.Root, "procman-changes.json"))
             && !File.Exists(Path.Combine(AppDataPaths.Root, "procman-background.json"))
@@ -99,13 +105,14 @@ internal sealed class BackendProcmanService
             && !File.Exists(Path.Combine(AppDataPaths.Root, "frame-game-timer-ignore.json"))
             && !File.Exists(Path.Combine(AppDataPaths.Root, "timer-ignore-list.json"))
             && !settings.FrameModeActive
-            && !(settings.TimerIgnoreExtraProcesses?.Any(n => !string.IsNullOrWhiteSpace(n)) ?? false)) return;
+            && !(settings.TimerIgnoreExtraProcesses?.Any(n => !string.IsNullOrWhiteSpace(n)) ?? false)) return true;
         try
         {
             var result = await InvokeAsync(BackendCommands.ProcmanActivate, new { });
             if (result.Status != BackendResultStatuses.Ok) Log.Warn("进程规则未恢复启动：" + result.Message);
+            return result.Status == BackendResultStatuses.Ok;
         }
-        catch (Exception ex) { Log.Error("进程规则启动未完成，证据保留", ex); }
+        catch (Exception ex) { Log.Error("进程规则启动未完成，证据保留", ex); return false; }
     }
 
     internal async Task<ProcmanListResult> ListAsync(int offset, int limit, string? nameFilter, CancellationToken ct = default, string scope = "all")
@@ -214,6 +221,9 @@ internal sealed class BackendProcmanService
     /// <summary>扫描本机最佳分辨率（可能耗时数十秒到数分钟）。</summary>
     internal async Task<OperationResult> ScanClockAsync(bool quick, OptimalClockScanMode scanMode, CancellationToken ct = default, bool dpcAlgorithmScan = false)
         => await ClockCommandAsync(BackendCommands.ProcmanClockScan, new OptimalClockArgs { Quick = quick, ScanMode = scanMode, DpcAlgorithmScan = dpcAlgorithmScan }, "钟摆计划扫描", ct);
+
+    internal Task<OperationResult> CompareWakeAsync(bool quick, CancellationToken ct)
+        => ClockCommandAsync(BackendCommands.ProcmanClockCompare, new OptimalClockArgs { Quick = quick }, "钟摆对照测量", ct);
 
     internal Task<OperationResult> ProbeClockCompatibilityAsync(CancellationToken ct = default)
         => ClockCommandAsync(BackendCommands.ProcmanClockScan, new OptimalClockArgs { CompatibilityOnly = true }, "钟摆计划兼容检测", ct);

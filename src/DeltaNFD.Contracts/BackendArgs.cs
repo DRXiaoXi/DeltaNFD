@@ -43,6 +43,12 @@ public sealed class NvDriverReadOnlyArgs
     public bool ReadOnly { get; set; }
 }
 
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+public sealed class NvDlssIndicatorArgs
+{
+    public required bool Enabled { get; init; }
+}
+
 public sealed class NvShaderCacheApplyArgs
 {
     public string Scope { get; set; } = "";

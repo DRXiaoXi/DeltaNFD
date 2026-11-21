@@ -19,6 +19,7 @@ public partial class UpdateViewModel : ObservableObject
 {
     private static readonly Lazy<UpdateViewModel> Shared = new(() => new UpdateViewModel());
     public static UpdateViewModel Current => Shared.Value;
+    internal static bool HasCurrentWork => Shared.IsValueCreated && Shared.Value.IsBusy;
 
     private readonly IUpdateService _update;
     private readonly DispatcherQueue? _dispatcher;

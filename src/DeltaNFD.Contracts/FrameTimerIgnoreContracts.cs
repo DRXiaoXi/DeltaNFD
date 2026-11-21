@@ -36,6 +36,12 @@ public sealed record FrameTimerIgnoreSnapshot
     /// <summary>本次是否真的施加了忽略位（false 表示因系统时钟过粗而主动跳过）。</summary>
     public bool IgnoreApplied { get; init; }
 
+    /// <summary>帧格独立复核：首次施加或重新写入后，无请求进程仍可获得较细时钟。</summary>
+    public bool PostApplyReachabilityConfirmed { get; init; }
+    /// <summary>最新帧格回读周期开始和结束时的系统读数，非游戏进程独立精度。</summary>
+    public uint? BeforePolicyClock100ns { get; init; }
+    public uint? AfterPolicyClock100ns { get; init; }
+
     public string Message { get; init; } = "尚未核对三角洲定时器请求忽略状态";
 
     public DateTimeOffset UpdatedUtc { get; init; }

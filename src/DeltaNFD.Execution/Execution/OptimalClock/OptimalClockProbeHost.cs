@@ -29,6 +29,7 @@ public static class OptimalClockProbeHost
         if (args.Length == 0) return false;
         try
         {
+            if (args[0] == WakeDeadlineProbe.Argument) { exitCode = WakeDeadlineProbe.Run(args); return true; }
             if (args[0] == HoldArgument && args.Length == 2 && uint.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var holdResolution))
             {
                 exitCode = Hold(holdResolution);

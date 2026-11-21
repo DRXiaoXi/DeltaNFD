@@ -75,7 +75,7 @@ internal sealed class FrameNvidiaGpuShare : IDisposable
                 if (_blocked && record is null) { Publish(false, true, false, Snapshot.Info, "本次帧格已暂停 NVIDIA 比例接管，请关闭后重新启用此功能再重试"); return false; }
                 _lease ??= _acquire();
                 info = _api.Read();
-                if (!info.Supported || info.HardwareKey.Length != 64) throw new IOException("驱动未提供可核验的 NVIDIA 前后台比例；请核对 NVIDIA App、驱动与 HAGS 支持。");
+                if (!info.Supported || info.HardwareKey.Length != 64) throw new IOException("驱动未提供可核验的 NVIDIA 前后台比例；请核对显卡、驱动与 HAGS 支持。");
                 if (record is not null)
                 {
                     if (record.HardwareKey != info.HardwareKey) throw new IOException("NVIDIA 显卡身份已变化，保留旧记录，未写入另一张显卡。");

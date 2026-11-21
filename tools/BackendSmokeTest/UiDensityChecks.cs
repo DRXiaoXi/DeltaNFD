@@ -108,10 +108,15 @@ internal static class UiDensityChecks
         var mainXaml = Source("MainWindow.xaml");
         Check(!mainXaml.Contains("作者"), "author line moved to About");
         Check(Source("Views", "SettingsPage.xaml").Contains("作者：逐梦之子-晓夕"), "author kept in About");
-        var main = Source("MainWindow.xaml.cs");
+        var main = Source("MainWindow.Presentation.cs");
+        Check(Source("MainWindow.xaml.cs").Contains("InitializeWindowPresentation();"), "presentation policy hooked by main window");
         Check(main.Contains("DecodePixelWidth = decodeWidth") && main.Contains("Math.Clamp((needed + 319) / 320 * 320, 960, 2560)"), "background decoded to window width");
-        Check(main.Contains("if (args.DidVisibilityChange) ReleaseBackgroundImage();") && main.Contains("if (AppWindow.IsVisible) LoadBackgroundBitmap"), "background released while hidden");
-        Check(main.Contains("AppWindow.Changed -= AppWindow_BackgroundChanged"), "window change handler detached on close");
+        Check(main.Contains("if (!presented) ReleaseBackgroundImage();") && main.Contains("if (IsUiPresented) LoadBackgroundBitmap"), "background released while not presented, including when changing settings");
+        Check(Source("Native", "WindowPresentationHook.cs").Contains("IsWindowVisible(window) && !IsIconic(window)"), "distinguish minimize from visibility and activation");
+        Check(main.Contains("AppWindow.Changed -= AppWindow_PresentationChanged") && main.Contains("_presentationHook?.Dispose();"), "window presentation observers detached on close");
+        Check(main.Contains("page.SetWindowPresented(presented)") && !main.Contains("Navigate("), "presentation-only page notification retains current page");
+        Check(Source("Views", "ProcessPage.xaml.cs").Contains("if (!presented) { _timer.Stop(); return; }")
+            && Source("Views", "OptimalClockPage.xaml.cs").Contains("if (!presented) { _statusTimer.Stop(); return; }"), "periodic display timers pause without unloading pages");
 
         Console.WriteLine($"UI density checks: {count} passed, {helpTips} help tips across {SimplifiedPages.Length} pages. Static source only; no GUI or backend started.");
     }

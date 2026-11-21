@@ -70,7 +70,7 @@ public static class ManualAsdInspection
 
     public static (string Path, long Bytes) FindLargeFile(string root, CancellationToken token = default)
     {
-        DriverPriorityStore.RejectLinks(root);
+        ManualAsdStore.RejectLinks(root);
         try { if ((File.GetAttributes(root) & FileAttributes.Directory) == 0) throw new IOException("D3DSCache 不是目录。"); }
         catch (DirectoryNotFoundException) { return ("", 0); }
         catch (FileNotFoundException) { return ("", 0); }
@@ -82,14 +82,14 @@ public static class ManualAsdInspection
             if (++dirs > 4096 || clock.Elapsed > TimeSpan.FromSeconds(10)) throw new IOException("D3DSCache 检测达到上限，请关闭其他图形应用后重试。");
             try
             {
-                DriverPriorityStore.RejectLinks(folder);
+                ManualAsdStore.RejectLinks(folder);
                 foreach (var path in Directory.EnumerateFileSystemEntries(folder))
                 {
                     token.ThrowIfCancellationRequested();
                     if (++files > 50000 || clock.Elapsed > TimeSpan.FromSeconds(10)) throw new IOException("D3DSCache 文件过多，本次检测未完成。");
                     try
                     {
-                        DriverPriorityStore.RejectLinks(path);
+                        ManualAsdStore.RejectLinks(path);
                         var attributes = File.GetAttributes(path);
                         if ((attributes & FileAttributes.Directory) != 0) { folders.Push(path); continue; }
                         // Only metadata is needed. The game may retain an exclusive content handle after warmup.

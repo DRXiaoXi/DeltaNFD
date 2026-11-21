@@ -43,7 +43,7 @@ internal sealed class FrameTimerLegacyProbe
             {
                 var measured = _api.MeasureRequestlessGranularityMs();
                 _measuredUtc = DateTime.UtcNow;
-                if (measured is null)
+                if (measured is null || !double.IsFinite(measured.Value) || measured.Value <= 0)
                 {
                     _granularity = null;
                     _reachable = null;

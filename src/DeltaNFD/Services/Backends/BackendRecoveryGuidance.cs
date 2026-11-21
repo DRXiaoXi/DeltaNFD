@@ -32,6 +32,9 @@ internal static class BackendRecoveryGuidance
             return Advice("系统文件替换需要核对原始备份", "普通运行库防护恢复不能还原系统 DLL 替换。",
                 "按本次替换备份目录中的说明恢复并核对文件及重启排程；无法确认备份时停止操作。",
                 "仅在确认文件状态和相关程序均结束后，才考虑界面提供的“确认保留当前状态”。", FeedbackStep);
+        if (BackendUnconfirmedStore.IsRetiredDriverPriorityOperation(review))
+            return Advice("旧版设备中断设置需要核对", "本版本已移除驱动优先级；旧备份及未确认记录仍保留。",
+                "需要还原时，请用原版本和原始备份恢复。仅在自行核对并接受当前状态后，才选择“确认保留当前状态”。", FeedbackStep);
         if (!string.IsNullOrWhiteSpace(readError)) return ForUnavailable();
         var scopes = BackendRecovery.RecoveryChoices(review, snapshot);
         if (scopes.Count > 0)

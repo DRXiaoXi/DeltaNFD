@@ -3,8 +3,10 @@ namespace DeltaNFD.Services;
 /// <summary>共享的设置校验与联动计划；不调用驱动、不修改系统。</summary>
 public static class NvDriverSettingPolicy
 {
-    public const uint RebarId = 0x000F00BA; // NVPI: rBAR - Enable; 0=off, 1=on.
+    public const int SaveProtocolVersion = 1;
+    public const uint RebarId = 0x000F00BA; // V1: 0=off, 1=on.
     public const uint RebarPolicyId = 0x000BFA21; // Separate v2 policy: 0=off, 1=auto, 2=all settings.
+    public const uint RebarV2Auto = 1;
     public const uint RebarMinimumDriver = 61656;
     public const uint RebarRecommendedDriver = 62101; // 项目建议，非 NVIDIA 兼容性保证。
     public const uint AnisoLevelId = 0x101E61A9;
@@ -20,19 +22,40 @@ public static class NvDriverSettingPolicy
     public static bool IsRebarSetting(uint id) => id is RebarId or RebarPolicyId;
     public static bool IsRebarEnable(uint id, uint? value) => id == RebarId && value == 1 || id == RebarPolicyId && value == 2;
 
+    // 621.24: V2 Auto keeps the initial V1 decision. A missing V2 setting takes the Auto path, not Disabled.
+    // Missing V1 is a driver/platform decision, not an explicit 0 (off).
+    public const uint RebarV1NotSpecified = uint.MaxValue;
+    public static uint MissingValue(uint id) => id switch
+    {
+        RebarPolicyId => RebarV2Auto,
+        RebarId => RebarV1NotSpecified,
+        _ => 0u,
+    };
+
+    public static (uint Id, uint Value) RebarCompanionForEnable(uint id) => id == RebarId
+        ? (RebarPolicyId, RebarV2Auto) : (RebarId, 0u);
+
+    public const string RebarConflict = "Resizable BAR V1 与 V2 不能同时开启，请选择其中一种策略。";
+    public const string RebarSwitchNote = "开启 V1 时 V2 应为自动；开启 V2 时会关闭 V1。单独将 V2 设为关闭会覆盖 V1、关闭驱动策略。";
+
     public static string? RebarWarning(uint? driver, IEnumerable<(uint Id, uint? Value)> changes)
     {
         if (!changes.Any(c => IsRebarEnable(c.Id, c.Value)) || driver >= RebarRecommendedDriver) return null;
-        var name = changes.Any(c => c.Id == RebarPolicyId && c.Value == 2) ? "Resizable BAR v2" : "Resizable BAR";
+        var name = changes.Any(c => c.Id == RebarPolicyId && c.Value == 2) ? "Resizable BAR V2" : "Resizable BAR V1";
         return $"当前 NVIDIA 驱动：{FormatDriver(driver)}。本项目建议 621.01 及以上版本驱动最适合开启 {name}。\n\n"
             + (driver is null ? "无法确认当前版本，开启后的兼容性与效果尚不明确。" : "较旧驱动开启后可能出现兼容性或性能问题。")
             + "建议先更新驱动；若继续，出现异常可将此项恢复为驱动默认。\n\n"
             + "此开关只设置游戏驱动策略，硬件与 BIOS 仍须支持并启用 ReBAR。";
     }
 
-    public static string? Validate(IReadOnlyList<(uint Id, uint? Value)> changes, uint? driver, bool rebarWarningAccepted)
+    public static string? Validate(IReadOnlyList<(uint Id, uint? Value)> changes, uint? driver,
+        bool rebarWarningAccepted)
     {
         if (changes.Select(c => c.Id).Distinct().Count() != changes.Count) return "设置 ID 重复，未写入。";
+        if (changes.Count(c => IsRebarEnable(c.Id, c.Value)) > 1)
+            return RebarConflict + "未写入任何设置。";
+        if (changes.Any(c => (c.Id, c.Value) == (RebarId, 1u)) && changes.Any(c => (c.Id, c.Value) == (RebarPolicyId, 0u)))
+            return "V2 显式关闭会覆盖 V1。要启用 V1，请将 V2 设为自动；要关闭策略，请只关闭 V2。未写入任何设置。";
         foreach (var (id, value) in changes)
         {
             var def = NvSettingsCatalog.Definitions.FirstOrDefault(d => d.Id == id);
@@ -43,7 +66,7 @@ public static class NvDriverSettingPolicy
             }
             if (value is null) continue;
             if (id == RebarPolicyId && !(driver >= RebarMinimumDriver))
-                return "Resizable BAR v2 需要确认的 616.56 及以上驱动；当前版本为 " + FormatDriver(driver) + "，仅允许恢复驱动默认。未写入任何设置。";
+                return "Resizable BAR V2 需要确认的 616.56 及以上驱动；当前版本为 " + FormatDriver(driver) + "，仅允许恢复驱动默认。未写入任何设置。";
             if (def.Kind == NvSettingKind.PercentScale
                 ? value < def.ScaleMin || value > def.ScaleMax
                 : !def.Options.Any(o => o.Value == value)) return $"「{def.Title}」取值不合法。";
@@ -53,7 +76,7 @@ public static class NvDriverSettingPolicy
     }
 
     public static List<(uint Id, uint? Value)> Expand(IReadOnlyList<(uint Id, uint? Value)> changes,
-        IReadOnlyDictionary<uint, (bool HasOverride, uint Value)> current, uint? driver = null)
+        IReadOnlyDictionary<uint, (bool HasOverride, uint Value)> current)
     {
         var result = changes.ToDictionary(c => c.Id, c => c.Value);
         void Dlss(uint enable, params uint[] dependents)
@@ -67,8 +90,15 @@ public static class NvDriverSettingPolicy
         Dlss(0x10E41E03, 0x10E41DF1);
         if (result.TryGetValue(AnisoLevelId, out var level)) result[AnisoModeId] = level is null ? null : 1u;
         if (result.TryGetValue(MonitorRequestedId, out var technology)) result[MonitorEffectiveId] = technology;
-        // ReBAR and v2 are independently visible settings. Preserve explicit/current choices;
-        // resetting one row deletes only that override, while full reset includes both rows.
+        foreach (var (id, value) in changes)
+        {
+            if (!IsRebarEnable(id, value)) continue;
+            var (other, expected) = RebarCompanionForEnable(id);
+            // Explicit choices (including removal) retain priority. Contradictory requests are rejected by Validate.
+            // If removing an override, verify the newly inherited value before saving.
+            if (!result.ContainsKey(other) && (!current.TryGetValue(other, out var state)
+                || state.Value != expected)) result[other] = expected;
+        }
         return result.Select(c => (c.Key, c.Value)).ToList();
     }
 

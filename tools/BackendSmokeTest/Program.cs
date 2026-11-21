@@ -1,8 +1,8 @@
 using DeltaNFD.Services;
+if (args is ["--wake-comparison-checks"]) { try { WakeComparisonChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--system-optimize-safety-checks"]) { try { await SystemOptimizeSafetyChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args.Length == 2 && args[0] == "--update-navigation-checks") { try { await UpdateNavigationChecks.RunAsync(args[1]); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--clock-environment-checks"]) { try { ClockEnvironmentChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
-if (args is ["--driver-priority-checks"]) { try { DriverPriorityChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--memory-improvement-checks"]) { try { await MemoryImprovementChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--procman-memory-simulated-checks"]) { try { await ProcmanMemoryChecks.RunAsync(nativeChild: false); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--custom-frame-target-checks"]) { try { CustomFrameTargetChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }

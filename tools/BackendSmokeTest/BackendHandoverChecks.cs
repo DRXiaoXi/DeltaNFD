@@ -42,6 +42,7 @@ internal static class BackendHandoverChecks
 
             if (!deploymentOnly)
             {
+            await TrayHandoverLeavesDefenderEvidenceAsync(root);
             await PositiveControlAsync(fixture);
             await RetainedStaticBackupAsync(root);
             await SendCancellationBlocksAsync();
@@ -85,6 +86,20 @@ internal static class BackendHandoverChecks
         }
     }
 
+    private static async Task TrayHandoverLeavesDefenderEvidenceAsync(string root)
+    {
+        var session = Path.Combine(root, "defender-session.json");
+        const string body = "{\"fixture\":\"pending Defender cleanup\"}";
+        File.WriteAllText(session, body);
+        try
+        {
+            var blocked = await BackendLifecycle.PrepareHandoverAsync("模拟轻量托盘", TimeSpan.FromSeconds(3), idleTrayOnly: true);
+            Check(blocked.Contains(BackendModules.System), "Defender 临时恢复记录阻止进入轻量托盘");
+            Check(!BackendSessions.AnyActive && File.ReadAllText(session) == body, "轻量托盘不启动恢复后端，不改临时恢复记录");
+        }
+        finally { File.Delete(session); }
+    }
+
     private static async Task RetainedStaticBackupAsync(string root)
     {
         var backup = Path.Combine(root, "optimize_backup.json");
@@ -103,6 +118,9 @@ internal static class BackendHandoverChecks
             Command = BackendCommands.SystemBxApply, RequestId = Guid.NewGuid().ToString("D"), SessionId = Guid.NewGuid().ToString("D"),
             Pid = process.Id, StartTicks = process.StartTime.ToUniversalTime().Ticks, Path = BackendPaths.Resolve(BackendModules.System) });
         File.WriteAllText(source, legacy);
+        var trayBlockers = await BackendLifecycle.PrepareHandoverAsync("有旧记录时切换轻量托盘", TimeSpan.FromSeconds(3), idleTrayOnly: true);
+        Check(trayBlockers.Contains(BackendModules.System) && !client.ExitConfirmed && File.ReadAllText(source) == legacy,
+            "轻量托盘不主动归档旧记录，也不停止该后端");
         var exited = await BackendLifecycle.PrepareHandoverAsync("旧版静态优化退出", TimeSpan.FromSeconds(10));
         Check(exited.Count == 0 && client.ExitConfirmed, "旧版明确成功的静态记录归档后实际排空仍执行，后端退出");
         Check(File.ReadAllBytes(backup).SequenceEqual(originalBackup), "归档不还原系统、不删除或覆盖原值备份");

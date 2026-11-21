@@ -144,7 +144,8 @@ public sealed class OfflineModeCoordinator
                 s.DualCcdArmed = preferences.DualCcdArmed;
                 s.DualCcdFrameEnabled = preferences.DualCcdFrameEnabled;
                 s.DualCcdGameCcdIndex = preferences.DualCcdGameCcdIndex;
-                s.FrameModeActive = false;
+                FrameSessionState.UserSetActive(s, false);
+                s.FrameStartupRecoveryPending = false;
                 s.CloseToTrayEnabled = false;
             });
         }

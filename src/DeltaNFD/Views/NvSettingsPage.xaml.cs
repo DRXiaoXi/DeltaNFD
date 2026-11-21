@@ -16,12 +16,10 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
     public bool ShowNoNvidia => !ViewModel.IsLoading && !ViewModel.EnvironmentReady;
 
     /// <summary>锁定按钮可用：环境就绪、未锁定、不忙。</summary>
-    public bool CanLock => ViewModel.CanEditOptions && !ViewModel.DrsFilesLocked && !ViewModel.LockBusy;
+    public bool CanLock => ViewModel.EnvironmentReady && ViewModel.CanRefresh && !ViewModel.DrsFilesLocked;
 
     /// <summary>解锁按钮可用：已锁定、不忙。</summary>
-    public bool CanUnlock => ViewModel.DrsFilesLocked && !ViewModel.LockBusy && !ViewModel.IsSelectingOption && !ViewModel.IsApplying && !ViewModel.IsLoading;
-
-    public bool CanRefresh => !ViewModel.IsLoading && !ViewModel.IsApplying && !ViewModel.IsSelectingOption;
+    public bool CanUnlock => ViewModel.DrsFilesLocked && ViewModel.CanRefresh;
 
     public bool CanReset => ViewModel.CanEditOptions && !ViewModel.DrsFilesLocked;
 
@@ -45,7 +43,6 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowNoNvidia)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanLock)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanUnlock)));
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanRefresh)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanReset)));
             }
         };
@@ -84,15 +81,44 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
 
     private async void ApplyButton_Click(object sender, RoutedEventArgs e)
     {
+        var epoch = _pageEpoch;
         var result = await ViewModel.ApplyChangesAsync(ConfirmRebarAsync);
-        if (result is { Success: false })
+        if (_active && epoch == _pageEpoch && result is { Success: false })
         {
             await ShowErrorAsync(result.Message);
         }
     }
 
+    private async void SaveDlssIndicator_Click(object sender, RoutedEventArgs e)
+    {
+        var epoch = _pageEpoch;
+        var result = await ViewModel.SaveDlssIndicatorAsync();
+        if (_active && epoch == _pageEpoch && result is { Success: false }) await ShowErrorAsync(result.Message);
+    }
+
+    private async void DisplayContainer_Click(object sender, RoutedEventArgs e)
+    {
+        var epoch = _pageEpoch;
+        await ViewModel.ChangeDisplayContainerAsync(async restore =>
+        {
+            if (!_active || epoch != _pageEpoch) return false;
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = restore ? "恢复 NVIDIA 显示容器？" : "停用 NVIDIA 显示容器？",
+                Content = restore ? "将还原备份中的启动方式。若原来在运行，将尝试重新启动服务。"
+                    : "将先备份原设置，再禁用并正常停止显示容器；重启后仍禁用。期间 NVIDIA 控制面板可能打不开。可在这里恢复。",
+                PrimaryButtonText = restore ? "恢复原设置" : "禁用并停止",
+                CloseButtonText = "取消",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            return await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary && _active && epoch == _pageEpoch;
+        });
+    }
+
     private async Task<bool> ConfirmRebarAsync(string warning)
     {
+        var epoch = _pageEpoch;
         var confirm = new ContentDialog
         {
             XamlRoot = XamlRoot,
@@ -102,28 +128,27 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
         };
-        return await confirm.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
+        return await confirm.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary && _active && epoch == _pageEpoch;
     }
 
     private async void ResetButton_Click(object sender, RoutedEventArgs e)
     {
+        var epoch = _pageEpoch;
         var confirm = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "全部恢复默认？",
-            Content = "将删除此游戏驱动配置中本页管理的全部覆盖项（含 DLSS 总开关、各向异性过滤模式、监视器技术与 ReBAR），交还给游戏内选项与驱动默认值。确定继续？",
+            Title = "恢复游戏设置默认值？",
+            Content = "将删除此游戏驱动配置中本页管理的全部覆盖项（含 DLSS 总开关、各向异性过滤模式、监视器技术与 ReBAR），交还给游戏内选项与驱动默认值。整机 DLSS 指示器不变。确定继续？",
             PrimaryButtonText = "恢复默认",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
         };
 
-        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary)
-        {
+        if (await confirm.ShowWithBackendRecoveryAsync() != ContentDialogResult.Primary || !_active || epoch != _pageEpoch)
             return;
-        }
 
         var result = await ViewModel.ResetAllAsync();
-        if (result is { Success: false })
+        if (_active && epoch == _pageEpoch && result is { Success: false })
         {
             await ShowErrorAsync(result.Message);
         }
@@ -141,7 +166,7 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
                 Title = "防闪屏性重置？",
                 Content = "请先退出三角洲，并关闭 NVIDIA App、控制面板及其他驱动设置工具。\n\n"
                     + "将先备份原值，再完整恢复三角洲专用驱动配置，清除全部用户修改，包括本页未列出的项目、DLSS、ReBAR 等覆盖，以及用户添加的程序关联；用户自行建立的配置可能被移除。\n\n"
-                    + "全局设置仍会被继承，其他游戏配置不变。本页尚未应用的选择将丢弃。完成后请重新启动游戏，在原问题位置确认效果；不保证修复所有闪屏。",
+                    + "全局设置仍会被继承，其他游戏配置和整机 DLSS 指示器不变。本页尚未应用的选择将丢弃。完成后请重新启动游戏，在原问题位置确认效果；不保证修复所有闪屏。",
                 PrimaryButtonText = "备份并重置",
                 CloseButtonText = "取消",
                 DefaultButton = ContentDialogButton.Close,

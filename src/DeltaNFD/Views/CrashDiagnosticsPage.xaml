@@ -1,0 +1,54 @@
+<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="using:DeltaNFD.Controls" x:Class="DeltaNFD.Views.CrashDiagnosticsPage">
+    <ScrollViewer HorizontalContentAlignment="Stretch" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel MaxWidth="1440" Padding="28,20,28,32" Spacing="14">
+            <StackPanel Spacing="4">
+                <ui:PageHeader Title="蓝屏日志分析"/>
+                <TextBlock Text="查看最近一次可确认的蓝屏、驱动线索及 WHEA 硬件错误记录。" Style="{StaticResource PageSubtitleStyle}" TextWrapping="Wrap"/>
+            </StackPanel>
+            <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Title="本机只读分析" Message="进入本页会自动读取近 30 天的本机 WHEA 日志。不会运行硬件压力测试，也不会自动打开或上传转储。"/>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="9">
+                    <TextBlock Text="硬件错误记录（WHEA）" Style="{StaticResource H3Style}" TextWrapping="Wrap"/>
+                    <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+                        <TextBlock x:Name="WheaText" Text="正在读取近 30 天的本机硬件记录…" IsTextSelectionEnabled="True" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                    </ScrollViewer>
+                    <Button x:Name="WheaButton" Content="刷新硬件记录" Click="Whea_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="9">
+                    <TextBlock Text="直接分析转储文件" Style="{StaticResource H3Style}" TextWrapping="Wrap"/>
+                    <TextBlock Text="选择 Windows x64/x86 PAGE 内核蓝屏转储。仅读取固定文件头与本机事件日志，不加载转储内存页；无需 WinDbg、符号文件或网络。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <StackPanel Orientation="Horizontal" Spacing="9">
+                        <Button x:Name="DumpPickButton" Content="选择 .dmp 并分析" Click="DumpPick_Click" Style="{StaticResource PrimaryButtonStyle}"/>
+                        <Button x:Name="DumpCancelButton" Content="取消分析" Click="Cancel_Click" Visibility="Collapsed" Style="{StaticResource SecondaryButtonStyle}"/>
+                        <ProgressRing x:Name="DumpBusyRing" Width="24" Height="24" IsActive="False" VerticalAlignment="Center" Foreground="{StaticResource AppAccentBrush}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="9">
+                    <TextBlock Text="粘贴 WinDbg 分析结果（可选）" Style="{StaticResource H3Style}" TextWrapping="Wrap"/>
+                    <TextBlock Text="粘贴本次转储的 !analyze -v 输出；仅在停止代码与四个参数都匹配时，才使用其中的 IMAGE_NAME 驱动线索。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <TextBox x:Name="DebuggerInput" AutomationProperties.Name="WinDbg 调试文本" PlaceholderText="保留 BUGCHECK_CODE、BUGCHECK_P1 至 P4 和 IMAGE_NAME" AcceptsReturn="True" MaxLength="65536" MinHeight="76" MaxHeight="180" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+            <StackPanel Orientation="Horizontal" Spacing="9">
+                <Button x:Name="AnalyzeButton" Content="仅分析本机日志" Click="Analyze_Click" Style="{StaticResource PrimaryButtonStyle}"/>
+                <Button x:Name="CancelButton" Content="取消分析" Click="Cancel_Click" Visibility="Collapsed" Style="{StaticResource SecondaryButtonStyle}"/>
+                <ProgressRing x:Name="BusyRing" Width="24" Height="24" IsActive="False" VerticalAlignment="Center" Foreground="{StaticResource AppAccentBrush}"/>
+            </StackPanel>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="9">
+                    <TextBlock Text="分析报告" Style="{StaticResource H3Style}"/>
+                    <TextBlock x:Name="StatusText" Text="要生成蓝屏报告，请选择 .dmp 文件或点击“仅分析本机日志”。" Style="{StaticResource NoteStyle}" AutomationProperties.LiveSetting="Polite" TextWrapping="Wrap"/>
+                    <Border MinHeight="220" MaxHeight="520" Padding="12" Background="{StaticResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <TextBlock x:Name="ReportText" AutomationProperties.Name="蓝屏分析报告" IsTextSelectionEnabled="True" TextWrapping="Wrap" Text="报告将在这里显示，可选中复制。"/>
+                        </ScrollViewer>
+                    </Border>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

@@ -54,6 +54,9 @@ public sealed partial class FrameService : IFrameService
     private bool _gamePowerThrottlingDisabled;
     private string _gamePowerStatusText = "";
     private bool _gameTimerIgnoreEnabled;
+    private bool _pendulumEnabled;
+    private bool _pendulumSyncing;
+    private string _pendulumToggleError = "";
     private bool _gamePriorityEnabled;
     private FrameCpuPriority _gameCpuPriority = FrameCpuPriority.AboveNormal;
     private FrameIoPriority _gameIoPriority = FrameIoPriority.Normal;
@@ -76,9 +79,6 @@ public sealed partial class FrameService : IFrameService
     private bool _isGameRunning;
     private string _statusText = "";
 
-    /// <summary>本进程内是否已成功完成过一次帧格激活（区分「本次刚激活」与「上次异常退出遗留的陈旧激活」）。</summary>
-    private bool _appliedThisSession;
-
     private string _memoryCleanStatusText = "尚未清理";
     private bool _memoryCleanGameAutoEnabled = true;
     private int _memoryCleanThresholdPercent = 80;
@@ -99,19 +99,12 @@ public sealed partial class FrameService : IFrameService
 
         LoadSettings();
         var automationBlocked = OfflineModeGuard.BlocksNormalAutomation;
-        if (_frameModeActive && _powerPlanLockEnabled && !string.IsNullOrWhiteSpace(AppSettingsStore.Read().FramePowerPreviousSchemeGuid))
-            AppSettingsStore.Update(s => s.FramePowerRestorePending = true);
-        if (!_frameModeActive && AppSettingsStore.Read().FramePowerRestorePending)
+        if (AppSettingsStore.Read().FramePowerRestorePending)
             GameTargetService.Default.SetRestoreFailure("帧格电源计划", true);
         if (!automationBlocked) MigrateLegacyFrameGpuSpoof();
         _statusText = automationBlocked ? "脱机模式或恢复流程中；普通自动化已暂停" : DescribeStatus();
         RefreshDualCcdArmState();
 
-        if (_frameModeActive && !automationBlocked)
-        {
-            _ = MigrateLegacyAutostartTaskAsync();
-            _ = SelfHealSpoofAsync();
-        }
         var startupSettings = AppSettingsStore.Read();
         if (startupSettings.TempSpoofRestorePending && !automationBlocked)
         {
@@ -129,10 +122,6 @@ public sealed partial class FrameService : IFrameService
         // 后端状态：显示实际生效状态（游戏运行、内存清理状态文字）。
         Backends.BackendCpuFrameService.Instance.StatusUpdated += OnCpuFrameStatus;
         Backends.BackendProcmanService.Instance.StatusUpdated += OnProcmanStatus;
-        if (!automationBlocked) _ = RestorePersistentCpuSchedulingAsync();
-        // 帧格模式跨重启保持：重新向后端下发游戏节能/临时优化/电源锁定的期望。
-        if (_frameModeActive && !automationBlocked) _ = SyncBackendExecutionAsync();
-
         // 机箱形态探测一次：供帧格页角标与后端跳过网卡/PCIe 省电的编排依据。
         _ = ProbeLaptopChassisAsync();
     }
@@ -177,7 +166,7 @@ public sealed partial class FrameService : IFrameService
     }
 
     /// <summary>应用启动后重新登记 CPU 亲和性规则（CPU/帧格后端）及已保存的单/双 CCD 调度（进程管理后端）。</summary>
-    private async Task RestorePersistentCpuSchedulingAsync()
+    internal async Task RestorePersistentCpuSchedulingAsync()
     {
         try
         {
@@ -186,12 +175,8 @@ public sealed partial class FrameService : IFrameService
             var procman = Backends.BackendProcmanService.Instance;
             var settings = AppSettingsStore.Read();
             // 帧格生效的双 CCD 原由 CPU/帧格 tick 补应用；迁到进程管理后端后在此显式恢复。
-            var frameDualWillRestore = settings.FrameModeActive
-                && settings.DualCcdArmed
-                && settings.DualCcdFrameEnabled;
-
             OperationResult? result = null;
-            if (frameDualWillRestore || settings.DualCcdImmediateEnabled)
+            if (settings.DualCcdImmediateEnabled)
             {
                 result = await procman.ApplyDualCcdAsync(settings.DualCcdGameCcdIndex);
             }
@@ -289,7 +274,7 @@ public sealed partial class FrameService : IFrameService
         get
         {
             var procman = Backends.BackendProcmanService.Instance;
-            return FrameStatusPresentation.TimerIgnore(PendulumPrepared, _frameModeActive, procman.LatestStatus,
+            return FrameStatusPresentation.TimerIgnore(PendulumEnabled && PendulumPrepared, _frameModeActive, procman.LatestStatus,
                 DateTimeOffset.UtcNow, procman.StatusError, GameTargetService.Default.Current.DisplayName);
         }
     }
@@ -302,12 +287,70 @@ public sealed partial class FrameService : IFrameService
                 backend.LatestStatus, DateTimeOffset.UtcNow, backend.StatusError);
         }
     }
+    public bool CanTogglePendulum => ReleaseFeaturePolicy.PendulumEnabled && !_pendulumSyncing;
+    public bool PendulumEnabled
+    {
+        get => _pendulumEnabled;
+        set
+        {
+            if (_pendulumEnabled == value) return;
+            if (!CanTogglePendulum)
+            {
+                OnPropertyChanged();
+                return;
+            }
+            _ = SetPendulumEnabledAsync(value);
+        }
+    }
+
+    private async Task SetPendulumEnabledAsync(bool enabled)
+    {
+        _pendulumSyncing = true;
+        _pendulumToggleError = "";
+        OnPropertyChanged(nameof(CanTogglePendulum));
+        try
+        {
+            if (enabled && (!PendulumPrepared || OfflineModeGuard.BlocksNormalAutomation))
+                throw new InvalidOperationException("准备状态未确认或自动化已暂停，请刷新状态后再试。");
+            AppSettingsStore.UpdateRequired(s => s.FramePendulumEnabled = enabled);
+            _pendulumEnabled = enabled;
+            OnPropertyChanged(nameof(PendulumEnabled));
+            OnPropertyChanged(nameof(PendulumStatusText));
+
+            var backend = Backends.BackendProcmanService.Instance;
+            var latest = backend.LatestStatus;
+            if (_frameModeActive || (!enabled && (latest?.OptimalClock.Holding == true || latest?.FrameTimerIgnore.BackupCount > 0)))
+            {
+                // Only sync the procman features; don't re-apply the CPU/power/GPU frame settings.
+                var result = await backend.SyncFrameBackgroundAsync();
+                if (!result.Success && !backend.HasCurrentStatus)
+                    _pendulumToggleError = "偏好已保存，后台尚未确认。";
+            }
+        }
+        catch (Exception ex)
+        {
+            _pendulumToggleError = "未能更改钟摆开关：" + ex.Message;
+        }
+        finally
+        {
+            _pendulumSyncing = false;
+            OnPropertyChanged(nameof(PendulumEnabled));
+            OnPropertyChanged(nameof(CanTogglePendulum));
+            OnPropertyChanged(nameof(GameTimerIgnoreStatusText));
+            OnPropertyChanged(nameof(PendulumStatusText));
+            UpdateStatus();
+        }
+    }
+
     public string PendulumStatusText
     {
         get
         {
+            if (_pendulumSyncing) return "正在同步钟摆联动状态…";
             var backend = Backends.BackendProcmanService.Instance;
-            return FrameStatusPresentation.Pendulum(_frameModeActive, backend.LatestStatus, DateTimeOffset.UtcNow, backend.StatusError, GameTargetService.Default.Current.DisplayName);
+            var status = FrameStatusPresentation.Pendulum(_frameModeActive, backend.LatestStatus, DateTimeOffset.UtcNow,
+                backend.StatusError, GameTargetService.Default.Current.DisplayName, PendulumEnabled);
+            return _pendulumToggleError.Length == 0 ? status : _pendulumToggleError + " " + status;
         }
     }
     public string PendulumDescription => FrameStatusPresentation.PendulumDescription(
@@ -675,14 +718,24 @@ public sealed partial class FrameService : IFrameService
         private set
         {
             if (_frameModeActive == value) return;
-            _frameModeActive = value;
-            SaveSettings();
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(FrameModeEnabled));
-            OnPropertyChanged(nameof(DwmStatusText));
-            OnPropertyChanged(nameof(FeaturesEditable));
-            RefreshDualCcdArmState();
+            AppSettingsStore.UpdateRequired(s => FrameSessionState.UserSetActive(s, value));
+            ApplyActiveState(value);
         }
+    }
+
+    internal void RefreshActiveState() => ApplyActiveState(AppSettingsStore.Read().FrameModeActive);
+
+    private void ApplyActiveState(bool value)
+    {
+        if (_frameModeActive == value) return;
+        _frameModeActive = value;
+        OnPropertyChanged(nameof(FrameModeActive));
+        OnPropertyChanged(nameof(FrameModeEnabled));
+        OnPropertyChanged(nameof(DwmStatusText));
+        OnPropertyChanged(nameof(FeaturesEditable));
+        OnPropertyChanged(nameof(PendulumStatusText));
+        RefreshDualCcdArmState();
+        UpdateStatus();
     }
 
     public bool FeaturesEditable => !_frameModeActive;
@@ -728,13 +781,7 @@ public sealed partial class FrameService : IFrameService
                 var result = await Backends.BackendCpuFrameService.Instance.PreserveCurrentPowerValuesAsync(confirmed);
                 if (result.Success)
                 {
-                    var settings = AppSettingsStore.Read();
-                    _powerSaveLatencyEnabled = settings.FramePowerSaveLatencyEnabled;
-                    _powerPlanLockEnabled = settings.FramePowerLockEnabled;
-                    OnPropertyChanged(nameof(PowerSaveLatencyEnabled));
-                    OnPropertyChanged(nameof(PowerPlanLockEnabled));
-                    OnPropertyChanged(nameof(PowerPlanLockText));
-                    UpdateStatus();
+                    RefreshPowerPreferences();
                 }
                 return result;
             }
@@ -743,12 +790,34 @@ public sealed partial class FrameService : IFrameService
         finally { _modeTransition.Release(); }
     }
 
-    public async Task<OperationResult> ActivateFrameModeAsync()
+    internal void RefreshPowerPreferences()
+    {
+        var settings = AppSettingsStore.Read();
+        _powerSaveLatencyEnabled = settings.FramePowerSaveLatencyEnabled;
+        _powerPlanLockEnabled = settings.FramePowerLockEnabled;
+        OnPropertyChanged(nameof(PowerSaveLatencyEnabled));
+        OnPropertyChanged(nameof(PowerPlanLockEnabled));
+        OnPropertyChanged(nameof(PowerPlanLockText));
+        UpdateStatus();
+    }
+
+    public Task<OperationResult> ActivateFrameModeAsync() => ActivateFrameModeAsync(automatic: false);
+
+    internal async Task<OperationResult> ActivateFrameModeAsync(bool automatic)
     {
         if (OfflineModeGuard.BlocksNormalAutomation)
             return OperationResult.Fail("脱机模式或恢复流程正在运行，普通帧格模式已锁定。");
         await _modeTransition.WaitAsync();
-        try { return await Backends.FrameBackendReadiness.RunAsync(ActivateFrameModeCoreAsync, "开启", IsGpuSpoofInFrame && _gpuSpoofEnabled); }
+        try
+        {
+            var settings = AppSettingsStore.Read();
+            if (settings.FrameStartupRecoveryPending)
+                return OperationResult.Fail("上次未正常退出，请先人工核对帧格记录。");
+            // Never silently write a display spoof, reload a device or create a logon task.
+            if (automatic && (!FrameSessionState.CanResume(settings) || settings.TempSpoofRestorePending || IsGpuSpoofInFrame))
+                return OperationResult.Fail("此帧格配置需要手动开启。");
+            return await Backends.FrameBackendReadiness.RunAsync(ActivateFrameModeCoreAsync, "开启", IsGpuSpoofInFrame && _gpuSpoofEnabled);
+        }
         finally { _modeTransition.Release(); }
     }
 
@@ -762,14 +831,8 @@ public sealed partial class FrameService : IFrameService
         }
 
         Log.Info("── 开启一键帧格模式 ──");
-        if (_frameModeActive && _appliedThisSession)
+        if (_frameModeActive)
             return OperationResult.Ok("帧格模式已激活，未重复应用。");
-
-        // 陈旧激活状态：上次异常退出把 FrameModeActive 留在 true，但本进程从未真正应用过。
-        // 不短路为「已激活」，先按旧记录幂等收敛（UnlockPower + RevertTweaks），再继续走完整激活流程。
-        // 这保证异常退出后无需先成功关闭一次即可重新开启；恢复失败仍拒绝，不覆盖未知原值。
-        if (_frameModeActive && !_appliedThisSession)
-            Log.Info("帧格模式：检测到上次异常退出遗留的激活标记，先收敛旧记录再重新应用。");
 
         // 上次退出未完成时先按旧记录重试恢复，失败则拒绝重新应用，避免覆盖原值。
         var cpuFrame = Backends.BackendCpuFrameService.Instance;
@@ -868,8 +931,7 @@ public sealed partial class FrameService : IFrameService
             }
         }
 
-        FrameModeActive = true;
-        _appliedThisSession = true;
+        using (Backends.BackendOperationGate.EnterStart()) FrameModeActive = true;
 
         // 双CCD 专属调度（帧格生效模式）：帧格开启时自动应用，退出时自动撤销。
         var dualNote = await ApplyArmedDualCcdAsync();
@@ -986,7 +1048,7 @@ public sealed partial class FrameService : IFrameService
 
         await DisableAutostartAsync();
 
-        FrameModeActive = false;
+        if (FrameModeActive) FrameModeActive = false;
         GpuSpoofEnabled = false;
 
         var background = await Backends.BackendProcmanService.Instance.SyncFrameBackgroundAsync();
@@ -1209,9 +1271,7 @@ public sealed partial class FrameService : IFrameService
             var target = GameTargetService.Default.Current.DisplayName;
             var gamePart = FrameStatusPresentation.Game(observation.TargetRunning, target);
             var execution = FrameStatusPresentation.Execution(snapshot, now, observation.AutomationError);
-            var pendulum = Backends.BackendProcmanService.Instance;
-            var clockPart = !PendulumPrepared ? ""
-                : " · 钟摆计划：" + FrameStatusPresentation.Pendulum(true, pendulum.LatestStatus, now, pendulum.StatusError, GameTargetService.Default.Current.DisplayName);
+            var clockPart = !PendulumPrepared ? "" : " · 钟摆计划：" + PendulumStatusText;
             return $"{execution}{spoofPart}{powerPart}{dualPart}{powerThrottlePart}{foregroundPart}{powerSavePart}{memCleanPart}{gamePart}{clockPart}";
         }
 
@@ -1225,26 +1285,6 @@ public sealed partial class FrameService : IFrameService
         => await Backends.BackendCpuFrameService.Instance.RestartDwmAsync();
 
     // ---------------- 帧格模式开机自愈（显卡伪装部分保留前端编排） ----------------
-
-    private async Task SelfHealSpoofAsync()
-    {
-        try
-        {
-            await Task.Delay(TimeSpan.FromSeconds(5));
-            if (!_frameModeActive || !IsGpuSpoofInFrame || !_gpuSpoofEnabled) return;
-
-            var current = ReadDeviceDesc(GpuSpoofRegistryPath);
-            if (current is not null && !current.Equals(GpuSpoofFakeName, StringComparison.OrdinalIgnoreCase))
-            {
-                await _spoof.SpoofByPathAsync(GpuSpoofRegistryPath, GpuSpoofFakeName);
-                UpdateStatus();
-            }
-        }
-        catch
-        {
-            // 自愈失败不影响其他功能
-        }
-    }
 
     /// <summary>
     /// 临时重启生效伪装的收尾：登录自启动拉起本工具后，
@@ -1558,29 +1598,6 @@ public sealed partial class FrameService : IFrameService
         }
     }
 
-    private async Task MigrateLegacyAutostartTaskAsync()
-    {
-        // Existing frame logon tasks must carry the same launch marker as general autostart,
-        // otherwise two simultaneous logon tasks could reopen a silently started window.
-        var current = await OfflineTaskOwnership.InspectAsync(AutostartTaskName);
-        if (current.State == OfflineScheduledTaskState.Owned && Environment.ProcessPath is { } executable)
-        {
-            var marked = await OfflineTaskOwnership.EnsureOwnedTaskAsync(AutostartTaskName, executable, current.Enabled);
-            if (!marked.Success) Log.Warn("帧格登录启动标记迁移失败：" + marked.Message);
-        }
-        var legacy = await OfflineTaskOwnership.InspectAsync(LegacyAutostartTaskName);
-        if (legacy.State == OfflineScheduledTaskState.Missing) return;
-        if (legacy.State != OfflineScheduledTaskState.Owned)
-        {
-            Log.Warn("帧格登录任务迁移跳过：旧任务归属无法确认，未修改计划任务。");
-            return;
-        }
-
-        var result = await EnableAutostartAsync();
-        if (!result.Success) Log.Warn($"帧格登录任务迁移失败：{result.Message}");
-        else Log.Info("帧格登录任务已从旧产品名称迁移到 Delta NFD。");
-    }
-
     public OperationResult RebootNow()
     {
         try
@@ -1620,6 +1637,7 @@ public sealed partial class FrameService : IFrameService
         _dualCcdArmed = s.DualCcdArmed;
         _dualCcdEnabled = s.DualCcdFrameEnabled;
         _gameTimerIgnoreEnabled = ReleaseFeaturePolicy.FrameTimerIgnoreEnabled && s.FrameGameTimerIgnoreEnabled;
+        _pendulumEnabled = ReleaseFeaturePolicy.PendulumEnabled && s.FramePendulumEnabled;
         _gamePowerThrottlingDisabled = s.FrameGamePowerThrottlingDisabled;
         _gamePriorityEnabled = s.FrameGamePriorityEnabled;
         _gameCpuPriority = s.FrameGameCpuPriority;
@@ -1683,7 +1701,6 @@ public sealed partial class FrameService : IFrameService
                 s.FrameNicPowerSavingOffEnabled = _nicPowerSavingOff;
                 s.FrameUsbSuspendOffEnabled = _usbSuspendOff;
                 s.FramePcieAspmOffEnabled = _pcieAspmOff;
-                s.FrameModeActive = _frameModeActive;
             });
         }
     }

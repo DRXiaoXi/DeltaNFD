@@ -12,6 +12,29 @@ internal static class FrameGpuChecks
     private static void Check(bool value, string text) { if (!value) throw new Exception(text); _checks++; }
     private static void Reject(Action action, string text)
     { try { action(); } catch (IOException) { _checks++; return; } throw new Exception(text); }
+    private static void DirectDriverChecks()
+    {
+        var gpu = new IntPtr(7); var seen = new List<uint>(); int current = 20; bool reject = false, ignoreWrite = false;
+        int Stub(IntPtr handle, ref DriverNvidiaGpuShareApi.YieldV1 d)
+        {
+            Check(handle == gpu && d.Version == 0x1001c && (d.Reserved1 | d.Reserved2 | d.Reserved3 | d.Reserved4) == 0, "fixed driver payload");
+            seen.Add(d.Command);
+            if (d.Command == 0) { d.Percent = (uint)current; return 0; }
+            Check(d.Command == 1, "known driver write opcode");
+            if (reject) return -1;
+            if (!ignoreWrite) current = (int)d.Percent;
+            return 0;
+        }
+        var saved = DriverNvidiaGpuShareApi.Describe(20, new string('A',64));
+        Check(saved.Allows(0) && saved.Allows(10) && saved.Allows(50) && !saved.Allows(11) && !saved.Allows(55), "audited custom and preset values");
+        Reject(() => DriverNvidiaGpuShareApi.Describe(17, saved.HardwareKey), "unrestorable driver origin refused");
+        DriverNvidiaGpuShareApi.WritePercent(Stub,gpu,saved,10);
+        Check(current == 10 && seen.SequenceEqual(new uint[]{0,1,0}), "direct driver get/set/readback");
+        seen.Clear(); Reject(() => DriverNvidiaGpuShareApi.WritePercent(Stub,gpu,saved,50), "external change stops driver write");
+        Check(seen.SequenceEqual(new uint[]{0}), "no write after conflict");
+        current=20; reject=true; Reject(() => DriverNvidiaGpuShareApi.WritePercent(Stub,gpu,saved,10), "driver rejection propagated");
+        reject=false; ignoreWrite=true; Reject(() => DriverNvidiaGpuShareApi.WritePercent(Stub,gpu,saved,10), "unchanged driver readback refused");
+    }
     private sealed class Lease(Action finish) : IDisposable { private Action? _finish = finish; public void Dispose() => Interlocked.Exchange(ref _finish, null)?.Invoke(); }
     private sealed class Nvidia : INvidiaGpuShareApi
     {
@@ -61,6 +84,10 @@ internal static class FrameGpuChecks
     internal static async Task RunAsync()
     {
         _checks = 0;
+        Check(Marshal.SizeOf<DriverNvidiaGpuShareApi.YieldV1>() == 28, "driver v1 data size");
+        Check(DriverNvidiaGpuShareApi.Eligible(62114, 1, 0x1b0) && !DriverNvidiaGpuShareApi.Eligible(62114, 1, 0x190)
+            && !DriverNvidiaGpuShareApi.Eligible(62114, 2, 0x1b0) && !DriverNvidiaGpuShareApi.Eligible(62115, 1, 0x1b0), "verified driver, architecture and device count");
+        DirectDriverChecks();
         var id = Guid.NewGuid(); var root = Path.Combine(Path.GetTempPath(), "DeltaNFD-frame-gpu-" + id.ToString("N"));
         Directory.CreateDirectory(root); File.WriteAllText(Path.Combine(root, "isolated-test.marker"), id.ToString("D"));
         AppDataPaths.ConfigureIsolatedDataRoot(root, id);

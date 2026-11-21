@@ -251,8 +251,33 @@ public sealed class FrameTweaksService
 
     private const string UsbBackupFile = "frame_usb_power.json";
     private const string PcieBackupFile = "frame_pcie_power.json";
+    internal const string MissingPlanRecord = "frame-power-original-plan-missing";
 
-    public async Task<IReadOnlyList<FrameIncompletePowerBackup>> GetIncompletePowerBackupsAsync()
+    private static byte[] PlanIdentity(AppSettings s) => System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new
+    {
+        s.FramePowerRestorePending, s.FramePowerPreviousSchemeGuid, s.FramePowerLockedSchemeGuid,
+    });
+
+    private async Task<FrameIncompletePowerBackup?> MissingPlanReviewAsync(Func<string, Task<bool>>? verifyOriginal)
+    {
+        var s = AppSettingsStore.ReadRequired();
+        if (!s.FramePowerRestorePending || HasPowerSchemeContentSnapshot) return null;
+        var valid = IsRealSchemeGuid(s.FramePowerPreviousSchemeGuid);
+        if (valid && (verifyOriginal is null || await verifyOriginal(s.FramePowerPreviousSchemeGuid))) return null;
+        return new(MissingPlanRecord, AppSettingsStore.DefaultPath,
+            Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(PlanIdentity(s))),
+            valid ? "有待恢复标记，但原活动计划已不在可读计划列表中。"
+                : "有待恢复标记，但没有原活动计划身份或内容快照，不能猜测还原。");
+    }
+
+    private static string ReviewFingerprint(string name, byte[] bytes)
+    {
+        // A content snapshot and the separate plan identity are a single review decision.
+        var evidence = name == "frame_power_scheme_snapshot.json" ? bytes.Concat(PlanIdentity(AppSettingsStore.ReadRequired())).ToArray() : bytes;
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(evidence));
+    }
+
+    public async Task<IReadOnlyList<FrameIncompletePowerBackup>> GetIncompletePowerBackupsAsync(Func<string, Task<bool>>? verifyOriginal = null)
     {
         var result = new List<FrameIncompletePowerBackup>();
         foreach (var name in new[] { UsbBackupFile, PcieBackupFile, "frame_power_scheme_snapshot.json" })
@@ -260,16 +285,17 @@ public sealed class FrameTweaksService
             var path = Path.Combine(_powerBackupRoot, name);
             if (!PowerFileExists(path)) continue;
             var bytes = await ReadPowerBackupBytesAsync(path);
-            var reason = await PowerBackupReviewReasonAsync(name, bytes);
+            var reason = await PowerBackupReviewReasonAsync(name, bytes, verifyOriginal);
             if (reason is null) continue;
-            result.Add(new(name, path, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)), reason));
+            result.Add(new(name, path, ReviewFingerprint(name, bytes), reason));
         }
+        if (await MissingPlanReviewAsync(verifyOriginal) is { } marker) result.Add(marker);
         return result;
     }
 
-    private async Task<string?> PowerBackupReviewReasonAsync(string name, byte[] bytes)
+    private async Task<string?> PowerBackupReviewReasonAsync(string name, byte[] bytes, Func<string, Task<bool>>? verifyOriginal)
     {
-        if (name == "frame_power_scheme_snapshot.json") return await SnapshotReviewReasonAsync(bytes);
+        if (name == "frame_power_scheme_snapshot.json") return await SnapshotReviewReasonAsync(bytes, verifyOriginal);
         if (IncompletePowerBackup(bytes, out var reason)) return reason;
         var backup = System.Text.Json.JsonSerializer.Deserialize<PowerSettingBackup>(bytes)!;
         var (subgroup, setting, label) = name switch
@@ -283,12 +309,15 @@ public sealed class FrameTweaksService
             : $"计划={backup.Scheme}；{label}原值完整，但所属计划或设置当前不可读取（可能已删除、不可用或访问失败），未认定计划已删除。{current.Error}";
     }
 
-    private async Task<string?> SnapshotReviewReasonAsync(byte[] bytes)
+    private async Task<string?> SnapshotReviewReasonAsync(byte[] bytes, Func<string, Task<bool>>? verifyOriginal)
     {
         SchemeContentSnapshot? snapshot;
         try { snapshot = System.Text.Json.JsonSerializer.Deserialize<SchemeContentSnapshot>(bytes); }
         catch (System.Text.Json.JsonException) { return "电源内容快照损坏，原值无法完整确认"; }
         if (!ValidSnapshot(snapshot)) return "电源内容快照元数据或原值不完整";
+        var settings = AppSettingsStore.ReadRequired();
+        if (!TryGetPreviousScheme(snapshot!, settings, out var previous)) return "原活动电源计划身份缺失或冲突，不能猜测还原";
+        if (verifyOriginal is not null && !await verifyOriginal(previous)) return "原活动电源计划已不在可读计划列表中";
         var expectedSettings = snapshot!.Settings.Where(s => !IsUserBrightnessSetting(s)).ToArray();
         if (expectedSettings.Length == 0) return null;
         var live = await QuerySchemeSettingsAsync(snapshot!.Scheme);
@@ -324,7 +353,8 @@ public sealed class FrameTweaksService
     }
 
     /// <summary>Requires explicit consent: retain current values, archive lost originals, never claim restoration.</summary>
-    public async Task<OperationResult> PreserveCurrentPowerValuesAsync(IReadOnlyList<FrameIncompletePowerBackup> confirmed)
+    public async Task<OperationResult> PreserveCurrentPowerValuesAsync(IReadOnlyList<FrameIncompletePowerBackup> confirmed,
+        Func<string, Task<bool>>? verifyOriginal = null)
     {
         try
         {
@@ -332,11 +362,17 @@ public sealed class FrameTweaksService
                 return OperationResult.Fail("确认清单无效，未移动备份。");
             foreach (var item in confirmed)
             {
+                if (item.FileName == MissingPlanRecord)
+                {
+                    if ((await MissingPlanReviewAsync(verifyOriginal))?.Fingerprint != item.Fingerprint)
+                        return OperationResult.Fail("待恢复标记已变化，请重新核对。");
+                    continue;
+                }
                 if (item.FileName is not (UsbBackupFile or PcieBackupFile or "frame_power_scheme_snapshot.json")) return OperationResult.Fail("拒绝处理其他备份。");
                 var path = Path.Combine(_powerBackupRoot, item.FileName);
                 var bytes = await ReadPowerBackupBytesAsync(path);
-                var unresolved = await PowerBackupReviewReasonAsync(item.FileName, bytes) is not null;
-                if (!unresolved || Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)) != item.Fingerprint)
+                var unresolved = await PowerBackupReviewReasonAsync(item.FileName, bytes, verifyOriginal) is not null;
+                if (!unresolved || ReviewFingerprint(item.FileName, bytes) != item.Fingerprint)
                     return OperationResult.Fail("备份已变化，请重新确认；未移动备份。");
             }
             var directory = Path.Combine(_powerBackupRoot, "unresolved-frame-power");
@@ -345,14 +381,25 @@ public sealed class FrameTweaksService
                 if ((File.GetAttributes(ancestor) & FileAttributes.ReparsePoint) != 0) throw new IOException("归档目录含重解析点。");
             foreach (var item in confirmed)
             {
+                if (item.FileName == MissingPlanRecord)
+                {
+                    var evidence = PlanIdentity(AppSettingsStore.Read());
+                    if ((await MissingPlanReviewAsync(verifyOriginal))?.Fingerprint != item.Fingerprint
+                        || Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(evidence)) != item.Fingerprint)
+                        throw new IOException("待恢复标记已变化，请重新核对。");
+                    var archive = Path.Combine(directory, Guid.NewGuid().ToString("N") + "-missing-plan.json");
+                    using var stream = new FileStream(archive, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                    stream.Write(evidence); stream.Flush(flushToDisk: true);
+                    continue;
+                }
                 var path = Path.Combine(_powerBackupRoot, item.FileName);
                 var bytes = await ReadPowerBackupBytesAsync(path);
-                if (Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)) != item.Fingerprint)
+                if (ReviewFingerprint(item.FileName, bytes) != item.Fingerprint)
                     throw new IOException("确认后备份已变化，未继续移动。");
                 var archived = Path.Combine(directory, DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N") + "-" + item.FileName);
                 File.Move(path, archived); // No deletion or replacement of evidence, and no powercfg writes.
                 var actual = await ReadPowerBackupBytesAsync(archived);
-                if (Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(actual)) != item.Fingerprint)
+                if (!actual.AsSpan().SequenceEqual(bytes))
                     throw new IOException("归档复核失败，证据仍保留：" + archived);
                 Log.Warn("帧格旧电源备份已按用户确认归档；当前值保留，未恢复未知原值：" + archived + "；" + item.Reason);
             }
@@ -686,6 +733,24 @@ public sealed class FrameTweaksService
             catch { return null; }
         }
     }
+    private static bool TryGetPreviousScheme(SchemeContentSnapshot snapshot, AppSettings settings, out string previous)
+    {
+        previous = string.IsNullOrEmpty(snapshot.PreviousScheme) ? settings.FramePowerPreviousSchemeGuid : snapshot.PreviousScheme;
+        return IsRealSchemeGuid(previous)
+            && (string.IsNullOrEmpty(snapshot.PreviousScheme) || string.IsNullOrEmpty(settings.FramePowerPreviousSchemeGuid)
+                || string.Equals(previous, settings.FramePowerPreviousSchemeGuid, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsRealSchemeGuid(string? guid) => Guid.TryParse(guid, out var id) && id != Guid.Empty
+        && !string.Equals(guid, PowerSchemes.UltimateSchemeTemplateGuid, StringComparison.OrdinalIgnoreCase);
+
+    internal async Task<string?> ReadPreviousSchemeAsync(AppSettings settings)
+    {
+        if (!HasPowerSchemeContentSnapshot) return settings.FramePowerPreviousSchemeGuid;
+        var snapshot = System.Text.Json.JsonSerializer.Deserialize<SchemeContentSnapshot>(await ReadPowerBackupBytesAsync(SchemeContentSnapshotPath));
+        return ValidSnapshot(snapshot) && TryGetPreviousScheme(snapshot!, settings, out var previous) ? previous : null;
+    }
+
     public bool HasPowerSchemeContentSnapshot
     {
         get { try { return PowerFileExists(SchemeContentSnapshotPath); } catch { return true; } }
@@ -711,7 +776,11 @@ public sealed class FrameTweaksService
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            await File.WriteAllTextAsync(temporary, System.Text.Json.JsonSerializer.Serialize(value));
+            await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                await System.Text.Json.JsonSerializer.SerializeAsync(stream, value);
+                stream.Flush(flushToDisk: true);
+            }
             try { File.Move(temporary, path, overwrite: false); }
             catch (IOException) when (File.Exists(path)) { /* 保留已存在的首次原值，由调用方再校验。 */ }
         }
@@ -744,13 +813,14 @@ public sealed class FrameTweaksService
     {
         public string Scheme { get; set; } = "";
         public List<SchemeSettingEntry> Settings { get; set; } = new();
+        public string PreviousScheme { get; set; } = "";
     }
 
     /// <summary>
     /// 快照指定电源计划的非亮度 AC/DC 设置（内容锁定的基准）。
     /// 同时排除本轮实际启用的临时省电改写；未启用的 USB/PCIe 设置仍受内容保护。
     /// </summary>
-    public async Task<OperationResult> SnapshotPowerSchemeContentAsync(string schemeGuid, bool excludeUsb = false, bool excludePcie = false)
+    public async Task<OperationResult> SnapshotPowerSchemeContentAsync(string schemeGuid, bool excludeUsb = false, bool excludePcie = false, string previousScheme = "")
     {
         try
         {
@@ -771,11 +841,11 @@ public sealed class FrameTweaksService
             var kept = settings
                 .Where(s => !IsUserBrightnessSetting(s) && !IsFrameManagedPowerSetting(s.Subgroup, s.Setting, excludeUsb, excludePcie))
                 .ToList();
-            var snapshot = new SchemeContentSnapshot { Scheme = schemeGuid, Settings = kept };
+            var snapshot = new SchemeContentSnapshot { Scheme = schemeGuid, Settings = kept, PreviousScheme = previousScheme };
             if (!ValidSnapshot(snapshot)) return OperationResult.Fail("电源计划明细为空或不完整，未创建内容快照。");
             await SavePowerJsonOnceAsync(SchemeContentSnapshotPath, snapshot);
             var saved = System.Text.Json.JsonSerializer.Deserialize<SchemeContentSnapshot>(await File.ReadAllTextAsync(SchemeContentSnapshotPath));
-            if (!ValidSnapshot(saved) || !saved!.Scheme.Equals(schemeGuid, StringComparison.OrdinalIgnoreCase))
+            if (!ValidSnapshot(saved) || !saved!.Scheme.Equals(schemeGuid, StringComparison.OrdinalIgnoreCase) || saved.PreviousScheme != previousScheme)
                 return OperationResult.Fail("内容快照保存后校验失败，已保留记录且未覆盖。");
             Log.Info($"帧格·电源锁定：已快照计划 {schemeGuid} 的 {kept.Count} 项设置" +
                 $"（亮度相关设置不纳入；排除帧格临时改写项 {settings.Count - kept.Count} 项）");

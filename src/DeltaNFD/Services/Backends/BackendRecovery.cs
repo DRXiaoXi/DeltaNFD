@@ -12,15 +12,27 @@ internal static class BackendRecovery
 {
     internal static bool IsStartupOperation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.System
         && review.Command is BackendCommands.SystemStartupChange or BackendCommands.SystemStartupRestoreAll;
-    internal static bool IsDriverPriorityOperation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.System
-        && review.Command is BackendCommands.SystemDriverPriorityChange or BackendCommands.SystemDriverPriorityRestoreAll;
     internal static bool IsClockEnvironmentOperation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.System
         && review.Command == BackendCommands.SystemClockEnvironmentChange;
     internal static bool IsRuntimeFileReplacement(BackendUnconfirmedStore.Review review) =>
         review.Module == BackendModules.Runtime && review.Command == BackendCommands.Vc14ForceReplace;
+    internal static string? NvSettingsReviewScope(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.Gpu
+        ? review.Command switch
+        {
+            BackendCommands.GpuDlssIndicatorSet => "dlss-indicator",
+            BackendCommands.GpuNvDisplayContainerChange => "nv-display-container",
+            BackendCommands.GpuDriverApply or BackendCommands.GpuDriverRestore => "driver-settings",
+            _ => null,
+        } : null;
+    private static bool IsNonSpoofGpuOperation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.Gpu &&
+        (NvSettingsReviewScope(review) is not null || review.Command is BackendCommands.GpuDriverProfileReset
+            or BackendCommands.GpuDriverLock or BackendCommands.GpuShaderCacheApply);
+
     internal static bool CanKeepCurrentState(BackendUnconfirmedStore.Review review, ReconcileSnapshot? snapshot) =>
-        review.CanAcknowledge && !IsRuntimeInstallation(review) && (review.Module != BackendModules.Ace
-            || snapshot is { Complete: true } && snapshot.Module == BackendModules.Ace);
+        review.CanAcknowledge && !IsRuntimeInstallation(review) && (NvSettingsReviewScope(review) == "nv-display-container"
+            ? snapshot is { Complete: true } && snapshot.Module == review.Module
+                && snapshot.Items is [{ Id: "nv-display-container", Kind: "service" }]
+            : review.Module != BackendModules.Ace || snapshot is { Complete: true } && snapshot.Module == review.Module);
     internal static bool IsRuntimeInstallation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.Runtime
         && review.Command is BackendCommands.RuntimeRepair or BackendCommands.RuntimeCompatibilityRepair
             or BackendCommands.RuntimeRedistUninstall or BackendCommands.RuntimeRedistUninstallAll or BackendCommands.Vc14Repair or BackendCommands.Vc14LegacyClean
@@ -43,11 +55,11 @@ internal static class BackendRecovery
         if (IsRuntimeFileReplacement(review)) return []; // Manual DLL restoration is not IFEO/UE4 guard recovery.
         if (module == BackendModules.Runtime && review.Command == BackendCommands.RuntimeFileUseClose) return [];
         if (module == BackendModules.Procman && review.Command == BackendCommands.ProcmanMemoryTrim) return [];
-        // A driver profile reset has no relation to the display-name spoof backup.
-        if (module == BackendModules.Gpu && review.Command == BackendCommands.GpuDriverProfileReset) return [];
+        // DRS/NGX changes cannot be reconciled by restoring a display-name spoof.
+        if (IsNonSpoofGpuOperation(review)) return [];
         if (snapshot is null || !snapshot.Complete || snapshot.Module != module) return [];
         if (IsStartupOperation(review)) return snapshot.RecoveryScopes.Where(s => s.Available && s.Id == "startup").ToArray();
-        if (IsDriverPriorityOperation(review)) return snapshot.RecoveryScopes.Where(s => s.Available && s.Id == "driver-priority").ToArray();
+        if (BackendUnconfirmedStore.IsRetiredDriverPriorityOperation(review)) return [];
         if (IsClockEnvironmentOperation(review)) return snapshot.RecoveryScopes.Where(s => s.Available && s.Id == "clock-environment").ToArray();
         // Boot/trust preparation is not restored by unrelated tweak/startup scopes.
         if (review.Module == BackendModules.System && review.Command == BackendCommands.SystemPendulumDriverPrepare) return [];
@@ -83,19 +95,23 @@ internal static class BackendRecovery
     public static async Task<RecoverOutcome> RestoreAsync(BackendUnconfirmedStore.Review review, string scope,
         CancellationToken cancellationToken = default, IReadOnlyList<FrameIncompletePowerBackup>? confirmedPower = null)
     {
+        if (IsNonSpoofGpuOperation(review))
+            throw new InvalidOperationException("此 NVIDIA 设置操作不能通过显卡型号备份恢复，请核对实际状态。");
         if (IsRuntimeFileReplacement(review))
             throw new InvalidOperationException("系统 DLL 替换不能使用运行库防护恢复。请按强制替换备份目录中的 restore.ps1/README 手动恢复并核对文件，再确认保留当前状态；旧记录保留。");
         if (review.Module == BackendModules.System && review.Command == BackendCommands.SystemPendulumDriverPrepare)
             throw new InvalidOperationException("驱动准备涉及证书与启动配置，不能通过无关系统优化范围解除记录。请核对准备子进程、专用记录与BCD备份；确认保留当前状态后可按原授权继续准备。");
         if (IsStartupOperation(review) && scope != "startup")
             throw new InvalidOperationException("自启动操作只能按自启动原始备份核对恢复，不能通过其他系统优化范围解除阻塞。");
-        if (IsDriverPriorityOperation(review) && scope != "driver-priority")
-            throw new InvalidOperationException("驱动中断操作只能使用设备中断原始备份恢复，不能通过其他优化范围解除记录。");
+        if (BackendUnconfirmedStore.IsRetiredDriverPriorityOperation(review))
+            throw new InvalidOperationException("本版本已移除驱动优先级恢复。请用原版本与原始备份恢复设备中断设置。");
         if (IsClockEnvironmentOperation(review) && scope != "clock-environment")
             throw new InvalidOperationException("计时源操作只能按计时源与 HPET 原始备份核对恢复。");
         var current = BackendUnconfirmedStore.ReviewAll().SingleOrDefault(r => r.Module == review.Module);
         if (current is null || current.Fingerprint != review.Fingerprint || !current.CanRestore)
             throw new InvalidOperationException("记录已变化或原后端、子进程尚未确认退出，请重新核对。");
+        if (IsNonSpoofGpuOperation(current))
+            throw new InvalidOperationException("此 NVIDIA 设置操作不能通过显卡型号备份恢复，请核对实际状态。");
         if (review.Module == BackendModules.CpuFrame && (scope != "all" || !CanRestoreCpuRecord(review.Command)))
             throw new InvalidOperationException("该 CPU/帧格记录需要对应的可信完整恢复路径。单个子范围、不可回滚操作或缺少命令的旧记录不能自动解除阻塞，请人工核对。");
         if (review.Module == BackendModules.Runtime && !(IsRuntimeInstallation(review) ? IsRuntimeInstallationScope(scope) : scope == "guard"))
@@ -122,7 +138,6 @@ internal static class BackendRecovery
         var verified = !checkpoint && outcome.Success && outcome.Verified && outcome.Scope == scope
             && outcome.VerifiedSnapshot is { Complete: true } snapshot && snapshot.Module == review.Module
             && (!IsStartupOperation(review) || snapshot.RecoveryScopes.Any(s => s.Id == "startup" && !s.Available && s.AffectedCount == 0))
-            && (!IsDriverPriorityOperation(review) || snapshot.RecoveryScopes.Any(s => s.Id == "driver-priority" && !s.Available && s.AffectedCount == 0))
             && (!IsClockEnvironmentOperation(review) || snapshot.RecoveryScopes.Any(s => s.Id == "clock-environment" && !s.Available && s.AffectedCount == 0))
             && (review.Module != BackendModules.CpuFrame || !snapshot.RecoveryScopes.Any(s => s.Available));
         if (verified)
@@ -141,6 +156,59 @@ internal static class BackendRecovery
             Message = outcome.Message + (verified || checkpoint ? "" : "\n恢复结果或完整状态未通过复核，旧记录仍保留。"),
             VerifiedSnapshot = outcome.VerifiedSnapshot,
         };
+    }
+
+    internal static bool CanAutoRestoreFrame(BackendUnconfirmedStore.Review review) =>
+        review.Module == BackendModules.CpuFrame && review.CanRestore && !review.ChildrenAlive && !review.ChildrenUnknown
+        && review.Command is BackendCommands.CpuFrameRestore or BackendCommands.CpuFrameRecover
+            or BackendCommands.CpuFramePowerLock or BackendCommands.CpuFramePowerUnlock
+            or BackendCommands.CpuFrameTweaksApply or BackendCommands.CpuFrameTweaksRevert;
+
+    internal static async Task<bool> TryRecoverStartupFrameAsync()
+    {
+        using var pauseGate = BackendOperationGate.BlockNewOperations();
+        using var control = BackendOperationGate.AllowControlOperations();
+        var reviews = await BackendLifecycle.PrepareReviewAsync([BackendModules.CpuFrame]);
+        await BackendOperationGate.Handover.WaitAsync();
+        try { return await RecoverStoppedFrameAsync(reviews.SingleOrDefault()); }
+        finally { BackendOperationGate.Handover.Release(); }
+    }
+
+    private static async Task<bool> RecoverStoppedFrameAsync(BackendUnconfirmedStore.Review? review)
+    {
+        if (review is not null && !CanAutoRestoreFrame(review)) return false;
+        if (BackendSessions.Snapshot().Any(c => c.ModuleId == BackendModules.CpuFrame && !c.ExitConfirmed)
+            || HasUntrackedFrameBackend()) return false;
+
+        var caller = new BackendCaller(BackendModules.CpuFrame);
+        try
+        {
+            var read = await caller.InvokeReconcileAsync(BackendCommands.CpuFramePowerIncomplete, new { }, null, default);
+            if (BackendResults.RequireData<List<FrameIncompletePowerBackup>>(read, "检查电源恢复记录").Count != 0)
+                return false; // The user's consent is required; never archive missing originals automatically.
+            if (review is null)
+            {
+                var result = await caller.InvokeReconcileAsync(BackendCommands.CpuFrameRecover,
+                    new RecoverArgs { Scope = "all" }, null, default);
+                var outcome = BackendResults.RequireData<RecoverOutcome>(result, "恢复上次帧格状态");
+                return outcome is { Scope: "all", Success: true, Verified: true, VerifiedSnapshot: { Complete: true } snapshot }
+                    && snapshot.Module == BackendModules.CpuFrame && !snapshot.RecoveryScopes.Any(s => s.Available);
+            }
+        }
+        finally
+        {
+            if (!await caller.ResetAsync()) throw new InvalidOperationException("帧格恢复后端未确认退出，保留记录。");
+        }
+        return (await RestoreAsync(review, "all")).Verified;
+    }
+
+    private static bool HasUntrackedFrameBackend()
+    {
+        var processes = System.Diagnostics.Process.GetProcessesByName(
+            Path.GetFileNameWithoutExtension(BackendModules.Require(BackendModules.CpuFrame).ExecutableName));
+        try { return processes.Any(p => !p.HasExited); }
+        catch (Exception ex) { Log.Warn("无法确认旧帧格后端已经退出：" + ex.Message); return true; }
+        finally { foreach (var process in processes) process.Dispose(); }
     }
 
     internal static async Task<IReadOnlyList<FrameIncompletePowerBackup>> ReadPowerReviewAsync(BackendUnconfirmedStore.Review review)

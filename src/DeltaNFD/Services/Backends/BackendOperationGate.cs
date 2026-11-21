@@ -6,6 +6,7 @@ internal static class BackendOperationGate
     private static readonly AsyncLocal<ControlLease?> Control = new();
     private static int _blocks, _starts;
     internal static readonly SemaphoreSlim Handover = new(1, 1);
+    internal static bool HasStartingBackends { get { lock (Sync) return _starts != 0; } }
 
     internal static IDisposable BlockNewOperations()
     {

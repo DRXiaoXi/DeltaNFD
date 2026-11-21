@@ -32,7 +32,11 @@ public sealed record BackendReady(
     int GameInstallationScopeVersion = 0,
     int ClockValueVersion = 0,
     int ManualAsdVersion = 0,
-    int ClockEnvironmentVersion = 0);
+    int ClockEnvironmentVersion = 0,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    int NvSettingsSaveVersion = 0,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    int NvDisplayContainerVersion = 0);
 
 /// <summary>invoke（宿主→后端）：白名单命令 + 参数对象。</summary>
 public sealed record BackendInvoke(string Command, JsonElement Args);
@@ -168,7 +172,7 @@ public static class BackendMessages
     public static BackendReady ParseReady(JsonElement payload)
     {
         BackendJson.EnsureNoExtraProperties(payload,
-            ["nonce", "module", "moduleVersion", "protocolMinor", "pid", "startTimeUtcTicks", "imagePath", "imageSha256", "gameInstallationScopeVersion", "clockValueVersion", "manualAsdVersion", "clockEnvironmentVersion"],
+            ["nonce", "module", "moduleVersion", "protocolMinor", "pid", "startTimeUtcTicks", "imagePath", "imageSha256", "gameInstallationScopeVersion", "clockValueVersion", "manualAsdVersion", "clockEnvironmentVersion", "nvSettingsSaveVersion", "nvDisplayContainerVersion"],
             "ready");
         if (!BackendJson.TryGetString(payload, "nonce", out var nonce) || !IsNonce(nonce))
             throw new BackendContractException("ready：nonce 必须是 32 字节随机数的 Base64 文本。");
@@ -205,7 +209,19 @@ public static class BackendMessages
         if (payload.TryGetProperty("clockEnvironmentVersion", out _) &&
             (!BackendJson.TryGetInt(payload, "clockEnvironmentVersion", out environmentVersion) || environmentVersion is < 0 or > 4))
             throw new BackendContractException("ready：计时源与 HPET 协议版本无效或不兼容。");
-        return new BackendReady(nonce, module, moduleVersion, protocolMinor, pid, ticks, imagePath, sha.ToLowerInvariant(), scopeVersion, clockVersion, asdVersion, environmentVersion);
+        var nvSaveVersion = 0;
+        if (payload.TryGetProperty("nvSettingsSaveVersion", out _) &&
+            (!BackendJson.TryGetInt(payload, "nvSettingsSaveVersion", out nvSaveVersion) || nvSaveVersion is < 0 or > 1
+                || nvSaveVersion != 0 && module != BackendModules.Gpu))
+            throw new BackendContractException("ready：NVIDIA 设置保存协议版本无效或不兼容。");
+        var nvContainerVersion = 0;
+        if (payload.TryGetProperty("nvDisplayContainerVersion", out _) &&
+            (!BackendJson.TryGetInt(payload, "nvDisplayContainerVersion", out nvContainerVersion)
+                || nvContainerVersion is < 0 or > global::DeltaNFD.Services.NvDisplayContainerChange.ProtocolVersion
+                || nvContainerVersion != 0 && module != BackendModules.Gpu))
+            throw new BackendContractException("ready：NVIDIA 显示容器协议版本无效或不兼容。");
+        return new BackendReady(nonce, module, moduleVersion, protocolMinor, pid, ticks, imagePath, sha.ToLowerInvariant(),
+            scopeVersion, clockVersion, asdVersion, environmentVersion, nvSaveVersion, nvContainerVersion);
     }
 
     public static BackendInvoke ParseInvoke(JsonElement payload)

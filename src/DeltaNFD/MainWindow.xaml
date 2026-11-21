@@ -35,20 +35,15 @@
                         <FontIcon Glyph=""/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem x:Name="ClockNavigationItem" Tag="clock" Content="钟摆计划">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph=""/>
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
                 <NavigationViewItemHeader Content="系统优化"/>
                 <NavigationViewItem Tag="system" Content="系统优化">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph=""/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem x:Name="DriverPriorityNavigationItem" Tag="driverpriority" Content="驱动优先级">
+                <NavigationViewItem x:Name="ClockNavigationItem" Tag="clock" Content="钟摆计划">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE8CB;"/>
+                        <FontIcon Glyph=""/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem x:Name="RuntimeNavigationItem" Tag="runtime" Content="运行库">
@@ -88,6 +83,11 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItemHeader Content="高级功能"/>
+                <NavigationViewItem Tag="crashlogs" Content="蓝屏日志分析">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph=""/>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem Tag="lab" Content="调度改善">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph=""/>
@@ -112,6 +112,12 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <StackPanel>
+                    <InfoBar x:Name="FrameRecoveryNotice" IsOpen="False" IsClosable="False" Severity="Informational"
+                             Title="上次未正常退出" Message="帧格暂未开启。需要时可核对上次的设置。" Margin="16,8,16,0">
+                        <InfoBar.ActionButton>
+                            <Button Content="人工核对" Click="ReviewPreviousFrame_Click"/>
+                        </InfoBar.ActionButton>
+                    </InfoBar>
                     <InfoBar x:Name="PageOperationResult" IsOpen="False" Severity="Informational" Margin="16,8,16,0"/>
                     <InfoBar x:Name="GamePageRestriction" IsOpen="False" IsClosable="False" Severity="Informational" Title="三角洲运行期间的功能限制" Margin="16,8,16,0">
                         <InfoBar.ActionButton>

@@ -55,6 +55,12 @@ public sealed class ShaderInspection
             IsGameRunning = DeltaForceLocator.IsGameRunning(),
         };
     });
+    internal ShaderDriverReading? ReadDefaultGameDriver()
+    {
+        using var operation = _target.BeginOperation();
+        return _target.IsCustom ? null : _driverReader();
+    }
+
     public static ShaderDriverReading ReadCurrentDriver() => ReadNvidiaDriver();
 
     private static ShaderDriverReading ReadNvidiaDriver()

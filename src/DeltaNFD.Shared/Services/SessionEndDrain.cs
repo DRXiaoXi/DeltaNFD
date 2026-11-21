@@ -4,7 +4,8 @@ namespace DeltaNFD.Services;
 internal sealed class SessionEndDrain(
     Func<Task<IReadOnlyList<string>>> drain,
     Func<IDisposable> blockNewOperations,
-    Action<string> report) : IDisposable
+    Action<string> report,
+    Action? cancelledAfterDrain = null) : IDisposable
 {
     private readonly object _gate = new();
     private Task<IReadOnlyList<string>>? _task;
@@ -62,6 +63,7 @@ internal sealed class SessionEndDrain(
                     if (!_cancelled || !ReferenceEquals(_task, task)) return;
                     Release();
                     _task = null;
+                    if (!_disposed) cancelledAfterDrain?.Invoke();
                 }
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         }

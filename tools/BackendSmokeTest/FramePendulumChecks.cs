@@ -38,6 +38,9 @@ internal static class FramePendulumChecks
                 settings.OptimalClockResolution100ns = target;
                 Check(PendulumFramePolicy.Prepared(Global(true), settings) == (target is >= 5100 and <= 10000), "Algorithm target range " + target);
             }
+            Check(JsonSerializer.Deserialize<AppSettings>("{}")!.FramePendulumEnabled, "legacy JSON preserves automatic linkage");
+            var disabled = new AppSettings { FramePendulumEnabled = false };
+            Check(!JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(disabled))!.FramePendulumEnabled, "explicit off persists across reload");
             var oldClock = JsonSerializer.Deserialize<OptimalClockSnapshot>("{}")!;
             Check(!oldClock.Prepared, "Old backend cannot claim preparation");
             ProcmanStatusSnapshot Snapshot(bool prepared = true, bool win10 = false) => new()
@@ -53,6 +56,8 @@ internal static class FramePendulumChecks
             Check(!FrameStatusPresentation.PendulumPrepared(null, now, ""), "Unknown backend hides tile");
             Check(FrameStatusPresentation.Pendulum(false, Snapshot(), now, "").Contains("等待开启帧格"), "Prepared off is not an applied claim");
             Check(FrameStatusPresentation.Pendulum(true, Snapshot(), now, "").Contains("尚未生效"), "No holder is not applied");
+            Check(FrameStatusPresentation.Pendulum(true, Snapshot(), now, "", enabled: false).Contains("未启用"), "off is distinct from waiting for a holder");
+            Check(FrameStatusPresentation.Pendulum(true, Snapshot(), now.AddSeconds(11), "", enabled: false).Contains("待核对"), "stale off snapshot does not claim clean restoration");
             Check(!FrameStatusPresentation.PendulumDescription(false).Contains("DPC"), "Win11 explanation has no DPC requirement");
             Check(FrameStatusPresentation.PendulumDescription(true).Contains("保持 DPC 在后台"), "Win10 explanation states DPC lifetime");
             foreach (var mode in new[] { "win11", "win10-basic", "win10-algorithm1", "win10-algorithm2" }) Lifecycle(Path.Combine(root, mode), mode);
@@ -70,13 +75,15 @@ internal static class FramePendulumChecks
         var dpc = new Holder(events, "dpc", true);
         var candidate = new Holder(events, "clock", false);
         IOptimalClockHolderApi holder = win10 ? new DpcCombinedHolder(dpc, candidate) : candidate;
-        var target = win10 && !algorithm ? 10000u : 5150u;
+        var target = win10 ? (algorithm ? 5150u : 10000u) : 5180u;
+        if (!win10) candidate.ReportedCurrent = 5000; // Host: saved 0.5180 ms, verified live 0.5000 ms.
         var policy = new TimerApi(events);
         var reach = new Reachability();
+        var testUtc = DateTime.UtcNow;
         var identity = new ProcmanProcessIdentity(12345, DateTime.UtcNow, @"C:\Games\DeltaForceClient-Win64-Shipping.exe");
         AppSettingsStore.Update(s =>
         {
-            s.FrameModeActive = false; s.FrameGameTimerIgnoreEnabled = false;
+            s.FrameModeActive = false; s.FrameGameTimerIgnoreEnabled = false; s.FramePendulumEnabled = true;
             s.OptimalClockScanUtc = DateTimeOffset.UtcNow; s.OptimalClockResolution100ns = target;
             s.OptimalClockScanPlatform = win10 ? global.PlatformId + (algorithm ? DpcPendulumSource.AlgorithmProfileSuffix : "") : "";
             s.OptimalClockScanMode = mode.EndsWith("2") ? OptimalClockScanMode.StableLatency : OptimalClockScanMode.LowestLatency;
@@ -87,7 +94,7 @@ internal static class FramePendulumChecks
         {
             BackgroundLoopDisabledForTests = true, FrameModeActiveForTests = () => active, GlobalPrecisionForTests = () => global,
             FrameTimerIgnoreTargetsForTests = () => [identity], FrameTimerIgnoreWindows10ForTests = () => win10,
-            FrameTimerPolicyProbeForTests = () => new(true, ""),
+            FrameTimerPolicyProbeForTests = () => new(true, ""), ClockForTests = () => testUtc,
         };
         Check(engine.Snapshot().OptimalClock.Prepared, mode + ": prepared even with frame off");
         Check(engine.FramePendulumOnceForTests() && !holder.Holding && policy.Writes == 0, mode + ": preparation does not execute while frame off");
@@ -96,7 +103,10 @@ internal static class FramePendulumChecks
         Check(engine.FramePendulumOnceForTests() && !holder.Holding && policy.Writes == 0, mode + ": legacy independent preference cannot bypass preparation");
         AppSettingsStore.Update(s => s.FrameGameTimerIgnoreEnabled = false);
         global = Global(win10); events.Clear();
-        Check(engine.SyncFrameBackground().Success && holder.Holding && policy.State.Forced, mode + ": initial frame sync holds then automatically ignores without old preference");
+        AppSettingsStore.Update(s => { s.FramePendulumEnabled = false; s.OptimalClockEnabled = true; });
+        Check(engine.SyncFrameBackground().Success && !holder.Holding && policy.Writes == 0, mode + ": off prevents holder and game write while frame stays active");
+        AppSettingsStore.Update(s => s.FramePendulumEnabled = true);
+        Check(engine.SyncFrameBackground().Success && holder.Holding && policy.State.Forced, mode + ": enabling during frame holds then ignores, including verified finer Win11 clock");
         var start = events.FindIndex(x => x.EndsWith("-start"));
         Check(start >= 0 && events.IndexOf("ignore-apply") > start, mode + ": holder starts before game write");
         Check(!win10 || dpc.Holding, mode + ": Win10 DPC remains alive");
@@ -107,6 +117,61 @@ internal static class FramePendulumChecks
             OptimalClock = snapshot.OptimalClock, FrameTimerIgnore = snapshot.FrameTimerIgnore };
         Check(FrameStatusPresentation.Pendulum(true, runningSnapshot, DateTimeOffset.UtcNow, "").Contains("已忽略"), mode + ": applied text requires actual target readback");
         Check(!AppSettingsStore.Read().FrameGameTimerIgnoreEnabled, mode + ": no hidden preference mutation");
+        if (!win10)
+        {
+            candidate.ReportedCurrent = 7000;
+            Check(!engine.FramePendulumOnceForTests() && !policy.State.Forced, mode + ": drift coarser than allowed revokes ignore");
+            candidate.ReportedCurrent = 5000;
+            Check(engine.FramePendulumOnceForTests() && policy.State.Forced, mode + ": reverified finer clock reapplies");
+            string Status(ProcmanStatusSnapshot state) => FrameStatusPresentation.Pendulum(true,
+                new ProcmanStatusSnapshot { UpdatedUtc = state.UpdatedUtc, RulesEngineRunning = true,
+                    OptimalClock = state.OptimalClock, FrameTimerIgnore = state.FrameTimerIgnore }, DateTimeOffset.UtcNow, "");
+            Check(Status(engine.Snapshot()).Contains("仍有更细读数，未达到目标，来源未确认"), "persistent 0.5000 does not claim exact lock or identify the requester");
+            Check(engine.Snapshot().FrameTimerIgnore is { PostApplyReachabilityConfirmed: true, AfterPolicyClock100ns: 5000 }, "policy is confirmed even when clock mismatch remains");
+
+            void Reset()
+            {
+                active = false;
+                engine.FramePendulumOnceForTests();
+                candidate.ReportedCurrent = 5000;
+                active = true;
+            }
+            Reset();
+            policy.OnWrite = s => candidate.ReportedCurrent = s.Forced ? target : 5000u;
+            var probes = reach.Count;
+            Check(engine.FramePendulumOnceForTests() && reach.Count >= probes + 2 && policy.State.Forced, "before/after independent probes run around the write");
+            var recovered = engine.Snapshot();
+            Check(recovered.FrameTimerIgnore is { BeforePolicyClock100ns: 5000, AfterPolicyClock100ns: 5180, PostApplyReachabilityConfirmed: true }, "game request removal 0.5000 -> 0.5180 is observed in same tick");
+            Check(Status(recovered).Contains("忽略前 0.5000 ms，复核读数已接近目标"), "UI uses after sample rather than pre-policy clock snapshot");
+            Check(engine.FramePendulumOnceForTests() && Status(engine.Snapshot()).Contains("忽略前 0.5000 ms"), "subsequent stable checks retain the observed transition");
+
+            Reset();
+            policy.OnWrite = s => candidate.ReportedCurrent = s.Forced ? 156250u : 5000u;
+            Check(engine.FramePendulumOnceForTests() && !policy.State.Forced
+                && !engine.Snapshot().FrameTimerIgnore.PostApplyReachabilityConfirmed,
+                "coarse post-apply clock rolls back to game preference even when the pre-check passed");
+            Check(Status(engine.Snapshot()).Contains("保留游戏原精度"), "coarse fallback is visible rather than marked applied");
+            var blockedWrites = policy.Writes;
+            Check(engine.FramePendulumOnceForTests() && policy.Writes == blockedWrites, "cooldown prevents repeatedly toggling the game policy");
+            testUtc = testUtc.AddSeconds(31);
+            policy.OnWrite = s => candidate.ReportedCurrent = s.Forced ? target : 5000u;
+            reach.Measure = () => policy.State.Forced ? null : 1;
+            Check(engine.FramePendulumOnceForTests() && policy.Writes > blockedWrites && !policy.State.Forced,
+                "after cooldown a missing post-apply measurement also rolls back even if the numerical value matches");
+            testUtc = testUtc.AddSeconds(31);
+            reach.Measure = null;
+            Check(engine.FramePendulumOnceForTests() && policy.State.Forced && engine.Snapshot().FrameTimerIgnore.AfterPolicyClock100ns == target,
+                "later retry is allowed once measurements confirm safe clock again");
+            policy.OnWrite = null;
+        }
+        events.Clear();
+        AppSettingsStore.Update(s => s.FramePendulumEnabled = false);
+        Check(engine.SyncFrameBackground().Success && active && !holder.Holding && !dpc.Holding && !policy.State.Forced,
+            mode + ": switching off releases both without stopping frame");
+        Check(events.IndexOf("ignore-restore") >= 0 && events.IndexOf("ignore-restore") < events.FindIndex(x => x.EndsWith("-stop")), mode + ": live switch restores game before clock release");
+        Check(FrameStatusPresentation.Pendulum(true, runningSnapshot, DateTimeOffset.UtcNow, "", enabled: false).Contains("尚未确认"), mode + ": do not report released from old running snapshot");
+        AppSettingsStore.Update(s => s.FramePendulumEnabled = true);
+        Check(engine.SyncFrameBackground().Success && holder.Holding && policy.State.Forced, mode + ": live switch can re-enable both");
         events.Clear(); active = false;
         Check(engine.FramePendulumOnceForTests() && !holder.Holding && !policy.State.Forced, mode + ": frame off releases both");
         Check(events.IndexOf("ignore-restore") >= 0 && events.IndexOf("ignore-restore") < events.FindIndex(x => x.EndsWith("-stop")), mode + ": game restored before clock released");
@@ -127,9 +192,10 @@ internal static class FramePendulumChecks
             active = false; engine.FramePendulumOnceForTests(); active = true;
             engine.FramePendulumOnceForTests();
         }
-        policy.DenyRestore = true; active = false;
+        policy.DenyRestore = true; AppSettingsStore.Update(s => s.FramePendulumEnabled = false);
         Check(!engine.FramePendulumOnceForTests() && !holder.Holding && engine.Snapshot().FrameTimerIgnore.RestorePending, mode + ": failed restore retains responsibility while clock cleanup still attempted");
         Check(engine.Snapshot().OptimalClock.HasError && engine.Snapshot().OptimalClock.Message.Contains("恢复未确认"), mode + ": clock release cannot erase game restoration failure");
+        Check(FrameStatusPresentation.Pendulum(true, engine.Snapshot(), DateTimeOffset.UtcNow, "", enabled: false).Contains("恢复仍待核对"), mode + ": failed restore remains visible after switch off");
         policy.DenyRestore = false;
         Check(engine.FramePendulumOnceForTests() && !policy.State.Forced && !engine.Snapshot().FrameTimerIgnore.RestorePending, mode + ": restoration remains retryable");
     }
@@ -140,7 +206,8 @@ internal static class FramePendulumChecks
         public bool Holding { get; set; }
         public uint Resolution100ns { get; private set; }
         public uint Granted100ns => Resolution100ns;
-        public uint Current100ns => Holding ? Resolution100ns : 156250;
+        internal uint? ReportedCurrent;
+        public uint Current100ns => Holding ? (ReportedCurrent ?? Resolution100ns) : 156250;
         public string Error => "";
         public bool Ensure(uint target) { events.Add(name + "-start"); Resolution100ns = target; Holding = true; return true; }
         public void Stop() { events.Add(name + "-stop"); Holding = false; }
@@ -155,12 +222,15 @@ internal static class FramePendulumChecks
     private sealed class Reachability : IFrameTimerReachabilityApi
     {
         internal double Milliseconds = 1;
-        public double? MeasureRequestlessGranularityMs() => Milliseconds;
+        internal Func<double?>? Measure;
+        internal int Count;
+        public double? MeasureRequestlessGranularityMs() { Count++; return Measure is null ? Milliseconds : Measure(); }
     }
     private sealed class TimerApi(List<string> events) : IFrameTimerIgnoreApi
     {
         internal FrameTimerPowerState State = new(1, 1);
         internal bool DenyRestore;
+        internal Action<FrameTimerPowerState>? OnWrite;
         internal int Writes;
         public string IdentityState(ProcmanProcessIdentity identity) => "same";
         public IFrameTimerIgnoreHandle Open(ProcmanProcessIdentity identity) => new Handle(this, events);
@@ -170,7 +240,7 @@ internal static class FramePendulumChecks
             public void Write(FrameTimerPowerState state)
             {
                 if (api.DenyRestore && !state.Forced) throw new IOException("fixture restore denied");
-                events.Add(state.Forced ? "ignore-apply" : "ignore-restore"); api.Writes++; api.State = state;
+                events.Add(state.Forced ? "ignore-apply" : "ignore-restore"); api.Writes++; api.State = state; api.OnWrite?.Invoke(state);
             }
             public void Dispose() { }
         }
