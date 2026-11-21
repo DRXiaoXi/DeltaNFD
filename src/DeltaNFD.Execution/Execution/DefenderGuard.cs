@@ -51,8 +51,12 @@ public static class DefenderGuard
     private static HashSet<string> QueryExclusions(GuardConfig cfg)
     {
         if (string.IsNullOrWhiteSpace(cfg.ExclusionsQuery)) throw new IOException("缺少 Defender 排除项核对命令。");
-        var (code, output, _) = RunPowerShell(cfg.ExclusionsQuery);
-        if (code != 0 || string.IsNullOrWhiteSpace(output)) throw new IOException("无法核对 Defender 排除项，恢复记录保留。");
+        var (code, output, error) = RunPowerShell(cfg.ExclusionsQuery);
+        if (code != 0 || string.IsNullOrWhiteSpace(output))
+        {
+            Log.Warn("Defender 排除项读取失败：" + CommandDiagnostic(code, error));
+            throw new IOException($"无法核对 Defender 排除项（PowerShell 退出码 {code}），恢复记录保留。");
+        }
         return new HashSet<string>(JsonSerializer.Deserialize<string[]>(output)
             ?? throw new IOException("Defender 排除项查询结果无效。"), StringComparer.OrdinalIgnoreCase);
     }
@@ -67,6 +71,7 @@ public static class DefenderGuard
         public string StatusQuery { get; set; } = "";
         public string AvProductsQuery { get; set; } = "";
         public string EnableRealtimeCmd { get; set; } = "";
+        public string StartProtectionServiceCmd { get; set; } = "";
         public string AddExclusionCmd { get; set; } = "";
         public string RemoveExclusionCmd { get; set; } = "";
         public string ExclusionsQuery { get; set; } = "";
@@ -178,18 +183,32 @@ public static class DefenderGuard
     }
 
     public sealed record DefenderStatus(bool Present, bool RealTimeProtectionOn, bool TamperProtectionOn);
+    private sealed record ProtectionReading(bool Present, bool RealTimeProtectionOn, bool? TamperProtectionOn);
 
     /// <summary>只读查询 Defender 状态；cmdlet 不存在 / 查询失败返回 null。</summary>
     public static async Task<DefenderStatus?> QueryStatusAsync()
     {
+        var reading = await ReadProtectionAsync();
+        return reading is { TamperProtectionOn: bool tamper }
+            ? new DefenderStatus(reading.Present, reading.RealTimeProtectionOn, tamper) : null;
+    }
+
+    private static async Task<ProtectionReading?> ReadProtectionAsync()
+    {
         var cfg = GetConfig();
         if (string.IsNullOrWhiteSpace(cfg.StatusQuery))
         {
+            Log.Warn("Defender 防护状态读取失败：缺少状态查询配置。");
             return null;
         }
 
-        var (code, stdout, _) = await Task.Run(() => RunPowerShell(cfg.StatusQuery));
-        return code == 0 ? ParseStatus(stdout) : null;
+        var (code, stdout, error) = await Task.Run(() => RunPowerShell(cfg.StatusQuery));
+        var reading = code == 0 ? ParseStatus(stdout) : null;
+        if (reading is null)
+            Log.Warn("Defender 防护状态读取失败：" + CommandDiagnostic(code, error) + "；未取得有效的核心防护状态。");
+        else if (reading.TamperProtectionOn is null)
+            Log.Info($"Defender 防护状态：实时保护={reading.RealTimeProtectionOn}；篡改防护字段不可用。");
+        return reading;
     }
 
     /// <summary>重新查询防护状态，不回写预检报告（报告里的 Initial* 必须保持预检当时的值）。</summary>
@@ -200,7 +219,7 @@ public static class DefenderGuard
             : (status.RealTimeProtectionOn, status.TamperProtectionOn);
     }
 
-    private static DefenderStatus? ParseStatus(string? stdout)
+    private static ProtectionReading? ParseStatus(string? stdout)
     {
         try
         {
@@ -218,8 +237,8 @@ public static class DefenderGuard
 
             bool? Flag(string name) => root.TryGetProperty(name, out var flag)
                 && flag.ValueKind is JsonValueKind.True or JsonValueKind.False ? flag.GetBoolean() : null;
-            return Flag("av") is bool av && Flag("rtp") is bool rtp && Flag("tamper") is bool tamper
-                ? new DefenderStatus(av, rtp, tamper) : null;
+            return Flag("av") is bool av && Flag("rtp") is bool rtp
+                ? new ProtectionReading(av, rtp, Flag("tamper")) : null;
         }
         catch
         {
@@ -299,10 +318,11 @@ public static class DefenderGuard
             if (!journal.Paths.Contains(path, StringComparer.OrdinalIgnoreCase)) journal.Paths.Add(path);
             journal = journal with { Report = journal.Report ?? _lastReport };
             WriteJournal(journal); // Write ahead of the system change, including unsuccessful/uncertain adds.
-            var (code, _, _) = await Task.Run(() => RunPowerShell(string.Format(cfg.AddExclusionCmd, path.Replace("'", "''"))));
+            var (code, _, error) = await Task.Run(() => RunPowerShell(string.Format(cfg.AddExclusionCmd, path.Replace("'", "''"))));
             if (code != 0 || !QueryExclusions(cfg).Contains(path))
             {
-                throw new IOException("Defender 排除项添加未确认，已保留恢复记录。" );
+                Log.Warn("Defender 临时排除项添加未确认：" + CommandDiagnostic(code, error));
+                throw new IOException("Defender 排除项添加未确认，已保留恢复记录。");
             }
             Log.Info($"DefenderGuard：已请求添加 Defender 排除项（exit={code}）—— {path}");
         }
@@ -319,8 +339,9 @@ public static class DefenderGuard
             if (QueryExclusions(cfg).Contains(path))
             {
                 if (string.IsNullOrWhiteSpace(cfg.RemoveExclusionCmd)) throw new IOException("缺少 Defender 清理命令。");
-                var (code, _, _) = RunPowerShell(string.Format(cfg.RemoveExclusionCmd, path.Replace("'", "''")));
-                if (code != 0 || QueryExclusions(cfg).Contains(path)) throw new IOException("Defender 临时排除项移除未确认，恢复记录保留。");
+                var (code, _, error) = RunPowerShell(string.Format(cfg.RemoveExclusionCmd, path.Replace("'", "''")));
+                if (code != 0) Log.Warn("Defender 临时排除项移除命令异常：" + CommandDiagnostic(code, error));
+                if (QueryExclusions(cfg).Contains(path)) throw new IOException("Defender 临时排除项移除未确认，恢复记录保留。");
             }
             journal.Paths.Remove(path);
             WriteJournal(journal);
@@ -353,9 +374,11 @@ public static class DefenderGuard
         }
         else if (report is not null && !HasPendingSession) WriteJournal(new([], report));
         result = new DefenderPostApplyResult();
+        Log.Info($"Defender 收尾开始：批次未执行={batchNotStarted}；需核对的临时排除项={journal.Paths.Count}；预检实时保护={report?.InitialRealTimeProtectionOn}；计划恢复原值={report?.DefenderRestoreTweakInBatch}；包含 Defender 优化={report?.DefenderOffTweakInBatch}。");
         try { RemoveSessionExclusions(); }
         catch (Exception ex)
         {
+            Log.Warn($"Defender 临时排除项收尾失败：{ex.GetType().Name}：{ex.Message}");
             result.Remind = true; result.CleanupSucceeded = false; result.Message = ex.Message;
             return result;
         }
@@ -368,55 +391,63 @@ public static class DefenderGuard
 
         // Exclusions have already been independently removed above. A deliberately stopped service can make
         // the Defender cmdlet unavailable; that does not create a new temporary-session cleanup obligation.
+        DeltaNFD.Inspection.SecurityFeatureSnapshot? core = null;
         if (report.DefenderOffTweakInBatch || report.DefenderRestoreTweakInBatch)
         {
-            var core = SecurityFeatureForTests?.Invoke() ?? DeltaNFD.Inspection.SecurityFeatureInspection.Read("DefenderName");
+            core = ReadCore();
             if (ResolveKnownBatchIntent(report, core) is { } known) { result = known; return result; }
         }
 
-        var status = await QueryStatusAsync();
+        var status = await ReadProtectionAsync();
+        if (status?.RealTimeProtectionOn != true)
+        {
+            core ??= ReadCore();
+            var startCommand = GetConfig().StartProtectionServiceCmd;
+            if (core.IsStoppedWithEnabledStartup && !string.IsNullOrWhiteSpace(startCommand))
+            {
+                var (code, _, error) = await Task.Run(() => RunPowerShell(startCommand));
+                Log.Info("Defender 恢复核心服务：" + CommandDiagnostic(code, error));
+                core = ReadCore();
+                status = await ReadProtectionAsync();
+            }
+        }
         if (status is null)
         {
-            result.CleanupSucceeded = false; result.Remind = true;
-            result.Message = "无法复核 Defender 防护状态，会话记录保留。";
-            return result;
+            core ??= ReadCore();
+            Log.Warn($"Defender 收尾只读服务证据：{core.State}；配置禁用={core.ConfiguredDisabled}；{core.Detail}");
+            // Only a confirmed, enabled and running service justifies retrying the restore command.
+            if (core is not { State: BxState.Off, ConfiguredDisabled: false })
+            {
+                result.CleanupSucceeded = false; result.Remind = true;
+                result.Message = "临时排除项已核对。Defender 防护状态仍无法复核，会话记录保留。"
+                    + core.Detail + " 请在 Windows 安全中心查看防护状态后再核对。";
+                return result;
+            }
         }
-        var rtpNow = status?.RealTimeProtectionOn ?? report.InitialRealTimeProtectionOn;
-        var tamperNow = status?.TamperProtectionOn ?? report.TamperProtectionOn;
 
-        if (rtpNow && tamperNow)
+        if (status is { RealTimeProtectionOn: true, TamperProtectionOn: true })
         {
             // 防护状态与预检时一致（用户没动过，走了「仍然继续」）：除第三方杀软外不提醒
             result.Remind = report.ThirdPartyAvNames.Count > 0;
             return result;
         }
 
-        if (!rtpNow)
+        if (status?.RealTimeProtectionOn != true)
         {
-            if (report.DefenderOffTweakInBatch)
-            {
-                // 批次本身包含关闭 Defender 的条目：尊重条目意图，不做自动恢复，只提醒
-                result.Remind = true;
-                result.DefenderLeftOff = true;
-                Log.Info("DefenderGuard：批次包含关闭 Defender 的条目，跳过实时保护自动恢复");
-                return result;
-            }
-
             var cfg = GetConfig();
             if (!string.IsNullOrWhiteSpace(cfg.EnableRealtimeCmd))
             {
-                var (code, _, _) = await Task.Run(() => RunPowerShell(cfg.EnableRealtimeCmd));
-                Log.Info($"DefenderGuard：已尝试恢复实时保护（exit={code}）");
-                if (code != 0 || (await QueryStatusAsync())?.RealTimeProtectionOn != true)
-                { result.CleanupSucceeded = false; result.Message = "Defender 实时保护恢复未通过复核。"; }
+                var (code, _, error) = await Task.Run(() => RunPowerShell(cfg.EnableRealtimeCmd));
+                Log.Info("Defender 实时保护恢复命令：" + CommandDiagnostic(code, error));
+                status = await ReadProtectionAsync();
+                if (status?.RealTimeProtectionOn != true)
+                { result.CleanupSucceeded = false; result.Message = $"Defender 实时保护恢复未通过复核（PowerShell 退出码 {code}），会话记录保留。"; }
             }
             else { result.CleanupSucceeded = false; result.Message = "缺少 Defender 实时保护恢复命令。"; }
-
-            result.Remind = true;
-            return result;
         }
 
-        // 实时保护仍在（只关了篡改防护）：提醒用户一并恢复
+        if (result.CleanupSucceeded && status is { RealTimeProtectionOn: true, TamperProtectionOn: null })
+            result.Message = "实时保护已确认开启。请在 Windows 安全中心核对篡改防护。";
         result.Remind = true;
         return result;
         }
@@ -428,6 +459,7 @@ public static class DefenderGuard
                 {
                     File.Delete(JournalPath);
                     lock (_gate) _lastReport = null;
+                    Log.Info($"Defender 收尾已完成：重启核对={result.RequiresReboot}；{result.Message}");
                 }
             }
             finally { SessionGate.Release(); }
@@ -442,9 +474,12 @@ public static class DefenderGuard
 
     internal static DefenderPostApplyResult? ResolveKnownBatchIntent(DefenderPreflightReport report, DeltaNFD.Inspection.SecurityFeatureSnapshot core)
     {
-        if (report.DefenderOffTweakInBatch && core.State == BxState.On)
+        if (report.DefenderOffTweakInBatch && !report.DefenderRestoreTweakInBatch && core.ConfiguredDisabled && core.State == BxState.On)
             return new() { Remind = true, DefenderLeftOff = true,
                 Message = "Defender 核心服务已按本批意图禁用并确认停止；临时排除项已复核清理，可单独恢复 Defender 条目。" };
+        if (report.DefenderOffTweakInBatch && !report.DefenderRestoreTweakInBatch && core.ConfiguredDisabled && core.State == BxState.Mixed)
+            return new() { Remind = true, RequiresReboot = true,
+                Message = "Defender 已回读到本次选择的启动配置，运行状态仍待重启后核对。临时排除项已复核清理。" };
         if (report.DefenderRestoreTweakInBatch && !report.DefenderOffTweakInBatch && !core.ConfiguredDisabled
             && core.State is BxState.Off or BxState.Mixed)
             return new() { Remind = true, RequiresReboot = true,
@@ -458,6 +493,15 @@ public static class DefenderGuard
         $"，命中条目 {report.SecurityItemNames.Count} 项（{string.Join("、", report.SecurityItemNames.Take(5))}{(report.SecurityItemNames.Count > 5 ? " …" : "")}）";
 
     private static string TrimDir(string path) => path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+    private static DeltaNFD.Inspection.SecurityFeatureSnapshot ReadCore() =>
+        SecurityFeatureForTests?.Invoke() ?? DeltaNFD.Inspection.SecurityFeatureInspection.Read("DefenderName");
+
+    private static string CommandDiagnostic(int code, string? error)
+    {
+        var output = string.Join(" ", (error ?? "").Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        return $"PowerShell 退出码 {code}" + (output.Length == 0 ? "" : "；错误输出：" + output[..Math.Min(output.Length, 768)]);
+    }
 
     // ---------------- 进程调用 ----------------
 
@@ -495,9 +539,9 @@ public static class DefenderGuard
             }
             return (p.ExitCode, stdoutTask.GetAwaiter().GetResult(), stderrTask.GetAwaiter().GetResult());
         }
-        catch
+        catch (Exception ex)
         {
-            return (-1, null, null);
+            return (-1, null, $"{ex.GetType().Name}：{ex.Message}");
         }
     }
 }

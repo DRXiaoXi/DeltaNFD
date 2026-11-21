@@ -10,68 +10,163 @@ using Microsoft.Win32.SafeHandles;
 namespace DeltaNFD.Services {
     internal sealed class NvContainerRegistryBackup : INvContainerBackupStore {
         internal const string KeyName = @"SOFTWARE\DeltaNFD.NVIDIA-Display-Container-Switch";
-        private const string ValueName = "OriginalServiceState-v1";
+        internal const string ValueName = "OriginalServiceState-v1";
         private static readonly SecurityIdentifier Admins = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
         private static readonly SecurityIdentifier SystemAccount = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+        private const RegistryRights WriteRights = RegistryRights.ReadKey | RegistryRights.SetValue | RegistryRights.ChangePermissions;
+        private const int OpenLink = 0x00000008, Wow64Key64 = 0x0100;
+        private const int FileNotFound = 2, InsufficientBuffer = 122;
+        private const int OwnerAndDaclInformation = 0x00000001 | 0x00000004;
+        private readonly RegistryHive hive;
+        private readonly string keyName;
+        private readonly SecurityIdentifier admin;
 
-        private static RegistrySecurity LockedAcl() {
+        internal NvContainerRegistryBackup() : this(RegistryHive.LocalMachine, KeyName, Admins) { }
+
+        // Isolated tests use the current user's SID as the administrator in a disposable HKCU key.
+        internal NvContainerRegistryBackup(RegistryHive hive, string keyName, SecurityIdentifier admin) {
+            this.hive = hive;
+            this.keyName = keyName;
+            this.admin = admin;
+        }
+
+        private RegistrySecurity LockedAcl(bool setOwner) {
             var security = new RegistrySecurity();
-            security.SetOwner(Admins);
+            if (setOwner) security.SetOwner(admin);
             security.SetAccessRuleProtection(true, false);
-            security.AddAccessRule(new RegistryAccessRule(Admins, RegistryRights.FullControl, AccessControlType.Allow));
+            security.AddAccessRule(new RegistryAccessRule(admin, RegistryRights.FullControl, AccessControlType.Allow));
             security.AddAccessRule(new RegistryAccessRule(SystemAccount, RegistryRights.FullControl, AccessControlType.Allow));
             return security;
         }
-        private static void VerifyAcl(RegistryKey key) {
-            var security = key.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
-            var rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier));
-            if (!security.AreAccessRulesProtected || !Admins.Equals(security.GetOwner(typeof(SecurityIdentifier))) || rules.Count != 2)
-                throw new InvalidOperationException("恢复备份的注册表权限不符合预期，未继续。");
-            bool admin = false, system = false;
-            foreach (RegistryAccessRule rule in rules) {
-                if (rule.AccessControlType != AccessControlType.Allow || rule.RegistryRights != RegistryRights.FullControl ||
-                    rule.IsInherited || rule.InheritanceFlags != InheritanceFlags.None || rule.PropagationFlags != PropagationFlags.None)
-                    throw new InvalidOperationException("恢复备份的访问规则不符合预期，未继续。");
-                if (Admins.Equals(rule.IdentityReference)) admin = true;
-                if (SystemAccount.Equals(rule.IdentityReference)) system = true;
+
+        private bool IsTrusted(SecurityIdentifier? sid) => sid is not null && (admin.Equals(sid) || SystemAccount.Equals(sid));
+
+        // Inspect the raw DACL so unknown or conditional ACEs cannot disappear in a managed rule projection.
+        // Legacy inherited read permissions never authorize writes to the saved value.
+        internal bool IsCanonicalAcl(RawSecurityDescriptor descriptor) {
+            if (!IsTrusted(descriptor.Owner))
+                throw new InvalidOperationException("恢复备份的所有者不是受信任的管理员组或 SYSTEM。");
+            if (descriptor.DiscretionaryAcl is not { } acl
+                || !descriptor.ControlFlags.HasFlag(ControlFlags.DiscretionaryAclPresent))
+                throw new InvalidOperationException("恢复备份缺少有效的访问控制列表。");
+            bool canonical = descriptor.ControlFlags.HasFlag(ControlFlags.DiscretionaryAclProtected) && acl.Count == 2;
+            bool hasAdmin = false, hasSystem = false;
+            foreach (GenericAce entry in acl) {
+                if (entry is not CommonAce { AceType: AceType.AccessAllowed } rule)
+                    throw new InvalidOperationException("恢复备份含有无法安全整理的访问规则。");
+                if (!rule.AceFlags.HasFlag(AceFlags.InheritOnly) && !IsTrusted(rule.SecurityIdentifier)
+                    && (rule.AccessMask & ~(int)RegistryRights.ReadKey) != 0)
+                    throw new InvalidOperationException("恢复备份允许其他账号修改，已保留原记录。");
+                canonical &= rule.AceFlags == AceFlags.None && rule.AccessMask == (int)RegistryRights.FullControl;
+                hasAdmin |= admin.Equals(rule.SecurityIdentifier);
+                hasSystem |= SystemAccount.Equals(rule.SecurityIdentifier);
             }
-            if (!admin || !system) throw new InvalidOperationException("恢复备份的访问对象不符合预期，未继续。");
+            return canonical && hasAdmin && hasSystem;
+        }
+
+        private bool InspectAcl(RegistryKey key) {
+            var length = 0;
+            var result = RegGetKeySecurity(key.Handle, OwnerAndDaclInformation, null, ref length);
+            if (result != InsufficientBuffer)
+                throw NvContainerScm.Error("查询恢复备份权限大小", result);
+            if (length is < 20 or > 131072)
+                throw new InvalidOperationException("恢复备份权限描述符长度异常。");
+            var bytes = new byte[length];
+            result = RegGetKeySecurity(key.Handle, OwnerAndDaclInformation, bytes, ref length);
+            if (result != 0) throw NvContainerScm.Error("读取恢复备份权限", result);
+            return IsCanonicalAcl(new RawSecurityDescriptor(bytes, 0));
+        }
+
+        private static NvContainerBackup? ReadValue(RegistryKey key) {
+            if (key.SubKeyCount != 0 || key.ValueCount > 1)
+                throw new InvalidOperationException("恢复备份键含有其他数据，保留原状。");
+            var names = key.GetValueNames();
+            if (names.Length == 0) return null;
+            if (names.Length != 1 || !ValueName.Equals(names[0], StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("恢复备份键含有未知数据或注册表链接，保留原状。");
+            if (key.GetValueKind(ValueName) != RegistryValueKind.Binary ||
+                key.GetValue(ValueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames) is not byte[] bytes)
+                throw new InvalidOperationException("恢复备份的类型不正确，已保留原记录。");
+            return Decode(bytes);
+        }
+
+        private RegistryKey? OpenKey(RegistryKey root, RegistryRights rights) {
+            // Open the fixed key itself, never the destination of a registry link at that name.
+            var result = RegOpenKeyExW(root.Handle, keyName, OpenLink, (int)rights | Wow64Key64, out var handle);
+            if (result != 0) {
+                handle?.Dispose();
+                if (result == FileNotFound) return null;
+                throw NvContainerScm.Error("打开显示容器专用恢复备份键", result);
+            }
+            return RegistryKey.FromHandle(handle, RegistryView.Registry64);
+        }
+
+        private void ProtectVerifiedKey(RegistryKey key, NvContainerBackup? expected) {
+            // Locking a key cannot revoke handles that already have write access. Only tighten a
+            // descriptor whose effective writers were already limited to administrators and SYSTEM.
+            var canonical = InspectAcl(key);
+            if (ReadValue(key) != expected) throw new InvalidOperationException("恢复备份已变化，未操作服务。");
+            if (canonical) return;
+            key.SetAccessControl(LockedAcl(setOwner: false));
+            Flush(key);
+            if (!InspectAcl(key) || ReadValue(key) != expected)
+                throw new InvalidOperationException("恢复备份权限整理后未通过回读，已保留原记录。");
+            Log.Info("NVIDIA 显示容器备份键：旧版继承或额外的只读权限已收紧；原备份内容保持。");
         }
 
         public NvContainerBackup? Read() {
-            using (var hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
-            using (var key = hklm.OpenSubKey(KeyName, false)) {
-                if (key == null) return null;
-                VerifyAcl(key);
-                var value = key.GetValue(ValueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
-                if (value == null) return null;
-                var bytes = value as byte[];
-                if (bytes == null) throw new InvalidOperationException("恢复备份的类型不正确，未继续。");
-                return Decode(bytes);
-            }
+            using var root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
+            using var key = OpenKey(root, RegistryRights.ReadKey);
+            if (key is null) return null;
+            InspectAcl(key);
+            return ReadValue(key);
         }
         public void Save(NvContainerBackup backup) {
-            using (var hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
-            using (var key = hklm.CreateSubKey(KeyName, RegistryKeyPermissionCheck.ReadWriteSubTree, LockedAcl())) {
-                if (key == null) throw new InvalidOperationException("无法创建管理员恢复备份。");
-                VerifyAcl(key);
-                if (key.GetValue(ValueName) != null) throw new InvalidOperationException("发现既有恢复备份，不会覆盖。");
-                key.SetValue(ValueName, Encode(backup), RegistryValueKind.Binary);
-                Flush(key);
-                NvContainerBackup stored = Decode(key.GetValue(ValueName) as byte[] ?? throw new IOException("无法回读恢复备份。"));
-                if (stored.Image != backup.Image || stored.Mode != backup.Mode || stored.Delayed != backup.Delayed || stored.WasRunning != backup.WasRunning)
-                    throw new InvalidOperationException("恢复备份回读不一致。");
-            }
+            using var root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
+            using var key = OpenKey(root, WriteRights) ?? CreateKey(root);
+            ProtectVerifiedKey(key, expected: null);
+            key.SetValue(ValueName, Encode(backup), RegistryValueKind.Binary);
+            Flush(key);
+            if (!InspectAcl(key) || ReadValue(key) != backup)
+                throw new InvalidOperationException("恢复备份内容或权限回读不一致。");
         }
-        public void Clear() {
-            using (var hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
-            using (var key = hklm.OpenSubKey(KeyName, true)) {
-                if (key == null) throw new InvalidOperationException("未找到原恢复记录，请核对当前状态。");
-                VerifyAcl(key);
-                key.DeleteValue(ValueName, true);
-                Flush(key);
-                if (key.GetValue(ValueName) != null) throw new InvalidOperationException("恢复备份未确认清除。");
+
+        private RegistryKey CreateKey(RegistryKey root) {
+            // The managed CreateSubKey overload can create the key with inherited permissions on .NET 8.
+            // Pass the protected DACL to Windows at creation so an untrusted writer never gets a handle.
+            var descriptor = LockedAcl(setOwner: true).GetSecurityDescriptorBinaryForm();
+            var pinned = GCHandle.Alloc(descriptor, GCHandleType.Pinned);
+            try {
+                var attributes = new SecurityAttributes {
+                    Length = Marshal.SizeOf<SecurityAttributes>(),
+                    Descriptor = pinned.AddrOfPinnedObject(),
+                    InheritHandle = 0,
+                };
+                var result = RegCreateKeyExW(root.Handle, keyName, 0, IntPtr.Zero, 0,
+                    (int)WriteRights | Wow64Key64, ref attributes, out var handle, out _);
+                using (handle) {
+                    if (result != 0) throw NvContainerScm.Error("创建受保护的恢复备份键", result);
+                    return OpenKey(root, WriteRights) ?? throw new InvalidOperationException("无法回读管理员恢复备份键。");
+                }
             }
+            finally { pinned.Free(); }
+        }
+
+        public void PrepareRestore(NvContainerBackup backup) {
+            using var root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
+            using var key = OpenKey(root, WriteRights) ?? throw new InvalidOperationException("未找到原恢复记录。");
+            ProtectVerifiedKey(key, backup);
+        }
+
+        public void Clear(NvContainerBackup backup) {
+            using var root = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
+            using var key = OpenKey(root, RegistryRights.ReadKey | RegistryRights.SetValue)
+                ?? throw new InvalidOperationException("未找到原恢复记录，请核对当前状态。");
+            if (!InspectAcl(key) || ReadValue(key) != backup)
+                throw new InvalidOperationException("恢复备份或权限已变化，保留原记录。");
+            key.DeleteValue(ValueName, true);
+            Flush(key);
+            if (ReadValue(key) is not null) throw new InvalidOperationException("恢复备份未确认清除。");
         }
 
         private static readonly Encoding Utf8 = new UTF8Encoding(false, true);
@@ -106,6 +201,19 @@ namespace DeltaNFD.Services {
         }
         [DllImport("advapi32.dll", ExactSpelling = true)]
         private static extern int RegFlushKey(SafeRegistryHandle handle);
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+        private static extern int RegOpenKeyExW(SafeRegistryHandle key, string subKey, int options, int rights, out SafeRegistryHandle result);
+        [DllImport("advapi32.dll", ExactSpelling = true)]
+        private static extern int RegGetKeySecurity(SafeRegistryHandle key, int information, [Out] byte[]? descriptor, ref int length);
+        [StructLayout(LayoutKind.Sequential)]
+        private struct SecurityAttributes {
+            internal int Length;
+            internal IntPtr Descriptor;
+            internal int InheritHandle;
+        }
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+        private static extern int RegCreateKeyExW(SafeRegistryHandle key, string subKey, int reserved, IntPtr className,
+            int options, int rights, ref SecurityAttributes security, out SafeRegistryHandle result, out int disposition);
     }
 }
 

@@ -13,7 +13,9 @@ $script:Cooperative = $null
 $script:Recovery = [pscustomobject]@{ Code = 0; Detail = 'isolated recovery completed' }
 $script:HeadlessCalls = 0
 $script:ExitDuringRequest = $false
+$script:ObservedInstallRoot = $null
 function Get-ProductProcesses([string]$Root) {
+    $script:ObservedInstallRoot = $Root
     if ($script:Snapshots.Count -gt 0) {
         $snapshot = $script:Snapshots.Dequeue()
         if ($snapshot -is [Exception]) { throw $snapshot }
@@ -50,6 +52,9 @@ $testRoot = [IO.Path]::GetFullPath($testRoot)
 Assert-Check (Test-UnderRoot (Join-Path $testRoot 'Backends\DeltaNFD.Backend.Runtime.exe') $testRoot) 'Backend descendants belong to installation'
 Assert-Check (-not (Test-UnderRoot ($testRoot + '-other\DeltaNFD.exe') $testRoot)) 'Sibling installation cannot be mistaken for target'
 Assert-Check ((Get-DeploymentPipeName $testRoot) -eq (Get-DeploymentPipeName ($testRoot.ToUpperInvariant() + '\'))) 'Native and managed pipe identities normalize case and trailing slash'
+$volumeRoot = [IO.Path]::GetPathRoot($testRoot)
+$volumeResult = Invoke-Deployment $volumeRoot 'install'
+Assert-Check ($volumeResult.Code -eq 0 -and $script:ObservedInstallRoot -ceq $volumeRoot) 'Volume root stays absolute throughout both fake process checks'
 Assert-Blocked { & $productionHeadless $testRoot 'install' } '安装检查不能启动' 'Production standalone recovery rejects setup before creating any child'
 $before = $script:HeadlessCalls
 $result = Invoke-Deployment $testRoot 'install'

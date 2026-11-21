@@ -128,7 +128,7 @@ internal static class PageBackendSessionChecks
         await Rejected(async () => { using var _ = await failed.BeginStartAsync(default); }, "退出失败禁止自动重启");
         await Rejected(() => { PageBackendSessions.CheckBeforeStart(BackendModules.Runtime, new PageBackendLease("runtime")); return Task.CompletedTask; }, "换页重进也不能绕过旧后端未退出");
         bad.FailStop = false; await bad.StopForPageAsync();
-        failed.RefreshReviewedExit();
+        using (await failed.BeginStartAsync(default)) { }
         Check(failed.IsAvailable && failed.Status == "栏目后端已关闭", "核对退出后清除旧提示，不重启后端");
         PageBackendSessions.CheckBeforeStart(BackendModules.Runtime, new PageBackendLease("runtime"));
         Check(true, "确认旧进程退出后可恢复新会话准入");

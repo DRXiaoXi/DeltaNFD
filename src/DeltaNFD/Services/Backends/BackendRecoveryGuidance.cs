@@ -77,6 +77,7 @@ internal static class BackendRecoveryGuidance
             canAcknowledgeRecord = review?.CanAcknowledge, canReadRecovery = review?.CanRestore,
             childrenAlive = review?.ChildrenAlive, childrenUnknown = review?.ChildrenUnknown,
             stateReadComplete = matchingSnapshot?.Complete,
+            stateReadSummary = Safe(error.Length == 0 ? matchingSnapshot?.Summary : null, 1000),
             availableRecoveryScopes = review is null || error.Length > 0 ? Array.Empty<string>()
                 : BackendRecovery.RecoveryChoices(review, matchingSnapshot).Select(s => Safe(s.Id, 128)).Take(32).ToArray(),
             keepCurrentAllowedByPolicy = review is not null && BackendRecovery.CanKeepCurrentState(review, matchingSnapshot),

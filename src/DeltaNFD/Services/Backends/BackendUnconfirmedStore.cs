@@ -35,7 +35,8 @@ internal static class BackendUnconfirmedStore
         string? ArgsDigest = null,
         IReadOnlyList<ChildProcess>? Children = null,
         bool ChildrenUnknown = false,
-        IReadOnlyList<string>? CompletedItems = null);
+        IReadOnlyList<string>? CompletedItems = null,
+        string? ResultDetail = null);
 
     internal sealed record Review(string Module, string Fingerprint, string Description, bool CanAcknowledge)
     {
@@ -143,7 +144,7 @@ internal static class BackendUnconfirmedStore
     /// 已成功静态优化 → 解除执行意图，原值备份不动；partial / 临时恢复义务 → 保留为 unconfirmed。
     /// </summary>
     public static void ResolveIntent(string module, Guid requestId, string status, bool pendingRestore,
-        IReadOnlyList<string>? completedItems = null, bool requiresReview = true)
+        IReadOnlyList<string>? completedItems = null, bool requiresReview = true, string? resultDetail = null)
     {
         var path = RecordPath(module);
         var evidence = TryRead(path);
@@ -171,6 +172,7 @@ internal static class BackendUnconfirmedStore
             Phase = PhaseUnconfirmed,
             Reason = status,
             CompletedItems = completedItems ?? [],
+            ResultDetail = resultDetail is not null ? resultDetail[..Math.Min(resultDetail.Length, 1024)] : null,
         };
         WriteReplace(path, updated);
     }
@@ -432,6 +434,7 @@ internal static class BackendUnconfirmedStore
                     $"时间:{e.CreatedUtc.LocalDateTime:yyyy-MM-dd HH:mm:ss}",
                 };
                 if (!string.IsNullOrEmpty(e.Reason)) lines.Add("原因:" + DescribeReason(e.Reason));
+                if (!string.IsNullOrWhiteSpace(e.ResultDetail)) lines.Add("操作详情:" + e.ResultDetail);
                 if (childNames.Length > 0)
                     lines.Add($"子进程:{string.Join("、", childNames)}（{(childrenAlive ? "仍在运行" : "已退出")}）");
                 if (e.ChildrenUnknown) lines.Add("子进程状态:未知（禁止解除阻塞）");

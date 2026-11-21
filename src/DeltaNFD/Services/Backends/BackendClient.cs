@@ -163,6 +163,11 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
     async Task IPageBackendProcess.StopForPageAsync()
     {
         try { await QuiesceAsync(BackendSessions.StopTimeoutFor(ModuleId)); }
+        catch (Exception ex) when (ModuleId == BackendModules.Gpu && ExitConfirmed && !_unconfirmedOperation && !HasInvocationInFlight)
+        {
+            Log.Info("显卡后端已退出，本次会话没有未确认写入，可以重新打开栏目：" + ex.Message);
+            await DisposeAsync();
+        }
         catch
         {
             _unconfirmedOperation = true;
@@ -417,6 +422,7 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
         if (Volatile.Read(ref _disposed) != 0) return;
         if (_readerEnded) return;
         _readerEnded = true;
+        var stopRequested = _stopSent;
         Interlocked.Exchange(ref _dead, 1);
         PendingRequest? pending;
         lock (_pendingLock) pending = _pending;
@@ -426,7 +432,7 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
             await PromoteUnknownAsync(pending.RequestId, pending.Command, reason);
             pending.Conclude(FailureResult("backend.disconnected", pending.Command, "与官方后端的连接中断"));
         }
-        else if (pending is null && _spec.Id == BackendModules.CpuFrame && !_stopSent && _cpuMayNeedRestore && !_cpuRestoreConfirmed && !_unconfirmedOperation)
+        else if (pending is null && _spec.Id == BackendModules.CpuFrame && !stopRequested && _cpuMayNeedRestore && !_cpuRestoreConfirmed && !_unconfirmedOperation)
         {
             // A monitor can mutate processes without an in-flight UI request. Never silently restart it.
             await PromoteUnknownAsync(Guid.NewGuid(), _lastCommand ?? BackendCommands.CpuFrameMonitorStart, reason);
@@ -435,10 +441,10 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
         var exitCode = "未知（进程尚未确认退出）";
         try { if (_process.HasExited) exitCode = $"0x{_process.ExitCode:X8}"; } catch { }
         var diagnostic = $"官方后端连接结束：module={ModuleId}；pid={_processId}；session={_sessionId:D}；"
-            + $"reason={reason}；stopSent={_stopSent}；command={pending?.Command ?? _lastCommand ?? "(无)"}；"
+            + $"reason={reason}；stopSent={stopRequested}；command={pending?.Command ?? _lastCommand ?? "(无)"}；"
             + $"lastStatusUtc={_lastStatusUtc?.ToString("O") ?? "(无)"}；exitCode={exitCode}；"
             + $"exception={failure?.GetType().Name ?? "EOF"}；hresult={(failure is null ? "(无)" : $"0x{failure.HResult:X8}")}。";
-        if (_stopSent) Log.Info(diagnostic); else Log.Warn(diagnostic);
+        if (stopRequested) Log.Info(diagnostic); else Log.Warn(diagnostic);
         lock (_statusLock)
         {
             foreach (var channel in _statusSubscribers) channel.Writer.TryComplete();
@@ -616,8 +622,10 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
 
                 if (mutating && !pending.ReaderFailed)
                 {
+                    var detail = command == BackendCommands.GpuNvDisplayContainerChange && result.RequiresReview
+                        ? BugFeedbackService.Redact(result.Message) : null;
                     BackendUnconfirmedStore.ResolveIntent(_spec.Id, requestId, result.Status, result.PendingRestore,
-                        result.Items.Select(i => $"{i.Id}:{i.Status}").ToArray(), result.RequiresReview);
+                        result.Items.Select(i => $"{i.Id}:{i.Status}").ToArray(), result.RequiresReview, detail);
                     _unconfirmedOperation = BackendUnconfirmedStore.PendingModules().Contains(ModuleId);
                     if (_unconfirmedOperation && result.Status != BackendResultStatuses.Ok)
                         BackendAttention.Report(ModuleId);
@@ -676,7 +684,8 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
         {
             _stopSent = true;
             try { await WriteFrameAsync(BackendMessages.EncodeStop(_spec.Id, _sessionId, Guid.NewGuid()), wait.Token); }
-            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException
+                || ModuleId == BackendModules.Gpu && ex is InvalidOperationException)
             {
                 // Stop may already have been sent by a timed-out request. A closed pipe is not
                 // proof that the process is alive; still wait for its actual exit and reader tail.
@@ -848,7 +857,9 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
             ? lastWrite ?? BackendCommands.CpuFrameMonitorStart : command;
 
     private BackendResult FailureResult(string code, string command, string reason) => BackendResult.Failed(code,
-        NeedsEvidence(command) ? reason + "，修改结果未知；保留恢复证据，未强杀后端。" : reason + "，只读检测未完成，请重试。");
+        NeedsEvidence(command)
+            ? reason + (ModuleId == BackendModules.Gpu ? "，修改结果未知；请到设置核对未确认操作，避免重复提交。" : "，修改结果未知；保留恢复证据，未强杀后端。")
+            : reason + "，只读检测未完成，请重试。");
 
     private static bool ConfirmedRestore(BackendResult result) => result.Status == BackendResultStatuses.Ok && !result.PendingRestore
         && result.Data is { } data && BackendJson.Deserialize<OperationResult>(data).Success;

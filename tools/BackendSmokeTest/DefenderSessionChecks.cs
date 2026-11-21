@@ -1,5 +1,7 @@
 using System.Text.Json;
+using DeltaNFD.Inspection;
 using DeltaNFD.Services;
+using DeltaNFD.Services.TweakDb;
 
 internal static class DefenderSessionChecks
 {
@@ -12,6 +14,8 @@ internal static class DefenderSessionChecks
         var failRemove = false;
         var failAdd = false;
         var rtp = true;
+        var core = new SecurityFeatureSnapshot(BxState.Off, false, "fixture running");
+        DefenderGuard.SecurityFeatureForTests = () => core;
         DefenderGuard.PowerShellForTests = command =>
         {
             if (command.Contains("ConvertTo-Json -InputObject")) return (0, JsonSerializer.Serialize(existing.ToArray()), null);
@@ -71,9 +75,10 @@ internal static class DefenderSessionChecks
             await DefenderGuard.PreflightAsync([new DefenderBatchItem { Name = "fixture", Ops = "windefend" }]);
             await DefenderGuard.AddSessionExclusionsAsync();
             rtp = false;
+            core = new(BxState.On, true, "fixture confirmed configured and stopped");
             var intentionallyOff = await DefenderGuard.PostApplyAsync();
             check(intentionallyOff.CleanupSucceeded && intentionallyOff.DefenderLeftOff && !rtp && !File.Exists(journal), "尊重关闭防护条目的意图，同时清理临时排除项");
         }
-        finally { DefenderGuard.PowerShellForTests = null; }
+        finally { DefenderGuard.PowerShellForTests = null; DefenderGuard.SecurityFeatureForTests = null; }
     }
 }

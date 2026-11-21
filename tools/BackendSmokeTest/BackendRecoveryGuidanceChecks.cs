@@ -44,6 +44,19 @@ internal static class BackendRecoveryGuidanceChecks
         Check(BackendRecoveryGuidance.ForReview(dll, null).Title.Contains("原始备份"), "DLL replacement keeps original manual restoration requirements");
         var reset = record with { Module = BackendModules.Gpu, Command = BackendCommands.GpuDriverProfileReset };
         Check(!BackendRecoveryGuidance.ForReview(reset, Snapshot(BackendModules.Gpu)).Title.Contains("有可信备份"), "driver reset never offers unrelated spoof backup");
+        var nv = reset with { Command = BackendCommands.GpuNvDisplayContainerChange };
+        var displayState = new ReconcileSnapshot
+        {
+            Module = BackendModules.Gpu, Complete = true, Summary = @"已停止。原设置备份无法读取：C:\Users\PrivatePlayer\test",
+            Items = [new() { Id = "nv-display-container", Kind = "service", State = "stopped" }],
+        };
+        Check(BackendRecovery.CanKeepCurrentState(nv, displayState) && BackendRecovery.RecoveryChoices(nv, displayState).Count == 0,
+            "verified service without a usable backup allows acknowledgement but no unrelated restore");
+        Check(!BackendRecovery.CanKeepCurrentState(nv, Snapshot(BackendModules.Gpu, complete: false)), "unverified NVIDIA service blocks acknowledgement");
+        var displayDiagnostic = BackendRecoveryGuidance.Diagnostic(nv, displayState);
+        using (var doc = JsonDocument.Parse(displayDiagnostic))
+            Check(doc.RootElement.GetProperty("stateReadSummary").GetString()!.Contains("原设置备份无法读取")
+                && !displayDiagnostic.Contains("PrivatePlayer"), "NVIDIA feedback includes sanitized status and backup error");
         foreach (var command in new[] { "system.driver-priority.change", "system.driver-priority.restore-all" })
         {
             var retired = record with { Command = command };

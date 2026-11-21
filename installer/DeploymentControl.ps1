@@ -158,7 +158,8 @@ function Invoke-HeadlessRecovery([string]$Root, [string]$Operation) {
 }
 
 function Invoke-Deployment([string]$Root, [string]$Operation) {
-    $Root = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+    $Root = [IO.Path]::GetFullPath($Root)
+    if ($Root.Length -gt [IO.Path]::GetPathRoot($Root).Length) { $Root = $Root.TrimEnd('\') }
     $stage = '首次检查安装目录的运行进程'
     $identities = @()
     $result = $null
@@ -209,14 +210,27 @@ function Invoke-Deployment([string]$Root, [string]$Operation) {
 }
 
 if ($LibraryOnly) { return }
+$code = 2
 try {
     if (-not $InstallRoot -or -not $ReportPath) { throw '交接参数缺失。' }
     try { Initialize-ProcessQuery } catch { throw (Format-DeploymentFailure '初始化进程身份检查' $_.Exception) }
     $result = Invoke-Deployment $InstallRoot $Mode
-    # Inno LoadStringsFromFile reads UTF-8, not UTF-16. BOM also protects Chinese diagnostics.
-    [IO.File]::WriteAllText($ReportPath, $result.Detail, (New-Object Text.UTF8Encoding($true)))
-    exit $result.Code
+    $code = $result.Code
+    $detail = $result.Detail
 } catch {
-    if ($ReportPath) { [IO.File]::WriteAllText($ReportPath, $_.Exception.Message, (New-Object Text.UTF8Encoding($true))) }
-    exit 2
+    $detail = $_.Exception.Message
 }
+if ($ReportPath) {
+    try {
+        # The UTF-8 BOM preserves Chinese text when Inno reads the report.
+        [IO.File]::WriteAllText($ReportPath, $detail, (New-Object Text.UTF8Encoding($true)))
+        exit $code
+    } catch {
+        $failure = $_.Exception.GetBaseException()
+        # Inno's output capture may use an OEM code page different from the child console.
+        [Console]::Error.WriteLine(('DELTANFD_REPORT_WRITE_FAILED {0} 0x{1:X8}' -f $failure.GetType().Name, $failure.HResult))
+        exit 2
+    }
+}
+[Console]::Error.WriteLine('DELTANFD_REPORT_PATH_MISSING')
+exit 2

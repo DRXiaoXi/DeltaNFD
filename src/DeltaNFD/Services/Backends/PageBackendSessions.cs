@@ -52,6 +52,7 @@ internal sealed class PageBackendLease(string route)
             Task stopping;
             lock (_gate)
             {
+                if (!_left) RefreshReviewedExitLocked();
                 Check(); stopping = _stopping;
                 if (stopping.IsCompleted)
                 {
@@ -98,12 +99,15 @@ internal sealed class PageBackendLease(string route)
     internal void Attach(IPageBackendProcess process) { lock (_gate) _processes.Add(process); }
     internal void RefreshReviewedExit()
     {
-        lock (_gate)
-        {
-            if (!_stopFailed || !_stopping.IsCompleted || _processes.Any(p => !p.ExitConfirmed || p.RequiresAttention)) return;
-            _stopFailed = false; _processes.Clear(); Status = "栏目后端已关闭";
-        }
+        lock (_gate) if (!RefreshReviewedExitLocked()) return;
         if (_left) BackendCaller.ReleasePage(Id);
+    }
+
+    private bool RefreshReviewedExitLocked()
+    {
+        if (!_stopFailed || !_stopping.IsCompleted || _processes.Any(p => !p.ExitConfirmed || p.RequiresAttention)) return false;
+        _stopFailed = false; _processes.Clear(); Status = "栏目后端已关闭";
+        return true;
     }
 
     internal void Suspend(string reason, bool leaving = false)

@@ -116,6 +116,11 @@ internal static class SystemCommands
             [BackendCommands.SystemPagefileRestoreAuto] = PagefileRestoreAutoAsync,
             [BackendCommands.SystemPagefileRestoreOriginal] = PagefileRestoreOriginalAsync,
             [BackendCommands.SystemReconcile] = ReconcileAsync,
+            [BackendCommands.SystemNvDisplayContainerReconcile] = c => Task.Run(() =>
+            {
+                var snapshot = NvDisplayContainerService.Reconcile();
+                return BackendResult.Ok(c.Command, snapshot.Summary, snapshot);
+            }),
             [BackendCommands.SystemRecover] = RecoverAsync,
 
             // ---- 扩展优化库 / Defender / 内存 / 一键优化（T3）----

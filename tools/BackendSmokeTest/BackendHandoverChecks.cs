@@ -48,6 +48,7 @@ internal static class BackendHandoverChecks
             await SendCancellationBlocksAsync();
             await InFlightBlocksAsync(fixture);
             await DisconnectRetainsEvidenceAsync(fixture);
+            await CrashedGpuUsesIndependentReviewAsync();
             await LiveChildBlocksAsync(fixture);
             await CpuRestoreFailureBlocksAsync();
             await CpuRestoreTimeoutBlocksAsync();
@@ -83,6 +84,86 @@ internal static class BackendHandoverChecks
             Environment.SetEnvironmentVariable("DELTANFD_BACKEND_ISOLATED_ROOT", null);
             Environment.SetEnvironmentVariable("DELTANFD_BACKEND_ISOLATED_ID", null);
             try { Directory.Delete(root, true); } catch { }
+        }
+    }
+
+    private static async Task CrashedGpuUsesIndependentReviewAsync()
+    {
+        const string variable = "DELTANFD_TEST_GPU_RECOVERY";
+        const string module = BackendModules.Gpu;
+        const string scope = "nv-display-container";
+        var previous = Environment.GetEnvironmentVariable(variable);
+        var page = new PageBackendLease("nvsettings");
+        var caller = new BackendCaller(module, page);
+        var command = BackendCommands.SystemNvDisplayContainerReconcile;
+        try
+        {
+            Check(BackendModules.IsAllowed(BackendModules.System, command) && !BackendModules.IsAllowed(module, command)
+                && BackendModules.IsReadOnly(BackendModules.System, command) && !BackendModules.RequiresWriteIntent(BackendModules.System, command),
+                "独立核对只允许通过系统维护后端执行只读命令");
+            Environment.SetEnvironmentVariable(variable, "request");
+            var failedRead = await caller.InvokeAsync(BackendCommands.GpuDriverRead, new { }, null, default);
+            var reader = caller.SharedClient!;
+            await WaitUntilAsync(() => reader.ExitConfirmed, TimeSpan.FromSeconds(5), "只读显卡夹具已退出");
+            Check(failedRead.Status == BackendResultStatuses.Failed && !reader.RequiresAttention
+                && !BackendUnconfirmedStore.PendingModules().Contains(module), "只读显卡崩溃不产生写入义务");
+            Environment.SetEnvironmentVariable(variable, null);
+            var retried = await caller.InvokeAsync(BackendCommands.GpuDriverRead, new { }, null, default);
+            Check(retried.Status == BackendResultStatuses.Ok && caller.SharedClient!.SessionId != reader.SessionId,
+                "显卡只读崩溃后同一页面显式重试可建立新会话");
+            await caller.ResetAsync();
+
+            Environment.SetEnvironmentVariable(variable, "request");
+            var unknownWrite = await caller.InvokeAsync(BackendCommands.GpuNvDisplayContainerChange,
+                new DeltaNFD.Services.NvDisplayContainerChange(false, new string('A', 64)), null, default);
+            var writer = caller.SharedClient!;
+            await WaitUntilAsync(() => writer.ExitConfirmed, TimeSpan.FromSeconds(10), "显示容器写入夹具已退出");
+            page.Suspend("离开栏目", leaving: true);
+            await page.Stopping;
+            var reviews = await BackendLifecycle.PrepareReviewAsync([module]);
+            var review = reviews.Single(r => r.Module == module);
+            Check(unknownWrite.Status == BackendResultStatuses.Failed && writer.RequiresAttention && review.CanAcknowledge,
+                "写入断线保留准确命令和记录，并独立确认原执行者退出");
+            Environment.SetEnvironmentVariable(variable, "wrong-scope");
+            var wrongScopeRejected = false;
+            try { await BackendRecovery.ReconcileAsync(module, scope: scope); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("不匹配的显示容器核对范围")) { wrongScopeRejected = true; }
+            Check(wrongScopeRejected && BackendUnconfirmedStore.PendingModules().Contains(module), "系统维护返回其他范围不能授权归档");
+
+            Environment.SetEnvironmentVariable(variable, "incomplete");
+            var incomplete = await BackendRecovery.ReconcileAsync(module, scope: scope);
+            Check(incomplete is { Complete: false } && !BackendRecovery.CanKeepCurrentState(review, incomplete)
+                && BackendUnconfirmedStore.PendingModules().Contains(module), "独立读取未完成仍保留原始写前证据");
+            Environment.SetEnvironmentVariable(variable, "startup");
+            var read = await BackendRecovery.ReconcileAsync(module, scope: scope);
+            Check(read is { Complete: true } && BackendRecovery.CanKeepCurrentState(review, read)
+                && BackendRecovery.RecoveryChoices(review, read).Count == 0
+                && BackendUnconfirmedStore.PendingModules().Contains(module), "显卡后端每次启动失败时，仍可核对真实对应范围并保留原记录");
+            Environment.SetEnvironmentVariable(variable, "changed");
+            var moved = false;
+            try { await BackendLifecycle.AcknowledgeCurrentStateAsync(review, read); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("状态发生变化")) { moved = true; }
+            Check(moved && BackendUnconfirmedStore.PendingModules().Contains(module), "确认时服务状态变化，记录继续保留");
+            Environment.SetEnvironmentVariable(variable, "startup");
+            var archived = await BackendLifecycle.AcknowledgeCurrentStateAsync(review, read);
+            Check(File.Exists(archived) && !BackendUnconfirmedStore.PendingModules().Contains(module) && !writer.RequiresAttention,
+                "人工确认归档后释放旧显卡会话，且不重新执行旧写入");
+            Environment.SetEnvironmentVariable(variable, null);
+            var nextPage = new PageBackendLease("nvsettings");
+            var next = new BackendCaller(module, nextPage);
+            try
+            {
+                var result = await next.InvokeAsync(BackendCommands.GpuDriverRead, new { }, null, default);
+                Check(result.Status == BackendResultStatuses.Ok && next.SharedClient!.SessionId != writer.SessionId,
+                    "归档后原页面重新进入可建立新的显卡会话");
+            }
+            finally { nextPage.Suspend("测试结束", leaving: true); await nextPage.Stopping; }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+            page.Suspend("测试结束", leaving: true);
+            await page.Stopping;
         }
     }
 

@@ -67,7 +67,7 @@ internal static class BackendReviewFlow
                         + "\n若关机中断留下缺少安装器身份的旧记录，可先“建立重启核对点”，保存工作并在方便时使用 Windows 的“重启”，然后回来核对。建立核对点保留全部阻塞，不会自动重启。";
                 if (BackendRecovery.NvSettingsReviewScope(review) == "nv-display-container")
                     snapshotNote += canKeep
-                        ? "\n\n归档只解除待核对提示，不会改动显示容器或清除备份。如要恢复，归档后回 NVIDIA 设置点击“恢复原设置”。"
+                        ? "\n\n归档会解除待核对提示，并保留当前服务与备份。若 NVIDIA 设置中显示可恢复的原设置，可在归档后从该页恢复。"
                         : "\n\n显示容器尚未完成只读核对，待核对记录与原设置备份均保留。请按上方原因排查后重试。";
                 if (review.Module == DeltaNFD.Backends.BackendModules.Ace && !canKeep)
                     snapshotNote += "\n\nACE 当前状态尚未完成核对，不能归档旧清理记录；请退出游戏并等待旧清理进程结束后重试。";
@@ -163,7 +163,7 @@ internal static class BackendReviewFlow
                 if (choice != ContentDialogResult.Secondary) continue;
                 try
                 {
-                    var archived = await BackendLifecycle.AcknowledgeCurrentStateAsync(review);
+                    var archived = await BackendLifecycle.AcknowledgeCurrentStateAsync(review, snapshot);
                     await new ContentDialog
                     {
                         XamlRoot = root, Title = "核对记录已归档",

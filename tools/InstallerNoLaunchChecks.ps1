@@ -38,4 +38,19 @@ foreach ($scenario in @('fresh', 'old-current-exe', 'legacy-name', 'both-exes', 
         } finally { $child.Dispose() }
     }
 }
+$missingReport = Join-Path $fixtureRoot 'missing-parent\report.txt'
+$start.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $scriptPath +
+    '" -InstallRoot "' + $target + '" -Mode install -ReportPath "' + $missingReport + '"'
+$start.RedirectStandardError = $true
+$child = [Diagnostics.Process]::Start($start)
+try {
+    $errorOutput = $child.StandardError.ReadToEndAsync()
+    if (-not $child.WaitForExit(30000)) { throw 'Report-failure fixture timed out' }
+    if ($child.ExitCode -ne 2 -or [IO.File]::Exists($missingReport) -or
+        $errorOutput.GetAwaiter().GetResult() -notmatch 'DELTANFD_REPORT_WRITE_FAILED DirectoryNotFoundException') {
+        throw 'Unwritable report must block setup and preserve the report-write error on stderr'
+    }
+    $passed++
+    Write-Output 'PASS: Missing report path blocks setup and yields captured diagnostics'
+} finally { $child.Dispose() }
 Write-Output ("Installer no-launch checks passed ($passed cases). Fixtures: $fixtureRoot")

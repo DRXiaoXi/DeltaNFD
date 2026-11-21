@@ -30,9 +30,11 @@ internal static class BackendRecovery
 
     internal static bool CanKeepCurrentState(BackendUnconfirmedStore.Review review, ReconcileSnapshot? snapshot) =>
         review.CanAcknowledge && !IsRuntimeInstallation(review) && (NvSettingsReviewScope(review) == "nv-display-container"
-            ? snapshot is { Complete: true } && snapshot.Module == review.Module
-                && snapshot.Items is [{ Id: "nv-display-container", Kind: "service" }]
+            ? snapshot is { Complete: true } && IsDisplayContainerSnapshot(snapshot)
             : review.Module != BackendModules.Ace || snapshot is { Complete: true } && snapshot.Module == review.Module);
+
+    private static bool IsDisplayContainerSnapshot(ReconcileSnapshot snapshot) => snapshot.Module == BackendModules.Gpu
+        && snapshot.Items is [{ Id: "nv-display-container", Kind: "service" }];
     internal static bool IsRuntimeInstallation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.Runtime
         && review.Command is BackendCommands.RuntimeRepair or BackendCommands.RuntimeCompatibilityRepair
             or BackendCommands.RuntimeRedistUninstall or BackendCommands.RuntimeRedistUninstallAll or BackendCommands.Vc14Repair or BackendCommands.Vc14LegacyClean
@@ -76,10 +78,47 @@ internal static class BackendRecovery
     {
         var command = BackendModules.ReconcileCommand(moduleId);
         if (command is null) return null;
+        if (moduleId == BackendModules.Gpu && scope == "nv-display-container")
+        {
+            try
+            {
+                var independent = await ReadSnapshotAsync(BackendModules.System,
+                    BackendCommands.SystemNvDisplayContainerReconcile, new { }, cancellationToken);
+                ValidateDisplayContainerSnapshot(independent);
+                Log.Info($"显示容器已通过系统维护后端完成独立只读读取；状态已确认={independent.Complete}。");
+                return independent;
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                Log.Warn("显示容器独立核对不可用，尝试显卡后端只读核对：" + ex.Message);
+                try
+                {
+                    var fallback = await ReadSnapshotAsync(moduleId, command, new RecoverArgs { Scope = scope }, cancellationToken);
+                    ValidateDisplayContainerSnapshot(fallback);
+                    return fallback;
+                }
+                catch (Exception fallback) when (!cancellationToken.IsCancellationRequested)
+                {
+                    throw new InvalidOperationException($"两条显示容器只读核对路径均失败。系统维护：{ex.Message}；显卡：{fallback.Message}", fallback);
+                }
+            }
+        }
+        return await ReadSnapshotAsync(moduleId, command, new RecoverArgs { Scope = scope ?? "" }, cancellationToken);
+    }
+
+    private static void ValidateDisplayContainerSnapshot(ReconcileSnapshot snapshot)
+    {
+        if (!IsDisplayContainerSnapshot(snapshot))
+            throw new InvalidDataException("后端返回了不匹配的显示容器核对范围。");
+    }
+
+    private static async Task<ReconcileSnapshot> ReadSnapshotAsync(string moduleId, string command, object args,
+        CancellationToken cancellationToken)
+    {
         var caller = new BackendCaller(moduleId);
         try
         {
-            var result = await caller.InvokeReconcileAsync(command, new RecoverArgs { Scope = scope ?? "" }, null, cancellationToken);
+            var result = await caller.InvokeReconcileAsync(command, args, null, cancellationToken);
             return BackendResults.RequireData<ReconcileSnapshot>(result, "只读状态核对");
         }
         finally

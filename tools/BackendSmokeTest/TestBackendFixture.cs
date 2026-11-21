@@ -20,6 +20,9 @@ internal static class TestBackendFixture
         }
 
         var spec = BackendModules.Require(moduleId);
+        var gpuFailure = Environment.GetEnvironmentVariable("DELTANFD_TEST_GPU_RECOVERY");
+        if (moduleId == BackendModules.Gpu && gpuFailure == "startup")
+            return 73;
         var failRestoreOnce = Environment.GetEnvironmentVariable("DELTANFD_TEST_RESTORE_FAIL_ONCE") == "1";
         _ = int.TryParse(Environment.GetEnvironmentVariable("DELTANFD_TEST_RESTORE_DELAY_MS"), out var restoreDelay);
         _ = int.TryParse(Environment.GetEnvironmentVariable("DELTANFD_TEST_RESTORE_CHILD_MS"), out var restoreChildDelay);
@@ -38,6 +41,20 @@ internal static class TestBackendFixture
         {
             handlers[command] = async context =>
             {
+                if (moduleId == BackendModules.Gpu && gpuFailure == "request"
+                    && context.Command is BackendCommands.GpuNvDisplayContainerChange or BackendCommands.GpuDriverRead)
+                    Environment.Exit(73);
+                if (context.Command == BackendCommands.SystemNvDisplayContainerReconcile && gpuFailure is not null)
+                {
+                    var snapshot = new DeltaNFD.Services.ReconcileSnapshot
+                    {
+                        Module = gpuFailure == "wrong-scope" ? BackendModules.System : BackendModules.Gpu,
+                        Summary = gpuFailure == "changed" ? "隔离夹具：显示容器已运行。" : "隔离夹具：显示容器已停止。",
+                        Complete = gpuFailure != "incomplete",
+                        Items = [new() { Id = "nv-display-container", Kind = "service", State = "已停止" }],
+                    };
+                    return BackendResult.Ok(context.Command, snapshot.Summary, snapshot);
+                }
                 if (context.Command == BackendCommands.CpuFrameRestore && failRestoreOnce)
                 {
                     failRestoreOnce = false;
@@ -164,6 +181,7 @@ internal static class TestBackendFixture
         return await BackendHost.RunAsync(new BackendHostOptions
         {
             Module = spec,
+            NvDisplayContainerVersion = moduleId == BackendModules.Gpu ? DeltaNFD.Services.NvDisplayContainerChange.ProtocolVersion : 0,
             Handlers = handlers,
             OnStopping = Environment.GetEnvironmentVariable("DELTANFD_TEST_STOP_FAIL") == "1"
                 ? () => Task.FromResult(DeltaNFD.Services.OperationResult.Fail("模拟停止收尾失败")) : null,

@@ -2,11 +2,12 @@
   // DefenderGuard（优化前安全软件预检 / 优化后恢复）配置。
   // 按项目铁律（HANDOFF §11.1）：命令与关键词字面量全部放在数据文件，C# 只留通用解释器。
   // statusQuery：只读查询 Defender 状态（av=防病毒在 / rtp=实时保护开 / tamper=篡改防护开）。
-  "statusQuery": "$s=Get-MpComputerStatus -ErrorAction Stop; if ($null -eq $s.AntivirusEnabled -or $null -eq $s.RealTimeProtectionEnabled -or $null -eq $s.IsTamperProtected) { throw 'Incomplete Defender status' }; [pscustomobject]@{ av=[bool]$s.AntivirusEnabled; rtp=[bool]$s.RealTimeProtectionEnabled; tamper=[bool]$s.IsTamperProtected } | ConvertTo-Json -Compress",
+  "statusQuery": "$s=Get-MpComputerStatus -ErrorAction Stop; if ($null -eq $s.AntivirusEnabled -or $null -eq $s.RealTimeProtectionEnabled) { throw 'Incomplete Defender status' }; $tamper=if ($null -ne $s.IsTamperProtected) { [bool]$s.IsTamperProtected } else { $null }; [pscustomobject]@{ av=[bool]$s.AntivirusEnabled; rtp=[bool]$s.RealTimeProtectionEnabled; tamper=$tamper } | ConvertTo-Json -Compress",
   // 只读枚举注册的杀软产品（SecurityCenter2），用于提醒用户暂时退出第三方杀软。
   "avProductsQuery": "Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -ErrorAction SilentlyContinue | ForEach-Object { Write-Output $_.displayName }",
   // 恢复方向命令（重新打开实时保护；篡改防护无法编程恢复，只能引导用户）。
   "enableRealtimeCmd": "Set-MpPreference -DisableRealtimeMonitoring:$false",
+  "startProtectionServiceCmd": "$s=Get-Service -Name WinDefend -ErrorAction Stop; if ($s.Status -eq 'Stopped' -and $s.StartType -in @('Automatic','Manual')) { Start-Service -InputObject $s -ErrorAction Stop }; $s.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running,[TimeSpan]::FromSeconds(8))",
   // 会话级排除项（应用前添加、应用后移除，防止工具文件被误隔离）。
   "exclusionsQuery": "$ErrorActionPreference='Stop'; ConvertTo-Json -InputObject @((Get-MpPreference).ExclusionPath) -Compress",
   "addExclusionCmd": "$ErrorActionPreference='Stop'; Add-MpPreference -ExclusionPath '{0}'",

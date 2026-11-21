@@ -50,12 +50,34 @@ internal static class SecurityFeatureChecks
         var states = await inspector.GetItemStatesAsync([defender, item]);
         Check(states[defender] == BxState.On && states[item] == BxState.On, "Actual batch inspection uses core evidence instead of mismatched auxiliary registry values");
         BxCatalog.ConfigureAssetRoot(AppContext.BaseDirectory);
+        await DefenderSessionChecks.RunAsync(Check);
         bool initial = true, exclusionsFail = false; int coreQueries = 0;
+        var providerAvailable = false;
+        var enableCalls = 0;
+        var startCalls = 0;
+        var startDenied = true;
+        var rtp = false;
         var core = functional;
         DefenderGuard.PowerShellForTests = command => command.Contains("Get-MpComputerStatus")
-            ? initial ? (0, "{\"av\":true,\"rtp\":true,\"tamper\":true}", "") : (1, null, "service unavailable")
+            ? initial ? (0, "{\"av\":true,\"rtp\":true,\"tamper\":true}", "")
+                : providerAvailable ? (0, JsonSerializer.Serialize(new { av = true, rtp, tamper = (bool?)null }), null) : (1, null, "service unavailable")
             : command.Contains("Get-MpPreference") ? exclusionsFail ? (1, null, "unavailable") : (0, "[]", "")
+            : command.Contains("Start-Service") ? StartProtection()
+            : command.Contains("DisableRealtimeMonitoring") ? EnableRealtime()
             : (0, "Windows Defender", "");
+        (int, string?, string?) StartProtection()
+        {
+            startCalls++;
+            if (startDenied) return (1, null, "fixture service start denied");
+            core = new(BxState.Off, false, "service running again");
+            return (0, null, null);
+        }
+        (int, string?, string?) EnableRealtime()
+        {
+            enableCalls++;
+            providerAvailable = rtp = true;
+            return (0, null, null);
+        }
         DefenderGuard.SecurityFeatureForTests = () => { coreQueries++; return core; };
         try
         {
@@ -66,6 +88,12 @@ internal static class SecurityFeatureChecks
             var post = await DefenderGuard.PostApplyAsync();
             Check(post.CleanupSucceeded && post.DefenderLeftOff && !DefenderGuard.HasPendingSession,
                 "Actual post-apply accepts confirmed intentional core stop when cmdlet is unavailable and no temporary exclusions remain");
+            initial = true;
+            await DefenderGuard.PreflightAsync([new() { Name = "Defender", Ops = ops, TurnOn = true }]);
+            initial = false; core = new(BxState.Mixed, true, "configured, stop pending");
+            post = await DefenderGuard.PostApplyAsync();
+            Check(post.CleanupSucceeded && post.RequiresReboot && !post.DefenderLeftOff && !DefenderGuard.HasPendingSession && enableCalls == 0,
+                "Verified startup configuration with pending runtime does not invent disabled runtime or a cleanup failure");
             initial = true;
             pre = await DefenderGuard.PreflightAsync([new() { Name = "Defender", Ops = ops, TurnOn = false }]);
             Check(pre is { DefenderOffTweakInBatch: false, DefenderRestoreTweakInBatch: true }, "Restore intent not confused with another disable");
@@ -80,6 +108,23 @@ internal static class SecurityFeatureChecks
             Check(!post.CleanupSucceeded && DefenderGuard.HasPendingSession, "Unknown core and missing cmdlet retain responsibility");
             core = functional; await DefenderGuard.PostApplyAsync();
             Check(!DefenderGuard.HasPendingSession, "Later confirmed status can finish retained temporary responsibility");
+            initial = true;
+            await DefenderGuard.PreflightAsync([new() { Name = "Defender", Ops = ops, TurnOn = true }]);
+            initial = false; core = SecurityFeatureInspection.Evaluate("DefenderName", new(true, 2, 1));
+            post = await DefenderGuard.PostApplyAsync();
+            Check(!post.CleanupSucceeded && DefenderGuard.HasPendingSession && startCalls == 1 && enableCalls == 0,
+                "Unverified batch cannot turn a stopped service into intentional disable or discard the recovery record");
+            startDenied = false;
+            post = await DefenderGuard.PostApplyAsync();
+            Check(post.CleanupSucceeded && !post.DefenderLeftOff && startCalls == 2 && enableCalls == 1 && !DefenderGuard.HasPendingSession
+                && post.Message.Contains("篡改防护"), "Repair only toward protection, then re-read real time even when the optional field is absent");
+            initial = true;
+            await DefenderGuard.PreflightAsync([new() { Name = "Defender", Ops = ops, TurnOn = false }]);
+            initial = false; core = new(BxState.Off, false, "service is running");
+            post = await DefenderGuard.PostApplyAsync(batchNotStarted: true);
+            Check(post.CleanupSucceeded && !post.RequiresReboot && enableCalls == 1,
+                "Known enabled real-time protection alone is sufficient for session cleanup");
+            core = functional;
             File.WriteAllText(Path.Combine(isolated, "defender-session.json"), JsonSerializer.Serialize(new { Paths = new[] { isolated }, Report = pre }));
             exclusionsFail = true; var queries = coreQueries;
             post = await DefenderGuard.PostApplyAsync();

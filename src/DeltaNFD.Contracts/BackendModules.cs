@@ -176,6 +176,7 @@ public static class BackendCommands
     public const string SystemPagefileRestoreAuto = "system.pagefile.restore-auto";
     public const string SystemPagefileRestoreOriginal = "system.pagefile.restore-original";
     public const string SystemReconcile = "system.reconcile";
+    public const string SystemNvDisplayContainerReconcile = "system.nv-display-container.reconcile";
     public const string SystemRecover = "system.recover";
 
     // ---- 系统维护：扩展优化库 / Defender / 内存 / 一键优化（T3）----
@@ -421,6 +422,7 @@ public static class BackendModules
                     [BackendCommands.SystemPagefileRestoreAuto] = FiveMinutes,
                     [BackendCommands.SystemPagefileRestoreOriginal] = FiveMinutes,
                     [BackendCommands.SystemReconcile] = FiveMinutes,
+                    [BackendCommands.SystemNvDisplayContainerReconcile] = TimeSpan.FromSeconds(30),
                     [BackendCommands.SystemRecover] = FifteenMinutes,
 
                     [BackendCommands.SystemBxStatus] = FiveMinutes,
@@ -501,7 +503,7 @@ public static class BackendModules
         BackendCommands.SystemGameRecordingStatus,
         BackendCommands.SystemStartupList,
         BackendCommands.SystemClockEnvironmentRead,
-        BackendCommands.SystemPagefileStatus, BackendCommands.SystemReconcile,
+        BackendCommands.SystemPagefileStatus, BackendCommands.SystemReconcile, BackendCommands.SystemNvDisplayContainerReconcile,
         // T3：扩展优化库/Defender/内存的只读命令
         BackendCommands.SystemBxStatus, BackendCommands.SystemBxGearInfo,
         BackendCommands.SystemBxServiceGroupResolve, BackendCommands.SystemBxServiceGroupStatus,

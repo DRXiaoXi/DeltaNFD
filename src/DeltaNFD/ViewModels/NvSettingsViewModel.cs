@@ -224,6 +224,7 @@ public partial class NvSettingsViewModel : ObservableObject
             DisplayContainerResult = "正在处理显示容器服务…";
             var result = await _nv.ChangeDisplayContainerAsync(new(state.Restore, fingerprint));
             DisplayContainerResult = result.Message;
+            if (!result.Success) Log.Warn("NVIDIA 显示容器操作结果：" + result.Message);
             if (result.OutcomeUnknown)
                 SetDisplayContainer(new("结果未确认。请在设置中完成后端只读核对，再刷新此页；不要删除原设置备份。"));
             else await RefreshDisplayContainerAsync();
@@ -231,6 +232,7 @@ public partial class NvSettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             DisplayContainerResult = (submitted ? "操作未确认，请先刷新核对：" : "未提交操作：") + ex.Message;
+            Log.Warn("NVIDIA 显示容器：" + DisplayContainerResult);
             if (submitted) SetDisplayContainer(new("状态未确认，请刷新。"));
         }
         finally { IsApplying = false; }

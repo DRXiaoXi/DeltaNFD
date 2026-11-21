@@ -18,6 +18,10 @@ Assert-Safety (@($runEntries).Count -eq 1 -and $runEntries[0].Contains('postinst
 Assert-Safety (-not $source.Contains('Check: WizardSilent')) 'Silent installation cannot automatically launch the GUI'
 Assert-Safety ($control.Contains("if (`$Operation -ne 'uninstall')")) 'Standalone recovery cannot run the installed frontend during setup'
 Assert-Safety ($source.Contains("PrepareDeployment('install', False)")) 'Setup completes the same safe handover before replacement'
+Assert-Safety ($source.Contains("QuoteDeploymentArgument(ExpandConstant('{app}'))") -and
+    $source.Contains('QuoteDeploymentArgument(ReportPath)') -and $source.Contains('Slashes + Slashes')) 'Setup preserves backslashes before the closing Windows argument quote'
+Assert-Safety ($source.Contains('ExecAndCaptureOutput') -and $source.Contains('DeploymentErrorExcerpt(Captured.StdErr)') -and
+    $source -match 'else\s+begin\s+Result := False;\s+DeploymentDetail := ''未能获得本次安全交接报告') 'Missing report remains blocking and is diagnosed from standard error'
 Assert-Safety ($pre.Contains("PrepareDeployment('uninstall', True)") -and $pre.Contains('Abort;')) 'Uninstall verifies safe preparation before file deletion'
 Assert-Safety ($pre.Contains('PreserveAllData()') -and $pre.Contains('原始数据目录和恢复备份仍保留')) 'Optional export failure preserves original recovery data'
 Assert-Safety ($source.Contains('CopyFile(Src, Dst, True)') -and $source.Contains('GetSHA256OfFile(Src) <> GetSHA256OfFile(Dst)')) 'Backup never overwrites and verifies bytes'

@@ -1,8 +1,8 @@
 ﻿; 三角帧不掉洲（Delta No FPS Drops / Delta NFD）安装脚本 · Inno Setup 6
 ; 编译：ISCC.exe DeltaNFD.iss
-; 产物：三角帧不掉洲_DeltaNFD_安装包_0.9395_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
+; 产物：三角帧不掉洲_DeltaNFD_安装包_0.9396_x64.exe（自包含 .NET 运行时，目标机免装任何依赖）
 ;
-; 当前源码版本：0.9395 / Beta0.939-RC5。内部更新数值保持递增；显示为 Beta0.939-RC5。
+; 当前源码版本：0.9396 / Beta0.939-RC6。内部更新数值保持递增；显示为 Beta0.939-RC6。
 ;
 ; 安装/卸载先封锁新启动，通知主程序排空执行者并退出，再逐项核对。
 ; 卸载保留已应用的持久设置和原数据目录，可另存校验副本；无需先完整恢复系统设置。
@@ -14,8 +14,8 @@
 #define MyAppShortName "Delta NFD"
 #define MyAppEnglishName "Delta No FPS Drops"
 #define MyAppDisplayName "三角帧不掉洲（Delta NFD）"
-#define MyAppVersion "0.9395"
-#define MyAppDisplayVersion "Beta0.939-RC5"
+#define MyAppVersion "0.9396"
+#define MyAppDisplayVersion "Beta0.939-RC6"
 #define MyAppExeName "DeltaNFD.exe"
 ; 登录任务名（与 AppControlService / FrameService 创建的一致）
 #define AutoStartTaskName "DeltaNFD_AutoStart"
@@ -212,6 +212,53 @@ begin
     ((ResultCode = 0) or not TaskExists(TaskName));
 end;
 
+{ Windows 命令行中，引号前的反斜杠必须成对编码；保留目录尾部的斜杠。 }
+function QuoteDeploymentArgument(const Value: String): String;
+var
+  I: Integer;
+  Slashes: String;
+begin
+  Result := '"';
+  Slashes := '';
+  for I := 1 to Length(Value) do
+  begin
+    if Value[I] = '\' then
+      Slashes := Slashes + '\'
+    else
+    begin
+      if Value[I] = '"' then
+        Result := Result + Slashes + '\';
+      Result := Result + Slashes + Value[I];
+      Slashes := '';
+    end;
+  end;
+  Result := Result + Slashes + Slashes + '"';
+end;
+
+function DeploymentErrorExcerpt(const Lines: TArrayOfString): String;
+var
+  I, Count: Integer;
+  Line, WriteErrorPrefix: String;
+begin
+  Result := '';
+  Count := 0;
+  WriteErrorPrefix := 'DELTANFD_REPORT_WRITE_FAILED ';
+  for I := 0 to GetArrayLength(Lines) - 1 do
+  begin
+    Line := Trim(Lines[I]);
+    if Pos(WriteErrorPrefix, Line) = 1 then
+      Line := '保存安全交接报告失败：' + Copy(Line, Length(WriteErrorPrefix) + 1, 160)
+    else if Line = 'DELTANFD_REPORT_PATH_MISSING' then
+      Line := '安全交接缺少报告路径参数。';
+    if Line <> '' then
+    begin
+      Result := Result + #13#10 + Copy(Line, 1, 320);
+      Count := Count + 1;
+      if Count = 3 then Break;
+    end;
+  end;
+end;
+
 { 安装和卸载使用同一交接脚本：安全请求、原生路径身份核对、有界等待、逐项报告。 }
 function PrepareDeployment(const Mode: String; ForUninstall: Boolean): Boolean;
 var
@@ -219,6 +266,8 @@ var
   ResultCode, I: Integer;
   MutexWait: LongWord;
   Lines: TArrayOfString;
+  Captured: TExecOutput;
+  Launched: Boolean;
 begin
   Result := False;
   DeploymentDetail := '';
@@ -243,7 +292,12 @@ begin
   end;
   ScriptPath := ExpandConstant('{tmp}\DeploymentControl.ps1');
   ReportPath := ExpandConstant('{tmp}\DeltaNFD-deployment-report.txt');
-  DeleteFile(ReportPath);
+  if FileExists(ReportPath) and not DeleteFile(ReportPath) then
+  begin
+    DeploymentDetail := '无法清理上次的安全交接临时报告，请重新启动安装器后再试。';
+    ReleaseDeploymentMutex();
+    Exit;
+  end;
   if ForUninstall then
   begin
     if not CopyFile(ExpandConstant('{app}\Tools\DeploymentControl.ps1'), ScriptPath, False) then
@@ -255,15 +309,26 @@ begin
   end
   else
     ExtractTemporaryFile('DeploymentControl.ps1');
-  Args := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + ScriptPath +
-    '" -InstallRoot "' + ExpandConstant('{app}') + '" -Mode ' + Mode + ' -ReportPath "' + ReportPath + '"';
+  Args := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' + QuoteDeploymentArgument(ScriptPath) +
+    ' -InstallRoot ' + QuoteDeploymentArgument(ExpandConstant('{app}')) +
+    ' -Mode ' + Mode + ' -ReportPath ' + QuoteDeploymentArgument(ReportPath);
   ResultCode := -1;
-  if Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Args,
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-  begin
-    Result := (ResultCode = 0) or (ResultCode = 10);
-    PreserveDeploymentHistory := Result and (ForUninstall or (ResultCode = 10));
+  Launched := False;
+  try
+    Launched := ExecAndCaptureOutput(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      Args, ExpandConstant('{tmp}'), SW_HIDE, ewWaitUntilTerminated, ResultCode, Captured);
+    if not Launched then
+      DeploymentDetail := '无法启动安全交接进程。Windows 错误 ' + IntToStr(ResultCode) + '：' + SysErrorMessage(ResultCode);
+  except
+    DeploymentDetail := '无法运行安全交接进程：' + GetExceptionMessage;
   end;
+  if not Launched then
+  begin
+    Log('安装/卸载交接：' + DeploymentDetail);
+    ReleaseDeploymentMutex();
+    Exit;
+  end;
+  Result := (ResultCode = 0) or (ResultCode = 10);
   if LoadStringsFromFile(ReportPath, Lines) then
   begin
     for I := 0 to GetArrayLength(Lines) - 1 do
@@ -272,13 +337,15 @@ begin
   else
   begin
     Result := False;
-    DeploymentDetail := '未能获得本次安全交接报告，退出码=' + IntToStr(ResultCode);
+    DeploymentDetail := '未能获得本次安全交接报告，退出码=' + IntToStr(ResultCode) +
+      DeploymentErrorExcerpt(Captured.StdErr);
   end;
   if Trim(DeploymentDetail) = '' then
   begin
     Result := False;
-    DeploymentDetail := '安全交接报告为空，尚未替换或删除程序。';
+    DeploymentDetail := '安全交接报告为空，尚未替换或删除程序。' + DeploymentErrorExcerpt(Captured.StdErr);
   end;
+  PreserveDeploymentHistory := Result and (ForUninstall or (ResultCode = 10));
   if not Result then ReleaseDeploymentMutex();
   Log('安装/卸载交接：' + IntToStr(ResultCode) + '；' + DeploymentDetail);
 end;

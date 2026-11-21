@@ -83,22 +83,11 @@ internal static class GpuCommands
         var snapshot = scope switch
         {
             "dlss-indicator" => await ReadIndicatorReviewAsync(),
-            "nv-display-container" => ReadDisplayContainerReview(),
+            "nv-display-container" => NvDisplayContainerService.Reconcile(),
             "driver-settings" => await ReadDriverSettingsReviewAsync(),
             _ => await BuildSnapshotAsync(),
         };
         return BackendResult.Ok("gpu.reconcile", snapshot.Summary, snapshot);
-    }
-
-    private static ReconcileSnapshot ReadDisplayContainerReview()
-    {
-        var status = NvDisplayContainerService.Status();
-        return new ReconcileSnapshot
-        {
-            Module = BackendModules.Gpu, Summary = status.Detail,
-            Complete = status.Fingerprint is not null,
-            Items = [new ReconcileItem { Id = "nv-display-container", Kind = "service", State = status.Detail }],
-        };
     }
 
     private static async Task<ReconcileSnapshot> ReadIndicatorReviewAsync()

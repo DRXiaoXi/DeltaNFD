@@ -5,7 +5,10 @@ using DeltaNFD.Services.TweakDb;
 namespace DeltaNFD.Inspection;
 
 public sealed record SecurityServiceEvidence(bool? Exists, int? Start, uint? RuntimeState, string Error = "");
-public sealed record SecurityFeatureSnapshot(BxState State, bool ConfiguredDisabled, string Detail);
+public sealed record SecurityFeatureSnapshot(BxState State, bool ConfiguredDisabled, string Detail)
+{
+    public bool IsStoppedWithEnabledStartup { get; init; }
+}
 
 /// <summary>Fixed-name, query-only SCM evidence. Missing optional components and UI startup settings do not prove protection is running.</summary>
 public static class SecurityFeatureInspection
@@ -30,7 +33,9 @@ public static class SecurityFeatureInspection
             return new(BxState.On, true, "核心服务已配置禁用且确认停止；策略兼容项和托盘启动项不作为核心是否运行的证据。");
         }
         if (configured) return new(BxState.Mixed, true, "已保存禁用启动配置，核心服务尚未停止；需手动重启后核对。");
-        if (primary.RuntimeState == 1) return new(BxState.Mixed, false, "核心服务当前停止，但未配置禁用；不能视为持续禁用。");
+        if (primary.RuntimeState == 1)
+            return new(BxState.Mixed, false, "核心服务当前停止，但未配置禁用；不能视为持续禁用。")
+                { IsStoppedWithEnabledStartup = primary.Start is 2 or 3 };
         return primary.RuntimeState == 4 ? new(BxState.Off, false, "核心服务未禁用且正在运行。")
             : new(BxState.Mixed, false, "核心服务处于启动或停止过渡状态，需刷新后核对。");
     }

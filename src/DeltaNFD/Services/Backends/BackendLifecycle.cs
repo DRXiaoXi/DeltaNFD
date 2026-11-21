@@ -8,8 +8,16 @@ namespace DeltaNFD.Services.Backends;
 /// </summary>
 internal static class BackendLifecycle
 {
-    public static async Task<string> AcknowledgeCurrentStateAsync(BackendUnconfirmedStore.Review confirmed)
+    public static async Task<string> AcknowledgeCurrentStateAsync(BackendUnconfirmedStore.Review confirmed, ReconcileSnapshot? reviewedState = null)
     {
+        if (BackendRecovery.NvSettingsReviewScope(confirmed) == "nv-display-container")
+        {
+            var current = await BackendRecovery.ReconcileAsync(confirmed.Module, scope: "nv-display-container");
+            if (!BackendRecovery.CanKeepCurrentState(confirmed, reviewedState)
+                || !BackendRecovery.CanKeepCurrentState(confirmed, current)
+                || current?.Summary != reviewedState?.Summary)
+                throw new InvalidOperationException("显示容器状态发生变化或暂时不可核验。请刷新核对后再归档。");
+        }
         // 只检查「结果未知且未确认退出」的会话；正常只读会话不阻止人工核对。
         var attention = BackendSessions.Snapshot().Where(c => c.ModuleId == confirmed.Module && c.RequiresAttention).ToArray();
         if (attention.Any(c => !c.ExitConfirmed)) throw new InvalidOperationException("该模块仍有结果未知的活动会话，禁止解除阻塞。");

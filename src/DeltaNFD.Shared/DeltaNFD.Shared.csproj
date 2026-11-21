@@ -17,8 +17,8 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>0.9395</Version>
-    <InformationalVersion>Beta0.939-RC5</InformationalVersion>
+    <Version>0.9396</Version>
+    <InformationalVersion>Beta0.939-RC6</InformationalVersion>
     <WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
 
@@ -32,6 +32,7 @@
     <InternalsVisibleTo Include="DeltaNFD.Inspection" />
     <InternalsVisibleTo Include="DeltaNFD.OfflineHelper" />
     <InternalsVisibleTo Include="BackendSmokeTest" />
+    <InternalsVisibleTo Include="NvDisplayContainerChecks" />
   </ItemGroup>
 
   <ItemGroup>

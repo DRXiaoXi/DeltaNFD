@@ -39,6 +39,14 @@ internal sealed class BackendDefenderGuardService : IDefenderGuardService
         if (result.Status != BackendResultStatuses.Ok) throw new InvalidOperationException(result.Message);
     }
 
-    public async Task<DefenderPostApplyResult> PostApplyAsync(bool batchNotStarted = false) =>
-        BackendResults.RequireData<DefenderPostApplyResult>(await Invoke(BackendCommands.SystemDefenderPostApply, new { batchNotStarted }), "Defender 收尾");
+    public async Task<DefenderPostApplyResult> PostApplyAsync(bool batchNotStarted = false)
+    {
+        var result = await Invoke(BackendCommands.SystemDefenderPostApply, new { batchNotStarted });
+        if (result is { Status: BackendResultStatuses.Partial, PendingRestore: true, Data: { } data })
+        {
+            var cleanup = BackendJson.Deserialize<DefenderPostApplyResult>(data);
+            if (!cleanup.CleanupSucceeded) return cleanup;
+        }
+        return BackendResults.RequireData<DefenderPostApplyResult>(result, "Defender 收尾");
+    }
 }
