@@ -40,6 +40,8 @@ public sealed class RecoveryScope
 
     /// <summary>恢复该范围预计影响的条目数（0 表示后端未提供明细）。</summary>
     public int AffectedCount { get; init; }
+
+    public string? Fingerprint { get; init; }
 }
 
 /// <summary>只读状态核对快照。</summary>

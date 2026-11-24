@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using DeltaNFD.Services;
 using DeltaNFD.Services.Backends;
 using Microsoft.UI.Xaml;
@@ -103,14 +104,20 @@ internal static class FrameModeFlow
             return;
         }
 
-        if (!await ConfirmAsync(root, "开启一键帧格模式？", BuildActivateConfirmText(frame)))
+        var displayFrame = frame as FrameService;
+        var confirmation = BuildActivateConfirmText(frame);
+        if (displayFrame is { DisplayResolutionOptions.Enabled: true })
+            confirmation += "\n主显示器将试切自定义分辨率并全屏拉伸，切换后需在 15 秒内确认。";
+        if (!await ConfirmAsync(root, "开启一键帧格模式？", confirmation))
         {
             return;
         }
 
         if (!await EnsureReviewedAsync(root, frame.GpuSpoofEnabled && frame.IsGpuSpoofInFrame)) return;
 
-        var result = await frame.ActivateFrameModeAsync();
+        var result = displayFrame is null ? await frame.ActivateFrameModeAsync()
+            : await displayFrame.ActivateFrameModeAsync(automatic: false,
+                confirmResolution: (width, height, deadline) => ConfirmResolutionAsync(root, width, height, deadline));
         if (!result.Success && BackendAttention.Snapshot().Any(n => n.Module == DeltaNFD.Backends.BackendModules.CpuFrame))
         {
             App.MainWindow?.RefreshFrameRecoveryNotice();
@@ -166,7 +173,10 @@ internal static class FrameModeFlow
 
     private static async Task RunDeactivateCoreAsync(XamlRoot root, IFrameService frame)
     {
-        if (!await ConfirmAsync(root, "退出一键帧格模式？", await BuildDeactivateConfirmTextAsync(frame)))
+        var confirmation = await BuildDeactivateConfirmTextAsync(frame);
+        if (frame is FrameService { DisplayResolutionOptions.Enabled: true })
+            confirmation += "\n如已应用自定义分辨率，退出时会恢复原显示模式。";
+        if (!await ConfirmAsync(root, "退出一键帧格模式？", confirmation))
         {
             return;
         }
@@ -226,6 +236,41 @@ internal static class FrameModeFlow
         Log.Error("帧格" + action + "界面流程失败", ex);
         try { await ShowResultAsync(root, "帧格" + action + "未完成", OperationResult.Fail(ex.Message), includesGpu: false); }
         catch (Exception dialogError) { Log.Error("帧格失败提示无法显示", dialogError); }
+    }
+
+    private static async Task<bool> ConfirmResolutionAsync(XamlRoot root, int width, int height, long deadline)
+    {
+        if (root.Content is not FrameworkElement { IsLoaded: true } content || Stopwatch.GetTimestamp() >= deadline)
+            return false;
+
+        var countdown = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        var dialog = new ContentDialog
+        {
+            XamlRoot = root,
+            Title = $"保留 {width} × {height}？",
+            Content = countdown,
+            PrimaryButtonText = "保留分辨率",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        var timer = content.DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(150);
+        void UpdateCountdown()
+        {
+            var remaining = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), deadline);
+            var seconds = (int)Math.Ceiling(remaining.TotalSeconds);
+            countdown.Text = $"GPU 全屏拉伸已应用。剩余 {Math.Max(0, seconds)} 秒，超时自动恢复原分辨率。";
+            if (seconds <= 0) dialog.Hide();
+        }
+        timer.Tick += (_, _) => UpdateCountdown();
+        try
+        {
+            var confirmation = dialog.ShowAsync();
+            UpdateCountdown();
+            timer.Start();
+            return await confirmation == ContentDialogResult.Primary;
+        }
+        finally { timer.Stop(); }
     }
 
     /// <summary>

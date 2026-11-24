@@ -631,9 +631,7 @@ public partial class LabViewModel : ObservableObject
         }
 
         var applied = await DeltaNFD.Services.Backends.BackendCpuFrameService.Instance.ApplyAffinityAsync(mask);
-        GameAffinityStatusText = applied.Success
-            ? $"已应用掩码 0x{mask:X}（目标游戏运行中持续保持）。"
-            : "亲和性规则应用失败：" + applied.Message;
+        GameAffinityStatusText = applied.Message;
     }
 
     /// <summary>亲和性快捷按钮（仅 CCD0 / 仅 CCD1）是否显示（双CCD 机型才有第二个 CCD）。</summary>

@@ -93,6 +93,32 @@ internal static class ProcmanCommands
                 Task.FromResult(Wrap(context.Command, Engine.ConfigureDpcPendulum(context.ArgsAs<DpcPendulumConfigureArgs>()))),
             [BackendCommands.ProcmanClockCompare] = async context => Wrap(context.Command,
                 await Engine.CompareWakeAsync(context.ArgsAs<OptimalClockArgs>().Quick, context.CancellationToken)),
+            [BackendCommands.ProcmanClockBurstScan] = async context => Wrap(context.Command,
+                await Engine.ScanOptimalClockAsync(false, OptimalClockScanKind.FirstPassing, context.CancellationToken,
+                    progress: context.Progress("clock-burst-scan"))),
+            [BackendCommands.ProcmanClockFullRangeScan] = async context => Wrap(context.Command,
+                await Engine.ScanOptimalClockAsync(false, OptimalClockScanKind.FullRange, context.CancellationToken,
+                    progress: context.Progress("clock-full-range-scan"))),
+            [BackendCommands.ProcmanClockFastFullRangeScan] = async context => Wrap(context.Command,
+                await Engine.ScanOptimalClockAsync(false, OptimalClockScanKind.FullRange, context.CancellationToken,
+                    progress: context.Progress("clock-full-range-scan"), fastInitialSweep: true)),
+            [BackendCommands.ProcmanClockCpu0FullRangeScan] = async context => Wrap(context.Command,
+                await Engine.ScanOptimalClockAsync(false, OptimalClockScanKind.Cpu0FullRange, context.CancellationToken,
+                    progress: context.Progress("clock-full-range-scan"))),
+            [BackendCommands.ProcmanClockCpu2FullRangeScan] = async context => Wrap(context.Command,
+                await Engine.ScanOptimalClockAsync(false, OptimalClockScanKind.Cpu2FullRange, context.CancellationToken,
+                    progress: context.Progress("clock-full-range-scan"))),
+            [BackendCommands.ProcmanClockManagedScan] = async context => Wrap(context.Command,
+                await Engine.ScanOptimalClockAsync(false, OptimalClockScanKind.ManagedFullRange, context.CancellationToken,
+                    progress: context.Progress("clock-full-range-scan"), selectedCpu: ClockSamplingMask.FromCpu(context.ArgsAs<ManagedClockScanArgs>().Cpu))),
+            [BackendCommands.ProcmanClockManagedMaskScan] = async context => Wrap(context.Command,
+                await Engine.ScanOptimalClockAsync(false, OptimalClockScanKind.ManagedFullRange, context.CancellationToken,
+                    progress: context.Progress("clock-full-range-scan"), selectedCpu: context.ArgsAs<ManagedClockMaskScanArgs>().Affinity)),
+            [BackendCommands.ProcmanTimerRequestSurvey] = async context =>
+            {
+                var survey = await Task.Run(() => ProcmanEngine.ReadTimerRequests(context.CancellationToken), context.CancellationToken);
+                return BackendResult.Ok(context.Command, "定时器请求检测完成。", survey);
+            },
             [BackendCommands.ProcmanClockScan] = async context =>
             {
                 var args = context.ArgsAs<OptimalClockArgs>();
@@ -212,7 +238,7 @@ internal static class ProcmanCommands
         Items = snapshot.Entries.Select(e => new ReconcileItem { Id = e.Pid + ":" + e.Capability, Kind = "procman", State = e.Status, HasBackup = true, Detail = e.Message })
             .Append(new ReconcileItem { Id = "frame-priority", Kind = "procman", State = Engine.Snapshot().FramePriority.Message,
                 HasBackup = Engine.Snapshot().FramePriority.BackupCount > 0 }).ToArray(),
-        RecoveryScopes = [new() { Id = "all", Description = "停止规则、撤销 CCD 调度并按日志恢复全部进程和应用设置",
+        RecoveryScopes = [new() { Id = "all", Description = "停止规则、撤销 CCD 调度并按日志恢复设置。已被改动的 CPU 优先级会保留并归档。",
             Available = Engine.Snapshot().HeldChangeCount > 0 || ProcmanCcdScheduler.Active || Engine.DpcCleanupPending,
             AffectedCount = Engine.Snapshot().HeldChangeCount + (ProcmanCcdScheduler.Active ? 1 : 0) + (Engine.DpcCleanupPending ? 1 : 0) }],
     };

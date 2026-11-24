@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Security.Cryptography;
 
 namespace DeltaNFD.Execution.Procman;
 
@@ -95,6 +96,49 @@ public sealed class ProcmanChangeLog
             var removed = all.RemoveAll(r => r.Key == record.Key) > 0;
             if (removed) { WriteAll(all); _records = all; }
             return removed;
+        }
+    }
+
+    /// <summary>释放已被其他程序改动的 CPU 优先级。先保留原记录和观察值，再解除恢复义务。</summary>
+    internal bool ArchivePriorityConflict(ChangeRecord record, string observedPriority, Action releaseOwner)
+    {
+        using var lease = AcquireWriteLease();
+        lock (_gate)
+        {
+            var all = LoadAll();
+            if (!all.Remove(record)) return false;
+
+            var evidence = JsonSerializer.SerializeToUtf8Bytes(new { Record = record, ObservedPriority = observedPriority }, JsonOptions);
+            var directory = _filePath + ".released-priority";
+            Directory.CreateDirectory(directory);
+            var archive = Path.Combine(directory, Convert.ToHexString(SHA256.HashData(evidence)) + ".json");
+            if (File.Exists(archive))
+            {
+                if (new FileInfo(archive).Length != evidence.Length || !File.ReadAllBytes(archive).AsSpan().SequenceEqual(evidence))
+                    throw new IOException("已有优先级冲突归档的内容不一致。");
+            }
+            else
+            {
+                var temp = archive + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
+                    {
+                        stream.Write(evidence);
+                        stream.Flush(flushToDisk: true);
+                    }
+                    File.Move(temp, archive);
+                }
+                finally
+                {
+                    if (File.Exists(temp)) File.Delete(temp);
+                }
+            }
+
+            releaseOwner();
+            WriteAll(all);
+            _records = all;
+            return true;
         }
     }
 

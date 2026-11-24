@@ -505,6 +505,10 @@ internal static class BackendUnconfirmedStore
             throw new IOException("计时源与 HPET 操作未通过对应范围复核，原始记录保留。");
         if (IsRetiredDriverPriorityOperation(confirmed))
             throw new IOException("本版本已移除驱动优先级恢复；保留原始记录与备份。");
+        if (confirmed.Module == BackendModules.System && confirmed.Command == BackendCommands.SystemDisplayInterruptChange
+            && (scope != DisplayInterruptPriorityPolicy.RecoveryScope || snapshot is not { Complete: true, Module: BackendModules.System }
+                || snapshot.RecoveryScopes is not [{ Id: DisplayInterruptPriorityPolicy.RecoveryScope, Available: false, AffectedCount: 0 }]))
+            throw new IOException("显卡中断优先级原值尚未全部核对恢复，原始记录保留。");
         if (confirmed.Module == BackendModules.System
             && (confirmed.Command is BackendCommands.SystemStartupChange or BackendCommands.SystemStartupRestoreAll)
             && (scope != "startup" || snapshot is not { Complete: true, Module: BackendModules.System }

@@ -49,7 +49,7 @@ public static class PendulumGlobalInspection
         {
             try { return DpcPendulumInspection.Evaluate(ReadSystemVersion(), DpcPendulumInspection.Read()); }
             catch (Exception ex) { return new() { Supported = true, ExperimentalWindows10 = true,
-                Message = "无法核实 Win10 系统修订版本，暂不准入实验扫描与锁定：" + ex.Message }; }
+                Message = "无法核实 Win10 系统修订版本，暂不允许扫描与锁定。" + ex.Message }; }
         }
         var supported = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
         try { return Evaluate(supported, ReadValue(), CurrentBootId, ReadRecord()); }
@@ -79,7 +79,7 @@ public static class PendulumGlobalInspection
             PlatformId = platform, Fingerprint = platform,
             Message = supported
                 ? driver?.Message ?? "Windows 10 钟摆计划需先开启测试签名模式并重启，安装和启动自研驱动；准备状态尚未确认。"
-                : "此系统版本不在 Windows 10 实验兼容范围（1809 及以后）。",
+                : "此系统版本不在 Windows 10 兼容范围（1809 及以后）。",
         };
     }
 

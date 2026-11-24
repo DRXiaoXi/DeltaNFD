@@ -1,3 +1,5 @@
+using DeltaNFD.Services;
+
 namespace DeltaNFD.Execution.OptimalClock;
 
 /// <summary>DPC always holds its original 1ms; a separate owned process requests the scanned value.</summary>
@@ -5,6 +7,7 @@ internal sealed class DpcCombinedHolder(IOptimalClockHolderApi dpc, IOptimalCloc
 {
     public bool AlgorithmMode { get; set; }
     internal bool CustomResolution { get; set; }
+    internal uint? BurstResolution100ns { get; set; }
     public bool DpcProcess => !AlgorithmMode;
     public bool DpcAssisted => AlgorithmMode;
     public bool DpcHolding => dpc.Holding;
@@ -18,7 +21,8 @@ internal sealed class DpcCombinedHolder(IOptimalClockHolderApi dpc, IOptimalCloc
     {
         try
         {
-            if (AlgorithmMode && (requested < (CustomResolution ? 5000u : OptimalClockScanner.CriticalFloor100ns) || requested > 10000))
+            var minimum = CustomResolution || requested == BurstResolution100ns ? 5000u : OptimalClockScanner.CriticalFloor100ns;
+            if (AlgorithmMode && (requested < minimum || requested > 10000))
                 throw new IOException(CustomResolution ? "DPC自定义持有只接受0.5000～1.0000ms的已验证值。" : "DPC辅助持有只接受0.5100～1.0000ms的已扫描值。");
             if (!AlgorithmMode && requested != 10000) throw new IOException("基础DPC只接受1.0000ms。");
             if (!dpc.Ensure(10000)) throw new IOException(dpc.Error);
@@ -77,6 +81,20 @@ internal sealed class DpcAssistedMeasurement(IOptimalClockMeasurementApi inner, 
         CheckBase();
         var load = inner.StartLoad(threads);
         return load is null ? null : new Load(load, CheckBase);
+    }
+    public IOptimalClockLoad? StartBurstLoad()
+    {
+        CheckBase();
+        var load = inner.StartBurstLoad();
+        return load is null ? null : new Load(load, CheckBase);
+    }
+    public ClockBurstMeasurement? MeasureBurst(uint resolution100ns, CancellationToken cancellation,
+        ClockBurstProbeMode mode = ClockBurstProbeMode.FirstPassing, ClockSamplingMask? samplingCpu = null)
+    {
+        CheckBase();
+        var result = inner.MeasureBurst(resolution100ns, cancellation, mode, samplingCpu);
+        CheckBase();
+        return result;
     }
     public bool HasPendingCleanup => inner.HasPendingCleanup;
     public void CleanupPending() => inner.CleanupPending();

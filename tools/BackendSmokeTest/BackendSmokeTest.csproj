@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>BackendSmokeTest</RootNamespace>
     <!-- 与产品同版本：官方后端客户端（已链接进本测试）按 AppVersion 校验后端版本。 -->
-    <Version>0.9396</Version>
-    <InformationalVersion>Beta0.939-RC6</InformationalVersion>
+    <Version>0.9500</Version>
+    <InformationalVersion>Beta0.95</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -65,6 +65,9 @@
     <Compile Include="..\..\src\DeltaNFD\Services\OfflineHelperSession.cs" />
     <Compile Include="..\..\src\DeltaNFD\Native\FileDialogNative.cs" />
     <Compile Include="..\..\src\DeltaNFD\Native\SessionEndHook.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Native\FrameDisplayMode*.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Native\FrameDisplaySession.cs" />
+    <Compile Include="..\..\src\DeltaNFD\Services\FrameDisplayService.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\OfflineRestoreHandover.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\OfflineModeCoordinator.cs" />
     <Compile Include="..\..\src\DeltaNFD\Services\OfflineModeRetirement.cs" />
@@ -160,6 +163,7 @@
     <Compile Include="..\..\src\DeltaNFD\Services\UpdateUrlRewriter.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\CleanupService.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\StartupItemService.cs" />
+    <Compile Include="..\..\src\DeltaNFD.Execution\Execution\DisplayInterruptPriorityService.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\ShaderCacheCleanup.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\DefenderGuard.cs" />
     <Compile Include="..\..\src\DeltaNFD.Execution\Execution\GpuSpoofService.cs" />

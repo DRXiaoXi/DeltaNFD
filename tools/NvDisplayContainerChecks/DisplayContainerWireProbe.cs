@@ -9,11 +9,12 @@ using DeltaNFD.Services;
 
 internal static class DisplayContainerWireProbe
 {
-    public static async Task RunAsync(string layout, string log)
+    public static async Task RunAsync(string layout, string log, bool system = false)
     {
-        const string module = BackendModules.Gpu;
+        var module = system ? BackendModules.System : BackendModules.Gpu;
+        var expectedVersion = system ? NvDisplayContainerChange.LocalSystemProtocolVersion : NvDisplayContainerChange.ProtocolVersion;
         layout = Path.GetFullPath(layout);
-        var path = Path.Combine(layout, "Backends", "DeltaNFD.Backend.Gpu.exe");
+        var path = Path.Combine(layout, "Backends", BackendModules.Require(module).ExecutableName);
         // Verify the exact parser shipped with the front end, not just the test build's copy.
         var frontend = new AssemblyLoadContext("Published front-end contract", isCollectible: true);
         var contract = frontend.LoadFromAssemblyPath(Path.Combine(layout, "DeltaNFD.Contracts.dll"));
@@ -31,22 +32,22 @@ internal static class DisplayContainerWireProbe
         start.Environment["DELTANFD_BACKEND_ISOLATED_ID"] = session.ToString("D");
         foreach (var arg in new[] { "--backend", module, "--pipe", pipeName, "--host-pid", Environment.ProcessId.ToString() })
             start.ArgumentList.Add(arg);
-        using var worker = Process.Start(start) ?? throw new InvalidOperationException("GPU backend did not start.");
+        using var worker = Process.Start(start) ?? throw new InvalidOperationException("Service backend did not start.");
         await pipe.WaitForConnectionAsync(token);
         var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         await pipe.WriteAsync(BackendMessages.EncodeHello(module, session, Guid.NewGuid(), new(nonce, "0.9403.0", data)), token);
         var readyFrame = await BackendFrameStream.ReadFrameAsync(pipe, token);
-        if (readyFrame?.Type != BackendFrameType.Ready) throw new InvalidOperationException("GPU backend did not send ready.");
+        if (readyFrame?.Type != BackendFrameType.Ready) throw new InvalidOperationException("Service backend did not send ready.");
         object shippedReady;
         try { shippedReady = parseReady.Invoke(null, [readyFrame.Payload])!; }
         catch (TargetInvocationException ex) when (ex.InnerException is not null)
         { throw new InvalidOperationException("Published front-end parser: " + ex.InnerException.Message, ex.InnerException); }
         if (shippedReady.GetType().GetProperty(nameof(BackendReady.NvDisplayContainerVersion))?.GetValue(shippedReady)
-            is not int shippedVersion || shippedVersion != NvDisplayContainerChange.ProtocolVersion)
+            is not int shippedVersion || shippedVersion != expectedVersion)
             throw new InvalidOperationException("Published front end did not read the advertised capability.");
         var ready = BackendMessages.ParseReady(readyFrame.Payload);
-        if (ready.Nonce != nonce || ready.Pid != worker.Id || ready.NvDisplayContainerVersion != NvDisplayContainerChange.ProtocolVersion)
-            throw new InvalidOperationException("GPU backend identity or display container protocol differs.");
+        if (ready.Nonce != nonce || ready.Pid != worker.Id || ready.NvDisplayContainerVersion != expectedVersion)
+            throw new InvalidOperationException("Service backend identity or container protocol differs.");
 
         async Task<JsonElement> ReadOnlyAsync(string command, object input)
         {
@@ -62,23 +63,48 @@ internal static class DisplayContainerWireProbe
             }
             throw new EndOfStreamException(command);
         }
-        var before = BackendJson.Deserialize<NvDisplayContainerStatus>(await ReadOnlyAsync(BackendCommands.GpuNvDisplayContainerStatus, new { }));
-        var reviewed = BackendJson.Deserialize<ReconcileSnapshot>(await ReadOnlyAsync(BackendCommands.GpuReconcile, new RecoverArgs { Scope = "nv-display-container" }));
-        var driver = await ReadOnlyAsync(BackendCommands.GpuDriverRead, new NvDriverRestoreArgs());
-        if (driver.ValueKind != JsonValueKind.Object || !driver.EnumerateObject().Any())
-            throw new InvalidOperationException("The NVIDIA game settings read returned no settings.");
-        var after = BackendJson.Deserialize<NvDisplayContainerStatus>(await ReadOnlyAsync(BackendCommands.GpuNvDisplayContainerStatus, new { }));
-        if (before.Fingerprint is null || before != after || !reviewed.Complete || reviewed.Module != module
-            || reviewed.Items is not [{ Id: "nv-display-container", Kind: "service" }] || reviewed.Items[0].State != before.Detail)
-            throw new InvalidOperationException("Invalid or changed status: " + before.Detail + " / " + reviewed.Summary + " / " + after.Detail);
+        var summary = new List<string>();
+        if (system)
+        {
+            var display = BackendJson.Deserialize<NvDisplayContainerStatus>(
+                await ReadOnlyAsync(BackendCommands.SystemNvDisplayContainerStatus, new { }));
+            var local = BackendJson.Deserialize<NvDisplayContainerStatus>(
+                await ReadOnlyAsync(BackendCommands.SystemNvLocalSystemStatus, new { }));
+            var localReview = BackendJson.Deserialize<ReconcileSnapshot>(
+                await ReadOnlyAsync(BackendCommands.SystemNvLocalSystemReconcile, new { }));
+            var localAfter = BackendJson.Deserialize<NvDisplayContainerStatus>(
+                await ReadOnlyAsync(BackendCommands.SystemNvLocalSystemStatus, new { }));
+            if (!display.Restore || display.Fingerprint is null || local.Fingerprint is null || localAfter != local
+                || !localReview.Complete || localReview.Module != module
+                || localReview.Items is not [{ Id: NvLocalSystemContainer.RecoveryScope, Kind: "service" }]
+                || localReview.Items[0].State != local.Detail)
+                throw new InvalidOperationException("Failed to confirm the display recovery and shared service status: "
+                    + display.Detail + " / " + local.Detail + " / " + localReview.Summary);
+            summary.Add(display.Detail + " Restore available.");
+            summary.Add(local.Detail + " Shared service can be managed.");
+        }
+        else
+        {
+            var before = BackendJson.Deserialize<NvDisplayContainerStatus>(await ReadOnlyAsync(BackendCommands.GpuNvDisplayContainerStatus, new { }));
+            var reviewed = BackendJson.Deserialize<ReconcileSnapshot>(await ReadOnlyAsync(BackendCommands.GpuReconcile, new RecoverArgs { Scope = "nv-display-container" }));
+            var driver = await ReadOnlyAsync(BackendCommands.GpuDriverRead, new NvDriverRestoreArgs());
+            if (driver.ValueKind != JsonValueKind.Object || !driver.EnumerateObject().Any())
+                throw new InvalidOperationException("The NVIDIA game settings read returned no settings.");
+            var after = BackendJson.Deserialize<NvDisplayContainerStatus>(await ReadOnlyAsync(BackendCommands.GpuNvDisplayContainerStatus, new { }));
+            if (before.Fingerprint is null || before != after || !reviewed.Complete || reviewed.Module != module
+                || reviewed.Items is not [{ Id: "nv-display-container", Kind: "service" }] || reviewed.Items[0].State != before.Detail)
+                throw new InvalidOperationException("Invalid or changed status: " + before.Detail + " / " + reviewed.Summary + " / " + after.Detail);
+            summary.Add(before.Detail);
+            summary.Add($"Restore available: {before.Restore}");
+            summary.Add($"NVIDIA game settings read: {driver.EnumerateObject().Count()} items");
+        }
         await pipe.WriteAsync(BackendMessages.EncodeStop(module, session, Guid.NewGuid()), token);
         while (await BackendFrameStream.ReadFrameAsync(pipe, token) is { } frame)
             if (frame.Type == BackendFrameType.Status && BackendMessages.ParseStatus(frame.Payload).State == BackendMessages.StateStopped) break;
         await worker.WaitForExitAsync(token);
-        if (worker.ExitCode != 0) throw new InvalidOperationException("GPU backend did not exit normally.");
+        if (worker.ExitCode != 0) throw new InvalidOperationException("Service backend did not exit normally.");
         File.WriteAllLines(log, [$"Elevated: {ElevationHelper.IsElevated}", $"NvDisplayContainerVersion: {ready.NvDisplayContainerVersion}",
-            before.Detail, $"Restore available: {before.Restore}", $"NVIDIA game settings read: {driver.EnumerateObject().Count()} items",
-            "PASS: packaged front-end parser + actual GPU backend + status + reconcile + game settings read + unchanged status + clean exit. No service or driver writes."]);
+            .. summary, $"PASS: packaged front-end parser, {module} backend, read-only service status and reconciliation, and clean exit."]);
         frontend.Unload();
     }
 }

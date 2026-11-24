@@ -175,7 +175,7 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
         set { if (FrameSrv.FeaturesEditable) FrameSrv.GamePowerThrottlingDisabled = value; }
     }
     public string GameTimerIgnoreStatusText => FrameSrv.PendulumStatusText;
-    public string GameTimerIgnorePlatformText => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000) ? "Windows 11" : "Win10 实验";
+    public string GameTimerIgnorePlatformText => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000) ? "Windows 11" : "Windows 10";
     public string ForegroundStatusText => FrameFeatureState.Describe(FrameSrv.ForegroundBoostEnabled,
         FrameSrv.ForegroundResponsivenessEnabled || FrameSrv.ForegroundPriorityEnabled, FrameSrv.FrameModeEnabled);
     public string PowerSaveStatusText => FrameFeatureState.Describe(FrameSrv.PowerSaveLatencyEnabled,
@@ -243,9 +243,14 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
             UpdateGameDot();
             RefreshFeaturePresentation();
             _ = LoadFrameBackgroundAsync();
+            _ = LoadDisplayResolutionAsync();
             ShowMemoryGuidanceIfReady();
         };
-        Unloaded += (_, _) => { FrameSrv.PropertyChanged -= OnFramePropertyChanged; GameTargetService.Default.Changed -= OnFrameTargetChanged; };
+        Unloaded += (_, _) =>
+        {
+            FrameSrv.PropertyChanged -= OnFramePropertyChanged;
+            GameTargetService.Default.Changed -= OnFrameTargetChanged;
+        };
         UpdateGameDot();
 
         _ = LoadPowerLockTargetsAsync();
@@ -255,6 +260,9 @@ public sealed partial class FramePage : Page, INotifyPropertyChanged
 
     private void OnFramePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(IFrameService.FrameModeEnabled) or nameof(FrameService.DisplayResolutionOptionsEditable))
+            _ = LoadDisplayResolutionAsync();
+
         if (e.PropertyName == nameof(IFrameService.IsGameRunning))
         {
             UpdateGameDot();

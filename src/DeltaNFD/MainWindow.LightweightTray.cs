@@ -2,6 +2,7 @@ using DeltaNFD.Native;
 using DeltaNFD.Services;
 using DeltaNFD.Services.Backends;
 using DeltaNFD.ViewModels;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media;
 
 namespace DeltaNFD;
@@ -11,20 +12,23 @@ public sealed partial class MainWindow
     private bool _startupChecksCompletedForTray;
     private bool _lightweightTrayRequested;
     private bool _lightweightTrayTransition;
+    private DispatcherQueueTimer? _trayWorkingSetTimer;
+
+    private bool HasInFlightWinUiWork() => _gameVersionChecking || UpdateViewModel.HasCurrentWork || _mcpOperations?.HasActive == true
+        || BackendOperationGate.HasStartingBackends || BackendSessions.Snapshot().Any(c => c.HasInvocationInFlight || c.RequiresAttention)
+        || BackendUnconfirmedStore.PendingModules().Count > 0
+        || ServiceLocator.PluginRuntime.HasInFlightOperations || ServiceLocator.PluginRuntime.RunningPluginIds.Count > 0;
+
+    private bool HasWindowPopup() => ContentFrame.XamlRoot is not { } root
+        || VisualTreeHelper.GetOpenPopupsForXamlRoot(root).Count != 0;
 
     private bool CanReleaseWinUi()
     {
         if (!_startupChecksCompletedForTray || App.WindowsSessionEnding || App.PendingFileFallback is not null || AppDataPaths.MigrationWarning is not null
             || OfflineModeGuard.BlocksNormalAutomation || SingleInstanceGuard.DeploymentInProgress()
-            || _gameVersionChecking || UpdateViewModel.HasCurrentWork || _mcpOperations?.HasActive == true
-            || BackendOperationGate.HasStartingBackends || BackendSessions.Snapshot().Any(c => c.HasInvocationInFlight || c.RequiresAttention)
-            || BackendUnconfirmedStore.PendingModules().Count > 0
-            || ServiceLocator.PluginRuntime.HasInFlightOperations || ServiceLocator.PluginRuntime.RunningPluginIds.Count > 0)
+            || HasInFlightWinUiWork() || HasWindowPopup())
             return false;
 
-        // Keep user confirmations and pickers owned by the current window alive.
-        if (ContentFrame.XamlRoot is not { } root || VisualTreeHelper.GetOpenPopupsForXamlRoot(root).Count != 0)
-            return false;
         if (BackendSessions.Snapshot().Any(c => c.ModuleId == DeltaNFD.Backends.BackendModules.Procman && !c.ExitConfirmed)
             && !BackendProcmanService.Instance.IsConfirmedIdleForTray) return false;
 
@@ -103,6 +107,63 @@ public sealed partial class MainWindow
             }
         }
 
-        if (!keepVisible && !_exitRequested && _trayIcon?.Show() == true) AppWindow.Hide();
+        if (!keepVisible && !_exitRequested && _trayIcon?.Show() == true)
+        {
+            FlushWindowPlacement();
+            HideWinUiToTray();
+        }
+    }
+
+    private void HideWinUiToTray()
+    {
+        var wasVisible = AppWindow.IsVisible;
+        AppWindow.Hide();
+        if (!wasVisible || AppWindow.IsVisible) return;
+
+        CancelTrayWorkingSetTrim();
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMinutes(1);
+        timer.IsRepeating = true;
+        timer.Tick += TrayWorkingSetTimer_Tick;
+        _trayWorkingSetTimer = timer;
+        timer.Start();
+    }
+
+    private void TrayWorkingSetTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        if (!ReferenceEquals(sender, _trayWorkingSetTimer)) return;
+        if (AppWindow.IsVisible || _exitRequested || App.WindowsSessionEnding)
+        {
+            CancelTrayWorkingSetTrim();
+            return;
+        }
+
+        try
+        {
+            if (!_startupChecksCompletedForTray || _closePromptInProgress || _pluginExitInProgress || _deploymentInProgress
+                || _factoryResetInProgress || _gpuWatchInFlight || App.PendingFileFallback is not null
+                || OfflineModeGuard.BlocksNormalAutomation || SingleInstanceGuard.DeploymentInProgress()
+                || HasInFlightWinUiWork() || HasWindowPopup()) return;
+
+            // Stop before calling the native API: at most one attempt per hide, even on error.
+            CancelTrayWorkingSetTrim();
+            if (CurrentProcessWorkingSet.TryTrim(out var error))
+                Log.Info("托盘：已请求修剪前端自身的工作集。");
+            else
+                Log.Warn($"托盘：前端工作集修剪失败（Win32 {error}）。");
+        }
+        catch (Exception ex)
+        {
+            CancelTrayWorkingSetTrim();
+            Log.Warn("托盘：工作集修剪检查未完成：" + ex.Message);
+        }
+    }
+
+    private void CancelTrayWorkingSetTrim()
+    {
+        if (_trayWorkingSetTimer is not { } timer) return;
+        _trayWorkingSetTimer = null;
+        timer.Tick -= TrayWorkingSetTimer_Tick;
+        timer.Stop();
     }
 }

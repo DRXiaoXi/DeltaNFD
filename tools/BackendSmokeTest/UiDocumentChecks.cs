@@ -56,6 +56,14 @@ internal static class UiDocumentChecks
 
         var nv = Page("NvSettingsPage"); var shader = Page("ShaderPage");
         Check(!nv.ToString().Contains("ViewModel.ShaderCache"), "NVIDIA page no longer hosts cache scope status");
+        foreach (var name in new[] { "NvSettingsPage", "GraphicsSettingsPage" })
+        {
+            var scroll = Page(name).Elements().Single(e => e.Name.LocalName == "ScrollViewer");
+            var viewport = scroll.Elements().Single();
+            Check(viewport.Name.LocalName == "Grid" && (string?)viewport.Attribute("HorizontalAlignment") == "Stretch"
+                && viewport.Attribute("MaxWidth") is null && viewport.Elements().Single().Attribute("MaxWidth") is not null,
+                name + ": the full-width viewport hosts the capped settings panel");
+        }
         var repair = shader.Descendants().Single(e => (string?)e.Attribute(X + "Name") == "ShaderRepairModule");
         Check(VisibleText(repair, "着色器缓存大小") && VisibleText(repair, "全局设置") && VisibleText(repair, "三角洲程序设置"), "shader repair groups the two cache scopes");
         Check(repair.ToString().Contains("ShaderCacheGlobalText") && repair.ToString().Contains("ShaderCacheGameText"), "both read-only scopes bind to actual status properties");

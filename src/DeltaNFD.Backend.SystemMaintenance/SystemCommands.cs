@@ -32,6 +32,7 @@ internal static class SystemCommands
         GameInstallationScopeVersion = GameInstallationProtocol.Version,
         ManualAsdVersion = ManualAsdPolicy.Version,
         ClockEnvironmentVersion = ClockEnvironmentPolicy.Version,
+        NvDisplayContainerVersion = NvDisplayContainerChange.LocalSystemProtocolVersion,
         OnStopping = () => _ownsDefenderCleanup ? DefenderGuard.RestoreSessionAsync(_awaitingFirstBatchWrite) : Task.FromResult(OperationResult.Ok("本会话无 Defender 恢复责任。")),
         Handlers = new Dictionary<string, Func<BackendCommandContext, Task<BackendResult>>>(StringComparer.Ordinal)
         {
@@ -72,6 +73,10 @@ internal static class SystemCommands
                 var result = ClockEnvironmentService.Change(c.ArgsAs<ClockEnvironmentArgs>(), c.CancellationToken);
                 return Task.FromResult(Wrap(c.Command, result));
             },
+            [BackendCommands.SystemDisplayInterruptList] = c => Task.Run(() =>
+                BackendResult.Ok(c.Command, "", DisplayInterruptPriorityService.List())),
+            [BackendCommands.SystemDisplayInterruptChange] = c => Task.Run(() => Wrap(c.Command,
+                DisplayInterruptPriorityService.Change(c.ArgsAs<DisplayInterruptPriorityArgs>(), c.CancellationToken))),
             [BackendCommands.SystemLowMemoryApply] = async c =>
             {
                 var result = await LowMemoryRepair.RunAsync(c.ArgsAs<LowMemoryApplyArgs>(), c.CancellationToken);
@@ -116,10 +121,71 @@ internal static class SystemCommands
             [BackendCommands.SystemPagefileRestoreAuto] = PagefileRestoreAutoAsync,
             [BackendCommands.SystemPagefileRestoreOriginal] = PagefileRestoreOriginalAsync,
             [BackendCommands.SystemReconcile] = ReconcileAsync,
+            [BackendCommands.SystemNvDisplayContainerStatus] = c => Task.Run(() =>
+            {
+                var status = NvDisplayContainerService.Status();
+                return BackendResult.Ok(c.Command, status.Detail, status);
+            }),
+            [BackendCommands.SystemNvDisplayContainerChange] = c => Task.Run(() =>
+                Wrap(c.Command, NvDisplayContainerService.Change(c.ArgsAs<NvDisplayContainerChange>()))),
             [BackendCommands.SystemNvDisplayContainerReconcile] = c => Task.Run(() =>
             {
-                var snapshot = NvDisplayContainerService.Reconcile();
+                var module = c.ArgsAs<NvDisplayContainerReviewArgs>().Module ?? BackendModules.Gpu;
+                if (!IsDisplayContainerReviewModule(module))
+                    return BackendResult.Failed(c.Command, "无效的显示容器核对模块。");
+                var snapshot = NvDisplayContainerService.Reconcile(module, offerRecovery: true);
                 return BackendResult.Ok(c.Command, snapshot.Summary, snapshot);
+            }),
+            [BackendCommands.SystemNvDisplayContainerRecover] = c => Task.Run(() =>
+            {
+                var args = c.ArgsAs<NvDisplayContainerRecoveryArgs>();
+                if (!IsDisplayContainerReviewModule(args.Module) || !NvDisplayContainerChange.IsFingerprint(args.Fingerprint))
+                    return BackendResult.Failed(c.Command, "显示容器恢复范围或确认指纹无效。");
+                var (outcome, unknown) = NvDisplayContainerService.Recover(args);
+                return unknown ? BackendResult.PartialResult(c.Command, outcome.Message, [], outcome, requiresReview: true)
+                    : BackendResult.Ok(c.Command, outcome.Message, outcome);
+            }),
+            [BackendCommands.SystemNvTelemetryStatus] = c => Task.Run(() =>
+            {
+                var status = NvDisplayContainerService.TelemetryStatus();
+                return BackendResult.Ok(c.Command, status.Detail, status);
+            }),
+            [BackendCommands.SystemNvTelemetryChange] = c => Task.Run(() =>
+                Wrap(c.Command, NvDisplayContainerService.ChangeTelemetry(c.ArgsAs<NvDisplayContainerChange>()))),
+            [BackendCommands.SystemNvTelemetryReconcile] = c => Task.Run(() =>
+            {
+                var snapshot = NvDisplayContainerService.TelemetryReconcile();
+                return BackendResult.Ok(c.Command, snapshot.Summary, snapshot);
+            }),
+            [BackendCommands.SystemNvTelemetryRecover] = c => Task.Run(() =>
+            {
+                var args = c.ArgsAs<NvDisplayContainerRecoveryArgs>();
+                if (args.Module != BackendModules.System || !NvDisplayContainerChange.IsFingerprint(args.Fingerprint))
+                    return BackendResult.Failed(c.Command, "遥测服务恢复范围或确认指纹无效。");
+                var (outcome, unknown) = NvDisplayContainerService.RecoverTelemetry(args.Fingerprint);
+                return unknown ? BackendResult.PartialResult(c.Command, outcome.Message, [], outcome, requiresReview: true)
+                    : BackendResult.Ok(c.Command, outcome.Message, outcome);
+            }),
+            [BackendCommands.SystemNvLocalSystemStatus] = c => Task.Run(() =>
+            {
+                var status = NvDisplayContainerService.LocalSystemStatus();
+                return BackendResult.Ok(c.Command, status.Detail, status);
+            }),
+            [BackendCommands.SystemNvLocalSystemChange] = c => Task.Run(() =>
+                Wrap(c.Command, NvDisplayContainerService.ChangeLocalSystem(c.ArgsAs<NvDisplayContainerChange>()))),
+            [BackendCommands.SystemNvLocalSystemReconcile] = c => Task.Run(() =>
+            {
+                var snapshot = NvDisplayContainerService.LocalSystemReconcile();
+                return BackendResult.Ok(c.Command, snapshot.Summary, snapshot);
+            }),
+            [BackendCommands.SystemNvLocalSystemRecover] = c => Task.Run(() =>
+            {
+                var args = c.ArgsAs<NvDisplayContainerRecoveryArgs>();
+                if (args.Module != BackendModules.System || !NvDisplayContainerChange.IsFingerprint(args.Fingerprint))
+                    return BackendResult.Failed(c.Command, "共用容器恢复范围或确认指纹无效。");
+                var (outcome, unknown) = NvDisplayContainerService.RecoverLocalSystem(args.Fingerprint);
+                return unknown ? BackendResult.PartialResult(c.Command, outcome.Message, [], outcome, requiresReview: true)
+                    : BackendResult.Ok(c.Command, outcome.Message, outcome);
             }),
             [BackendCommands.SystemRecover] = RecoverAsync,
 
@@ -152,6 +218,11 @@ internal static class SystemCommands
     /// <summary>只读状态核对：深度优化、高级优化、虚拟内存的当前状态与可用恢复范围。</summary>
     private static async Task<BackendResult> ReconcileAsync(BackendCommandContext context)
     {
+        if (context.ArgsAs<RecoverArgs>().Scope == DisplayInterruptPriorityPolicy.RecoveryScope)
+        {
+            var display = DisplayInterruptPriorityService.Reconcile();
+            return BackendResult.Ok(context.Command, display.Summary, display);
+        }
         context.ReportProgress("正在只读核对系统维护状态…", null, "reconcile");
         var snapshot = await BuildSnapshotAsync();
         return BackendResult.Ok("system.reconcile", snapshot.Summary, snapshot);
@@ -162,6 +233,16 @@ internal static class SystemCommands
     {
         var args = context.ArgsAs<RecoverArgs>();
         var scope = (args.Scope ?? "").Trim().ToLowerInvariant();
+        if (scope == DisplayInterruptPriorityPolicy.RecoveryScope)
+        {
+            var result = DisplayInterruptPriorityService.RestoreAll(context.CancellationToken);
+            var display = DisplayInterruptPriorityService.Reconcile();
+            var displayVerified = result.Success && display.Complete && display.RecoveryScopes is [{ AffectedCount: 0 }];
+            return BackendResult.Ok(context.Command, result.Message, new RecoverOutcome
+            {
+                Scope = scope, Success = result.Success, Verified = displayVerified, Message = result.Message, VerifiedSnapshot = display,
+            });
+        }
         if (scope is not ("tweaks" or "advanced" or "pagefile" or "defender" or "intel-pcore" or "game-recording" or "startup" or "clock-environment"))
             return BackendResult.Failed("system.recover", $"未知恢复范围“{args.Scope}”，已拒绝执行。");
 
@@ -525,6 +606,9 @@ internal static class SystemCommands
             : result.Success
             ? BackendResult.Ok(code, result.Message, result)
             : BackendResult.Failed(code, result.Message);
+
+    private static bool IsDisplayContainerReviewModule(string? module) =>
+        module is BackendModules.Gpu or BackendModules.System;
 
     private sealed record TweakArgs(SystemTweak? Tweak);
     private static async Task<BackendResult> TweakAsync(BackendCommandContext context, bool restore)

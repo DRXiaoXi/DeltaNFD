@@ -38,10 +38,18 @@ public sealed partial class ProcmanEngine
     {
         if (!IsTimerIgnoreListIdentityAllowed(identity)) return false;
         var name = Path.GetFileName(identity.ExecutablePath);
-        return TimerIgnoreListNames().Any(n => n.Equals(name, StringComparison.OrdinalIgnoreCase));
+        return TimerIgnoreListNames().Contains(name, StringComparer.OrdinalIgnoreCase)
+            || TimerIgnorePaths().Contains(identity.ExecutablePath, StringComparer.OrdinalIgnoreCase);
     }
 
-    private bool TimerIgnoreListRequested => !_frozen && TimerIgnoreListNames().Count > 0;
+    private static IReadOnlyList<string> TimerIgnorePaths()
+        => (AppSettingsStore.Read().TimerIgnoreDetectedPaths ?? []).Where(Path.IsPathFullyQualified).ToArray();
+
+    private bool IsActiveTimerIgnoreTarget(ProcmanProcessIdentity identity)
+        => IsTimerIgnoreListTarget(identity) || _clockScanTimerIgnoreTargets.Contains(identity);
+
+    private bool TimerIgnoreListRequested => !_frozen
+        && (TimerIgnoreListNames().Count > 0 || TimerIgnorePaths().Count > 0 || _clockScanTimerIgnoreTargets.Length > 0);
 
     private FrameTimerIgnoreSnapshot TimerIgnoreListState
     {
@@ -65,7 +73,8 @@ public sealed partial class ProcmanEngine
     {
         if (TimerIgnoreListTargetsForTests is { } read) return read();
         var result = new List<ProcmanProcessIdentity>();
-        foreach (var name in TimerIgnoreListNames())
+        foreach (var name in TimerIgnoreListNames().Concat(TimerIgnorePaths().Select(path => Path.GetFileName(path)))
+            .Distinct(StringComparer.OrdinalIgnoreCase))
         {
             var baseName = Path.GetFileNameWithoutExtension(name);
             if (baseName.Length == 0) continue;
@@ -96,13 +105,10 @@ public sealed partial class ProcmanEngine
             _lastTimerIgnoreListTick = now;
             try
             {
-                var targets = ReadTimerIgnoreListTargets();
-                var ok = _timerIgnoreList.Sync(targets, _ =>
-                {
-                    var latest = AppSettingsStore.Read();
-                    return !_frozen && (_rulesEngineRunning || BackgroundLoopDisabledForTests)
-                        && (latest.TimerIgnoreExtraProcesses?.Count ?? 0) > 0;
-                }, "忽略列表里的进程尚未运行，未施加定时器请求忽略", FrameTimerIgnoreSupported);
+                var targets = ReadTimerIgnoreListTargets().Concat(_clockScanTimerIgnoreTargets).Distinct().ToArray();
+                var ok = _timerIgnoreList.Sync(targets, identity =>
+                    (!_frozen && (_rulesEngineRunning || BackgroundLoopDisabledForTests) && IsTimerIgnoreListTarget(identity))
+                    || (_optimalClockScanInProgress && _memoryStopping == 0 && !_memoryDisposed && _clockScanTimerIgnoreTargets.Contains(identity)), "忽略列表里的进程尚未运行，未施加定时器请求忽略", FrameTimerIgnoreSupported);
                 Volatile.Write(ref _timerIgnoreListError, "");
                 GameTargetService.Default.SetRestoreFailure("忽略列表忽略定时器请求", _timerIgnoreList.Snapshot.RestorePending);
                 return ok;

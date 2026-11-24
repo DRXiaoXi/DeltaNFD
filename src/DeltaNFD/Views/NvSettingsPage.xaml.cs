@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using DeltaNFD.Services;
 using DeltaNFD.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -83,7 +84,7 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
     {
         var epoch = _pageEpoch;
         var result = await ViewModel.ApplyChangesAsync(ConfirmRebarAsync);
-        if (_active && epoch == _pageEpoch && result is { Success: false })
+        if (_active && epoch == _pageEpoch && result is { Success: false, IsPartial: false, OutcomeUnknown: false })
         {
             await ShowErrorAsync(result.Message);
         }
@@ -96,23 +97,43 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
         if (_active && epoch == _pageEpoch && result is { Success: false }) await ShowErrorAsync(result.Message);
     }
 
-    private async void DisplayContainer_Click(object sender, RoutedEventArgs e)
+    private async void DisplayContainer_Click(object sender, RoutedEventArgs e) =>
+        await ChangeNvContainerAsync(NvContainerTarget.Display);
+
+    private async void Telemetry_Click(object sender, RoutedEventArgs e) =>
+        await ChangeNvContainerAsync(NvContainerTarget.LegacyTelemetry);
+
+    private async void LocalSystemContainer_Click(object sender, RoutedEventArgs e) =>
+        await ChangeNvContainerAsync(NvContainerTarget.LocalSystem);
+
+    private async Task ChangeNvContainerAsync(NvContainerTarget target)
     {
         var epoch = _pageEpoch;
-        await ViewModel.ChangeDisplayContainerAsync(async restore =>
+        var (label, disableMessage) = target switch
+        {
+            NvContainerTarget.LegacyTelemetry => ("NVIDIA 遥测服务", "请先退出游戏。三角帧会备份原设置，再禁用并停止独立遥测服务。"),
+            NvContainerTarget.LocalSystem => (" NVIDIA LocalSystem Container", "请先退出游戏。三角帧会备份原设置，再禁用并停止整个共用容器。NVIDIA App 的更新检查或其他功能可能受到影响。重启后仍禁用，可在本页恢复。"),
+            _ => ("NVIDIA 显示容器", "将先备份当前设置，再禁用并正常停止显示容器。若存在冲突的旧备份，会先归档。重启后仍禁用，期间 NVIDIA 控制面板可能打不开。"),
+        };
+        async Task<bool> Confirm(bool restore)
         {
             if (!_active || epoch != _pageEpoch) return false;
             var dialog = new ContentDialog
             {
                 XamlRoot = XamlRoot,
-                Title = restore ? "恢复 NVIDIA 显示容器？" : "停用 NVIDIA 显示容器？",
-                Content = restore ? "将还原备份中的启动方式。若原来在运行，将尝试重新启动服务。"
-                    : "将先备份原设置，再禁用并正常停止显示容器；重启后仍禁用。期间 NVIDIA 控制面板可能打不开。可在这里恢复。",
+                Title = restore ? $"恢复{label}？" : $"停用{label}？",
+                Content = restore ? "将还原备份中的启动方式。若原来在运行，将尝试重新启动服务。" : disableMessage,
                 PrimaryButtonText = restore ? "恢复原设置" : "禁用并停止",
                 CloseButtonText = "取消",
                 DefaultButton = ContentDialogButton.Close,
             };
             return await dialog.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary && _active && epoch == _pageEpoch;
+        }
+        await (target switch
+        {
+            NvContainerTarget.LegacyTelemetry => ViewModel.ChangeTelemetryAsync(Confirm),
+            NvContainerTarget.LocalSystem => ViewModel.ChangeLocalSystemAsync(Confirm),
+            _ => ViewModel.ChangeDisplayContainerAsync(Confirm),
         });
     }
 
@@ -148,7 +169,7 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
             return;
 
         var result = await ViewModel.ResetAllAsync();
-        if (_active && epoch == _pageEpoch && result is { Success: false })
+        if (_active && epoch == _pageEpoch && result is { Success: false, IsPartial: false, OutcomeUnknown: false })
         {
             await ShowErrorAsync(result.Message);
         }
@@ -173,7 +194,7 @@ public sealed partial class NvSettingsPage : Page, INotifyPropertyChanged
             };
             return await confirm.ShowWithBackendRecoveryAsync() == ContentDialogResult.Primary;
         }, IsCurrent);
-        if (IsCurrent() && result is { Success: false }) await ShowErrorAsync(result.Message);
+        if (IsCurrent() && result is { Success: false, OutcomeUnknown: false }) await ShowErrorAsync(result.Message);
     }
 
     private async void LockButton_Click(object sender, RoutedEventArgs e)

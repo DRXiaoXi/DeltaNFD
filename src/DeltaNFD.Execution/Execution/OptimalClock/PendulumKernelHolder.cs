@@ -43,7 +43,7 @@ internal sealed class PendulumKernelHolder : IOptimalClockHolderApi
                 _device?.Dispose();
                 _device = CreateFile(@"\\.\DeltaNFDPendulumTimerV1", 0xc0000000, 0, IntPtr.Zero, 3, 0x80, IntPtr.Zero);
                 if (_device.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error(),
-                    "无法打开钟摆驱动。请先安装并启动随实验包提供、已完成签名的 DeltaNFDPendulumTimerV1 驱动。");
+                    "无法打开钟摆驱动。请先安装并启动已完成签名的 DeltaNFDPendulumTimerV1 驱动。");
             }
             var response = Exchange(SetCode, resolution100ns);
             if (response.Active != 1 || response.Requested100ns != resolution100ns || response.Granted100ns == 0)

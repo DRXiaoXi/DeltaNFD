@@ -3,9 +3,11 @@ using DeltaNFD;
 using DeltaNFD.Services;
 using DeltaNFD.Views;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Graphics;
 
 internal static class Program
 {
@@ -101,10 +103,90 @@ internal static class Program
             }
             SendMessage(hwnd, SysCommand, Minimize, 0);
             await Until(() => !clock.DisplayPolling && window.Bitmap is null, "pause before closing fixture");
+            await CheckWindowPlacement();
         }
         finally { window.Close(); }
         BackgroundManager.SetPicture(null);
         Check(!window.NativeHookInstalled && !window.IsUiPresented && BackgroundManager.ListenerCount == 0, "close detaches native hook and background listener");
+    }
+
+    private static async Task CheckWindowPlacement()
+    {
+        var primary = DisplayArea.Primary;
+        var work = primary.WorkArea;
+        work.X += primary.OuterBounds.X;
+        work.Y += primary.OuterBounds.Y;
+        var width = Math.Min(640, work.Width - 80);
+        var height = Math.Min(420, work.Height - 80);
+        var first = new MainWindowPlacement(work.X + 20, work.Y + 20, width, height, false);
+        var writes = new List<MainWindowPlacement>();
+        var window = new MainWindow(first, placement => { writes.Add(placement); return true; });
+        var bounds = new RectInt32(first.X + 28, first.Y + 25, first.Width + 12, first.Height + 9);
+        var moved = new MainWindowPlacement(bounds.X, bounds.Y, bounds.Width, bounds.Height, false);
+        try
+        {
+            Check(CurrentBounds(window).Equals(new RectInt32(first.X, first.Y, first.Width, first.Height)) && !window.IsUiPresented,
+                "normal bounds restored before showing");
+            window.ShowPlacement();
+            window.AppWindow.MoveAndResize(new RectInt32(bounds.X - 4, bounds.Y, bounds.Width, bounds.Height));
+            window.AppWindow.MoveAndResize(bounds);
+            await Until(() => writes.Count > 0, "moving and resizing schedules a write");
+            Check(writes.SequenceEqual([moved]), "rapid changes save the last size and position once");
+
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+            SendMessage(hwnd, SysCommand, Maximize, 0);
+            var maximized = moved with { Maximized = true };
+            await Until(() => writes.LastOrDefault() == maximized, "maximize preserves the normal rectangle");
+            SendMessage(hwnd, SysCommand, Minimize, 0);
+            Check(IsIconic(hwnd), "test window is minimized");
+            window.FlushWindowPlacement();
+            Check(writes.SequenceEqual([moved, maximized]), "minimized state does not overwrite last visible placement");
+
+            var serialized = System.Text.Json.JsonSerializer.Serialize(writes[^1]);
+            var saved = System.Text.Json.JsonSerializer.Deserialize<MainWindowPlacement>(serialized);
+            var reopenedWrites = new List<MainWindowPlacement>();
+            var reopened = new MainWindow(saved, placement => { reopenedWrites.Add(placement); return true; });
+            try
+            {
+                reopened.FlushWindowPlacement();
+                Check(!reopened.IsUiPresented && CurrentBounds(reopened).Equals(bounds),
+                    "a new hidden window restores normal bounds without showing maximized");
+                reopened.ShowPlacement();
+                var reopenedHwnd = WinRT.Interop.WindowNative.GetWindowHandle(reopened);
+                await Until(() => IsZoomed(reopenedHwnd), "opening again restores maximized mode");
+                reopened.FlushWindowPlacement();
+                Check(reopenedWrites.Count == 0, "hidden launch and showing an unchanged placement do not write settings");
+                SendMessage(reopenedHwnd, SysCommand, Restore, 0);
+                Check(CurrentBounds(reopened).Equals(bounds), "unmaximize returns to the remembered position and size");
+                reopened.FlushWindowPlacement();
+                Check(reopenedWrites.SequenceEqual([moved]), "restored normal mode is saved for the next launch");
+            }
+            finally { reopened.Close(); }
+        }
+        finally { window.Close(); }
+
+        var missingDisplay = new MainWindow(first with { X = 100000, Y = 100000 }, _ => true);
+        try
+        {
+            var expected = MainWindow.FitWindowBounds(new RectInt32(100000, 100000, width, height), work, center: true);
+            Check(CurrentBounds(missingDisplay).Equals(expected), "a disconnected monitor returns the window to the primary work area");
+        }
+        finally { missingDisplay.Close(); }
+        var leftMonitor = new RectInt32(-1280, 40, 1280, 760);
+        Check(MainWindow.FitWindowBounds(new RectInt32(-1150, 75, 700, 500), leftMonitor, center: false)
+            .Equals(new RectInt32(-1150, 75, 700, 500)), "negative monitor coordinates remain exact");
+        Check(MainWindow.FitWindowBounds(new RectInt32(-1400, -50, 1600, 900), leftMonitor, center: false)
+            .Equals(leftMonitor), "a smaller work area clamps the whole window within reach");
+        var rightMonitor = new RectInt32(1920, -200, 1600, 900);
+        Check(MainWindow.MoveWindowBoundsToDisplay(new RectInt32(-1150, 75, 700, 500), leftMonitor, rightMonitor)
+            .Equals(new RectInt32(2050, -165, 700, 500)), "moving a maximized window also moves its normal rectangle to the new monitor");
+    }
+
+    private static RectInt32 CurrentBounds(MainWindow window)
+    {
+        var position = window.AppWindow.Position;
+        var size = window.AppWindow.Size;
+        return new RectInt32(position.X, position.Y, size.Width, size.Height);
     }
 
     private static async Task Until(Func<bool> condition, string label)
@@ -142,12 +224,19 @@ namespace DeltaNFD
         private readonly Border BgDim = new();
         private readonly Frame ContentFrame = new();
 
-        internal MainWindow()
+        internal MainWindow(MainWindowPlacement? placement = null, Func<MainWindowPlacement, bool>? save = null)
         {
             Title = "DeltaNFD 隔离测试窗口";
             Content = new Grid { Children = { BgImage, BgDim, ContentFrame } };
-            AppWindow.Resize(new Windows.Graphics.SizeInt32(768, 480));
+            if (save is null) AppWindow.Resize(new Windows.Graphics.SizeInt32(768, 480));
+            else InitializeWindowPlacement(placement, save);
             InitializeWindowPresentation();
+        }
+
+        internal void ShowPlacement()
+        {
+            AppWindow.Show(activateWindow: false);
+            RestoreMaximizationWhenShown();
         }
 
         internal object Page { get => ContentFrame.Content; set => ContentFrame.Content = value; }

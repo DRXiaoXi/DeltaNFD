@@ -47,6 +47,17 @@ internal static class DisplayContainerReadyChecks
         }
         var nonGpu = Payload(BackendModules.System);
         Reject(nonGpu, "显示容器协议版本");
+        nonGpu[field] = NvDisplayContainerChange.FileBackupProtocolVersion;
+        check(BackendMessages.ParseReady(JsonSerializer.SerializeToElement(nonGpu)).NvDisplayContainerVersion
+            == NvDisplayContainerChange.FileBackupProtocolVersion, "system worker advertises independent file backup and recovery");
+        nonGpu[field] = NvDisplayContainerChange.TelemetryProtocolVersion;
+        check(BackendMessages.ParseReady(JsonSerializer.SerializeToElement(nonGpu)).NvDisplayContainerVersion
+            == NvDisplayContainerChange.TelemetryProtocolVersion, "system worker advertises independent telemetry service support");
+        nonGpu[field] = NvDisplayContainerChange.LocalSystemProtocolVersion;
+        check(BackendMessages.ParseReady(JsonSerializer.SerializeToElement(nonGpu)).NvDisplayContainerVersion
+            == NvDisplayContainerChange.LocalSystemProtocolVersion, "system worker advertises shared container support");
+        nonGpu[field] = NvDisplayContainerChange.LocalSystemProtocolVersion + 1;
+        Reject(nonGpu, "显示容器协议版本");
         nonGpu.Remove(field);
         var system = BackendMessages.ParseReady(JsonSerializer.SerializeToElement(nonGpu));
         check(system.Module == BackendModules.System && system.NvDisplayContainerVersion == 0,

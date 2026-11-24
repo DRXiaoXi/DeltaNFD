@@ -186,7 +186,8 @@ public partial class NvSettingsViewModel : ObservableObject
     public bool CanResetProfile => CanEditOptions && !DrsFilesLocked && !ServiceLocator.GameTarget.Current.IsCustom;
 
     private NvDisplayContainerStatus? _displayContainer;
-    public bool CanChangeDisplayContainer => CanRefresh && _displayContainer?.Fingerprint is not null;
+    public bool CanChangeDisplayContainer => CanRefresh && _displayContainer is { Fingerprint: not null } state
+        && (IsNvidia || state.Restore);
     public string DisplayContainerButton => _displayContainer?.Restore == true ? "恢复原设置" : "禁用并停止";
     public string DisplayContainerText => _displayContainer?.Detail ?? "尚未读取显示容器服务。";
     private string _displayContainerResult = "";
@@ -196,44 +197,116 @@ public partial class NvSettingsViewModel : ObservableObject
         private set => SetProperty(ref _displayContainerResult, value);
     }
 
-    private async Task RefreshDisplayContainerAsync()
+    private NvDisplayContainerStatus? _telemetry;
+    public bool CanChangeTelemetry => CanRefresh && _telemetry?.Fingerprint is not null;
+    public string TelemetryButton => _telemetry?.Restore == true ? "恢复原设置" : "禁用并停止";
+    public string TelemetryText => _telemetry?.Detail ?? "尚未检测 NVIDIA 遥测服务。";
+    private string _telemetryResult = "";
+    public string TelemetryResult
     {
-        NvDisplayContainerStatus state;
-        try { state = IsNvidia ? await _nv.ReadDisplayContainerAsync() : new("未检测到 NVIDIA 显卡。"); }
-        catch (Exception ex) { state = new("显示容器状态未确认：" + ex.Message); }
-        SetDisplayContainer(state);
+        get => _telemetryResult;
+        private set => SetProperty(ref _telemetryResult, value);
     }
 
-    private void SetDisplayContainer(NvDisplayContainerStatus state)
+    private NvDisplayContainerStatus? _localSystem;
+    public bool CanChangeLocalSystem => CanRefresh && _localSystem?.Fingerprint is not null;
+    public string LocalSystemButton => _localSystem?.Restore == true ? "恢复原设置" : "禁用并停止";
+    public string LocalSystemText => _localSystem?.Detail ?? "尚未检测 NVIDIA LocalSystem Container。";
+    private string _localSystemResult = "";
+    public string LocalSystemResult
     {
+        get => _localSystemResult;
+        private set => SetProperty(ref _localSystemResult, value);
+    }
+
+    private async Task RefreshContainerAsync(NvContainerTarget target)
+    {
+        NvDisplayContainerStatus state;
+        try
+        {
+            state = await (target switch
+            {
+                NvContainerTarget.LegacyTelemetry => _nv.ReadTelemetryAsync(),
+                NvContainerTarget.LocalSystem => _nv.ReadLocalSystemAsync(),
+                _ => _nv.ReadDisplayContainerAsync(),
+            });
+        }
+        catch (Exception ex) { state = new("服务状态未确认：" + ex.Message); }
+        SetContainerState(state, target);
+    }
+
+    private void SetContainerState(NvDisplayContainerStatus state, NvContainerTarget target)
+    {
+        if (target == NvContainerTarget.LocalSystem)
+        {
+            _localSystem = state;
+            OnPropertyChanged(nameof(LocalSystemText));
+            OnPropertyChanged(nameof(LocalSystemButton));
+            OnPropertyChanged(nameof(CanChangeLocalSystem));
+            return;
+        }
+        if (target == NvContainerTarget.LegacyTelemetry)
+        {
+            _telemetry = state;
+            OnPropertyChanged(nameof(TelemetryText));
+            OnPropertyChanged(nameof(TelemetryButton));
+            OnPropertyChanged(nameof(CanChangeTelemetry));
+            return;
+        }
         _displayContainer = state;
         OnPropertyChanged(nameof(DisplayContainerText));
         OnPropertyChanged(nameof(DisplayContainerButton));
         OnPropertyChanged(nameof(CanChangeDisplayContainer));
     }
 
-    public async Task ChangeDisplayContainerAsync(Func<bool, Task<bool>> confirm)
+    public Task ChangeDisplayContainerAsync(Func<bool, Task<bool>> confirm) => ChangeContainerAsync(confirm, NvContainerTarget.Display);
+    public Task ChangeTelemetryAsync(Func<bool, Task<bool>> confirm) => ChangeContainerAsync(confirm, NvContainerTarget.LegacyTelemetry);
+    public Task ChangeLocalSystemAsync(Func<bool, Task<bool>> confirm) => ChangeContainerAsync(confirm, NvContainerTarget.LocalSystem);
+
+    private async Task ChangeContainerAsync(Func<bool, Task<bool>> confirm, NvContainerTarget target)
     {
-        if (!CanChangeDisplayContainer || _displayContainer is not { Fingerprint: { } fingerprint } state) return;
+        var (canChange, status, label) = target switch
+        {
+            NvContainerTarget.LegacyTelemetry => (CanChangeTelemetry, _telemetry, "NVIDIA 遥测服务"),
+            NvContainerTarget.LocalSystem => (CanChangeLocalSystem, _localSystem, "NVIDIA LocalSystem Container"),
+            _ => (CanChangeDisplayContainer, _displayContainer, "NVIDIA 显示容器"),
+        };
+        if (!canChange || status is not { Fingerprint: { } fingerprint }) return;
+        void SetResult(string text)
+        {
+            switch (target)
+            {
+                case NvContainerTarget.LegacyTelemetry: TelemetryResult = text; break;
+                case NvContainerTarget.LocalSystem: LocalSystemResult = text; break;
+                default: DisplayContainerResult = text; break;
+            }
+        }
         IsApplying = true;
         bool submitted = false;
         try
         {
-            if (!await confirm(state.Restore)) return;
+            if (!await confirm(status.Restore)) return;
             submitted = true;
-            DisplayContainerResult = "正在处理显示容器服务…";
-            var result = await _nv.ChangeDisplayContainerAsync(new(state.Restore, fingerprint));
-            DisplayContainerResult = result.Message;
-            if (!result.Success) Log.Warn("NVIDIA 显示容器操作结果：" + result.Message);
+            SetResult($"正在处理{label}…");
+            var args = new NvDisplayContainerChange(status.Restore, fingerprint);
+            var result = await (target switch
+            {
+                NvContainerTarget.LegacyTelemetry => _nv.ChangeTelemetryAsync(args),
+                NvContainerTarget.LocalSystem => _nv.ChangeLocalSystemAsync(args),
+                _ => _nv.ChangeDisplayContainerAsync(args),
+            });
+            SetResult(result.Message);
+            if (!result.Success) Log.Warn(label + "操作结果：" + result.Message);
             if (result.OutcomeUnknown)
-                SetDisplayContainer(new("结果未确认。请在设置中完成后端只读核对，再刷新此页；不要删除原设置备份。"));
-            else await RefreshDisplayContainerAsync();
+                SetContainerState(new("结果未确认。请到设置页核对，若有可用备份，可直接恢复原设置。"), target);
+            else await RefreshContainerAsync(target);
         }
         catch (Exception ex)
         {
-            DisplayContainerResult = (submitted ? "操作未确认，请先刷新核对：" : "未提交操作：") + ex.Message;
-            Log.Warn("NVIDIA 显示容器：" + DisplayContainerResult);
-            if (submitted) SetDisplayContainer(new("状态未确认，请刷新。"));
+            var message = (submitted ? "操作未确认，请先刷新核对：" : "未提交操作：") + ex.Message;
+            SetResult(message);
+            Log.Warn(label + "：" + message);
+            if (submitted) SetContainerState(new("状态未确认。请到设置页查看待核对的操作，无记录时可刷新此页。"), target);
         }
         finally { IsApplying = false; }
     }
@@ -446,6 +519,8 @@ public partial class NvSettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(CanResetProfile));
         OnPropertyChanged(nameof(CanRefresh));
         OnPropertyChanged(nameof(CanChangeDisplayContainer));
+        OnPropertyChanged(nameof(CanChangeTelemetry));
+        OnPropertyChanged(nameof(CanChangeLocalSystem));
         OnPropertyChanged(nameof(CanEditDlssIndicator));
         OnPropertyChanged(nameof(CanSaveDlssIndicator));
     }
@@ -557,13 +632,20 @@ public partial class NvSettingsViewModel : ObservableObject
         _loadedRebar.Clear();
         try
         {
+            if (readIndicator)
+            {
+                DisplayContainerResult = "";
+                await RefreshContainerAsync(NvContainerTarget.Display);
+                TelemetryResult = "";
+                await RefreshContainerAsync(NvContainerTarget.LegacyTelemetry);
+                LocalSystemResult = "";
+                await RefreshContainerAsync(NvContainerTarget.LocalSystem);
+            }
             await LoadEnvironmentAsync();
             if (readIndicator)
             {
                 DlssIndicatorResultText = "";
                 await RefreshIndicatorAsync();
-                DisplayContainerResult = "";
-                await RefreshDisplayContainerAsync();
             }
             if (!EnvironmentReady)
             {
@@ -805,7 +887,7 @@ public partial class NvSettingsViewModel : ObservableObject
             StatusText = result.Message;
             return;
         }
-        if (result is { Success: true, IsPartial: false })
+        if (result.Success || result.IsPartial)
         {
             await LoadCoreAsync(readIndicator: false);
             StatusText = result.Message + (_gameSettingsReady ? RebarStatusNote() : "\n页面刷新未完成：" + StatusText);

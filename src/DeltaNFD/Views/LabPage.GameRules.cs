@@ -21,6 +21,7 @@ public sealed partial class LabPage
     private bool _gameRulesLoading;
     private bool _gameRuleSaveBusy;
     private bool _detachedFromWindow;
+    private readonly DispatcherTimer _gameRuleReadbackTimer = new() { Interval = TimeSpan.FromSeconds(2) };
 
     private async Task InitializeGameRulesAsync()
     {
@@ -56,6 +57,33 @@ public sealed partial class LabPage
         GameRuleStatusText.Text = "规则目标：" + _gameRulePath;
         GameRuleEditor.IsEnabled = true;
         LoadGameCapabilityRule();
+        RefreshGameRuleAffinityReadback();
+    }
+
+    private void RefreshGameRuleAffinityReadback()
+    {
+        var rule = _gameRules.FirstOrDefault(r => r.Capability == "affinity"
+            && r.ExecutablePath.Equals(_gameRulePath, StringComparison.OrdinalIgnoreCase));
+        GameRuleAffinityReadbackText.Visibility = rule is null ? Visibility.Collapsed : Visibility.Visible;
+        if (rule is null) return;
+
+        var backend = BackendProcmanService.Instance;
+        var status = backend.LatestStatus;
+        if (!rule.Enabled)
+            GameRuleAffinityReadbackText.Text = "CPU 亲和性规则已停用。";
+        else if (!backend.HasCurrentStatus || status is null)
+            GameRuleAffinityReadbackText.Text = "CPU 亲和性实际掩码待核对。";
+        else if (!status.RulesEngineRunning)
+            GameRuleAffinityReadbackText.Text = "等待规则监控启动后核对 CPU 亲和性。";
+        else
+        {
+            var readings = status.AffinityRuleReadbacks.Where(r => r.RuleValue == rule.Value
+                && r.ExecutablePath.Equals(_gameRulePath, StringComparison.OrdinalIgnoreCase)
+                && BackendProcmanService.IsFresh(r.ObservedUtc)).OrderBy(r => r.Pid).ToArray();
+            GameRuleAffinityReadbackText.Text = readings.Length == 0 ? "等待目标进程的 CPU 亲和性回读。"
+                : string.Join("\n", readings.Select(r => $"PID {r.Pid} · 目标 {rule.Value} · 实际 {r.ActualMask ?? "未读到"}"
+                    + (r.Confirmed ? " · 已确认" : $" · 核对未通过：{r.Error}")));
+        }
     }
 
     private void LoadGameCapabilityRule()
@@ -97,6 +125,7 @@ public sealed partial class LabPage
         var all = BackendJson.Deserialize<ProcmanRulesListResult>(data).Rules;
         // 只显示三角洲主进程规则；其他程序规则仍在进程管理中编辑
         _gameRules = all.Where(r => Path.GetFileName(r.ExecutablePath).Equals(DeltaProcessRules.ExecutableName, StringComparison.OrdinalIgnoreCase)).ToList();
+        RefreshGameRuleAffinityReadback();
         GameRuleListPanel.Children.Clear();
         GameRuleCountText.Text = _gameRules.Count == 0 ? "暂无三角洲规则" : $"共 {_gameRules.Count} 条三角洲规则";
         foreach (var rule in _gameRules)

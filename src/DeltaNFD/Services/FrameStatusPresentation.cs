@@ -27,6 +27,8 @@ internal static class FrameStatusPresentation
         if (!PendulumPrepared(snapshot, now, error)) return "";
         var clock = snapshot!.OptimalClock!;
         var target = $"{clock.SavedResolution100ns / 10000.0:0.0000} ms";
+        if (clock.UsesGameDefault && !clock.HasError && !clock.Holding && snapshot.FrameTimerIgnore.BackupCount == 0)
+            return "扫描最佳值 0.5000 ms · 沿用三角洲自身的计时器请求";
         if (!active) return $"已准备 · 对应精度 {target} · 等待开启帧格";
         if (clock.HasError || !clock.Holding) return "钟摆计划尚未生效：" + clock.Message;
         if (!snapshot.RulesEngineRunning || clock.UpdatedUtc == default || clock.UpdatedUtc > now.AddSeconds(2)
@@ -86,7 +88,7 @@ internal static class FrameStatusPresentation
             return WithReading(pending ? $"{targetName}定时器请求忽略状态恢复仍待核对；后端连接状态未知" : "进程管理后端状态待确认，未确认该功能生效");
         if (!pending && fresh && state is { Supported: false })
             return WithReading(state.ExperimentalWindows10
-                ? !selected ? "未启用（Win10 实验）" : state.PolicyAccepted == false ? state.Message : "Win10 实验：等待策略能力核验，未确认生效"
+                ? !selected ? "未启用（Windows 10）" : state.PolicyAccepted == false ? state.Message : "Windows 10 等待策略能力核验，未确认生效"
                 : selected ? "本系统未通过进程策略支持检查" : "未启用（本系统不支持该功能）");
         if (!pending && (!selected || !active)) return WithReading(selected ? "已选择 · 等待开启一键帧格模式" : "未启用");
         if (!fresh)

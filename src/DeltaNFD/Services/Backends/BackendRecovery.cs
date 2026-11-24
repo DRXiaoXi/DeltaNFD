@@ -10,31 +10,50 @@ namespace DeltaNFD.Services.Backends;
 /// </summary>
 internal static class BackendRecovery
 {
+    private const string DisplayContainerScope = NvDisplayContainerChange.RecoveryScope;
+
     internal static bool IsStartupOperation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.System
         && review.Command is BackendCommands.SystemStartupChange or BackendCommands.SystemStartupRestoreAll;
     internal static bool IsClockEnvironmentOperation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.System
         && review.Command == BackendCommands.SystemClockEnvironmentChange;
+    internal static bool IsDisplayInterruptOperation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.System
+        && review.Command == BackendCommands.SystemDisplayInterruptChange;
     internal static bool IsRuntimeFileReplacement(BackendUnconfirmedStore.Review review) =>
         review.Module == BackendModules.Runtime && review.Command == BackendCommands.Vc14ForceReplace;
     internal static string? NvSettingsReviewScope(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.Gpu
         ? review.Command switch
         {
             BackendCommands.GpuDlssIndicatorSet => "dlss-indicator",
-            BackendCommands.GpuNvDisplayContainerChange => "nv-display-container",
-            BackendCommands.GpuDriverApply or BackendCommands.GpuDriverRestore => "driver-settings",
+            BackendCommands.GpuNvDisplayContainerChange => DisplayContainerScope,
+            BackendCommands.GpuDriverApply or BackendCommands.GpuDriverRestore or BackendCommands.GpuDriverProfileReset => "driver-settings",
+            _ => null,
+        } : review.Module == BackendModules.System ? review.Command switch
+        {
+            BackendCommands.SystemNvDisplayContainerChange or BackendCommands.SystemNvDisplayContainerRecover => DisplayContainerScope,
+            BackendCommands.SystemNvTelemetryChange or BackendCommands.SystemNvTelemetryRecover => NvTelemetryContainer.RecoveryScope,
+            BackendCommands.SystemNvLocalSystemChange or BackendCommands.SystemNvLocalSystemRecover => NvLocalSystemContainer.RecoveryScope,
             _ => null,
         } : null;
+
+    internal static string? NvServiceReviewScope(BackendUnconfirmedStore.Review review)
+    {
+        var scope = NvSettingsReviewScope(review);
+        return scope is DisplayContainerScope or NvTelemetryContainer.RecoveryScope or NvLocalSystemContainer.RecoveryScope ? scope : null;
+    }
     private static bool IsNonSpoofGpuOperation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.Gpu &&
         (NvSettingsReviewScope(review) is not null || review.Command is BackendCommands.GpuDriverProfileReset
             or BackendCommands.GpuDriverLock or BackendCommands.GpuShaderCacheApply);
 
     internal static bool CanKeepCurrentState(BackendUnconfirmedStore.Review review, ReconcileSnapshot? snapshot) =>
-        review.CanAcknowledge && !IsRuntimeInstallation(review) && (NvSettingsReviewScope(review) == "nv-display-container"
-            ? snapshot is { Complete: true } && IsDisplayContainerSnapshot(snapshot)
-            : review.Module != BackendModules.Ace || snapshot is { Complete: true } && snapshot.Module == review.Module);
+        review.CanAcknowledge && !IsRuntimeInstallation(review) && (NvServiceReviewScope(review) is { } scope
+            ? snapshot is { Complete: true } && IsNvServiceSnapshot(snapshot, review.Module, scope)
+            : IsDisplayInterruptOperation(review)
+                ? snapshot is { Complete: true, Module: BackendModules.System,
+                    RecoveryScopes: [{ Id: DisplayInterruptPriorityPolicy.RecoveryScope }] }
+                : review.Module != BackendModules.Ace || snapshot is { Complete: true } && snapshot.Module == review.Module);
 
-    private static bool IsDisplayContainerSnapshot(ReconcileSnapshot snapshot) => snapshot.Module == BackendModules.Gpu
-        && snapshot.Items is [{ Id: "nv-display-container", Kind: "service" }];
+    private static bool IsNvServiceSnapshot(ReconcileSnapshot snapshot, string module, string scope) => snapshot.Module == module
+        && snapshot.Items is [{ Kind: "service" } item] && item.Id == scope;
     internal static bool IsRuntimeInstallation(BackendUnconfirmedStore.Review review) => review.Module == BackendModules.Runtime
         && review.Command is BackendCommands.RuntimeRepair or BackendCommands.RuntimeCompatibilityRepair
             or BackendCommands.RuntimeRedistUninstall or BackendCommands.RuntimeRedistUninstallAll or BackendCommands.Vc14Repair or BackendCommands.Vc14LegacyClean
@@ -57,12 +76,17 @@ internal static class BackendRecovery
         if (IsRuntimeFileReplacement(review)) return []; // Manual DLL restoration is not IFEO/UE4 guard recovery.
         if (module == BackendModules.Runtime && review.Command == BackendCommands.RuntimeFileUseClose) return [];
         if (module == BackendModules.Procman && review.Command == BackendCommands.ProcmanMemoryTrim) return [];
+        if (NvServiceReviewScope(review) is { } serviceScope)
+            return snapshot is { Complete: true, Items: [{ HasBackup: true }] } && IsNvServiceSnapshot(snapshot, module, serviceScope)
+                && snapshot.RecoveryScopes is [{ Available: true } choice] && choice.Id == serviceScope
+                && NvDisplayContainerChange.IsFingerprint(choice.Fingerprint) ? [choice] : [];
         // DRS/NGX changes cannot be reconciled by restoring a display-name spoof.
         if (IsNonSpoofGpuOperation(review)) return [];
         if (snapshot is null || !snapshot.Complete || snapshot.Module != module) return [];
         if (IsStartupOperation(review)) return snapshot.RecoveryScopes.Where(s => s.Available && s.Id == "startup").ToArray();
         if (BackendUnconfirmedStore.IsRetiredDriverPriorityOperation(review)) return [];
         if (IsClockEnvironmentOperation(review)) return snapshot.RecoveryScopes.Where(s => s.Available && s.Id == "clock-environment").ToArray();
+        if (IsDisplayInterruptOperation(review)) return snapshot.RecoveryScopes.Where(s => s.Available && s.Id == DisplayInterruptPriorityPolicy.RecoveryScope).ToArray();
         // Boot/trust preparation is not restored by unrelated tweak/startup scopes.
         if (review.Module == BackendModules.System && review.Command == BackendCommands.SystemPendulumDriverPrepare) return [];
         if (module == BackendModules.Runtime)
@@ -78,23 +102,32 @@ internal static class BackendRecovery
     {
         var command = BackendModules.ReconcileCommand(moduleId);
         if (command is null) return null;
-        if (moduleId == BackendModules.Gpu && scope == "nv-display-container")
+        if (moduleId == BackendModules.System && scope is NvTelemetryContainer.RecoveryScope or NvLocalSystemContainer.RecoveryScope)
+        {
+            var reconcile = scope == NvTelemetryContainer.RecoveryScope
+                ? BackendCommands.SystemNvTelemetryReconcile : BackendCommands.SystemNvLocalSystemReconcile;
+            var snapshot = await ReadSnapshotAsync(moduleId, reconcile, new { }, cancellationToken);
+            if (!IsNvServiceSnapshot(snapshot, moduleId, scope))
+                throw new InvalidDataException("后端返回了不匹配的 NVIDIA 服务核对范围。");
+            return snapshot;
+        }
+        if (scope == DisplayContainerScope && moduleId is BackendModules.Gpu or BackendModules.System)
         {
             try
             {
                 var independent = await ReadSnapshotAsync(BackendModules.System,
-                    BackendCommands.SystemNvDisplayContainerReconcile, new { }, cancellationToken);
-                ValidateDisplayContainerSnapshot(independent);
+                    BackendCommands.SystemNvDisplayContainerReconcile, new NvDisplayContainerReviewArgs(moduleId), cancellationToken);
+                ValidateDisplayContainerSnapshot(independent, moduleId);
                 Log.Info($"显示容器已通过系统维护后端完成独立只读读取；状态已确认={independent.Complete}。");
                 return independent;
             }
-            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            catch (Exception ex) when (moduleId == BackendModules.Gpu && !cancellationToken.IsCancellationRequested)
             {
                 Log.Warn("显示容器独立核对不可用，尝试显卡后端只读核对：" + ex.Message);
                 try
                 {
                     var fallback = await ReadSnapshotAsync(moduleId, command, new RecoverArgs { Scope = scope }, cancellationToken);
-                    ValidateDisplayContainerSnapshot(fallback);
+                    ValidateDisplayContainerSnapshot(fallback, moduleId);
                     return fallback;
                 }
                 catch (Exception fallback) when (!cancellationToken.IsCancellationRequested)
@@ -106,9 +139,9 @@ internal static class BackendRecovery
         return await ReadSnapshotAsync(moduleId, command, new RecoverArgs { Scope = scope ?? "" }, cancellationToken);
     }
 
-    private static void ValidateDisplayContainerSnapshot(ReconcileSnapshot snapshot)
+    private static void ValidateDisplayContainerSnapshot(ReconcileSnapshot snapshot, string module)
     {
-        if (!IsDisplayContainerSnapshot(snapshot))
+        if (!IsNvServiceSnapshot(snapshot, module, DisplayContainerScope))
             throw new InvalidDataException("后端返回了不匹配的显示容器核对范围。");
     }
 
@@ -132,9 +165,10 @@ internal static class BackendRecovery
     /// 复核失败或执行失败一律保留阻塞，玩家可重试。
     /// </summary>
     public static async Task<RecoverOutcome> RestoreAsync(BackendUnconfirmedStore.Review review, string scope,
-        CancellationToken cancellationToken = default, IReadOnlyList<FrameIncompletePowerBackup>? confirmedPower = null)
+        CancellationToken cancellationToken = default, IReadOnlyList<FrameIncompletePowerBackup>? confirmedPower = null,
+        ReconcileSnapshot? reviewedSnapshot = null)
     {
-        if (IsNonSpoofGpuOperation(review))
+        if (IsNonSpoofGpuOperation(review) && NvServiceReviewScope(review) is null)
             throw new InvalidOperationException("此 NVIDIA 设置操作不能通过显卡型号备份恢复，请核对实际状态。");
         if (IsRuntimeFileReplacement(review))
             throw new InvalidOperationException("系统 DLL 替换不能使用运行库防护恢复。请按强制替换备份目录中的 restore.ps1/README 手动恢复并核对文件，再确认保留当前状态；旧记录保留。");
@@ -146,25 +180,43 @@ internal static class BackendRecovery
             throw new InvalidOperationException("本版本已移除驱动优先级恢复。请用原版本与原始备份恢复设备中断设置。");
         if (IsClockEnvironmentOperation(review) && scope != "clock-environment")
             throw new InvalidOperationException("计时源操作只能按计时源与 HPET 原始备份核对恢复。");
+        if (IsDisplayInterruptOperation(review) && scope != DisplayInterruptPriorityPolicy.RecoveryScope)
+            throw new InvalidOperationException("显卡中断操作仅可按显卡中断优先级备份恢复。");
         var current = BackendUnconfirmedStore.ReviewAll().SingleOrDefault(r => r.Module == review.Module);
         if (current is null || current.Fingerprint != review.Fingerprint || !current.CanRestore)
             throw new InvalidOperationException("记录已变化或原后端、子进程尚未确认退出，请重新核对。");
-        if (IsNonSpoofGpuOperation(current))
+        var nvServiceScope = NvServiceReviewScope(current);
+        NvDisplayContainerRecoveryArgs? nvServiceArgs = null;
+        if (nvServiceScope is not null)
+        {
+            if (scope != nvServiceScope || RecoveryChoices(current, reviewedSnapshot) is not [{ Fingerprint: { } fingerprint }])
+                throw new InvalidOperationException("请先核对并确认对应 NVIDIA 服务的可恢复备份。");
+            if (current.Module != BackendModules.System && BackendUnconfirmedStore.PendingModules().Contains(BackendModules.System))
+                throw new InvalidOperationException("请先处理系统维护后端的待核对记录，再恢复显示容器。");
+            nvServiceArgs = new NvDisplayContainerRecoveryArgs(current.Module, fingerprint);
+        }
+        if (nvServiceScope is null && IsNonSpoofGpuOperation(current))
             throw new InvalidOperationException("此 NVIDIA 设置操作不能通过显卡型号备份恢复，请核对实际状态。");
         if (review.Module == BackendModules.CpuFrame && (scope != "all" || !CanRestoreCpuRecord(review.Command)))
             throw new InvalidOperationException("该 CPU/帧格记录需要对应的可信完整恢复路径。单个子范围、不可回滚操作或缺少命令的旧记录不能自动解除阻塞，请人工核对。");
         if (review.Module == BackendModules.Runtime && !(IsRuntimeInstallation(review) ? IsRuntimeInstallationScope(scope) : scope == "guard"))
             throw new InvalidOperationException("运行库安装记录必须核对事务结束；防护记录必须按备份恢复，不能混用解除路径。");
-        var command = BackendModules.RecoverCommand(review.Module)
-                      ?? throw new InvalidOperationException($"模块 {review.Module} 没有可信备份恢复路径。");
+        var command = nvServiceScope switch
+        {
+            DisplayContainerScope => BackendCommands.SystemNvDisplayContainerRecover,
+            NvTelemetryContainer.RecoveryScope => BackendCommands.SystemNvTelemetryRecover,
+            NvLocalSystemContainer.RecoveryScope => BackendCommands.SystemNvLocalSystemRecover,
+            _ => BackendModules.RecoverCommand(review.Module)
+                ?? throw new InvalidOperationException($"模块 {review.Module} 没有可信备份恢复路径。"),
+        };
         if (confirmedPower is not null && (review.Module != BackendModules.CpuFrame || scope != "all" || confirmedPower.Count is < 1 or > 3))
             throw new InvalidOperationException("电源记录确认范围无效，未处理。");
-        var caller = new BackendCaller(review.Module);
+        var caller = new BackendCaller(nvServiceScope is not null ? BackendModules.System : review.Module);
         RecoverOutcome outcome;
         try
         {
-            object args = confirmedPower is null ? new RecoverArgs { Scope = scope }
-                : new { Scope = "power-preserve", Confirmed = confirmedPower };
+            object args = (object?)nvServiceArgs ?? (confirmedPower is null ? (object)new RecoverArgs { Scope = scope }
+                : new { Scope = "power-preserve", Confirmed = confirmedPower });
             var result = await caller.InvokeReconcileAsync(command, args, null, cancellationToken);
             outcome = BackendResults.RequireData<RecoverOutcome>(result, "按可信备份恢复");
         }
@@ -176,8 +228,11 @@ internal static class BackendRecovery
         var checkpoint = review.Module == BackendModules.Runtime && scope == "repair-restart-checkpoint";
         var verified = !checkpoint && outcome.Success && outcome.Verified && outcome.Scope == scope
             && outcome.VerifiedSnapshot is { Complete: true } snapshot && snapshot.Module == review.Module
+            && (nvServiceScope is null || IsNvServiceSnapshot(snapshot, review.Module, nvServiceScope) && snapshot.Items is [{ HasBackup: false }]
+                && snapshot.RecoveryScopes.Count == 0)
             && (!IsStartupOperation(review) || snapshot.RecoveryScopes.Any(s => s.Id == "startup" && !s.Available && s.AffectedCount == 0))
             && (!IsClockEnvironmentOperation(review) || snapshot.RecoveryScopes.Any(s => s.Id == "clock-environment" && !s.Available && s.AffectedCount == 0))
+            && (!IsDisplayInterruptOperation(review) || snapshot.RecoveryScopes is [{ Id: DisplayInterruptPriorityPolicy.RecoveryScope, Available: false, AffectedCount: 0 }])
             && (review.Module != BackendModules.CpuFrame || !snapshot.RecoveryScopes.Any(s => s.Available));
         if (verified)
         {

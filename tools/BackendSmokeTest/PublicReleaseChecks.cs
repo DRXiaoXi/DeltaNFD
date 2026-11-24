@@ -27,6 +27,8 @@ internal static class PublicReleaseChecks
             return;
         }
         Check(ReleaseFeaturePolicy.PendulumEnabled && ReleaseFeaturePolicy.FrameTimerIgnoreEnabled, "Pendulum and frame timer-ignore restored");
+        if (typeof(ReleaseFeaturePolicy).Assembly.GetName().Version is { Major: 0, Minor: 9500 })
+            Check(ReleaseFeaturePolicy.DisplayInterruptPriorityEnabled, "Beta0.95 retains display interrupt priority in both channels");
         Check(!new AppSettings().FrameGameTimerIgnoreEnabled, "Restored option is off for new configurations");
         Check(!new AppSettings().FrameGamePriorityEnabled, "New configuration leaves game priority off");
         Check(!JsonSerializer.Deserialize<AppSettings>("{}")!.FrameGamePriorityEnabled, "Missing legacy field leaves priority off");

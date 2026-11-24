@@ -44,6 +44,7 @@ public sealed partial class ProcmanEngine : IDisposable
     private CancellationTokenSource? _rulesCts;
     private Task? _rulesLoop;
     private bool _rulesEngineRunning;
+    private IReadOnlyList<ProcmanAffinityRuleReadback> _affinityRuleReadbacks = [];
     private string _lastAction = "";
     private string _lastError = "";
     /// <summary>本系统不支持的能力规则只提示一次，避免每 tick 刷错误（规则仍保留，不自动删除）。</summary>
@@ -75,7 +76,7 @@ public sealed partial class ProcmanEngine : IDisposable
         _frameTimerIgnore = new(Path.Combine(Path.GetDirectoryName(logPath)!, "frame-game-timer-ignore.json"), _properties, timerIgnoreApi, timerProbe,
             accept: IsSelectedFrameTarget, label: "目标游戏", customScope: FrameCustomBackupPath);
         _timerIgnoreList = new(Path.Combine(Path.GetDirectoryName(logPath)!, "timer-ignore-list.json"), _properties, timerIgnoreApi, timerProbe,
-            accept: IsTimerIgnoreListTarget, validate: IsTimerIgnoreListIdentityAllowed,
+            accept: IsActiveTimerIgnoreTarget, validate: IsTimerIgnoreListIdentityAllowed,
             capability: "timer-ignore-list", label: "忽略列表");
         var executable = Environment.ProcessPath ?? "";
         _pendulumLog = new(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(logPath))!, "logs"));
@@ -103,6 +104,7 @@ public sealed partial class ProcmanEngine : IDisposable
         BackendPid = Environment.ProcessId,
         BackendPriorityClass = ReadOwnPriority(),
         RulesEngineRunning = _rulesEngineRunning,
+        AffinityRuleReadbacks = Volatile.Read(ref _affinityRuleReadbacks),
         ResponsivenessEnabled = false, // Legacy wire fields: suppression has been retired.
         ResponsivenessConfig = null,
         HeldChangeCount = _changeLog.Records.Count + _framePriority.Snapshot.BackupCount + NvidiaGpuShareHeldCount + _frameTimerIgnore.Snapshot.BackupCount + _timerIgnoreList.Snapshot.BackupCount,
@@ -588,7 +590,7 @@ public sealed partial class ProcmanEngine : IDisposable
         catch (Exception ex) { return ProcmanCapabilityResult.Failure("恢复 GPU 首选项失败：" + ex.Message); }
     }
 
-    private ProcmanCapabilityOutcome RestoreRecord(ProcmanChangeLog.ChangeRecord record, ProcmanProcessIdentity identity)
+    private ProcmanCapabilityOutcome RestoreRecord(ProcmanChangeLog.ChangeRecord record, ProcmanProcessIdentity identity, bool releaseExternalPriority = false)
     {
         if (record.Capability == CapabilityGpuPreference) return RestorePersistentGpu(record);
         using var pin = ProcmanCapabilities.Pin(identity);
@@ -617,6 +619,28 @@ public sealed partial class ProcmanEngine : IDisposable
         if (!MatchesRecordedValue(record.Capability, current.Value, record.OriginalValue)
             && !MatchesRecordedValue(record.Capability, current.Value, appliedDisplay))
         {
+            if (releaseExternalPriority && record.Capability == CapabilityPriority
+                && (property.Owner == "system" || property.Owner == record.Owner)
+                && current.Value is { } observed && IsExternalPriority(record, observed))
+            {
+                try
+                {
+                    if (_changeLog.ArchivePriorityConflict(record, observed, () =>
+                    {
+                        if (property.Owner != "system") property.SetOwner(null);
+                    }))
+                    {
+                        _coordinator.Release(record.Pid, record.StartTimeUtcTicks, record.ExecutablePath, record.Capability);
+                        Log.Info($"进程管理：PID {record.Pid} 的 CPU 优先级已变为 {observed}，保留该值并归档旧记录。");
+                        return Outcome(record.Capability, "preserved", "已保留当前 CPU 优先级 " + observed + "，旧记录已归档。");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SetError($"PID {record.Pid} 的 CPU 优先级冲突无法归档：{ex.Message}");
+                    return Outcome(record.Capability, "failed", "无法归档优先级冲突，恢复记录保留。", requiresReview: true);
+                }
+            }
             SetError($"PID {record.Pid} {record.Capability} 当前值（{current.Value}）与记录（{appliedDisplay}）不一致，疑似外部修改，保留冲突记录。");
             return Outcome(record.Capability, "conflict", $"当前值已被外部修改为 {current.Value}（记录为 {appliedDisplay}），未覆盖，请人工核对。");
         }
@@ -648,6 +672,19 @@ public sealed partial class ProcmanEngine : IDisposable
         return Outcome(record.Capability, "restored", "已还原为 " + record.OriginalValue);
     }
 
+    private static bool IsExternalPriority(ProcmanChangeLog.ChangeRecord record, string observed)
+    {
+        for (var entry = record; entry is not null; entry = entry.Parent)
+        {
+            if (entry.Key != record.Key || !Enum.TryParse<ProcessPriorityClass>(entry.OriginalValue, out var original)
+                || !Enum.IsDefined(original) || !Enum.TryParse<ProcessPriorityClass>(entry.AppliedValue, out var applied)
+                || !Enum.IsDefined(applied) || MatchesRecordedValue(CapabilityPriority, observed, original.ToString())
+                || MatchesRecordedValue(CapabilityPriority, observed, applied.ToString()))
+                return false;
+        }
+        return true;
+    }
+
     /// <summary>释放接管：同 Reset（恢复原值 + 移除记录 + 释放租约）；P2 在此之上交还外部控制方。</summary>
     public ProcmanSetResult Release(ProcmanReleaseArgs args) =>
         Reset(new ProcmanResetArgs { Identity = args.Identity, Capabilities = args.Capabilities });
@@ -658,7 +695,7 @@ public sealed partial class ProcmanEngine : IDisposable
         await StopRulesEngineAsync();
         _automaticMemoryActive = false;
         var records = _changeLog.Records.ToArray();
-        var restored = 0; var missing = 0; var failed = 0; var conflict = 0;
+        var restored = 0; var missing = 0; var failed = 0; var conflict = 0; var preserved = 0;
         foreach (var record in records)
         {
             var identity = new ProcmanProcessIdentity(record.Pid, new DateTime(record.StartTimeUtcTicks, DateTimeKind.Utc), record.ExecutablePath);
@@ -672,15 +709,17 @@ public sealed partial class ProcmanEngine : IDisposable
                 missing++;
                 continue;
             }
-            var outcome = RestoreRecord(record, identity);
+            var outcome = RestoreRecord(record, identity, releaseExternalPriority: true);
             while (outcome.Status == "restored" && _changeLog.Find(record.Pid, record.StartTimeUtcTicks, record.ExecutablePath, record.Capability) is { } parent)
-                outcome = RestoreRecord(parent, identity);
+                outcome = RestoreRecord(parent, identity, releaseExternalPriority: true);
             if (outcome.Status == "restored") restored++;
+            else if (outcome.Status == "preserved") preserved++;
             else if (outcome.Status == "conflict") conflict++;
             else failed++;
         }
         await Task.CompletedTask;
         var message = $"通用进程控制还原完成：成功 {restored}，进程已退出 {missing}，冲突 {conflict}，失败 {failed}。";
+        if (preserved > 0) message += $"保留 {preserved} 项已变更的 CPU 优先级，旧记录已归档。";
         var frameRestored = RestoreFramePriorities();
         var timerIgnoreRestored = RestoreFrameTimerIgnore();
         timerIgnoreRestored &= RestoreTimerIgnoreList("全部还原：忽略列表的定时器请求已恢复");
@@ -788,6 +827,7 @@ public sealed partial class ProcmanEngine : IDisposable
             _rulesCts = null;
             _rulesLoop = null;
             _rulesEngineRunning = false;
+            Volatile.Write(ref _affinityRuleReadbacks, []);
             _frozen = true;
             Interlocked.Increment(ref _memoryRevision);
             _memoryStopping++;
@@ -858,7 +898,12 @@ public sealed partial class ProcmanEngine : IDisposable
     private async Task RulesTickCoreAsync(CancellationToken token)
     {
         var rules = _rules.EnabledRules();
-        if (rules.Count == 0) return;
+        if (rules.Count == 0)
+        {
+            Volatile.Write(ref _affinityRuleReadbacks, []);
+            return;
+        }
+        var affinityReadbacks = new List<ProcmanAffinityRuleReadback>();
 
         var byPath = rules.GroupBy(r => r.ExecutablePath, StringComparer.OrdinalIgnoreCase).ToList();
         var snapshot = Process.GetProcesses();
@@ -892,6 +937,13 @@ public sealed partial class ProcmanEngine : IDisposable
                             }
                             // 已由手动/其他规则持有的属性不重复写入（手动设置优先于规则）。
                             var existing = held.FirstOrDefault(h => h.Capability == rule.Capability);
+                            if (rule.Capability == CapabilityAffinity)
+                            {
+                                if (existing?.Owner == "responsiveness" && RestoreRecord(existing, identity).Status == "restored")
+                                    existing = null;
+                                affinityReadbacks.Add(MaintainAffinityRule(identity, rule, existing));
+                                continue;
+                            }
                             if (existing is not null)
                             {
                                 if (existing.Owner != "responsiveness" || RestoreRecord(existing, identity).Status != "restored") continue;
@@ -914,6 +966,7 @@ public sealed partial class ProcmanEngine : IDisposable
         {
             foreach (var process in snapshot) process.Dispose();
         }
+        Volatile.Write(ref _affinityRuleReadbacks, affinityReadbacks);
         await Task.CompletedTask;
     }
 
@@ -946,7 +999,7 @@ public sealed partial class ProcmanEngine : IDisposable
                 () => ProcmanCapabilities.SetMemoryPriority(identity.Pid, int.Parse(rule.Value)), value => ProcmanCapabilities.SetMemoryPriority(identity.Pid, int.Parse(value))),
             CapabilityGpuPriority => ApplySimpleRule(identity, rule, ProcmanCapabilities.ReadGpuPriority(identity.Pid),
                 () => ProcmanCapabilities.SetGpuPriority(identity.Pid, int.Parse(rule.Value)), value => ProcmanCapabilities.SetGpuPriority(identity.Pid, int.Parse(value))),
-            CapabilityAffinity or CapabilityCpuSet => ApplyRuleMasks(identity, rule),
+            CapabilityCpuSet => ApplyRuleCpuSets(identity, rule),
             _ => ProcmanCapabilityOutcome0("rejected", "规则值不合法或能力未开放：" + rule.Value),
         };
         _ = outcome;
@@ -1000,23 +1053,62 @@ public sealed partial class ProcmanEngine : IDisposable
         return new() { Status = ok ? "applied" : "failed", Capability = CapabilityPriority, ActualValue = priority.ToString() };
     }
 
-    private ProcmanCapabilityOutcome ApplyRuleMasks(ProcmanProcessIdentity identity, ProcmanRuleEntry rule)
+    private ProcmanCapabilityOutcome ApplyRuleCpuSets(ProcmanProcessIdentity identity, ProcmanRuleEntry rule)
     {
         // 防御性复核：UI/旧规则文件可能绕过保存校验；不支持时如实拒绝而不是抛异常。
-        if (rule.Capability == CapabilityCpuSet && !ProcmanCapabilities.CpuSetMasksSupported)
+        if (!ProcmanCapabilities.CpuSetMasksSupported)
             return new() { Status = "rejected", Message = "本系统不支持 CPU 集合组掩码（需要 Windows 11 / Server 2022 及以上）。", Capability = rule.Capability };
         // 规则值保存逻辑处理器描述（g{group}:0x{mask};…），空 = 清除。
         var masks = ParseGroupMasks(rule.Value);
         if (rule.Value.Length > 0 && masks.Count == 0)
             return new() { Status = "rejected", Message = "规则掩码格式不合法：" + rule.Value, Capability = rule.Capability };
-        var read = rule.Capability == CapabilityAffinity ? ProcmanCapabilities.ReadAffinity(identity.Pid) : ProcmanCapabilities.ReadCpuSet(identity.Pid);
+        var read = ProcmanCapabilities.ReadCpuSet(identity.Pid);
         if (!read.Ok) return new() { Status = "failed", Message = read.Error, Capability = rule.Capability };
-        var ok = rule.Capability == CapabilityAffinity
-            ? ApplyRuleCommon(identity, rule, ProcmanTopology.Describe(masks), read.Value!, () => ProcmanCapabilities.SetAffinity(identity.Pid, masks),
-                () => RestoreByOriginalAffinity(identity.Pid, read.Value!))
-            : ApplyRuleCommon(identity, rule, masks.Count == 0 ? "(系统默认)" : ProcmanTopology.Describe(masks), read.Value!, () => ProcmanCapabilities.SetCpuSet(identity.Pid, masks),
-                () => RestoreByOriginalCpuSet(identity.Pid, read.Value!));
+        var ok = ApplyRuleCommon(identity, rule, masks.Count == 0 ? "(系统默认)" : ProcmanTopology.Describe(masks), read.Value!,
+            () => ProcmanCapabilities.SetCpuSet(identity.Pid, masks), () => RestoreByOriginalCpuSet(identity.Pid, read.Value!));
         return new() { Status = ok ? "applied" : "failed", Capability = rule.Capability };
+    }
+
+    private ProcmanAffinityRuleReadback MaintainAffinityRule(ProcmanProcessIdentity identity, ProcmanRuleEntry rule,
+        ProcmanChangeLog.ChangeRecord? existing)
+    {
+        ProcmanAffinityRuleReadback Report(ProcmanCapabilityResult result) =>
+            new(identity.Pid, identity.ExecutablePath, rule.Value, result.Value, result.Ok, result.Error, DateTimeOffset.UtcNow);
+
+        if (ParseGroupMasks(rule.Value) is not [var target])
+            return Report(ProcmanCapabilityResult.Failure("硬亲和性要求一个有效的处理器组掩码。"));
+        var desired = $"g{target.Group}:0x{target.Mask:X}";
+        var owner = ProcmanControlCoordinator.PrefixRule + Path.GetFileName(rule.ExecutablePath);
+        try
+        {
+            using var property = _properties.Enter(identity, CapabilityAffinity);
+            using var pin = ProcmanCapabilities.PinAffinity(identity);
+            var current = ProcmanCapabilities.ReadAffinity(identity.Pid);
+            if (!current.Ok) return Report(current);
+            if (existing is not null)
+            {
+                if (existing.Owner != owner || property.Owner != owner || existing.AppliedValue != desired)
+                    return Report(new(false, current.Value, "现有亲和性归属或记录与本规则不一致。"));
+            }
+            else
+            {
+                if (property.Owner != "system" && !((property.Owner is "game" or "frame-priority") && rule.AutoTakeover))
+                    return Report(new(false, current.Value, "亲和性由其他操作接管。"));
+                if (current.Value == desired) return Report(current);
+                if (!current.Value!.StartsWith($"g{target.Group}:", StringComparison.Ordinal))
+                    return Report(new(false, current.Value, "目标处理器组与进程当前组不同。"));
+
+                _changeLog.Add(new(identity.Pid, identity.StartTimeUtcTicks, identity.ExecutablePath,
+                    CapabilityAffinity, current.Value!, desired, owner, DateTimeOffset.UtcNow));
+                property.SetOwner(owner);
+            }
+            return Report(ProcmanCapabilities.SetAffinityFromCurrent(identity.Pid, target, current));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
+            or System.ComponentModel.Win32Exception or ArgumentException)
+        {
+            return Report(ProcmanCapabilityResult.Failure(ex.Message));
+        }
     }
 
     private ProcmanCapabilityOutcome WrapRuleOutcome(ProcmanProcessIdentity identity, ProcmanRuleEntry rule, ProcmanCapabilityResult result)

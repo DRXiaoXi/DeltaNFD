@@ -52,6 +52,7 @@ public sealed class CpuFrameEngine : IDisposable
     private bool _priorityEnabled;
     private int _priorityAppliedCount;
     private ulong _affinityMask;
+    private string _affinityRuleStatus = "";
     private readonly DwmWatchdog _dwm;
     private bool _tempOptimizationApplied;
     private bool _powerLockActive;
@@ -195,8 +196,7 @@ public sealed class CpuFrameEngine : IDisposable
 
         // ② 硬亲和性规则（调度改善；仅目标游戏进程，持续保持）
         _affinityMask = settings.GameAffinityRuleEnabled ? settings.GameAffinityRuleMask : 0UL;
-        if (_affinityMask != 0) CpuTopologyService.ApplyAffinityRuleTick(_affinityMask);
-        else CpuTopologyService.RestoreAffinityRule();
+        _affinityRuleStatus = CpuTopologyService.ApplyAffinityRuleTick(_affinityMask).Message;
 
         // ③ 单/双 CCD 调度已迁到进程管理后端；亲和性规则按共享设置自动让位。
 
@@ -386,19 +386,13 @@ public sealed class CpuFrameEngine : IDisposable
 
     // ---------------- CPU 调度（亲和性 / CCD / 单 CCD） ----------------
 
-    public async Task<OperationResult> ApplyAffinityAsync(ulong mask)
+    public Task<OperationResult> ApplyAffinityAsync(ulong mask)
     {
         _affinityMask = mask;
-        if (mask == 0)
-        {
-            CpuTopologyService.RestoreAffinityRule();
-            SetAction("CPU 亲和性规则已解除，目标游戏恢复默认亲和性。");
-            return OperationResult.Ok("CPU 亲和性规则已解除。");
-        }
-        CpuTopologyService.ApplyAffinityRuleTick(mask);
-        SetAction($"CPU 亲和性规则已应用（掩码 0x{mask:X}）。");
-        await Task.CompletedTask;
-        return OperationResult.Ok($"CPU 亲和性规则已应用（掩码 0x{mask:X}）。");
+        var result = CpuTopologyService.ApplyAffinityRuleTick(mask);
+        _affinityRuleStatus = result.Message;
+        SetAction(result.Message);
+        return Task.FromResult(result);
     }
 
     /// <summary>只读：能否安全地按原值还原亲和性（供脱机切换在写入前复核归属）。</summary>
@@ -837,7 +831,7 @@ public sealed class CpuFrameEngine : IDisposable
         {
             new() { Id = "monitor", Kind = "cpuframe", State = _monitorRunning ? "运行中" : "已停止", Detail = _lastAction },
             new() { Id = "priority", Kind = "cpuframe", State = _priorityEnabled ? $"已生效（High，{_priorityAppliedCount} 个实例）" : "未生效", HasBackup = _priorityOriginals.Count > 0 },
-            new() { Id = "affinity", Kind = "cpuframe", State = _affinityMask != 0 ? $"已生效（0x{_affinityMask:X}）" : "未生效", HasBackup = CpuTopologyService.HasAffinityRuleRestorePending },
+            new() { Id = "affinity", Kind = "cpuframe", State = _affinityMask != 0 ? _affinityRuleStatus : "未启用", HasBackup = CpuTopologyService.HasAffinityRuleRestorePending },
             new() { Id = "game-power", Kind = "cpuframe", State = _gamePower.Status, HasBackup = _gamePower.PendingCount > 0 },
             new() { Id = "tweaks", Kind = "cpuframe", State = _tempOptimizationApplied ? "临时优化已应用" : "未应用", HasBackup = FrameTweaksService.IsForegroundBoostApplied() || FrameTweaksService.IsPowerSaveLatencyApplied() },
             new() { Id = "power", Kind = "cpuframe", State = _powerLockActive ? $"电源锁定中（{_powerLockedGuid}）" : "未锁定", HasBackup = _tweaks.HasPowerSchemeContentSnapshot || AppSettingsStore.Read().FramePowerRestorePending },

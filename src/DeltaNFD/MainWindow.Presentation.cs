@@ -28,6 +28,7 @@ public sealed partial class MainWindow
         AppWindow.Changed += AppWindow_PresentationChanged;
         Closed += (_, _) =>
         {
+            CancelTrayWorkingSetTrim();
             _presentationWindow = 0;
             _presentationHook?.Dispose();
             _presentationHook = null;

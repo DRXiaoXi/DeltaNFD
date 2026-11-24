@@ -18,7 +18,7 @@ internal static class BackendHandoverChecks
 {
     private static int _passed;
 
-    public static async Task RunAsync(bool deploymentOnly = false)
+    public static async Task RunAsync(bool deploymentOnly = false, bool displayContainerOnly = false)
     {
         _passed = 0;
         var testId = Guid.NewGuid();
@@ -40,6 +40,15 @@ internal static class BackendHandoverChecks
             fixture.Install(BackendModules.CpuFrame);
             fixture.Install(BackendModules.System);
 
+            if (displayContainerOnly)
+            {
+                await CrashedGpuUsesIndependentReviewAsync();
+                await SystemNvServiceUsesIndependentRecoveryAsync(NvContainerTarget.Display);
+                await SystemNvServiceUsesIndependentRecoveryAsync(NvContainerTarget.LegacyTelemetry);
+                await SystemNvServiceUsesIndependentRecoveryAsync(NvContainerTarget.LocalSystem);
+                Console.WriteLine($"NVIDIA container recovery checks passed ({_passed} assertions). Temporary test backends and isolated data only.");
+                return;
+            }
             if (!deploymentOnly)
             {
             await TrayHandoverLeavesDefenderEvidenceAsync(root);
@@ -49,6 +58,9 @@ internal static class BackendHandoverChecks
             await InFlightBlocksAsync(fixture);
             await DisconnectRetainsEvidenceAsync(fixture);
             await CrashedGpuUsesIndependentReviewAsync();
+            await SystemNvServiceUsesIndependentRecoveryAsync(NvContainerTarget.Display);
+            await SystemNvServiceUsesIndependentRecoveryAsync(NvContainerTarget.LegacyTelemetry);
+            await SystemNvServiceUsesIndependentRecoveryAsync(NvContainerTarget.LocalSystem);
             await LiveChildBlocksAsync(fixture);
             await CpuRestoreFailureBlocksAsync();
             await CpuRestoreTimeoutBlocksAsync();
@@ -144,10 +156,17 @@ internal static class BackendHandoverChecks
             try { await BackendLifecycle.AcknowledgeCurrentStateAsync(review, read); }
             catch (InvalidOperationException ex) when (ex.Message.Contains("状态发生变化")) { moved = true; }
             Check(moved && BackendUnconfirmedStore.PendingModules().Contains(module), "确认时服务状态变化，记录继续保留");
-            Environment.SetEnvironmentVariable(variable, "startup");
-            var archived = await BackendLifecycle.AcknowledgeCurrentStateAsync(review, read);
-            Check(File.Exists(archived) && !BackendUnconfirmedStore.PendingModules().Contains(module) && !writer.RequiresAttention,
-                "人工确认归档后释放旧显卡会话，且不重新执行旧写入");
+            Environment.SetEnvironmentVariable(variable, "startup-recover");
+            var restorable = await BackendRecovery.ReconcileAsync(module, scope: scope);
+            Check(BackendRecovery.RecoveryChoices(review, restorable) is [{ Fingerprint.Length: 64 }],
+                "显卡后端启动失败时，仍通过系统维护提供已确认的文件备份恢复");
+            Environment.SetEnvironmentVariable(variable, "startup-stale");
+            var stale = await BackendRecovery.RestoreAsync(review, scope, reviewedSnapshot: restorable);
+            Check(!stale.Verified && BackendUnconfirmedStore.PendingModules().Contains(module), "过期确认不会归档旧显卡记录");
+            Environment.SetEnvironmentVariable(variable, "startup-recover");
+            var recovered = await BackendRecovery.RestoreAsync(review, scope, reviewedSnapshot: restorable);
+            Check(recovered.Verified && !BackendUnconfirmedStore.PendingModules().Contains(module) && !writer.RequiresAttention,
+                "显卡后端无法启动时仍可独立恢复和归档，并释放旧显卡会话");
             Environment.SetEnvironmentVariable(variable, null);
             var nextPage = new PageBackendLease("nvsettings");
             var next = new BackendCaller(module, nextPage);
@@ -158,6 +177,55 @@ internal static class BackendHandoverChecks
                     "归档后原页面重新进入可建立新的显卡会话");
             }
             finally { nextPage.Suspend("测试结束", leaving: true); await nextPage.Stopping; }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+            page.Suspend("测试结束", leaving: true);
+            await page.Stopping;
+        }
+    }
+
+    private static async Task SystemNvServiceUsesIndependentRecoveryAsync(NvContainerTarget target)
+    {
+        const string variable = "DELTANFD_TEST_GPU_RECOVERY";
+        const string module = BackendModules.System;
+        var (scope, command) = target switch
+        {
+            NvContainerTarget.LegacyTelemetry => (NvTelemetryContainer.RecoveryScope, BackendCommands.SystemNvTelemetryChange),
+            NvContainerTarget.LocalSystem => (NvLocalSystemContainer.RecoveryScope, BackendCommands.SystemNvLocalSystemChange),
+            _ => (NvDisplayContainerChange.RecoveryScope, BackendCommands.SystemNvDisplayContainerChange),
+        };
+        var previous = Environment.GetEnvironmentVariable(variable);
+        var page = new PageBackendLease("nvsettings-system");
+        var caller = new BackendCaller(module, page);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, "system-request");
+            var interrupted = await caller.InvokeAsync(command,
+                new NvDisplayContainerChange(false, new string('A', 64)), null, default);
+            var writer = caller.SharedClient!;
+            await WaitUntilAsync(() => writer.ExitConfirmed, TimeSpan.FromSeconds(10), "系统维护写入夹具已退出");
+            page.Suspend("离开栏目", leaving: true);
+            await page.Stopping;
+            var review = (await BackendLifecycle.PrepareReviewAsync([module])).Single(r => r.Module == module);
+            Check(interrupted.Status == BackendResultStatuses.Failed && review.CanRestore
+                && review.Command == command, "新记录精确绑定系统维护服务写入");
+            if (target != NvContainerTarget.Display)
+            {
+                Environment.SetEnvironmentVariable(variable, "startup-wrong-service");
+                var rejected = false;
+                try { await BackendRecovery.ReconcileAsync(module, scope: scope); }
+                catch (InvalidDataException) { rejected = true; }
+                Check(rejected && BackendUnconfirmedStore.PendingModules().Contains(module), "显示容器快照不能用于处理其他 NVIDIA 服务记录");
+            }
+            Environment.SetEnvironmentVariable(variable, "startup-recover");
+            var snapshot = await BackendRecovery.ReconcileAsync(module, scope: scope);
+            Check(snapshot?.Module == module && BackendRecovery.RecoveryChoices(review, snapshot) is [{ } choice] && choice.Id == scope,
+                "系统维护记录只提供对应的服务恢复范围");
+            var recovered = await BackendRecovery.RestoreAsync(review, scope, reviewedSnapshot: snapshot);
+            Check(recovered.Verified && !BackendUnconfirmedStore.PendingModules().Contains(module),
+                "系统维护记录恢复后无需再次进入显卡页面即可归档");
         }
         finally
         {

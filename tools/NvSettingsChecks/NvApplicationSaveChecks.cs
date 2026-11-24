@@ -78,13 +78,18 @@ internal static class NvApplicationSaveChecks
         result = NvApiDrs.ApplyApplicationSettings(Exe, [(Power, 5)], 62124, false, () => { finalGateCalls++; return false; });
         Check(!result.Success && !result.OutcomeUnknown && finalGateCalls == 1 && f.Saves == 0 && f.StageIds.SequenceEqual([Power]),
             "recheck of write eligibility happens before the only DRS save");
-        foreach (var scenario in new[] { "save-error", "save-throws", "fresh-load-error", "lost-binding", "fresh-setting-error", "fresh-mismatch" })
+        foreach (var scenario in new[] { "save-error", "save-throws", "fresh-load-error", "lost-binding", "fresh-setting-error" })
         {
             f.Reset(scenario);
             result = Apply((Power, 5));
             Check(!result.Success && result.OutcomeUnknown && f.Saves == 1 && f.ActiveSessions == 0,
                 "save was attempted once and only a known verified success can be reported: " + scenario);
         }
+        f.Reset("fresh-mismatch");
+        result = Apply((Power, 5));
+        Check(!result.Success && result.IsPartial && !result.OutcomeUnknown && f.Saves == 1 && f.ActiveSessions == 0
+            && result.Message.Contains("电源管理模式") && result.Message.Contains("0x00000005") && result.Message.Contains("0x00000006"),
+            "a readable driver mismatch reports the setting, requested value, and actual value without an unresolved write");
         const string custom = @"C:\fixture\Games\DeltaTarget.exe";
         f.Reset(); f.Database.Name = GameTargetService.CustomProfileName(custom); f.Database.AppName = custom.ToUpperInvariant();
         result = NvApiDrs.ApplyApplicationSettings(custom, [(V1, 1), (V2, 1)], 62124, false, () => true);

@@ -34,11 +34,11 @@ internal sealed class BackendProcmanService
     }
     internal event Action<ProcmanStatusSnapshot>? StatusUpdated;
 
-    internal async Task<BackendResult> InvokeAsync(string command, object args, CancellationToken ct = default)
+    internal async Task<BackendResult> InvokeAsync(string command, object args, CancellationToken ct = default, IProgress<string>? progress = null)
     {
         try
         {
-            var result = await _caller.InvokeAsync(command, args, null, ct);
+            var result = await _caller.InvokeAsync(command, args, progress, ct);
             ObserveClient();
             if (command == BackendCommands.ProcmanStatus)
             {
@@ -105,7 +105,8 @@ internal sealed class BackendProcmanService
             && !File.Exists(Path.Combine(AppDataPaths.Root, "frame-game-timer-ignore.json"))
             && !File.Exists(Path.Combine(AppDataPaths.Root, "timer-ignore-list.json"))
             && !settings.FrameModeActive
-            && !(settings.TimerIgnoreExtraProcesses?.Any(n => !string.IsNullOrWhiteSpace(n)) ?? false)) return true;
+            && !(settings.TimerIgnoreExtraProcesses?.Any(n => !string.IsNullOrWhiteSpace(n)) ?? false)
+            && !(settings.TimerIgnoreDetectedPaths?.Any(Path.IsPathFullyQualified) ?? false)) return true;
         try
         {
             var result = await InvokeAsync(BackendCommands.ProcmanActivate, new { });
@@ -222,6 +223,13 @@ internal sealed class BackendProcmanService
     internal async Task<OperationResult> ScanClockAsync(bool quick, OptimalClockScanMode scanMode, CancellationToken ct = default, bool dpcAlgorithmScan = false)
         => await ClockCommandAsync(BackendCommands.ProcmanClockScan, new OptimalClockArgs { Quick = quick, ScanMode = scanMode, DpcAlgorithmScan = dpcAlgorithmScan }, "钟摆计划扫描", ct);
 
+    internal Task<OperationResult> ScanClockFullRangeAsync(ClockSamplingMask cpu, CancellationToken ct, IProgress<string> progress)
+        => ClockCommandAsync(BackendCommands.ProcmanClockManagedMaskScan, new ManagedClockMaskScanArgs { Affinity = cpu }, "钟摆全范围扫描", ct, progress);
+
+    internal async Task<TimerRequestSurvey> ReadTimerRequestsAsync(CancellationToken ct = default)
+        => BackendResults.RequireData<TimerRequestSurvey>(
+            await InvokeAsync(BackendCommands.ProcmanTimerRequestSurvey, new { }, ct), "定时器请求检测");
+
     internal Task<OperationResult> CompareWakeAsync(bool quick, CancellationToken ct)
         => ClockCommandAsync(BackendCommands.ProcmanClockCompare, new OptimalClockArgs { Quick = quick }, "钟摆对照测量", ct);
 
@@ -230,10 +238,10 @@ internal sealed class BackendProcmanService
     internal Task<OperationResult> ClockValueAsync(ClockValueAction action, uint? resolution, CancellationToken ct = default)
         => ClockCommandAsync(BackendCommands.ProcmanClockValue, new ClockValueArgs { Action = action, Resolution100ns = resolution }, "钟摆分辨率与 Sleep", ct);
 
-    private async Task<OperationResult> ClockCommandAsync(string command, object args, string what, CancellationToken ct)
+    private async Task<OperationResult> ClockCommandAsync(string command, object args, string what, CancellationToken ct, IProgress<string>? progress = null)
     {
         OperationResult mapped;
-        try { mapped = BackendResults.Map(await InvokeAsync(command, args, ct), what); }
+        try { mapped = BackendResults.Map(await InvokeAsync(command, args, ct, progress), what); }
         catch (Exception ex) when (ex is BackendContractException or InvalidOperationException or IOException)
         {
             Log.Error(what + "未完成：" + command, ex);

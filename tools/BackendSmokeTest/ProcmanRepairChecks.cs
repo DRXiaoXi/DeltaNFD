@@ -176,6 +176,27 @@ internal static class ProcmanRepairChecks
                 Check((await engine.DeleteRuleAsync(identity.ExecutablePath, "priorityBoost")).Success && ProcmanCapabilities.ReadPriorityBoost(child.Id).Value == originalBoost, "删除动态提升规则精确恢复");
                 await engine.RestoreAllAsync();
             }
+            using (var engine = Engine("externally-changed-priority"))
+            {
+                var archive = Path.Combine(root, "externally-changed-priority.json.released-priority");
+                Check(engine.Set(new() { Identity = request, CpuPriority = "High" }).Outcomes.Single().Status == "applied",
+                    "冲突夹具先登记 High");
+                child.PriorityClass = ProcessPriorityClass.AboveNormal;
+                Check(engine.Reset(new() { Identity = request }).Outcomes.Single().Status == "conflict" && Priority() == "AboveNormal",
+                    "逐项还原仍提示外部优先级冲突");
+                File.WriteAllText(archive, "blocked archive directory fixture");
+                Check(!(await engine.RestoreAllAsync()).Success && engine.Snapshot().HeldChangeCount == 1 && Priority() == "AboveNormal",
+                    "归档失败保留恢复记录及外部档位");
+                File.Delete(archive);
+                var restore = await engine.RestoreAllAsync();
+                var evidence = File.ReadAllText(Directory.GetFiles(archive, "*.json").Single());
+                Check(restore.Success && restore.Message.Contains("保留 1 项") && engine.Snapshot().HeldChangeCount == 0
+                    && Priority() == "AboveNormal" && evidence.Contains("AboveNormal") && evidence.Contains("High"),
+                    "完整还原只释放外部已改优先级，归档证据并保留当前值");
+                Check((await engine.RestoreAllAsync()).Success && Directory.GetFiles(archive, "*.json").Length == 1,
+                    "再次完整还原不重新处理已归档冲突");
+                child.PriorityClass = ProcessPriorityClass.Normal;
+            }
             using (var game = ProcessPropertyGate.TryEnterGame(child.Id, "priority")) Check(game is not null, "游戏写入方登记同一跨进程门禁");
             using (var engine = Engine("game-takeover"))
             {

@@ -8,15 +8,17 @@ namespace DeltaNFD.Services.Backends;
 /// </summary>
 internal static class BackendLifecycle
 {
+    private const string DisplayRestore = "帧格分辨率恢复";
+
     public static async Task<string> AcknowledgeCurrentStateAsync(BackendUnconfirmedStore.Review confirmed, ReconcileSnapshot? reviewedState = null)
     {
-        if (BackendRecovery.NvSettingsReviewScope(confirmed) == "nv-display-container")
+        if (BackendRecovery.NvServiceReviewScope(confirmed) is { } scope)
         {
-            var current = await BackendRecovery.ReconcileAsync(confirmed.Module, scope: "nv-display-container");
+            var current = await BackendRecovery.ReconcileAsync(confirmed.Module, scope: scope);
             if (!BackendRecovery.CanKeepCurrentState(confirmed, reviewedState)
                 || !BackendRecovery.CanKeepCurrentState(confirmed, current)
                 || current?.Summary != reviewedState?.Summary)
-                throw new InvalidOperationException("显示容器状态发生变化或暂时不可核验。请刷新核对后再归档。");
+                throw new InvalidOperationException("NVIDIA 服务状态发生变化或暂时不可核验。请刷新核对后再归档。");
         }
         // 只检查「结果未知且未确认退出」的会话；正常只读会话不阻止人工核对。
         var attention = BackendSessions.Snapshot().Where(c => c.ModuleId == confirmed.Module && c.RequiresAttention).ToArray();
@@ -62,8 +64,11 @@ internal static class BackendLifecycle
         // never reactivates it in this process; completion on next launch requires verified recovery.
         var stoppedFrame = windowsSessionEnd && AppSettingsStore.Read().FrameModeActive;
         if (stoppedFrame) AppSettingsStore.UpdateRequired(FrameSessionState.BeginShutdown);
+        var display = await FrameDisplayService.RestoreAsync();
+        if (!display.Success) Log.Warn($"{DisplayRestore}未完成：{display.Message}");
         IReadOnlyList<string> Finish(string[] remaining)
         {
+            if (!display.Success) return remaining.Append(DisplayRestore).ToArray();
             if (!stoppedFrame || remaining.Length != 0) return remaining;
             if (AppSettingsStore.ReadRequired().FramePowerRestorePending ||
                 File.Exists(Path.Combine(AppDataPaths.Root, "frame_power_scheme_snapshot.json"))) return [BackendModules.CpuFrame];
@@ -75,8 +80,8 @@ internal static class BackendLifecycle
             // Tray handoff may release established idle sessions, not initiate pending recovery.
             var pending = BackendUnconfirmedStore.PendingModules();
             if (File.Exists(Path.Combine(AppDataPaths.Root, "defender-session.json")))
-                return pending.Append(BackendModules.System).Distinct().ToArray();
-            if (pending.Count != 0) return pending;
+                return Finish(pending.Append(BackendModules.System).Distinct().ToArray());
+            if (pending.Count != 0) return Finish(pending.ToArray());
         }
         else
         {
@@ -91,7 +96,7 @@ internal static class BackendLifecycle
             catch (Exception ex)
             {
                 Log.Warn("Defender 临时状态恢复后端未能启动，交接暂缓：" + ex.Message);
-                return BackendUnconfirmedStore.PendingModules().Append(BackendModules.System).Distinct().ToArray();
+                return Finish(BackendUnconfirmedStore.PendingModules().Append(BackendModules.System).Distinct().ToArray());
             }
         }
         if (!BackendSessions.AnyActive)
@@ -209,6 +214,12 @@ internal static class BackendLifecycle
     public static string DescribeBlocker(IReadOnlyList<string> failed, string action)
     {
         if (failed.Count == 0) return "";
+        if (failed.Contains(DisplayRestore))
+        {
+            var other = failed.Where(module => module != DisplayRestore).ToArray();
+            return $"未能确认原分辨率已恢复，已阻止{action}。请重新连接原显示器后重试，或在 Windows 显示设置中恢复。"
+                + (other.Length == 0 ? "" : "\n" + DescribeBlocker(other, action));
+        }
         var pending = BackendUnconfirmedStore.PendingModules();
         if (failed.Any(pending.Contains))
             return $"以下模块有待核对的操作记录（{string.Join("、", failed.Select(ModuleDisplayName))}），已阻止{action}。"

@@ -264,6 +264,7 @@ public sealed class ProcmanStatusSnapshot
 
     /// <summary>规则引擎是否在运行。</summary>
     public bool RulesEngineRunning { get; init; }
+    public IReadOnlyList<ProcmanAffinityRuleReadback> AffinityRuleReadbacks { get; init; } = [];
 
     /// <summary>旧协议兼容字段：后台抑制已移除，始终为 false。</summary>
     public bool ResponsivenessEnabled { get; init; }
@@ -291,6 +292,9 @@ public sealed class ProcmanStatusSnapshot
 
     public DateTimeOffset UpdatedUtc { get; init; }
 }
+
+public sealed record ProcmanAffinityRuleReadback(int Pid, string ExecutablePath, string RuleValue,
+    string? ActualMask, bool Confirmed, string Error, DateTimeOffset ObservedUtc);
 
 /// <summary>只读核对快照。</summary>
 public sealed class ProcmanReconcileResult

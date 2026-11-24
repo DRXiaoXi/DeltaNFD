@@ -119,6 +119,14 @@ internal static class TimerIgnoreListChecks
                     "恢复后原值记录应清空");
                 Check(engine.Snapshot().TimerIgnoreList.BackupCount == 0, "恢复后不得再有未恢复记录");
 
+                AppSettingsStore.Update(s => s.TimerIgnoreDetectedPaths = [App.ExecutablePath.ToUpperInvariant()]);
+                Check(ProcmanEngine.IsTimerIgnoreListTarget(App)
+                    && !ProcmanEngine.IsTimerIgnoreListTarget(App with { ExecutablePath = @"C:\Other\TimerPrecision.App.exe" }),
+                    "检测规则仅匹配选中的完整路径，同名程序不受影响");
+                Check(engine.TimerIgnoreListOnceForTests() && api.State.Forced, "仅有路径规则时同样生效");
+                AppSettingsStore.Update(s => s.TimerIgnoreDetectedPaths = []);
+                Check(engine.TimerIgnoreListOnceForTests() && !api.State.Forced, "移除路径规则恢复原值");
+
                 // 探针不可达（系统 tick 过粗）时拒绝施加，避免把目标进程压到 15.625ms。
                 probeApi.Value = 15.6;
                 probe.Invalidate(); // 探针有缓存：模拟系统 tick 变粗后必须重新实测

@@ -1,3 +1,5 @@
+using DeltaNFD.Services;
+
 namespace DeltaNFD.Execution.OptimalClock;
 
 /// <summary>可注入的持有进程接口（测试用假实现）。</summary>
@@ -97,6 +99,12 @@ internal sealed class OptimalClockController(IOptimalClockHolderApi holder, IOpt
         set { _customResolution = value; if (holder is DpcCombinedHolder combined) combined.CustomResolution = value; }
     }
 
+    private uint? _burstResolution100ns;
+    internal uint? BurstResolution100ns
+    {
+        set { _burstResolution100ns = value; if (holder is DpcCombinedHolder combined) combined.BurstResolution100ns = value; }
+    }
+
     // 只清本次运行状态，扫描记录继续保留。
     private OptimalClockState IdleState() => _state with
     {
@@ -117,14 +125,16 @@ internal sealed class OptimalClockController(IOptimalClockHolderApi holder, IOpt
             {
                 PendulumDiagnosticLog.Emit(diagnostics, "lock-start", new { resolution100ns, supported });
                 if ((api.HasPendingCleanup || (_state.HasError && _state.Holding)) && !Stop()) return false;
-                if (!supported || resolution100ns < (CustomResolution ? 5000u : OptimalClockScanner.CriticalFloor100ns) || resolution100ns > 156_250)
+                var minimum = CustomResolution || resolution100ns == _burstResolution100ns
+                    ? PendulumFramePolicy.BurstScanFirst100ns : OptimalClockScanner.CriticalFloor100ns;
+                if (!supported || resolution100ns < minimum || resolution100ns > 156_250)
                 {
                     if (!Stop()) return false;
                     _state = IdleState() with
                     {
                         Supported = supported,
                         HasError = supported,
-                        Message = !supported ? "此系统尚不能使用钟摆计划（Windows 11 常规路径 / Windows 10 实验路径）"
+                        Message = !supported ? "此系统尚不能使用钟摆计划（支持 Windows 11 和通过兼容性检测的 Windows 10）"
                             : CustomResolution ? "自定义分辨率超出允许范围（0.5000~15.625ms），未锁定" : "分辨率超出允许范围（0.5100~15.625ms），未锁定",
                     };
                     return false;

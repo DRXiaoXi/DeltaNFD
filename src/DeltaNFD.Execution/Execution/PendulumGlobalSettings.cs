@@ -25,7 +25,7 @@ internal static class PendulumGlobalSettingsEngine
             if (env.Blocker() is { } blocked) return OperationResult.Fail(blocked);
             var status = env.Read();
             if (status.ExperimentalWindows10)
-                return OperationResult.Fail("Windows 10 实验路径通过实测确认能力，不提供 Win11 全局精度注册表设置。");
+                return OperationResult.Fail("Windows 10 通过兼容性检测确认能力。全局精度注册表设置仅适用于 Windows 11。");
             if (!status.Supported || !status.Readable) return OperationResult.Fail(status.Message);
             if (args.Fingerprint.Length == 0 || args.Fingerprint != status.Fingerprint)
                 return OperationResult.Fail("全局精度配置已变化，请刷新后重新确认。");
@@ -73,7 +73,7 @@ internal sealed class WindowsPendulumGlobalEnvironment : IPendulumGlobalEnvironm
 {
     public string? Blocker()
     {
-        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)) return "此设置仅用于 Windows 11；Windows 10 请使用实验兼容检测。";
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)) return "此设置仅用于 Windows 11。Windows 10 请使用兼容性检测。";
         if (!ElevationHelper.IsElevated) return ElevationHelper.NotElevatedMessage;
         if (OfflineModeGuard.BlocksNormalAutomation) return "恢复流程中，暂不能修改全局精度设置。";
         try { return DeltaForceLocator.IsGameRunning() ? "请退出三角洲后再修改全局精度设置。" : null; }

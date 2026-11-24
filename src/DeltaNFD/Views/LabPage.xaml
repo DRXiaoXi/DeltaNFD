@@ -57,9 +57,6 @@
                 <StackPanel Spacing="10">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <TextBlock Text="双CCD 专属调度" Style="{StaticResource H2Style}" VerticalAlignment="Center" ui:HelpTip.Text="游戏独占一个 CCD，所有其他进程推到另一个 CCD，让游戏获得最大的 CPU 资源。CPU0 留给系统中断和内核进程以保障系统流畅度下限。"/>
-                        <Border Style="{StaticResource ChipBorderStyle}" Background="{ThemeResource ControlFillColorDefaultBrush}" VerticalAlignment="Center">
-                            <TextBlock Text="实验性" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource BadgeTextStyle}"/>
-                        </Border>
                         <Border Style="{StaticResource ChipBorderStyle}" Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}" VerticalAlignment="Center">
                             <TextBlock Text="会导致 CPU 发热和功耗上升" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Style="{StaticResource BadgeTextStyle}"/>
                         </Border>
@@ -215,6 +212,8 @@
                             </Grid>
                             <TextBlock x:Name="GameRuleCountText" FontWeight="SemiBold" Text="尚未读取规则" TextWrapping="Wrap"/>
                             <StackPanel x:Name="GameRuleListPanel" Spacing="3"/>
+                            <TextBlock x:Name="GameRuleAffinityReadbackText" Style="{StaticResource NoteStyle}"
+                                       TextWrapping="Wrap" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite"/>
                             <TextBlock x:Name="GameRuleNoteText" Style="{StaticResource CaptionStyle}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                         </StackPanel>
                     </Grid>

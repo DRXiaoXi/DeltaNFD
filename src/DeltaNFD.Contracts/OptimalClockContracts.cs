@@ -1,5 +1,47 @@
 namespace DeltaNFD.Services;
 
+/// <summary>钟摆扫描所选的处理器组与组内逻辑处理器。</summary>
+public sealed record ClockSamplingCpu(ushort Group, int Index)
+{
+    public string Display => Group == 0 ? $"CPU {Index}" : $"组 {Group} · CPU {Index}";
+}
+
+public sealed record ClockSamplingMask(ushort Group, ulong Mask)
+{
+    public static ClockSamplingMask? FromCpu(ClockSamplingCpu? cpu)
+        => cpu is { Index: >= 0 and < 64 } ? new(cpu.Group, 1UL << cpu.Index) : null;
+
+    public string Display
+    {
+        get
+        {
+            if (Mask == 0) return "未选择 CPU";
+            var indices = Enumerable.Range(0, 64).Where(index => (Mask & (1UL << index)) != 0).ToArray();
+            var summary = indices.Length <= 6 ? "CPU " + string.Join("、", indices) : $"{indices.Length} 个逻辑 CPU";
+            return Group == 0 ? summary : $"组 {Group} · {summary}";
+        }
+    }
+}
+
+public sealed class ManagedClockScanArgs
+{
+    public ClockSamplingCpu? Cpu { get; init; }
+}
+
+public sealed class ManagedClockMaskScanArgs
+{
+    public ClockSamplingMask? Affinity { get; init; }
+}
+
+public sealed record TimerRequestProcess(int Pid, uint Period100ns, string Name, string Path, long StartedUtcTicks,
+    bool AlreadyIgnored, bool CanIgnore)
+{
+    public string Display => Period100ns == 0 ? $"{Name} · 已配置，当前无检测结果" : $"{Name} · PID {Pid} · {Period100ns / 10000d:0.0000} ms"
+        + (AlreadyIgnored ? " · 已忽略" : CanIgnore ? "" : " · 不可屏蔽");
+}
+
+public sealed record TimerRequestSurvey(IReadOnlyList<TimerRequestProcess> Processes, uint KernelPeriod100ns);
+
 /// <summary>钟摆计划的检测模式。</summary>
 public enum OptimalClockScanMode
 {
@@ -9,6 +51,11 @@ public enum OptimalClockScanMode
     /// <summary>稳定延迟：新算法（先测出 2 tick 悬崖，再按实测抖动退让出安全裕量，最后在空闲/标准/重载三条件下验证），
     /// 取「通过验证里最细」的值，宁可牺牲一点中位也要保证任何负载下都不翻回 3 tick。</summary>
     StableLatency = 1,
+
+    /// <summary>在突发负载下从 0.5000 ms 开始逐档测试，取首个达标的有效档位。</summary>
+    FirstPassing = 2,
+    /// <summary>测量范围内全部候选，按慢样本和尾延迟比较并复测领先档位。</summary>
+    FullRange = 3,
 }
 
 /// <summary>
@@ -23,6 +70,7 @@ public sealed class OptimalClockSnapshot
     /// <summary>Current prerequisites and the saved scan source match; false for older backends.</summary>
     public bool Prepared { get; init; }
     public uint SavedResolution100ns { get; init; }
+    public bool UsesGameDefault { get; init; }
 
     /// <summary>本系统是否可进入检测路径；不表示全局生效已验证。</summary>
     public bool Supported { get; init; }

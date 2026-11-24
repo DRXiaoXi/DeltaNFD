@@ -178,7 +178,7 @@ public sealed class NvProfileService : INvProfileService
         if (result.Success)
             Log.Info("NV设置：" + (result.IsSkipped ? "跳过" : "应用成功") + " —— " + result.Message);
         else
-            Log.Warn("NV设置：" + (result.OutcomeUnknown ? "保存待核对" : "应用失败") + " —— " + result.Message);
+            Log.Warn("NV设置：" + (result.OutcomeUnknown ? "保存待核对" : result.IsPartial ? "部分值未按请求保存" : "应用失败") + " —— " + result.Message);
         return result;
     });
 

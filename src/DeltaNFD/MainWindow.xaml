@@ -65,7 +65,7 @@
                         <FontIcon Glyph=""/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Tag="nvsettings" Content="NVIDIA显卡设置">
+                <NavigationViewItem Tag="nvsettings" Content="显卡设置">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph=""/>
                     </NavigationViewItem.Icon>

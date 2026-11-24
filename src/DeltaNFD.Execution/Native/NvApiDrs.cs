@@ -556,16 +556,24 @@ public static partial class NvApiDrs
             if (saved != StatusOk) return Unconfirmed($"驱动保存未确认：{DescribeStatus(saved)}。");
             var loaded = openVerification();
             if (loaded != StatusOk) return Unconfirmed($"驱动已接受保存，但新会话回读失败：{DescribeStatus(loaded)}。");
+            var differences = new List<string>();
             foreach (var (id, value) in changes)
             {
                 var actual = read(id);
-                var verified = value is null
-                    ? actual.Status == StatusSettingNotFound || actual.Status == StatusOk && actual.IsDword && !actual.HasOverride
-                    : actual.Status == StatusOk && actual.IsDword && actual.HasOverride && actual.Value == value;
-                if (!verified) return Unconfirmed($"驱动已接受保存，但设置 0x{id:X8} 未通过回读核验。");
+                if (actual.Status != StatusSettingNotFound && (actual.Status != StatusOk || !actual.IsDword))
+                    return Unconfirmed($"驱动已接受保存，但无法读取设置 0x{id:X8} 的当前覆盖值（{(actual.Status == StatusOk ? "数据格式不匹配" : DescribeStatus(actual.Status))}）。");
+                uint? persisted = actual.Status == StatusOk && actual.HasOverride ? actual.Value : null;
+                if (persisted != value)
+                {
+                    var name = NvSettingsCatalog.Definitions.FirstOrDefault(setting => setting.Id == id)?.Title ?? $"0x{id:X8}";
+                    differences.Add($"{name}：请求 {DescribeOverride(value)}，驱动实际 {DescribeOverride(persisted)}");
+                }
             }
             if (checkRebar && CheckEffectiveRebarPair(read, enablingV1) is { } after)
                 return Unconfirmed("驱动已接受保存，但 ReBAR 回读未通过。" + after);
+            if (differences.Count > 0)
+                return new OperationResult { IsPartial = true,
+                    Message = $"已回读 {changes.Count} 项驱动配置，其中 {differences.Count} 项未保存为所请求的值。\n" + string.Join("\n", differences) };
             return OperationResult.Ok($"已保存并回读核验 {changes.Count} 项驱动配置。请重新启动游戏后确认实际效果。");
         }
         catch (Exception ex)
@@ -574,6 +582,8 @@ public static partial class NvApiDrs
                 : OperationResult.Fail("驱动配置未保存：" + ex.Message);
         }
     }
+
+    private static string DescribeOverride(uint? value) => value is uint raw ? $"0x{raw:X8}" : "继承驱动默认";
 
     private static string? CheckEffectiveRebarPair(Func<uint, (int Status, bool IsDword, bool HasOverride, uint Value)> read,
         bool enablingV1)

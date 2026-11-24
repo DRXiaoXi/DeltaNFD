@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using DeltaNFD.Execution.Procman;
 using DeltaNFD.Native;
 using Microsoft.Win32;
 
@@ -260,18 +261,24 @@ public sealed class CpuTopologyService : ICpuTopologyService
     /// CPU 亲和性规则 tick（HANDOFF §27）：把掩码持续保持到目标游戏进程（硬锁核）。
     /// 互斥：双CCD / 单CCD 调度激活时让位（避免两套锁核互相覆盖）。
     /// </summary>
-    public static void ApplyAffinityRuleTick(ulong mask) =>
+    public static OperationResult ApplyAffinityRuleTick(ulong mask) =>
         ApplyAffinityRuleTick(mask, () => GameTargetService.Default.GetProcesses());
 
-    internal static void ApplyAffinityRuleTick(ulong mask, Func<Process[]> getProcesses)
+    internal static OperationResult ApplyAffinityRuleTick(ulong mask, Func<Process[]> getProcesses)
     {
-        if (OfflineModeGuard.BlocksNormalAutomation) return;
-        using var targetOperation = GameTargetService.Default.BeginOperation();
-        var availableMask = RuleAvailableMask.Value;
-        if (mask == 0 || availableMask == 0 || (mask & ~availableMask) != 0)
+        if (mask == 0)
         {
             RestoreAffinityRule();
-            return;
+            return HasAffinityRuleRestorePending ? OperationResult.Fail("原亲和性掩码恢复未确认。")
+                : OperationResult.Ok("独立亲和性规则已解除。");
+        }
+        if (OfflineModeGuard.BlocksNormalAutomation) return OperationResult.Fail("脱机模式或恢复流程中，独立亲和性规则已暂停。");
+        using var targetOperation = GameTargetService.Default.BeginOperation();
+        var availableMask = RuleAvailableMask.Value;
+        if (availableMask == 0 || (mask & ~availableMask) != 0)
+        {
+            RestoreAffinityRule();
+            return OperationResult.Fail("目标亲和性掩码不符合当前处理器拓扑。");
         }
 
         lock (AffinityRuleLock)
@@ -279,11 +286,16 @@ public sealed class CpuTopologyService : ICpuTopologyService
             if (CcdOwnsAffinity())
             {
                 AffinityRuleOriginals.Clear();
-                return; // 专属调度激活中，亲和性规则让位
+                return OperationResult.Ok("独立亲和性规则已让位，当前由专属调度控制。");
             }
 
             var livePids = new HashSet<int>();
-            foreach (var process in getProcesses())
+            var target = new ProcmanGroupMaskValue(0, mask);
+            var desired = $"g0:0x{mask:X}";
+            var processes = getProcesses();
+            var confirmed = 0;
+            var failures = new List<string>();
+            foreach (var process in processes)
             {
                 using (process)
                 {
@@ -291,27 +303,50 @@ public sealed class CpuTopologyService : ICpuTopologyService
                     {
                         var pid = process.Id;
                         livePids.Add(pid);
-                        using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(pid, "affinity");
-                        if (ownership is null) continue;
                         var startTime = process.StartTime.ToUniversalTime();
+                        using var ownership = ProcessPropertyGate.TryEnterGameLease(pid, "affinity");
+                        if (ownership is null || ownership.Identity.StartTimeUtc != startTime)
+                        {
+                            failures.Add($"PID {pid} 未取得亲和性写入许可或身份已变化");
+                            continue;
+                        }
+                        using var pin = ProcmanCapabilities.PinAffinity(ownership.Identity);
+                        var current = ProcmanCapabilities.ReadAffinity(pid);
+                        if (!current.Ok || !current.Value!.StartsWith("g0:0x", StringComparison.Ordinal))
+                        {
+                            failures.Add($"PID {pid} 无法核对组 0 亲和性 {current.Error}");
+                            continue;
+                        }
                         if (AffinityRuleOriginals.TryGetValue(pid, out var original) && original.StartTime != startTime)
                             AffinityRuleOriginals.Remove(pid);
-                        if (!AffinityRuleOriginals.ContainsKey(pid) && process.ProcessorAffinity != (nint)mask)
+                        if (current.Value == desired)
                         {
-                            AffinityRuleOriginals[pid] = (startTime, process.ProcessorAffinity);
+                            confirmed++;
+                            continue;
                         }
+                        if (!AffinityRuleOriginals.ContainsKey(pid))
+                            AffinityRuleOriginals[pid] = (startTime, (nint)Convert.ToUInt64(current.Value[5..], 16));
 
-                        if (ApplyHardAffinity(process, mask))
+                        var applied = ProcmanCapabilities.SetAffinityFromCurrent(pid, target, current);
+                        if (applied.Ok)
                         {
-                            Log.Info($"CPU亲和性：目标游戏 PID {pid} 已锁定掩码 0x{mask:X}");
+                            confirmed++;
+                            Log.Info($"CPU亲和性：目标游戏 PID {pid} 已回读确认 {applied.Value}");
                         }
+                        else failures.Add($"PID {pid} {applied.Error}");
                     }
-                    catch (Exception ex) { Log.Warn($"CPU亲和性：应用失败：{ex.Message}"); }
+                    catch (Exception ex) { failures.Add(ex.Message); }
                 }
             }
 
             foreach (var pid in AffinityRuleOriginals.Keys.Where(pid => !livePids.Contains(pid)).ToArray())
                 AffinityRuleOriginals.Remove(pid);
+
+            if (processes.Length == 0) return OperationResult.Ok($"等待目标游戏启动后核对掩码 {desired}。");
+            var summary = $"掩码 {desired} 已回读确认 {confirmed}/{processes.Length} 个实例。";
+            if (failures.Count == 0) return OperationResult.Ok(summary);
+            return new OperationResult { Success = confirmed > 0, IsPartial = confirmed > 0,
+                Message = summary + string.Join("；", failures) };
         }
     }
 
@@ -333,10 +368,14 @@ public sealed class CpuTopologyService : ICpuTopologyService
                     using var process = Process.GetProcessById(pid);
                     if (process.StartTime.ToUniversalTime() == original.StartTime)
                     {
-                        using var ownership = DeltaNFD.Execution.Procman.ProcessPropertyGate.TryEnterGame(pid, "affinity", true);
-                        if (ownership is null) continue;
-                        process.ProcessorAffinity = original.OriginalMask;
-                        Log.Info($"CPU亲和性：目标游戏 PID {pid} 已恢复原掩码 0x{(ulong)original.OriginalMask:X}");
+                        using var ownership = ProcessPropertyGate.TryEnterGameLease(pid, "affinity");
+                        if (ownership is null || ownership.Identity.StartTimeUtc != original.StartTime) continue;
+                        using var pin = ProcmanCapabilities.PinAffinity(ownership.Identity);
+                        var restored = ProcmanCapabilities.SetAffinityFromCurrent(pid, new(0, (ulong)original.OriginalMask),
+                            ProcmanCapabilities.ReadAffinity(pid));
+                        if (!restored.Ok) { Log.Warn($"CPU亲和性：PID {pid} 恢复未确认：{restored.Error}"); continue; }
+                        ownership.Game(true);
+                        Log.Info($"CPU亲和性：目标游戏 PID {pid} 已回读确认原掩码 {restored.Value}");
                     }
                     AffinityRuleOriginals.Remove(pid);
                 }
@@ -372,6 +411,7 @@ public sealed class CpuTopologyService : ICpuTopologyService
 
     private static ulong _dualCcdGameMask;
     private static ulong _dualCcdOtherMask;
+    private static string _dualCcdGameReport = "";
 
     /// <summary>Apply / Revert / Tick 互斥锁（Apply 在 UI 任务线程、Tick 在帧格轮询线程）。</summary>
     private static readonly object DualCcdLock = new();
@@ -408,6 +448,50 @@ public sealed class CpuTopologyService : ICpuTopologyService
         return true;
     }
 
+    internal static ProcmanCapabilityResult EnsureDualCcdGameAffinity(Process process, ulong mask)
+    {
+        using var ownership = ProcessPropertyGate.TryEnterGameLease(process.Id, "affinity");
+        if (ownership is null)
+            return ProcmanCapabilityResult.Failure("未取得亲和性写入许可");
+        using var pin = ProcmanCapabilities.PinAffinity(ownership.Identity);
+        var current = ProcmanCapabilities.ReadAffinity(process.Id);
+        return !current.Ok || current.Value == $"g0:0x{mask:X}"
+            ? current : ProcmanCapabilities.SetAffinity(process.Id, [new(0, mask)]);
+    }
+
+    // Called under DualCcdLock so the initial report and subsequent observations use the same mask.
+    private static (string Message, bool IsPartial) MaintainDualCcdGameAffinity(ulong mask, bool forceRefresh = false)
+    {
+        var processes = GameTargetService.Default.GetProcesses(forceRefresh);
+        var confirmed = new List<int>();
+        var failures = new List<string>();
+        foreach (var process in processes.OrderBy(p => p.Id))
+        {
+            using (process)
+            {
+                try
+                {
+                    var result = EnsureDualCcdGameAffinity(process, mask);
+                    if (result.Ok) confirmed.Add(process.Id);
+                    else failures.Add($"PID {process.Id}：{result.Error}");
+                }
+                catch (Exception ex) { failures.Add($"PID {process.Id}：{ex.Message}"); }
+            }
+        }
+
+        var summary = processes.Length == 0 ? "等待目标游戏启动后补锁。"
+            : $"目标游戏硬锁核 0x{mask:X} 回读确认 {confirmed.Count}/{processes.Length}"
+                + (confirmed.Count == 0 ? "" : $"（PID {string.Join(", ", confirmed)}）")
+                + (failures.Count == 0 ? "。" : $"，后续会继续核对。{string.Join("；", failures)}");
+        if (_dualCcdGameReport != summary)
+        {
+            _dualCcdGameReport = summary;
+            if (failures.Count == 0) Log.Info("双CCD调度：" + summary);
+            else Log.Warn("双CCD调度：" + summary);
+        }
+        return (summary, failures.Count > 0);
+    }
+
     public Task<OperationResult> ApplyDualCcdSchedulingAsync(int gameCcdIndex) => Task.Run(async () =>
     {
         if (OfflineModeGuard.BlocksNormalAutomation)
@@ -430,29 +514,14 @@ public sealed class CpuTopologyService : ICpuTopologyService
             return OperationResult.Fail("CCD 掩码无效，已拒绝应用调度。");
         }
 
+        (string Message, bool IsPartial) game;
         lock (DualCcdLock)
         {
             _dualCcdGameMask = gameMask;
             _dualCcdOtherMask = otherMask;
             DualCcdCoveredPids.Clear();
-        }
-
-        // 游戏进程：硬锁核（对齐 CPU 亲和性规则的技术标准，HANDOFF §27）
-        var gameApplied = 0;
-        foreach (var process in GameTargetService.Default.GetProcesses())
-        {
-            using (process)
-            {
-                try
-                {
-                    ApplyHardAffinity(process, gameMask);
-                    gameApplied++;
-                }
-                catch (Exception ex)
-                {
-                    return OperationResult.Fail($"目标游戏硬锁核失败：{ex.Message}");
-                }
-            }
+            _dualCcdGameReport = "";
+            game = MaintainDualCcdGameAffinity(gameMask, forceRefresh: true);
         }
 
         var gameMs = elapsed.Elapsed.TotalMilliseconds - topologyMs;
@@ -499,10 +568,13 @@ public sealed class CpuTopologyService : ICpuTopologyService
             + $"异类策略 {elapsed.Elapsed.TotalMilliseconds - topologyMs - gameMs - backgroundMs:F1} ms，"
             + $"合计 {elapsed.Elapsed.TotalMilliseconds:F1} ms；后台成功 {locked}，跳过 {denied}。");
 
-        var gameNote = gameApplied > 0 ? "" : "（目标游戏当前未运行，启动后将由持续覆盖自动补锁）";
-        return OperationResult.Ok(
-            $"双CCD调度已生效：目标游戏 → 硬锁核 CCD{gameCcdIndex}（0x{gameMask:X}）{gameNote}，其他进程 → 软锁核 CCD{1 - gameCcdIndex}（0x{otherMask:X}）"
-            + $"（本次已锁 {locked} 个进程，{denied} 个因拒绝访问跳过，新进程由轮询持续补锁）。CPU0 留给系统。");
+        return new OperationResult
+        {
+            Success = true,
+            IsPartial = game.IsPartial,
+            Message = $"双CCD调度已启动，游戏目标 CCD{gameCcdIndex}。{game.Message} 其他进程 → 软锁核 CCD{1 - gameCcdIndex}（0x{otherMask:X}）"
+                + $"（本次已锁 {locked} 个进程，{denied} 个因拒绝访问跳过，新进程由轮询持续补锁）。CPU0 留给系统。",
+        };
     });
 
     /// <summary>
@@ -530,13 +602,7 @@ public sealed class CpuTopologyService : ICpuTopologyService
             }
             else if (DualCcdSchedulingActive)
             {
-                foreach (var process in GameTargetService.Default.GetProcesses())
-                {
-                    using (process)
-                    {
-                        try { ApplyHardAffinity(process, _dualCcdGameMask); } catch { }
-                    }
-                }
+                MaintainDualCcdGameAffinity(_dualCcdGameMask);
             }
 
             if (!DualCcdSchedulingActive)
@@ -582,6 +648,7 @@ public sealed class CpuTopologyService : ICpuTopologyService
         {
             DualCcdSchedulingActive = false;
             DualCcdCoveredPids.Clear();
+            _dualCcdGameReport = "";
         }
 
         var reverted = 0;

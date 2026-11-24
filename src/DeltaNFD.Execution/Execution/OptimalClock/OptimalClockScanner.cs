@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using DeltaNFD.Services;
 
 namespace DeltaNFD.Execution.OptimalClock;
 
@@ -43,7 +44,7 @@ internal sealed record OptimalClockConditionRow
 internal enum OptimalClockMode { Unknown, Global, Self, KernelResolution, DpcProcess }
 
 /// <summary>检测模式：最低延迟（原算法）/ 稳定延迟（新算法）。</summary>
-public enum OptimalClockScanKind { LowestLatency, StableLatency }
+public enum OptimalClockScanKind { LowestLatency, StableLatency, FirstPassing, FullRange, Cpu0FullRange, Cpu2FullRange, ManagedFullRange }
 
 internal sealed record OptimalClockScanOptions
 {
@@ -72,6 +73,7 @@ internal sealed record OptimalClockScanResult
     public OptimalClockMode Mode { get; init; }
     public double? RequestlessBaselineMs { get; init; }
     public IReadOnlyList<OptimalClockCandidate> Candidates { get; init; } = [];
+    internal bool HasFullRangeReport => (ScanKind is OptimalClockScanKind.FullRange or OptimalClockScanKind.Cpu0FullRange or OptimalClockScanKind.Cpu2FullRange or OptimalClockScanKind.ManagedFullRange) && Candidates.Count > 0;
     public OptimalClockCandidate? BestTypical { get; init; }
     public OptimalClockCandidate? BestStable { get; init; }
 
@@ -118,6 +120,10 @@ internal interface IOptimalClockMeasurementApi
     /// 研究结论：负载不会移动最优值，但会让临界点边缘变脆——所以必须在负载下测量才能选出真正稳的值。
     /// </summary>
     IOptimalClockLoad? StartLoad(int threads) => null;
+    IOptimalClockLoad? StartBurstLoad() => null;
+
+    ClockBurstMeasurement? MeasureBurst(uint resolution100ns, CancellationToken token, ClockBurstProbeMode mode = ClockBurstProbeMode.FirstPassing, ClockSamplingMask? samplingCpu = null) => null;
+
     // 没有子进程责任的旧假实现无需实现；原生实现必须提供权威清理入口。
     bool HasPendingCleanup => false;
     void CleanupPending() { }
@@ -137,7 +143,7 @@ internal interface IOptimalClockLoad : IDisposable
 /// 0.01 → 0.001 → 0.0001 ms 逐级收窄；每个候选多次重复取「中位的中位」，同时给出
 /// 「典型延迟最低」与「最稳」两个赢家，并对头部候选做更多采样复测。
 /// </summary>
-internal sealed class OptimalClockScanner(IOptimalClockMeasurementApi api, Action<string, object?>? diagnostics = null)
+internal sealed partial class OptimalClockScanner(IOptimalClockMeasurementApi api, Action<string, object?>? diagnostics = null)
 {
     internal const double ReachableThresholdMs = 5.0;
 
@@ -151,10 +157,18 @@ internal sealed class OptimalClockScanner(IOptimalClockMeasurementApi api, Actio
     internal OptimalClockScanResult Scan(OptimalClockScanOptions options, CancellationToken token = default)
         => Scan(options, OptimalClockScanKind.LowestLatency, token);
 
-    internal OptimalClockScanResult Scan(OptimalClockScanOptions options, OptimalClockScanKind kind, CancellationToken token = default)
+    internal OptimalClockScanResult Scan(OptimalClockScanOptions options, OptimalClockScanKind kind, CancellationToken token = default,
+        Action? checkEnvironment = null, IProgress<string>? progress = null, bool fastInitialSweep = false, ClockSamplingMask? selectedCpu = null)
     {
         PendulumDiagnosticLog.Emit(diagnostics, "scan-start", new { kind = kind.ToString(), options });
-        var result = kind == OptimalClockScanKind.StableLatency ? ScanStable(options, token) : ScanLowestLatency(options, token);
+        var result = kind switch
+        {
+            OptimalClockScanKind.FirstPassing => ScanFirstPassing(token, checkEnvironment, progress),
+            OptimalClockScanKind.FullRange or OptimalClockScanKind.Cpu0FullRange or OptimalClockScanKind.Cpu2FullRange or OptimalClockScanKind.ManagedFullRange
+                => ScanFullRange(token, checkEnvironment, progress, fastInitialSweep, kind, selectedCpu),
+            OptimalClockScanKind.StableLatency => ScanStable(options, token),
+            _ => ScanLowestLatency(options, token),
+        };
         PendulumDiagnosticLog.Emit(diagnostics, "scan-result", new
         {
             result.Success, result.Message, result.Mode, result.ScanKind, result.RequestlessBaselineMs,
@@ -162,6 +176,70 @@ internal sealed class OptimalClockScanner(IOptimalClockMeasurementApi api, Actio
             result.LoadThreads, result.SafetyMarginMs, result.StableConditions, candidates = result.Candidates.Count,
         });
         return result;
+    }
+
+    internal OptimalClockScanResult ScanFirstPassing(CancellationToken token, Action? checkEnvironment = null, IProgress<string>? progress = null)
+    {
+        var watch = Stopwatch.StartNew();
+        PendulumDiagnosticLog.Emit(diagnostics, "burst-scan-start", null);
+        token.ThrowIfCancellationRequested();
+        checkEnvironment?.Invoke();
+        var baseline = api.MeasureRequestlessMs(21);
+        var probes = 0;
+        var mode = DetectMode(baseline, ref probes, token);
+        if (mode != OptimalClockMode.Global)
+            return OptimalClockScanResult.Failed("逐档扫描需要在无请求的独立进程中确认计时器生效。请先完成兼容性检测。");
+
+        for (var target = PendulumFramePolicy.BurstScanFirst100ns; target <= PendulumFramePolicy.BurstScanLast100ns;
+            target += PendulumFramePolicy.BurstScanStep100ns)
+        {
+            token.ThrowIfCancellationRequested();
+            checkEnvironment?.Invoke();
+            var position = (target - PendulumFramePolicy.BurstScanFirst100ns) / PendulumFramePolicy.BurstScanStep100ns + 1;
+            progress?.Report($"正在测试 {target / 10000d:0.0000} ms（第 {position}/{PendulumFramePolicy.BurstScanCount} 档）…");
+            using var load = api.StartBurstLoad();
+            if (load is null || !load.EnsureActive())
+                return OptimalClockScanResult.Failed("无法启动逐档扫描的突发 CPU 负载。");
+
+            var measurement = api.MeasureBurst(target, token);
+            probes++;
+            token.ThrowIfCancellationRequested();
+            checkEnvironment?.Invoke();
+            if (!load.IsActive)
+                return OptimalClockScanResult.Failed("采样期间突发 CPU 负载已退出。");
+
+            PendulumDiagnosticLog.Emit(diagnostics, "burst-scan-candidate", new { target, measurement });
+            if (measurement?.Passes(target) != true) continue;
+
+            var medians = measurement.JudgedMedians;
+            var ordered = medians.Order().ToArray();
+            var best = new OptimalClockCandidate
+            {
+                Resolution100ns = target,
+                Median = ordered[ordered.Length / 2],
+                Mean = ordered.Average(),
+                P95 = ordered[(int)Math.Ceiling(ordered.Length * 0.95) - 1],
+                Spread = ordered[^1] - ordered[0],
+                Over130Pct = 100.0 * ordered.Count(m => m >= 1.3) / ordered.Length,
+                Runs = ordered.Length,
+                Samples = ClockBurstProbe.SamplesPerRound,
+                RunMedians = medians,
+            };
+            return new OptimalClockScanResult
+            {
+                Success = true,
+                Message = $"已找到首个达标档位 {best.Milliseconds:0.0000} ms。13 轮的 Sleep(1) 中位数为 {best.Median:0.000} ms，超出 1.4 ms 的轮数 {medians.Count(ClockBurstProbe.OverLimit)}/13。",
+                Mode = mode,
+                RequestlessBaselineMs = baseline,
+                BestLock = best,
+                Candidates = [best],
+                Probes = probes,
+                LoadThreads = load.Threads,
+                ScanKind = OptimalClockScanKind.FirstPassing,
+                ElapsedSeconds = watch.Elapsed.TotalSeconds,
+            };
+        }
+        return OptimalClockScanResult.Failed("逐档扫描未找到可核实且达标的档位（0.5000～0.6000 ms）。原设置保持不变。");
     }
 
     /// <summary>最低延迟模式：原算法（三级逼近 + 双赢家 + 头部复测 + 稳定侧窗口取锁）。</summary>

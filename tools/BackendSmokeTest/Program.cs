@@ -1,4 +1,10 @@
 using DeltaNFD.Services;
+if (args is ["--clock-burst-checks"])
+{
+    try { ClockBurstChecks.Run(); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
 if (args is ["--wake-comparison-checks"]) { try { WakeComparisonChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--system-optimize-safety-checks"]) { try { await SystemOptimizeSafetyChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args.Length == 2 && args[0] == "--update-navigation-checks") { try { await UpdateNavigationChecks.RunAsync(args[1]); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
@@ -15,6 +21,12 @@ if (args is ["--pendulum-driver-preparation-checks"]) { try { PendulumDriverPrep
 if (args is ["--frame-timer-policy-checks"]) { try { FrameTimerPolicyChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--game-installation-scope-checks"]) { try { await GameInstallationScopeChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--frame-gpu-checks"]) { try { await BackendSmokeTest.FrameGpuChecks.RunAsync(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
+if (args is ["--display-interrupt-checks", var interruptFixture])
+{
+    try { BackendSmokeTest.DisplayInterruptPriorityChecks.Run(interruptFixture); }
+    catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
+    return;
+}
 if (DeltaNFD.Execution.Procman.FrameTimerPolicyProbeHost.TryRun(args, out var policyProbeExit)) { Environment.ExitCode = policyProbeExit; return; }
 if (args is ["--alpha935-pendulum-checks"]) { try { Alpha935PendulumChecks.Run(); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
 if (args is ["--d3ds-association-live-readonly", var d3dsLayout]) { try { await D3dsAssociationChecks.RunLiveAsync(d3dsLayout); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; } return; }
@@ -44,6 +56,16 @@ if (args is ["--backend-process-child-fixture"]) { Console.WriteLine("owned-proc
 if (args is ["--backend-native-recovery-checks"]) { try { await BackendNativeRecoveryChecks.RunAsync(); } catch(Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode=1; } return; }
 if (args is ["--ace-default-delta-checks"]) { try { AceDefaultDeltaChecks.Run(); } catch(Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode=1; } return; }
 if (args is ["--frame-brightness-checks"]) { try { await FrameBrightnessChecks.RunAsync(); } catch(Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode=1; } return; }
+if (args is ["--frame-display-checks"])
+{
+    await FrameDisplayChecks.RunAsync();
+    return;
+}
+if (args is ["--frame-display-native-readonly"])
+{
+    FrameDisplayChecks.ReadNative();
+    return;
+}
 
 if (args is ["--release-rc2-checks", var source]) { try { ReleaseRc2Checks.Run(source); } catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode=1; } return; }
 
@@ -989,9 +1011,11 @@ if (Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "")
 }
 
 if (args.Contains("--backend-handover-checks", StringComparer.OrdinalIgnoreCase)
-    || args.Contains("--deployment-handover-checks", StringComparer.OrdinalIgnoreCase))
+    || args.Contains("--deployment-handover-checks", StringComparer.OrdinalIgnoreCase)
+    || args.Contains("--display-container-recovery-checks", StringComparer.OrdinalIgnoreCase))
 {
-    try { await BackendHandoverChecks.RunAsync(args.Contains("--deployment-handover-checks", StringComparer.OrdinalIgnoreCase)); }
+    try { await BackendHandoverChecks.RunAsync(args.Contains("--deployment-handover-checks", StringComparer.OrdinalIgnoreCase),
+        args.Contains("--display-container-recovery-checks", StringComparer.OrdinalIgnoreCase)); }
     catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }
     return;
 }
@@ -1400,7 +1424,8 @@ if (args.Contains("--game-target-checks"))
 // 绝不调用 SpoofAsync / RestoreAsync / DisableAsync —— 那些会真实改动系统。
 if (args.Contains("--affinity-test-child", StringComparer.OrdinalIgnoreCase))
 {
-    await Task.Delay(TimeSpan.FromSeconds(60));
+    Console.WriteLine("ready");
+    Console.ReadLine();
     return;
 }
 

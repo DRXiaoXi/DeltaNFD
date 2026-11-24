@@ -146,6 +146,18 @@ public interface INvProfileService
     Task<OperationResult> ChangeDisplayContainerAsync(NvDisplayContainerChange args) =>
         Task.FromResult(OperationResult.Fail("当前显卡后端不支持显示容器开关。"));
 
+    Task<NvDisplayContainerStatus> ReadTelemetryAsync() =>
+        Task.FromResult(new NvDisplayContainerStatus("当前后端不支持 NVIDIA 遥测服务检测。"));
+
+    Task<OperationResult> ChangeTelemetryAsync(NvDisplayContainerChange args) =>
+        Task.FromResult(OperationResult.Fail("当前后端不支持 NVIDIA 遥测服务开关。"));
+
+    Task<NvDisplayContainerStatus> ReadLocalSystemAsync() =>
+        Task.FromResult(new NvDisplayContainerStatus("当前后端不支持 NVIDIA 共用容器检测。"));
+
+    Task<OperationResult> ChangeLocalSystemAsync(NvDisplayContainerChange args) =>
+        Task.FromResult(OperationResult.Fail("当前后端不支持 NVIDIA 共用容器开关。"));
+
     /// <summary>只读获取机器级 DLSS 指示器，不读写游戏 DRS。</summary>
     Task<NvDlssIndicatorStatus> ReadDlssIndicatorAsync() =>
         Task.FromResult(new NvDlssIndicatorStatus(null, false, "无法读取 DLSS 指示器状态。"));

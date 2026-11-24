@@ -75,6 +75,37 @@ internal static class NvIndicatorAndSaveViewChecks
         await containerPage.ChangeDisplayContainerAsync(_ => Task.FromResult(true));
         Check(!containerPage.CanChangeDisplayContainer && containerPage.DisplayContainerText.Contains("未确认"), "uncertain response blocks immediate retries");
 
+        Check(!containerPage.CanChangeTelemetry && containerPage.TelemetryText.Contains("未安装"),
+            "missing dedicated telemetry service has a visible reason and no action");
+        serviceFake.TelemetryPresent = true;
+        await containerPage.LoadAsync();
+        Check(containerPage.CanChangeTelemetry && containerPage.TelemetryButton == "禁用并停止", "dedicated telemetry enables its own action");
+        await containerPage.ChangeTelemetryAsync(_ => Task.FromResult(false));
+        Check(serviceFake.TelemetryWrites == 0, "telemetry confirmation cancellation performs no write");
+        var priorDisplayWrites = serviceFake.ContainerWrites;
+        await containerPage.ChangeTelemetryAsync(restore => Task.FromResult(!restore));
+        Check(serviceFake.TelemetryWrites == 1 && containerPage.TelemetryButton == "恢复原设置"
+            && serviceFake.ContainerWrites == priorDisplayWrites && serviceFake.GameWrites == 0,
+            "telemetry disable changes its own card without touching display container or DRS");
+        await containerPage.ChangeTelemetryAsync(restore => Task.FromResult(restore));
+        Check(serviceFake.TelemetryWrites == 2 && containerPage.TelemetryButton == "禁用并停止", "telemetry restore changes its own action");
+
+        Check(!containerPage.CanChangeLocalSystem && containerPage.LocalSystemText.Contains("未安装"),
+            "missing shared service has no action");
+        serviceFake.LocalSystemPresent = true;
+        await containerPage.LoadAsync();
+        Check(containerPage.CanChangeLocalSystem && containerPage.LocalSystemButton == "禁用并停止",
+            "supported shared container enables its own action");
+        await containerPage.ChangeLocalSystemAsync(_ => Task.FromResult(false));
+        Check(serviceFake.LocalSystemWrites == 0, "cancel performs no shared-service write");
+        await containerPage.ChangeLocalSystemAsync(restore => Task.FromResult(!restore));
+        Check(serviceFake.LocalSystemWrites == 1 && containerPage.LocalSystemButton == "恢复原设置"
+            && serviceFake.ContainerWrites == priorDisplayWrites && serviceFake.TelemetryWrites == 2,
+            "disabling the shared container has its own operation and backup state");
+        await containerPage.ChangeLocalSystemAsync(restore => Task.FromResult(restore));
+        Check(serviceFake.LocalSystemWrites == 2 && containerPage.LocalSystemButton == "禁用并停止",
+            "shared container restoration returns its own card to disable");
+
         var fake = new FakeNv();
         ServiceLocator.NvProfile = fake;
         var vm = new NvSettingsViewModel();
@@ -128,6 +159,13 @@ internal static class NvIndicatorAndSaveViewChecks
             "unknown game save displays the receipt, retains the draft, and prevents blind resend");
         await vm.LoadAsync();
         Check(!power.PendingChange && vm.CanEditOptions, "successful explicit refresh reestablishes authoritative game state");
+        vm.DlssIndicatorSelectedIndex = 0;
+        await vm.SelectOptionAsync(power, 1);
+        fake.GameResult = new() { IsPartial = true, Message = "known driver mismatch" };
+        result = await vm.ApplyChangesAsync();
+        Check(result is { IsPartial: true, OutcomeUnknown: false } && vm.CanEditOptions && !power.PendingChange
+            && vm.StatusText == "known driver mismatch" && vm.CanSaveDlssIndicator,
+            "completed mismatch refreshes actual settings and leaves editing available without discarding the indicator draft");
         fake.GameResult = null;
         fake.NvapiAvailable = false; fake.IndicatorResult = new() { OutcomeUnknown = true, Message = "unknown indicator receipt" };
         await vm.LoadAsync();
@@ -161,6 +199,28 @@ internal static class NvIndicatorAndSaveViewChecks
         }
         public Task<Dictionary<uint, (bool, uint)>?> GetGameSettingValuesAsync() => Task.FromResult<Dictionary<uint, (bool, uint)>?>(new(_settings));
         public int ContainerWrites;
+        public int TelemetryWrites;
+        public bool TelemetryPresent, TelemetryDisabled;
+        public Task<NvDisplayContainerStatus> ReadTelemetryAsync() => Task.FromResult(TelemetryPresent
+            ? new NvDisplayContainerStatus("fixture telemetry", new string(TelemetryDisabled ? 'B' : 'A', 64), TelemetryDisabled)
+            : new NvDisplayContainerStatus("未安装独立 NVIDIA 遥测服务。"));
+        public Task<OperationResult> ChangeTelemetryAsync(NvDisplayContainerChange change)
+        {
+            TelemetryWrites++;
+            TelemetryDisabled = !change.Restore;
+            return Task.FromResult(OperationResult.Ok("fixture telemetry"));
+        }
+        public int LocalSystemWrites;
+        public bool LocalSystemPresent, LocalSystemDisabled;
+        public Task<NvDisplayContainerStatus> ReadLocalSystemAsync() => Task.FromResult(LocalSystemPresent
+            ? new NvDisplayContainerStatus("fixture LocalSystem", new string(LocalSystemDisabled ? 'D' : 'C', 64), LocalSystemDisabled)
+            : new NvDisplayContainerStatus("未安装 NVIDIA LocalSystem Container。"));
+        public Task<OperationResult> ChangeLocalSystemAsync(NvDisplayContainerChange change)
+        {
+            LocalSystemWrites++;
+            LocalSystemDisabled = !change.Restore;
+            return Task.FromResult(OperationResult.Ok("fixture LocalSystem"));
+        }
         public bool ContainerDisabled, ContainerUnknown;
         public NvDisplayContainerChange? LastContainerChange;
         public Task<NvDisplayContainerStatus> ReadDisplayContainerAsync() => Task.FromResult(ContainerDisabled

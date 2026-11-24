@@ -3,6 +3,27 @@ using DeltaNFD.Services;
 using static DeltaNFD.Services.NvContainerMode;
 using static DeltaNFD.Services.NvContainerRun;
 
+if (args is ["--host-nvidia-services", var serviceLog])
+{
+    var display = NvDisplayContainerService.Status();
+    var legacy = NvDisplayContainerService.TelemetryStatus();
+    var local = NvDisplayContainerService.LocalSystemStatus();
+    File.WriteAllText(serviceLog, System.Text.Json.JsonSerializer.Serialize(new
+    {
+        Elevated = ElevationHelper.IsElevated,
+        Display = new { display.Detail, display.Restore, Ready = display.Fingerprint is not null },
+        Legacy = new { legacy.Detail, legacy.Restore, Ready = legacy.Fingerprint is not null },
+        LocalSystem = new { local.Detail, local.Restore, Ready = local.Fingerprint is not null },
+    }));
+    if (!display.Restore || display.Fingerprint is null || local.Fingerprint is null) Environment.ExitCode = 2;
+    return;
+}
+if (args is ["--host-system-wire", var systemLayout, var systemWireLog])
+{
+    try { await DisplayContainerWireProbe.RunAsync(systemLayout, systemWireLog, system: true); }
+    catch (Exception ex) { File.WriteAllText(systemWireLog, ex.ToString()); Environment.ExitCode = 2; }
+    return;
+}
 if (args is ["--host-wire", var layout, var wireLog])
 {
     try { await DisplayContainerWireProbe.RunAsync(layout, wireLog); }
@@ -29,6 +50,12 @@ if (args is ["--host-read-only"])
     Console.WriteLine("NVIDIA signature: " + DeltaNFD.Execution.Procman.NativeNvidiaGpuShareApi.TrustedNvidia(image));
     return;
 }
+if (args is ["--host-telemetry-status"])
+{
+    var snapshot = NvDisplayContainerService.TelemetryReconcile();
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(snapshot));
+    return;
+}
 var token = Guid.NewGuid();
 var isolated = Path.Combine(Path.GetTempPath(), "DeltaNFD-NvDisplayContainerChecks-" + token.ToString("N"));
 Directory.CreateDirectory(isolated);
@@ -50,6 +77,9 @@ await DisplayContainerReadyChecks.RunAsync(Check);
 var path = Path.Combine(NvDisplayContainerService.DriverStore, @"nv_test.inf_amd64_abcd\Display.NvContainer\NVDisplay.Container.exe");
 const string parameter = "-arg <ExeDir>\\arguments.txt";
 var imageName = path + " " + parameter;
+FileBackupChecks.Run(isolated, imageName, Check);
+TelemetryChecks.Run(isolated, imageName, Check);
+LocalSystemChecks.Run(isolated, imageName, Check);
 foreach (var raw in new[] { imageName, $"\"{path}\"  -arg \"<ExeDir>\\arguments.txt\"", path,
     imageName.Replace(Path.GetDirectoryName(Environment.SystemDirectory)!, @"\SystemRoot"),
     imageName.Replace(Path.GetDirectoryName(Environment.SystemDirectory)!, "%SystemRoot%"),
@@ -68,6 +98,11 @@ foreach (var account in new[] { "LocalSystem", @"NT AUTHORITY\SYSTEM" })
 Check(!NvDisplayContainerService.IsLocalSystem(@"DOMAIN\LocalSystem"), "foreign account rejected");
 Check(BackendModules.IsReadOnly(BackendModules.Gpu, BackendCommands.GpuNvDisplayContainerStatus), "status must be read-only");
 Check(BackendModules.RequiresWriteIntent(BackendModules.Gpu, BackendCommands.GpuNvDisplayContainerChange), "writes require intent");
+Check(BackendModules.IsReadOnly(BackendModules.System, BackendCommands.SystemNvDisplayContainerStatus)
+    && BackendModules.RequiresWriteIntent(BackendModules.System, BackendCommands.SystemNvDisplayContainerChange)
+    && BackendModules.IsMutating(BackendModules.System, BackendCommands.SystemNvDisplayContainerRecover)
+    && !BackendModules.RequiresWriteIntent(BackendModules.System, BackendCommands.SystemNvDisplayContainerRecover),
+    "normal system writes own intent and independent recovery uses existing intent");
 
 OperationResult Apply(Fake f, bool? restore = null, string? fp = null, bool gate = true, bool trusted = true)
 {
@@ -138,6 +173,34 @@ Check(!failedClear.Success && !failedClear.OutcomeUnknown && failedClear.Message
     && f.State == fresh && f.Saved != null, "backup cleanup failure does not lock a verified restored service");
 f.Fail = null;
 Check(Apply(f).Success && f.State == fresh && f.Saved == null, "partial restart can retry");
+var changed = fresh with { Image = imageName.Replace("abcd", "eeee"), Mode = Manual };
+var obsolete = new NvContainerBackup(imageName, Automatic, false, true);
+var upperPath = imageName.Replace(NvDisplayContainerService.DriverStore, NvDisplayContainerService.DriverStore.ToUpperInvariant(), StringComparison.Ordinal);
+var caseOnly = new Fake(fresh with { Image = upperPath, Mode = Disabled, Run = Stopped, Pid = 0 }) { Saved = obsolete };
+Check(!string.Equals(upperPath, imageName, StringComparison.Ordinal), "case-only test uses distinct DriverStore casing");
+Check(NvDisplayContainerService.Describe(caseOnly.State, obsolete) is { Fingerprint: not null, Restore: true },
+    "Windows upgrade path-casing difference retains recovery authority");
+Check(Apply(caseOnly).Success && caseOnly.State.Mode == Automatic && caseOnly.State.Run == Running
+    && caseOnly.State.Image == upperPath && caseOnly.Saved is null, "restore leaves the current image spelling in place");
+var differentArgs = caseOnly.State with { Image = upperPath.Replace(" -arg ", " -ARG ", StringComparison.Ordinal), Mode = Disabled, Run = Stopped, Pid = 0 };
+Check(!string.Equals(differentArgs.Image, upperPath, StringComparison.Ordinal)
+    && NvDisplayContainerService.Describe(differentArgs, obsolete) is { Fingerprint: null, Restore: false },
+    "argument casing remains sensitive even if the executable path case is normalized for comparison");
+Check(NvDisplayContainerService.Describe(caseOnly.State with { Mode = Disabled, Delayed = true }, obsolete).Detail.Contains("延迟启动标记"),
+    "real delay-flag conflicts identify the affected field");
+var conflict = new Fake(changed) { Saved = obsolete };
+var conflictPreview = NvDisplayContainerService.Describe(changed, obsolete);
+Check(conflictPreview.Fingerprint is not null && !conflictPreview.Restore, "enabled driver replacement offers a new disable");
+Check(!Apply(conflict, restore: true).Success && conflict.Ops.Count == 0, "conflict never allows restoring stale settings");
+conflict.Fail = "archive";
+Check(!Apply(conflict).Success && conflict.State == changed && conflict.Saved == obsolete,
+    "archive failure prevents service writes");
+conflict.Fail = null;
+conflict.Ops.Clear();
+Check(Apply(conflict).Success && conflict.Archived == obsolete
+    && conflict.Ops.SequenceEqual(["archive", "save", "Disabled", "stop"]), "archive and backup precede service writes");
+Check(Apply(conflict).Success && conflict.State == changed && conflict.Archived == obsolete,
+    "restore uses the new driver configuration and keeps the old archive");
 var previous = new NvContainerBackup(imageName, Automatic, false, true);
 var bytes = NvContainerRegistryBackup.Encode(previous);
 var legacyShape = Convert.ToHexString(bytes.AsSpan(0, 6));
@@ -161,6 +224,14 @@ sealed class Fake(NvContainerState state) : INvContainerScm, INvContainerBackupS
     NvContainerState INvContainerScm.Read() => State;
     NvContainerBackup? INvContainerBackupStore.Read() => Fail == "read-backup" ? throw new IOException(Fail) : Saved;
     public void Save(NvContainerBackup backup) { Mutate("save"); Saved = backup; }
+    public NvContainerBackup? Archived { get; private set; }
+    public void ReplaceConflicting(NvContainerBackup expected, NvContainerBackup replacement)
+    {
+        Mutate("archive");
+        if (Saved != expected) throw new IOException("original backup changed");
+        Archived = expected;
+        Save(replacement);
+    }
     public void PrepareRestore(NvContainerBackup backup)
     {
         if (Fail == "prepare-restore" || Saved != backup) throw new IOException("original backup unverified");

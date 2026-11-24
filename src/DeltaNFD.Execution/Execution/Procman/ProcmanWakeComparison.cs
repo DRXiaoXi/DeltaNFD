@@ -36,7 +36,7 @@ public sealed partial class ProcmanEngine
         }
         lock (_gate)
         {
-            if (_optimalClockScanInProgress || _clockValueFinished is not null) return OperationResult.Fail("已有钟摆实验在运行。");
+            if (_optimalClockScanInProgress || _clockValueFinished is not null) return OperationResult.Fail("已有钟摆计时测试在运行。");
             try { Guard(); } catch (Exception e) { return OperationResult.Fail(ct.IsCancellationRequested ? "测量已取消。" : e.Message); }
             if (!StopOptimalClock("对照测量前释放旧请求")) return OperationResult.Fail("旧请求释放未确认，未开始测量。");
             _clockValueFinished=finished; _clockValueCancellation=cancellation; _optimalClockScanInProgress=true;

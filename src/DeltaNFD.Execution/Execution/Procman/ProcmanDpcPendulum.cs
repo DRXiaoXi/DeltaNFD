@@ -57,6 +57,7 @@ public sealed partial class ProcmanEngine
             AppSettingsStore.UpdateRequired(s => { s.OptimalClockUseCustomResolution = false; s.OptimalClockResolution100ns = 10000; s.OptimalClockScanUtc = utc;
                 s.OptimalClockScanPlatform = admitted.PlatformId; s.OptimalClockScanEnvironment = admitted.ClockEnvironmentRevision; s.OptimalClockBestTypical100ns = 0; s.OptimalClockBestStable100ns = 0;
                 s.OptimalClockScanLoadThreads = 0; s.OptimalClockSafetyMarginMs = 0;
+                s.OptimalClockScanMode = OptimalClockScanMode.LowestLatency;
                 s.OptimalClockStableConditions = "自备 DPC EXE 固定1ms；核对进程/服务/当前值，未测量Sleep"; });
             var saved = AppSettingsStore.ReadRequired();
             if (saved.OptimalClockResolution100ns != 10000 || saved.OptimalClockScanUtc != utc || saved.OptimalClockScanPlatform != admitted.PlatformId || saved.OptimalClockScanEnvironment != admitted.ClockEnvironmentRevision)
@@ -68,7 +69,7 @@ public sealed partial class ProcmanEngine
     }
 
     private OperationResult ScanWin10DpcAlgorithms(PendulumGlobalStatus admitted, DpcCombinedHolder holder,
-        bool quick, OptimalClockScanKind kind, CancellationToken token)
+        bool quick, OptimalClockScanKind kind, CancellationToken token, IProgress<string>? progress, bool fastInitialSweep, ClockSamplingMask? selectedCpu, string timerPreflight)
     {
         try
         {
@@ -82,23 +83,41 @@ public sealed partial class ProcmanEngine
             }
             var measurement = new DpcAssistedMeasurement(_optimalClockMeasurement, () => holder.DpcHolding, token, _pendulumLog.Write);
             var scanner = new OptimalClockScanner(measurement, _pendulumLog.Write);
-            var result = scanner.Scan(quick ? OptimalClockScanOptions.Quick : new(), kind, token);
+            var burstScan = PendulumFramePolicy.IsBurstScanMode(SavedScanMode(kind));
+            var result = scanner.Scan(quick ? OptimalClockScanOptions.Quick : new(), kind, token, CheckBurstScanEnvironment, progress, fastInitialSweep, selectedCpu);
             _pendulumLog.Write("dpc-assisted-scan-result", result);
+            if (kind == OptimalClockScanKind.ManagedFullRange)
+                result = result with { Message = result.Message + "\n" + timerPreflight };
+            if (!result.Success && result.HasFullRangeReport)
+            {
+                token.ThrowIfCancellationRequested();
+                if (kind == OptimalClockScanKind.ManagedFullRange
+                    && (!StopOptimalClock("DPC辅助扫描结束，释放基础请求") || !FinishClockScanTimerRequests()))
+                    return OperationResult.Fail("DPC或临时忽略状态恢复未确认。");
+                return OperationResult.Ok(result.Message);
+            }
+
             if (!result.Success || result.Mode != OptimalClockMode.Global || result.BestLock is not { } best
-                || best.Resolution100ns is < OptimalClockScanner.CriticalFloor100ns or > 10000)
+                || !ValidScanTarget(kind, best.Resolution100ns) || best.Resolution100ns > 10000)
                 return OperationResult.Fail("DPC辅助算法扫描未得到可保存的跨进程稳定值，原保存保持：" + result.Message);
             lock (_gate)
             {
                 token.ThrowIfCancellationRequested();
+                if (burstScan) CheckBurstScanEnvironment();
                 var beforeHold = ReadGlobalPrecision();
                 if (!beforeHold.Ready || beforeHold.PlatformId != admitted.PlatformId || beforeHold.ClockEnvironmentRevision != admitted.ClockEnvironmentRevision || OfflineModeGuard.BlocksNormalAutomation)
                     return OperationResult.Fail("来源或恢复状态已变化，未进行候选联合持有。");
                 holder.AlgorithmMode = true;
+                _optimalClock.CustomResolution = false;
+                _optimalClock.BurstResolution100ns = burstScan ? best.Resolution100ns : null;
                 // Validate the actual two-owner hold before saving, not just the scanner's short-lived candidate.
                 if (!_optimalClock.Apply(best.Resolution100ns, true) || !_optimalClock.State.DpcProcessVerified || !_optimalClock.State.VerifiedGlobal)
                     return OperationResult.Fail("候选联合持有复验未通过，未保存：" + _optimalClock.State.Message);
                 if (!StopOptimalClock("DPC辅助扫描结束，DPC和额外请求已释放")) return OperationResult.Fail("联合持有释放未确认，未保存。");
+                if (kind == OptimalClockScanKind.ManagedFullRange && !FinishClockScanTimerRequests())
+                    return OperationResult.Fail("临时忽略状态恢复未确认，未保存扫描值。");
                 token.ThrowIfCancellationRequested();
+                if (burstScan) CheckBurstScanEnvironment();
                 var latest = ReadGlobalPrecision();
                 if (!latest.Ready || latest.PlatformId != admitted.PlatformId || latest.ClockEnvironmentRevision != admitted.ClockEnvironmentRevision || OfflineModeGuard.BlocksNormalAutomation)
                     return OperationResult.Fail("来源或恢复状态已变化，未保存算法结果。");
@@ -108,15 +127,23 @@ public sealed partial class ProcmanEngine
                     s.OptimalClockResolution100ns = best.Resolution100ns; s.OptimalClockScanUtc = result.CompletedUtc;
                     s.OptimalClockScanPlatform = profile; s.OptimalClockScanEnvironment = admitted.ClockEnvironmentRevision; s.OptimalClockBestTypical100ns = result.BestTypical?.Resolution100ns ?? 0;
                     s.OptimalClockBestStable100ns = result.BestStable?.Resolution100ns ?? 0; s.OptimalClockScanLoadThreads = result.LoadThreads;
-                    s.OptimalClockScanMode = kind == OptimalClockScanKind.StableLatency ? OptimalClockScanMode.StableLatency : OptimalClockScanMode.LowestLatency;
+                    s.OptimalClockScanMode = SavedScanMode(kind);
                     s.OptimalClockSafetyMarginMs = result.SafetyMarginMs; s.OptimalClockStableConditions = result.StableConditions;
                 });
                 var saved = AppSettingsStore.ReadRequired();
-                if (saved.OptimalClockScanPlatform != profile || saved.OptimalClockResolution100ns != best.Resolution100ns || saved.OptimalClockScanUtc != result.CompletedUtc || saved.OptimalClockScanEnvironment != admitted.ClockEnvironmentRevision)
+                if (saved.OptimalClockScanPlatform != profile || saved.OptimalClockResolution100ns != best.Resolution100ns || saved.OptimalClockScanUtc != result.CompletedUtc || saved.OptimalClockScanEnvironment != admitted.ClockEnvironmentRevision
+                    || saved.OptimalClockScanMode != SavedScanMode(kind) || saved.OptimalClockUseCustomResolution)
                     return OperationResult.Fail("算法保存回读不匹配，未确认保存。");
                 _optimalClock.RecordScan(result);
                 _pendulumLog.Write("dpc-assisted-selection-saved", new { profile, best.Resolution100ns, kind });
-                return OperationResult.Ok($"已保存DPC辅助算法{(kind == OptimalClockScanKind.LowestLatency ? 1 : 2)}结果 {best.Milliseconds:0.0000}ms；开启帧格后同时运行DPC与额外请求。" + result.Message);
+                var algorithm = kind switch
+                {
+                    OptimalClockScanKind.FullRange or OptimalClockScanKind.Cpu0FullRange or OptimalClockScanKind.Cpu2FullRange or OptimalClockScanKind.ManagedFullRange => "全范围扫描",
+                    OptimalClockScanKind.FirstPassing => "逐档扫描",
+                    OptimalClockScanKind.LowestLatency => "算法1",
+                    _ => "算法2",
+                };
+                return OperationResult.Ok($"已保存 DPC 辅助{algorithm}结果 {best.Milliseconds:0.0000} ms；开启帧格后同时运行 DPC 与额外请求。" + result.Message);
             }
         }
         finally

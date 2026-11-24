@@ -77,7 +77,9 @@ internal sealed class BackendCaller(string moduleId, PageBackendLease? pageOwner
         BackendOperationGate.Check();
         if (command != BackendModules.ReconcileCommand(ModuleId) && command != BackendModules.RecoverCommand(ModuleId)
             && !(ModuleId == BackendModules.CpuFrame && command == BackendCommands.CpuFramePowerIncomplete)
-            && !(ModuleId == BackendModules.System && command == BackendCommands.SystemNvDisplayContainerReconcile))
+            && !(ModuleId == BackendModules.System && command is BackendCommands.SystemNvDisplayContainerReconcile
+                or BackendCommands.SystemNvDisplayContainerRecover or BackendCommands.SystemNvTelemetryReconcile
+                or BackendCommands.SystemNvTelemetryRecover or BackendCommands.SystemNvLocalSystemReconcile or BackendCommands.SystemNvLocalSystemRecover))
             throw new BackendContractException("仅允许核对或恢复命令。");
         await PageBackendSessions.WaitGateAsync(_gate, _owner, cancellationToken, ModuleId);
         try

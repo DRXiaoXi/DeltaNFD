@@ -66,7 +66,7 @@ internal static class DpcAlgorithmChecks
         Check(!clock.Ensure(true, 5200, true) && starts == (dpc.Starts, fine.Starts), "No repeated automatic DPC relaunch");
         Check(clock.Stop() && clock.Ensure(true, 5200, true), "Explicit off/on allows new joint hold"); clock.Stop();
 
-        foreach (var kind in new[] { OptimalClockScanKind.LowestLatency, OptimalClockScanKind.StableLatency })
+        foreach (var kind in new[] { OptimalClockScanKind.LowestLatency, OptimalClockScanKind.StableLatency, OptimalClockScanKind.FirstPassing, OptimalClockScanKind.FullRange, OptimalClockScanKind.Cpu2FullRange })
         {
             world = new(); dpc = new(world, true); fine = new(world, false); combined = new(dpc, fine); measurement = new(world);
             var global = DpcPendulumInspection.Evaluate(new(10, 0, 19045, 6093), new(true, @"D:\fixture\dpclat.exe", "fixture"));
@@ -75,34 +75,71 @@ internal static class DpcAlgorithmChecks
             using var engine = new ProcmanEngine(Path.Combine(root, kind + "-changes.json"), Path.Combine(root, kind + "-rules.json"),
                 clockHolder: combined, clockMeasurement: measurement, clockCurrentResolution: () => world.Current);
             engine.GlobalPrecisionForTests = () => global; engine.FrameModeActiveForTests = () => frame; engine.BackgroundLoopDisabledForTests = true;
-            Check(engine.ScanOptimalClockAsync(false, kind).GetAwaiter().GetResult().Success && AppSettingsStore.Read().OptimalClockScanPlatform == global.PlatformId,
+            engine.ClockGameRunningForTests = () => false;
+            var basicKind = kind is OptimalClockScanKind.FirstPassing or OptimalClockScanKind.FullRange or OptimalClockScanKind.Cpu2FullRange ? OptimalClockScanKind.LowestLatency : kind;
+            Check(engine.ScanOptimalClockAsync(false, basicKind).GetAwaiter().GetResult().Success && AppSettingsStore.Read().OptimalClockScanPlatform == global.PlatformId,
                 "Existing basic 1ms save remains supported: " + kind);
             Check(AppSettingsStore.Read().OptimalClockScanEnvironment == global.ClockEnvironmentRevision, "Basic proof saves current environment: " + kind);
             var before = JsonSerializer.Serialize(AppSettingsStore.Read()); measurement.Clamp = true;
             Check(!engine.ScanOptimalClockAsync(true, kind, dpcAlgorithmScan: true).GetAwaiter().GetResult().Success
                 && JsonSerializer.Serialize(AppSettingsStore.Read()) == before && !combined.HasCleanupResponsibility,
                 "Bad candidate keeps saved basic route and releases owners: " + kind); measurement.Clamp = false;
-            var result = engine.ScanOptimalClockAsync(true, kind, dpcAlgorithmScan: true).GetAwaiter().GetResult();
+            var result = engine.ScanOptimalClockAsync(true, kind, dpcAlgorithmScan: true, fastInitialSweep: kind == OptimalClockScanKind.FullRange)
+                .GetAwaiter().GetResult();
             Check(result.Success, "Real engine dispatches original scanner kind " + kind + ": " + result.Message);
             var saved = AppSettingsStore.Read();
             Check(saved.OptimalClockScanEnvironment == global.ClockEnvironmentRevision, "Algorithm proof saves current environment: " + kind);
+            var expectedMode = kind switch
+            {
+                OptimalClockScanKind.FirstPassing => OptimalClockScanMode.FirstPassing,
+                OptimalClockScanKind.FullRange or OptimalClockScanKind.Cpu2FullRange => OptimalClockScanMode.FullRange,
+                OptimalClockScanKind.StableLatency => OptimalClockScanMode.StableLatency,
+                _ => OptimalClockScanMode.LowestLatency,
+            };
+            var correctTarget = kind switch
+            {
+                OptimalClockScanKind.FirstPassing => saved.OptimalClockResolution100ns == 5000,
+                OptimalClockScanKind.FullRange or OptimalClockScanKind.Cpu2FullRange => saved.OptimalClockResolution100ns == 6000,
+                _ => saved.OptimalClockResolution100ns is >= 5100 and <= 6300,
+            };
             Check(saved.OptimalClockScanPlatform == global.PlatformId + DpcPendulumSource.AlgorithmProfileSuffix
-                && saved.OptimalClockResolution100ns is >= 5100 and <= 6300 && saved.OptimalClockScanLoadThreads > 0
-                && saved.OptimalClockScanMode == (kind == OptimalClockScanKind.StableLatency ? OptimalClockScanMode.StableLatency : OptimalClockScanMode.LowestLatency),
+                && correctTarget
+                && saved.OptimalClockScanLoadThreads > 0 && saved.OptimalClockScanMode == expectedMode,
                 "Scanned target/mode/source/statistics actually persist: " + kind);
             Check(!combined.HasCleanupResponsibility && measurement.ActiveLoads == 0, "Save happens after clean release: " + kind);
             if (kind == OptimalClockScanKind.StableLatency)
                 Check(measurement.Loads.Distinct().Count() >= 2 && measurement.IdleCandidateSamples > 0, "Algorithm 2 validates idle/standard/heavy loads");
-            frame = true; Check(engine.OptimalClockOnceForTests() && combined.AlgorithmMode && dpc.Holding && fine.Holding, "Frame restores saved pair: " + kind);
-            Check(engine.Snapshot().OptimalClock is { DpcProcessVerified: true, VerifiedGlobal: true } && fine.Resolution100ns == saved.OptimalClockResolution100ns,
-                "IPC reports actual scanned hold rather than fixed 1ms: " + kind);
-            Check(!engine.ApplyOptimalClock(saved.OptimalClockResolution100ns + 1).Success && fine.Resolution100ns == saved.OptimalClockResolution100ns,
-                "Direct apply cannot substitute an unscanned joint target");
+            frame = true;
+            Check(engine.OptimalClockOnceForTests(), "Frame evaluates the saved scan: " + kind);
+            if (saved.OptimalClockResolution100ns == 5000)
+            {
+                Check(!dpc.Holding && !fine.Holding && engine.Snapshot().OptimalClock is { UsesGameDefault: true, SavedResolution100ns: 5000 },
+                    "Frame inherits the game's 0.5000 ms without starting either request");
+                Check(!engine.ApplyOptimalClock(5001).Success && !combined.HasCleanupResponsibility,
+                    "Direct apply cannot bypass the saved game default for an unscanned value");
+            }
+            else
+            {
+                Check(combined.AlgorithmMode && dpc.Holding && fine.Holding, "Frame restores saved pair: " + kind);
+                Check(engine.Snapshot().OptimalClock is { DpcProcessVerified: true, VerifiedGlobal: true } && fine.Resolution100ns == saved.OptimalClockResolution100ns,
+                    "IPC reports actual scanned hold rather than fixed 1ms: " + kind);
+                Check(!engine.ApplyOptimalClock(saved.OptimalClockResolution100ns + 1).Success && fine.Resolution100ns == saved.OptimalClockResolution100ns,
+                    "Direct apply cannot substitute an unscanned joint target");
+            }
             starts = (dpc.Starts, fine.Starts);
             Check(!engine.ScanOptimalClockAsync(true, kind, dpcAlgorithmScan: true).GetAwaiter().GetResult().Success && starts == (dpc.Starts, fine.Starts),
                 "Active frame must be explicitly closed before new scan");
             frame = false; Check(engine.OptimalClockOnceForTests() && !combined.HasCleanupResponsibility, "Frame off stops both requests: " + kind);
             var prior = JsonSerializer.Serialize(AppSettingsStore.Read());
+            if (kind is OptimalClockScanKind.FullRange or OptimalClockScanKind.Cpu2FullRange)
+            {
+                measurement.BurstWait = 1.5;
+                var report = engine.ScanOptimalClockAsync(true, kind, fastInitialSweep: true).GetAwaiter().GetResult();
+                Check(report.Success && report.Message.Contains("未保存") && report.Message.Contains("相对排名")
+                    && JsonSerializer.Serialize(AppSettingsStore.Read()) == prior && !combined.HasCleanupResponsibility && measurement.ActiveLoads == 0,
+                    "Completed DPC report returns after release and preserves previous settings");
+                measurement.BurstWait = 1.01;
+            }
             var admitted = global; measurement.AfterMeasure = () => global = global with { PlatformId = "changed-source" };
             Check(!engine.ScanOptimalClockAsync(true, kind, dpcAlgorithmScan: true).GetAwaiter().GetResult().Success
                 && JsonSerializer.Serialize(AppSettingsStore.Read()) == prior && !combined.HasCleanupResponsibility,
@@ -158,6 +195,7 @@ internal static class DpcAlgorithmChecks
     {
         public bool Clamp; public int SelfCalls, ActiveLoads, IdleSamples, IdleCandidateSamples; public List<int> Loads = [];
         public Action? AfterMeasure;
+        public double BurstWait = 1.01;
         public OptimalClockSample? MeasureGlobal(uint value, int samples, int spin)
         {
             if (!world.Dpc) throw new Exception("DPC wasn't held during measurement");
@@ -170,6 +208,15 @@ internal static class DpcAlgorithmChecks
         public OptimalClockSample? MeasureSelf(uint r, int n, int spin) { SelfCalls++; throw new Exception("Unexpected self-only fallback"); }
         public double? MeasureRequestlessMs(int samples) => world.Dpc ? world.Fine ? 2.0 * world.FineValue / 10000.0 + 0.001 : 2.001 : 15.625;
         public IOptimalClockLoad? StartLoad(int threads) { Loads.Add(threads); ActiveLoads++; return new Load(this, threads); }
+        public IOptimalClockLoad? StartBurstLoad() => StartLoad(2);
+        public ClockBurstMeasurement? MeasureBurst(uint value, CancellationToken token,
+            ClockBurstProbeMode mode = ClockBurstProbeMode.FirstPassing, ClockSamplingMask? samplingCpu = null)
+        {
+            if (!world.Dpc || ActiveLoads == 0) throw new Exception("Burst ran without DPC and load");
+            AfterMeasure?.Invoke();
+            return Clamp ? null : new(value, value, Enumerable.Repeat(BurstWait, ClockBurstProbe.JudgedRounds).ToArray(),
+                mode != ClockBurstProbeMode.FirstPassing ? Enumerable.Repeat(BurstWait, ClockBurstProbe.JudgedRounds * ClockBurstProbe.SamplesPerRound).ToArray() : null);
+        }
         private sealed class Load(Measurement owner, int threads) : IOptimalClockLoad { public int Threads => threads; public void Dispose() { owner.ActiveLoads--; } }
         public static OptimalClockSample Sample(uint value, double median, int samples) => new() {
             Requested100ns = value, Granted100ns = value, Current100ns = value, ObservedBefore100ns = value, ObservedAfter100ns = value,

@@ -60,6 +60,7 @@ public sealed class AppSettings
     /// <summary>用户手动加入忽略列表的进程映像名（如 TimerPrecision.App.exe）；为空表示不启用。
     /// 只作用于当前用户会话的普通进程，系统/服务/反作弊/本工具自身一律拒绝。</summary>
     public List<string> TimerIgnoreExtraProcesses { get; set; } = new();
+    public List<string> TimerIgnoreDetectedPaths { get; set; } = new();
 
     // ---- 钟摆计划：全局锁定系统最佳计时器分辨率（仅 Windows 11，默认关） ----
     /// <summary>启用后由进程管理后端用独立持有进程全局锁定最佳分辨率。</summary>
@@ -70,6 +71,8 @@ public sealed class AppSettings
     /// <summary>锁定的定时器分辨率（100ns；5130 = 0.5130ms，为本机研究结论的临界窗口上沿）。</summary>
     public uint OptimalClockResolution100ns { get; set; } = 5130;
     public bool OptimalClockUseCustomResolution { get; set; }
+    public ClockSamplingCpu? OptimalClockSamplingCpu { get; set; }
+    public ClockSamplingMask? OptimalClockSamplingMask { get; set; }
     public uint OptimalClockCustomResolution100ns { get; set; } = 5130;
     public DateTimeOffset? OptimalClockCustomVerifiedUtc { get; set; }
     public string OptimalClockCustomPlatform { get; set; } = "";
@@ -183,6 +186,7 @@ public sealed class AppSettings
 
     // ---- 常规设置 ----
     public bool CloseToTrayEnabled { get; set; }
+    public MainWindowPlacement? MainWindowPlacement { get; set; }
     /// <summary>仅登录自启动时隐藏主窗口并显示托盘图标；默认关闭，手动打开不受影响。</summary>
     public bool SilentStartupEnabled { get; set; }
 

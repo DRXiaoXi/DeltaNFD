@@ -8,6 +8,13 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args is [FrameDisplaySession.Argument])
+        {
+            Environment.ExitCode = new FrameDisplaySession(new FrameDisplayMode())
+                .RunAsync(Console.In, Console.Out).GetAwaiter().GetResult();
+            return;
+        }
+
         // Keep the WinUI entry in a different JIT method: native residency never references XAML.
         if (LightweightTray.ShouldLaunchUi(args)) StartWinUi();
     }

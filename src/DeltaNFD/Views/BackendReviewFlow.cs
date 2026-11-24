@@ -45,7 +45,9 @@ internal static class BackendReviewFlow
                 if (review.CanRestore)
                 {
                     try { snapshot = await BackendRecovery.ReconcileAsync(review.Module,
-                        scope: BackendRecovery.IsRuntimeInstallation(review) ? "repair-review" : BackendRecovery.NvSettingsReviewScope(review)); }
+                        scope: BackendRecovery.IsRuntimeInstallation(review) ? "repair-review"
+                            : BackendRecovery.IsDisplayInterruptOperation(review) ? DisplayInterruptPriorityPolicy.RecoveryScope
+                            : BackendRecovery.NvSettingsReviewScope(review)); }
                     catch (Exception ex) { readError = ex.Message; snapshotNote = "\n\n只读状态核对未能完成：" + readError; }
                 }
                 var scopes = BackendRecovery.RecoveryChoices(review, snapshot).ToList();
@@ -58,6 +60,7 @@ internal static class BackendReviewFlow
                         Description = "保留当前电源值并归档无法恢复的旧电源备份，再完整复核其他帧格状态", Available = true });
                 }
                 var canKeep = BackendRecovery.CanKeepCurrentState(review, snapshot);
+                var nvService = BackendRecovery.NvServiceReviewScope(review) is not null;
                 var installationReview = BackendRecovery.IsRuntimeInstallation(review);
                 var restartCheckpoint = installationReview && scopes.Count == 1 && scopes[0].Id == "repair-restart-checkpoint";
                 if (BackendRecovery.IsRuntimeFileReplacement(review))
@@ -65,10 +68,11 @@ internal static class BackendReviewFlow
                 if (installationReview)
                     snapshotNote += "\n\n安装/系统修复不能按防护备份回滚。请等待安装进程结束，再点击“核对结束并恢复可用”；会扫描当前组件并归档旧事务，不会重新执行修复。"
                         + "\n若关机中断留下缺少安装器身份的旧记录，可先“建立重启核对点”，保存工作并在方便时使用 Windows 的“重启”，然后回来核对。建立核对点保留全部阻塞，不会自动重启。";
-                if (BackendRecovery.NvSettingsReviewScope(review) == "nv-display-container")
+                if (nvService)
                     snapshotNote += canKeep
-                        ? "\n\n归档会解除待核对提示，并保留当前服务与备份。若 NVIDIA 设置中显示可恢复的原设置，可在归档后从该页恢复。"
-                        : "\n\n显示容器尚未完成只读核对，待核对记录与原设置备份均保留。请按上方原因排查后重试。";
+                        ? scopes.Count > 0 ? "\n\n请退出游戏，再按备份恢复。系统维护后端会恢复原启动设置，并重新核对服务状态。"
+                            : "\n\n你可以核对并保留当前服务状态，归档后仍可通过显卡设置查看服务。"
+                        : "\n\nNVIDIA 服务尚未完成只读核对，待核对记录与原设置备份均保留。请按上方原因排查后重试。";
                 if (review.Module == DeltaNFD.Backends.BackendModules.Ace && !canKeep)
                     snapshotNote += "\n\nACE 当前状态尚未完成核对，不能归档旧清理记录；请退出游戏并等待旧清理进程结束后重试。";
                 if (snapshot is { Complete: true } && scopes.Count == 0)
@@ -107,7 +111,7 @@ internal static class BackendReviewFlow
                     PrimaryButtonText = scopes.Count > 0 ? restartCheckpoint ? "建立重启核对点"
                         : installationReview ? "核对结束并恢复可用" : powerRecords.Count > 0 ? "处理选中范围" : "按可信备份恢复" : !canKeep ? "刷新并重新核对" : "",
                     SecondaryButtonText = canKeep ? "确认保留当前状态" : "",
-                    CloseButtonText = "暂不处理", DefaultButton = scopes.Count > 0 && powerRecords.Count == 0 ? ContentDialogButton.Primary : ContentDialogButton.Close,
+                    CloseButtonText = "暂不处理", DefaultButton = !nvService && scopes.Count > 0 && powerRecords.Count == 0 ? ContentDialogButton.Primary : ContentDialogButton.Close,
                 };
                 var choice = await dialog.ShowAsync();
 
@@ -128,7 +132,7 @@ internal static class BackendReviewFlow
                             PrimaryButtonText = "确认保留并继续核对", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
                         }.ShowAsync() != ContentDialogResult.Primary) continue;
                         var outcome = await BackendRecovery.RestoreAsync(review, scope.Id == "power-preserve" ? "all" : scope.Id,
-                            confirmedPower: scope.Id == "power-preserve" ? powerRecords : null);
+                            confirmedPower: scope.Id == "power-preserve" ? powerRecords : null, reviewedSnapshot: snapshot);
                         if (outcome.Verified && review.Module == DeltaNFD.Backends.BackendModules.CpuFrame)
                         {
                             AppSettingsStore.UpdateRequired(s => s.FrameStartupRecoveryPending = false);

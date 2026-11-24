@@ -144,7 +144,11 @@ public partial class App : Application
                     // Do not race it with a second ProcessExit drain or reissue any shutdown command.
                     _windowsSessionEnding = true;
                     ExitAlreadyPrepared = success;
-                    mainWindow.DispatcherQueue.TryEnqueue(() => Application.Current.Exit());
+                    mainWindow.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        mainWindow.FlushWindowPlacement();
+                        Application.Current.Exit();
+                    });
                 },
                 needsWait: () => AppSettingsStore.Read().FrameModeActive);
             mainWindow.Closed += (_, _) => _sessionEndHook?.Dispose();

@@ -47,6 +47,7 @@ public sealed partial class ProcmanEngine
                 s.OptimalClockBestTypical100ns = 0;
                 s.OptimalClockBestStable100ns = 0;
                 s.OptimalClockScanLoadThreads = 0;
+                s.OptimalClockScanMode = OptimalClockScanMode.LowestLatency;
                 s.OptimalClockSafetyMarginMs = 0;
                 s.OptimalClockStableConditions = "仅驱动授予与分辨率回读，不检测 Sleep";
             });

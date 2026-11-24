@@ -34,17 +34,40 @@ public sealed partial class ProcmanEngine
     private bool PendulumFeatureEnabled => ReleaseFeaturePolicy.PendulumEnabled || ExperimentalTimerFeaturesForTests;
     private bool OptimalClockRequested => PendulumFeatureEnabled && FrameBackgroundActive && AppSettingsStore.Read().FramePendulumEnabled;
     private static uint OptimalClockResolution => PendulumFramePolicy.Resolution(AppSettingsStore.Read());
+    private const string DeltaForceDefaultClock = "沿用三角洲自身的 0.5000 ms 计时器请求。";
 
-    private (bool Prepared, bool Windows10) ReadPendulumPreparation()
+    private (bool Prepared, bool Windows10, bool UsesGameDefault) ReadPendulumPreparation()
     {
         try
         {
             var global = ReadGlobalPrecision();
-            return (PendulumFeatureEnabled && PendulumFramePolicy.Prepared(global, AppSettingsStore.ReadRequired()), global.ExperimentalWindows10);
+            var settings = AppSettingsStore.ReadRequired();
+            var prepared = PendulumFeatureEnabled && PendulumFramePolicy.Prepared(global, settings);
+            return (prepared, global.ExperimentalWindows10, prepared && PendulumFramePolicy.UsesDeltaForceDefault(settings));
         }
-        catch { return (false, DeltaNFD.Inspection.PendulumGlobalInspection.ExperimentalWindows10); }
+        catch { return (false, DeltaNFD.Inspection.PendulumGlobalInspection.ExperimentalWindows10, false); }
     }
-    private bool PendulumPrepared => ReadPendulumPreparation().Prepared;
+
+    private static OptimalClockScanMode SavedScanMode(OptimalClockScanKind kind) => kind switch
+    {
+        OptimalClockScanKind.FirstPassing => OptimalClockScanMode.FirstPassing,
+        OptimalClockScanKind.FullRange or OptimalClockScanKind.Cpu0FullRange or OptimalClockScanKind.Cpu2FullRange or OptimalClockScanKind.ManagedFullRange => OptimalClockScanMode.FullRange,
+        OptimalClockScanKind.StableLatency => OptimalClockScanMode.StableLatency,
+        _ => OptimalClockScanMode.LowestLatency,
+    };
+
+    private static bool ValidScanTarget(OptimalClockScanKind kind, uint resolution)
+        => PendulumFramePolicy.IsBurstScanMode(SavedScanMode(kind)) ? PendulumFramePolicy.IsBurstScanValue(resolution) : resolution >= OptimalClockScanner.CriticalFloor100ns;
+
+    private static bool IsClockSamplingCpuActive(ClockSamplingMask? cpu)
+        => cpu is { Mask: > 0 } && ProcmanTopology.SystemGroupMasks()
+            .Any(group => group.Group == cpu.Group && (group.Mask & cpu.Mask) == cpu.Mask);
+
+    private void CheckBurstScanEnvironment()
+    {
+        if (_memoryStopping > 0 || _memoryDisposed || FrameBackgroundActive || ClockGameRunning || OfflineModeGuard.BlocksNormalAutomation)
+            throw new InvalidOperationException("请先关闭帧格、退出目标游戏，并确认恢复流程已结束。");
+    }
 
     private OptimalClockSnapshot OptimalClockState
     {
@@ -53,13 +76,15 @@ public sealed partial class ProcmanEngine
             var state = _optimalClock.State;
             var error = Volatile.Read(ref _optimalClockError);
             var preparation = ReadPendulumPreparation();
+            var settings = AppSettingsStore.Read();
             return new OptimalClockSnapshot
             {
                 ClockValueProtocolVersion = 1,
-                CustomResolutionActive = AppSettingsStore.Read().OptimalClockUseCustomResolution,
+                CustomResolutionActive = settings.OptimalClockUseCustomResolution,
                 SleepTest = Volatile.Read(ref _clockSleepResult),
                 Prepared = preparation.Prepared,
-                SavedResolution100ns = OptimalClockResolution,
+                SavedResolution100ns = PendulumFramePolicy.Resolution(settings),
+                UsesGameDefault = preparation.UsesGameDefault,
                 Supported = OptimalClockSupported && state.Supported,
                 Enabled = state.Enabled,
                 Holding = state.Holding,
@@ -79,8 +104,7 @@ public sealed partial class ProcmanEngine
                 BestStableMedianMs = state.BestStableMedianMs,
                 ScanRequestlessBaselineMs = state.ScanRequestlessBaselineMs,
                 ScanLoadThreads = state.ScanLoadThreads,
-                ScanMode = state.ScanKind == OptimalClockScanKind.StableLatency
-                    ? OptimalClockScanMode.StableLatency : OptimalClockScanMode.LowestLatency,
+                ScanMode = state.ScanUtc is not null ? SavedScanMode(state.ScanKind) : settings.OptimalClockScanMode,
                 ScanSafetyMarginMs = state.SafetyMarginMs,
                 ScanStableConditions = state.StableConditions,
                 ScanUtc = state.ScanUtc,
@@ -107,6 +131,7 @@ public sealed partial class ProcmanEngine
             if (!_optimalClock.Stop())
                 throw new InvalidOperationException(_optimalClock.State.Message);
             _optimalClockStopped = true;
+            _optimalClock.BurstResolution100ns = null;
             _clockEnvironmentHold?.Dispose(); _clockEnvironmentHold = null;
             _optimalClock.SetWaiting(reason, OptimalClockSupported);
             _frameTimerIgnore.Probe.Invalidate();
@@ -140,15 +165,21 @@ public sealed partial class ProcmanEngine
                 return OperationResult.Fail("请先扫描最佳值或验证保存自定义值，再由帧格自动锁定。");
             using var admissionLease = EnvironmentReadLease();
             global = ReadGlobalPrecision();
-            if (!PendulumFramePolicy.Prepared(global, AppSettingsStore.Read()))
+            var settings = AppSettingsStore.ReadRequired();
+            if (!PendulumFramePolicy.Prepared(global, settings))
                 return OperationResult.Fail("计时环境已变化，请重新扫描或验证保存的值。");
-            if (!SelectDpcSavedMode(global)) return OperationResult.Fail("旧DPC请求释放未确认，未切换持有方式。");
-            var target = resolution100ns ?? OptimalClockResolution;
-            _optimalClock.CustomResolution = AppSettingsStore.Read().OptimalClockUseCustomResolution;
-            if (_optimalClock.CustomResolution && target != OptimalClockResolution)
-                return OperationResult.Fail("自定义模式只使用已验证保存的值；请先在钟摆页验证新值。");
-            if (_optimalClockHolder.DpcAssisted && target != OptimalClockResolution)
-                return OperationResult.Fail("DPC辅助模式只持有实际扫描保存的值；请重新扫描后再更换目标。");
+            var usesGameDefault = PendulumFramePolicy.UsesDeltaForceDefault(settings);
+            if (!usesGameDefault && !SelectDpcSavedMode(global))
+                return OperationResult.Fail("旧DPC请求释放未确认，未切换持有方式。");
+            var savedTarget = PendulumFramePolicy.Resolution(settings);
+            var target = resolution100ns ?? savedTarget;
+            var burstTarget = PendulumFramePolicy.VerifiedBurstResolution(settings);
+            if (target != savedTarget && (settings.OptimalClockUseCustomResolution || burstTarget is not null || _optimalClockHolder.DpcAssisted))
+                return OperationResult.Fail("当前模式只持有已验证保存的值；请先在钟摆页验证新值。");
+            if (usesGameDefault)
+                return StopOptimalClock(DeltaForceDefaultClock) ? OperationResult.Ok(DeltaForceDefaultClock) : OperationResult.Fail(OptimalClockState.Message);
+            _optimalClock.CustomResolution = settings.OptimalClockUseCustomResolution;
+            _optimalClock.BurstResolution100ns = burstTarget;
             try
             {
                 _clockEnvironmentHold ??= EnvironmentReadLease();
@@ -205,8 +236,10 @@ public sealed partial class ProcmanEngine
 
     /// <summary>按指定检测模式扫描（最低延迟 / 稳定延迟）。</summary>
     public async Task<OperationResult> ScanOptimalClockAsync(bool quick, OptimalClockScanKind scanKind, CancellationToken token = default,
-        bool compatibilityOnly = false, bool dpcAlgorithmScan = false)
+        bool compatibilityOnly = false, bool dpcAlgorithmScan = false, IProgress<string>? progress = null, bool fastInitialSweep = false, ClockSamplingMask? selectedCpu = null)
     {
+        if (scanKind == OptimalClockScanKind.ManagedFullRange && !IsClockSamplingCpuActive(selectedCpu))
+            return OperationResult.Fail("所选采样 CPU 已不可用，请重新选择。");
         if (!PendulumFeatureEnabled) return OperationResult.Fail("当前公测版本未开放钟摆计划。");
         if (!OptimalClockSupported)
             return OperationResult.Fail("此系统版本不在钟摆计划支持范围（Windows 10 1809 起）。");
@@ -214,8 +247,16 @@ public sealed partial class ProcmanEngine
         var global = ReadGlobalPrecision();
         _pendulumLog.Write("scan-admission", new { global, quick, compatibilityOnly, algorithm = scanKind.ToString() });
         if (!global.Ready) return OperationResult.Fail(global.Message);
+        var burstScan = PendulumFramePolicy.IsBurstScanMode(SavedScanMode(scanKind));
+        if (burstScan && global.ExperimentalWindows10 && (_optimalClockHolder is not DpcCombinedHolder || global.Win10Dpc is null))
+            return OperationResult.Fail("Win10 逐档扫描需要已核验的基础 DPC。");
         lock (_gate)
         {
+            if (burstScan)
+            {
+                try { CheckBurstScanEnvironment(); }
+                catch (InvalidOperationException ex) { return OperationResult.Fail(ex.Message); }
+            }
             if (_optimalClockScanInProgress || _memoryStopping > 0 || _memoryDisposed) return OperationResult.Fail("钟摆计划检测或后端收尾正在进行中。");
             if (dpcAlgorithmScan && global.ExperimentalWindows10 && FrameBackgroundActive)
                 return OperationResult.Fail("请先关闭帧格，再运行DPC辅助算法扫描；扫描完成后重新开启帧格。");
@@ -225,9 +266,11 @@ public sealed partial class ProcmanEngine
         }
         try
         {
+            var timerPreflight = scanKind == OptimalClockScanKind.ManagedFullRange
+                ? await Task.Run(() => PrepareClockScanTimerRequests(token, progress), token).ConfigureAwait(false) : "";
             if (global.ExperimentalWindows10 && _optimalClockHolder is DpcCombinedHolder combined)
-                return await Task.Run(() => dpcAlgorithmScan && !compatibilityOnly
-                    ? ScanWin10DpcAlgorithms(global, combined, quick, scanKind, token)
+                return await Task.Run(() => (dpcAlgorithmScan || burstScan) && !compatibilityOnly
+                    ? ScanWin10DpcAlgorithms(global, combined, quick, scanKind, token, progress, fastInitialSweep, selectedCpu, timerPreflight)
                     : ProbeWin10Dpc(global, compatibilityOnly, token), token).ConfigureAwait(false);
             if (global.ExperimentalWindows10 && _optimalClockHolder.DpcProcess)
                 return await Task.Run(() => ProbeWin10Dpc(global, compatibilityOnly, token), token).ConfigureAwait(false);
@@ -247,17 +290,23 @@ public sealed partial class ProcmanEngine
                         Message = "本机跨进程能力检测通过；没有进行 CPU 负载扫描，没有保存或授权新的全局锁定值。此结果只适用于当前系统。",
                     };
                 }
-                return scanner.Scan(options, scanKind, token);
+                return scanner.Scan(options, scanKind, token, CheckBurstScanEnvironment, progress, fastInitialSweep, selectedCpu);
             }, token).ConfigureAwait(false);
             lock (_gate)
             {
                 if (!StopOptimalClock("扫描后确认探针请求已释放"))
                     return OperationResult.Fail("扫描结果未保存，探针释放未确认：" + Volatile.Read(ref _optimalClockError));
             }
+            if (scanKind == OptimalClockScanKind.ManagedFullRange)
+            {
+                if (!FinishClockScanTimerRequests()) return OperationResult.Fail("临时忽略状态恢复未确认，未保存扫描值。");
+                result = result with { Message = result.Message + "\n" + timerPreflight };
+            }
             if (!result.Success)
             {
+                token.ThrowIfCancellationRequested();
                 _pendulumLog.Write("scan-not-saved", new { result.Message });
-                return OperationResult.Fail(result.Message);
+                return result.HasFullRangeReport ? OperationResult.Ok(result.Message) : OperationResult.Fail(result.Message);
             }
             if (compatibilityOnly)
             {
@@ -270,17 +319,19 @@ public sealed partial class ProcmanEngine
                 return OperationResult.Fail("本次只验证了请求进程自身，未确认对其他进程生效；结果未保存，未启用全局锁定。请查看钟摆日志。");
             }
             var lockValue = result.BestLock;
-            if (lockValue is null || lockValue.Resolution100ns < 5100)
+            if (lockValue is null || !ValidScanTarget(result.ScanKind, lockValue.Resolution100ns))
                 return OperationResult.Fail("扫描未得到安全侧的稳定锁定值，原设置保持不变。");
+            bool usesGameDefault;
             lock (_gate)
             {
+                token.ThrowIfCancellationRequested();
+                if (burstScan) CheckBurstScanEnvironment();
                 var latestGlobal = ReadGlobalPrecision();
                 if (!latestGlobal.Ready || latestGlobal.ExperimentalWindows10 != global.ExperimentalWindows10
                     || latestGlobal.PlatformId != global.PlatformId || latestGlobal.ClockEnvironmentRevision != global.ClockEnvironmentRevision || OfflineModeGuard.BlocksNormalAutomation)
                     return OperationResult.Fail("全局精度前置条件已变化，扫描结果未保存；请重新核对。");
-                _optimalClock.RecordScan(result);
-                // 只保存通过安全侧稳定性复测的锁定值，不回退到典型/稳定展示赢家。
-                AppSettingsStore.Update(s => {
+                // 保存经过该算法判定的锁定值。
+                AppSettingsStore.UpdateRequired(s => {
                     s.OptimalClockUseCustomResolution = false;
                     s.OptimalClockResolution100ns = lockValue.Resolution100ns;
                     s.OptimalClockScanUtc = result.CompletedUtc;
@@ -289,15 +340,24 @@ public sealed partial class ProcmanEngine
                     s.OptimalClockBestTypical100ns = result.BestTypical?.Resolution100ns ?? 0;
                     s.OptimalClockBestStable100ns = result.BestStable?.Resolution100ns ?? 0;
                     s.OptimalClockScanLoadThreads = result.LoadThreads;
-                    s.OptimalClockScanMode = result.ScanKind == OptimalClockScanKind.StableLatency
-                        ? OptimalClockScanMode.StableLatency : OptimalClockScanMode.LowestLatency;
+                    s.OptimalClockScanMode = SavedScanMode(result.ScanKind);
                     s.OptimalClockSafetyMarginMs = result.SafetyMarginMs;
                     s.OptimalClockStableConditions = result.StableConditions;
                 });
+                var saved = AppSettingsStore.ReadRequired();
+                if (saved.OptimalClockUseCustomResolution || saved.OptimalClockResolution100ns != lockValue.Resolution100ns
+                    || saved.OptimalClockScanUtc != result.CompletedUtc || saved.OptimalClockScanMode != SavedScanMode(result.ScanKind)
+                    || !PendulumFramePolicy.Prepared(latestGlobal, saved))
+                    return OperationResult.Fail("扫描档位保存回读未确认。");
+                usesGameDefault = PendulumFramePolicy.UsesDeltaForceDefault(saved);
+                _optimalClock.RecordScan(result);
                 Volatile.Write(ref _optimalClockError, "");
                 _pendulumLog.Write("scan-saved", new { global.PlatformId, result.BestLock, result.ScanKind });
             }
-            return OperationResult.Ok(result.Message);
+            return OperationResult.Ok(burstScan
+                ? result.Message + (usesGameDefault
+                    ? " 已保存。" + DeltaForceDefaultClock : " 已保存，开启帧格钟摆联动后使用。")
+                : result.Message);
         }
         catch (Exception ex)
         {
@@ -305,8 +365,10 @@ public sealed partial class ProcmanEngine
             lock (_gate)
             {
                 var released = StopOptimalClock();
+                var temporaryRestored = scanKind != OptimalClockScanKind.ManagedFullRange || FinishClockScanTimerRequests();
                 var message = ex is OperationCanceledException ? "钟摆计划扫描已取消" : "钟摆计划扫描未完成：" + ex.Message;
                 if (!released) message += "；探针释放未确认：" + Volatile.Read(ref _optimalClockError);
+                if (!temporaryRestored) message += "。临时忽略状态恢复未确认，请查看进程管理。";
                 Volatile.Write(ref _optimalClockError, message);
                 return OperationResult.Fail(message);
             }
@@ -315,6 +377,7 @@ public sealed partial class ProcmanEngine
         {
             lock (_gate)
             {
+                if (scanKind == OptimalClockScanKind.ManagedFullRange) FinishClockScanTimerRequests();
                 _optimalClockScanInProgress = false;
                 if (OptimalClockRequested && !_frozen) _ = StartRulesEngine();
             }
@@ -351,10 +414,13 @@ public sealed partial class ProcmanEngine
                 global = ReadGlobalPrecision(); settings = AppSettingsStore.Read();
                 if (!PendulumFramePolicy.Prepared(global, settings))
                     return StopOptimalClock("计时环境已变化，请重新扫描或验证保存的值。");
+                if (PendulumFramePolicy.UsesDeltaForceDefault(settings))
+                    return StopOptimalClock(DeltaForceDefaultClock);
                 if (!SelectDpcSavedMode(global)) return false;
                 _optimalClock.CustomResolution = settings.OptimalClockUseCustomResolution;
+                _optimalClock.BurstResolution100ns = PendulumFramePolicy.VerifiedBurstResolution(settings);
                 _clockEnvironmentHold ??= EnvironmentReadLease();
-                var ok = _optimalClock.Ensure(enabled: true, resolution100ns: OptimalClockResolution, supported: true);
+                var ok = _optimalClock.Ensure(enabled: true, resolution100ns: PendulumFramePolicy.Resolution(settings), supported: true);
                 _optimalClockStopped = !_optimalClock.State.Holding;
                 _frameTimerIgnore.Probe.Invalidate();
                 GameTargetService.Default.SetRestoreFailure("钟摆计划", !ok && _optimalClock.State.Holding);

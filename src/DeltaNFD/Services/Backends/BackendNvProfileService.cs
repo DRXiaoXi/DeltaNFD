@@ -13,6 +13,7 @@ internal sealed class BackendNvProfileService : INvProfileService
     private readonly PageBackendLease? _owner = PageBackendSessions.ConstructionOwner;
     private readonly SemaphoreSlim _gate = PageBackendSessions.ModuleGate(BackendModules.Gpu);
     private readonly BackendCaller _caller = new(BackendModules.Gpu);
+    private readonly BackendCaller _displayCaller = new(BackendModules.System);
     private BackendClient? _client { get => _caller.SharedClient; set => _caller.SharedClient = value; }
 
     public IReadOnlyList<NvSettingDef> GetSettingCatalog() => NvSettingsCatalog.Definitions;
@@ -24,11 +25,12 @@ internal sealed class BackendNvProfileService : INvProfileService
 
     internal static OperationResult MapProfileResetResult(BackendResult result)
     {
+        var requiresReview = result.RequiresReview || result.PendingRestore || IsUnconfirmedTransport(result);
         if (result.Data is not { } data)
-            return new OperationResult { Success = false, OutcomeUnknown = result.RequiresReview || result.PendingRestore,
+            return new OperationResult { Success = false, OutcomeUnknown = requiresReview || result.Status == BackendResultStatuses.Ok,
                 Message = "防闪屏性重置未确认完成：" + result.Message };
         var operation = BackendJson.Deserialize<OperationResult>(data);
-        var unknown = operation.OutcomeUnknown || result.RequiresReview || result.PendingRestore;
+        var unknown = operation.OutcomeUnknown || requiresReview || result.Status == BackendResultStatuses.Ok && !operation.Success;
         return new OperationResult { Success = result.Status == BackendResultStatuses.Ok && operation.Success && !operation.IsPartial && !unknown,
             IsSkipped = operation.IsSkipped, OutcomeUnknown = unknown, DiagnosticsDirectory = operation.DiagnosticsDirectory,
             Message = operation.Message };
@@ -39,15 +41,36 @@ internal sealed class BackendNvProfileService : INvProfileService
     public async Task<OperationResult> SetDlssIndicatorAsync(bool enabled) => Map(
         await InvokeAsync(BackendCommands.GpuDlssIndicatorSet, new NvDlssIndicatorArgs { Enabled = enabled }, CancellationToken.None), "设置 DLSS 指示器");
 
-    public async Task<NvDisplayContainerStatus> ReadDisplayContainerAsync()
+    public Task<NvDisplayContainerStatus> ReadDisplayContainerAsync() =>
+        ReadContainerAsync(BackendCommands.SystemNvDisplayContainerStatus);
+
+    public Task<NvDisplayContainerStatus> ReadTelemetryAsync() => ReadContainerAsync(BackendCommands.SystemNvTelemetryStatus);
+
+    public Task<NvDisplayContainerStatus> ReadLocalSystemAsync() => ReadContainerAsync(BackendCommands.SystemNvLocalSystemStatus);
+
+    private async Task<NvDisplayContainerStatus> ReadContainerAsync(string command)
     {
-        var result = await InvokeAsync(BackendCommands.GpuNvDisplayContainerStatus, new { }, CancellationToken.None);
+        var result = await _displayCaller.InvokeAsync(command, new { }, null, CancellationToken.None);
         return result is { Status: BackendResultStatuses.Ok, Data: { } data }
             ? BackendJson.Deserialize<NvDisplayContainerStatus>(data) : new NvDisplayContainerStatus(result.Message);
     }
 
-    public async Task<OperationResult> ChangeDisplayContainerAsync(NvDisplayContainerChange args) => Map(
-        await InvokeAsync(BackendCommands.GpuNvDisplayContainerChange, args, CancellationToken.None), "调整显示容器服务");
+    public async Task<OperationResult> ChangeDisplayContainerAsync(NvDisplayContainerChange args)
+    {
+        if (BackendUnconfirmedStore.ReviewAll().Any(review => review.Module == BackendModules.Gpu
+            && BackendRecovery.NvSettingsReviewScope(review) == NvDisplayContainerChange.RecoveryScope))
+            return OperationResult.Fail("有待核对的显示容器操作，请先到设置页核对原记录。");
+        return Map(await _displayCaller.InvokeAsync(BackendCommands.SystemNvDisplayContainerChange, args, null, CancellationToken.None),
+            "调整显示容器服务");
+    }
+
+    public async Task<OperationResult> ChangeTelemetryAsync(NvDisplayContainerChange args) =>
+        Map(await _displayCaller.InvokeAsync(BackendCommands.SystemNvTelemetryChange, args, null, CancellationToken.None),
+            "调整 NVIDIA 遥测服务");
+
+    public async Task<OperationResult> ChangeLocalSystemAsync(NvDisplayContainerChange args) =>
+        Map(await _displayCaller.InvokeAsync(BackendCommands.SystemNvLocalSystemChange, args, null, CancellationToken.None),
+            "调整 NVIDIA LocalSystem Container");
 
     private async Task<BackendClient> EnsureClientAsync(CancellationToken cancellationToken)
     {
@@ -127,7 +150,7 @@ internal sealed class BackendNvProfileService : INvProfileService
     {
         var operation = result.Data is { } data ? BackendJson.Deserialize<OperationResult>(data) : null;
         var unknown = operation?.OutcomeUnknown == true || result.RequiresReview || result.PendingRestore
-            || result.Code is "backend.timeout" or "backend.cancel-unconfirmed" or "backend.transport-unconfirmed" or "backend.disconnected"
+            || IsUnconfirmedTransport(result)
             // An OK envelope without a usable receipt cannot establish what was persisted.
             || result.Status == BackendResultStatuses.Ok && operation?.Success != true;
         var partial = operation?.IsPartial == true || result.Status == BackendResultStatuses.Partial;
@@ -137,7 +160,10 @@ internal sealed class BackendNvProfileService : INvProfileService
         {
             Success = success, IsSkipped = success && operation!.IsSkipped, IsPartial = partial, OutcomeUnknown = unknown,
             DiagnosticsDirectory = operation?.DiagnosticsDirectory ?? "",
-            Message = success ? message : $"{what}{(unknown || partial ? "未确认完成" : "未完成")}：{message}",
+            Message = success || partial && !unknown ? message : $"{what}{(unknown ? "未确认完成" : "未完成")}：{message}",
         };
     }
+
+    private static bool IsUnconfirmedTransport(BackendResult result) => result.Code is
+        "backend.timeout" or "backend.cancel-unconfirmed" or "backend.transport-unconfirmed" or "backend.disconnected";
 }

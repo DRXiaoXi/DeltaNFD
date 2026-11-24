@@ -10,7 +10,7 @@ namespace DeltaNFD.Views;
 /// <summary>逻辑 CPU 选择面板（进程管理与调度改善共用）：按处理器组列出逻辑 CPU，并在组掩码文本之间转换。</summary>
 internal static class CpuSelectionPanel
 {
-    internal static void Build(StackPanel host, List<ToggleButton> processorToggles, ProcmanTopologyResult? source, bool showDetectionNote)
+    internal static void Build(StackPanel host, List<ToggleButton> processorToggles, ProcmanTopologyResult? source, bool showDetectionNote, string? hint = null)
     {
         host.Children.Clear();
         processorToggles.Clear();
@@ -55,7 +55,7 @@ internal static class CpuSelectionPanel
         host.Children.Add(presets);
         host.Children.Add(new TextBlock
         {
-            Text = "快捷选择会替换当前勾选；选择后点击应用或使用所选 CPU 才会生效。C 为物理核，T 为该核线程；悬停查看完整拓扑。",
+            Text = hint ?? "快捷选择会替换当前勾选；选择后点击应用或使用所选 CPU 才会生效。C 为物理核，T 为该核线程；悬停查看完整拓扑。",
             FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap
         });
         host.Children.Add(selected);

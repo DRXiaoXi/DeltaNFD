@@ -308,6 +308,29 @@
                     </Grid>
                 </ContentControl>
             </TabViewItem>
+            <TabViewItem x:Name="TimerRequestsTab" Header="定时器请求" IsClosable="False">
+                <Grid Margin="0,12,0,0" RowSpacing="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="查看 Windows 报告的请求。屏蔽规则按可执行文件路径匹配。" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                        <Button x:Name="DetectTimerRequestsButton" Content="检测定时器请求" Click="DetectTimerRequests_Click" Style="{StaticResource PrimaryButtonStyle}"/>
+                        <TextBlock x:Name="TimerRequestStatus" Text="点击检测查看运行中的请求。" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" Style="{StaticResource NoteStyle}"/>
+                    </StackPanel>
+                    <ListView Grid.Row="1" x:Name="TimerRequestList" DisplayMemberPath="Display" SelectionMode="Single"
+                              SelectionChanged="TimerRequest_SelectionChanged" AutomationProperties.Name="定时器请求与已屏蔽程序"/>
+                    <StackPanel Grid.Row="2" Spacing="8">
+                        <TextBlock x:Name="TimerRequestPath" TextWrapping="Wrap" Style="{StaticResource NoteStyle}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="BlockTimerRequestButton" Content="屏蔽所选程序" Click="BlockTimerRequest_Click" IsEnabled="False" Style="{StaticResource SecondaryButtonStyle}"/>
+                            <Button x:Name="UnblockTimerRequestButton" Content="解除所选程序屏蔽" Click="UnblockTimerRequest_Click" IsEnabled="False" Style="{StaticResource SecondaryButtonStyle}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </TabViewItem>
             <TabViewItem x:Name="RulesTab" Header="总是规则" IsClosable="False">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <ContentControl x:Name="GenericRulesWorkspaceHost" HorizontalContentAlignment="Stretch">

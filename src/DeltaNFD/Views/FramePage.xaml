@@ -30,6 +30,22 @@
                     <ToggleSwitch Grid.Column="2" VerticalAlignment="Center" IsOn="{x:Bind FrameSrv.FrameModeEnabled, Mode=OneWay}" Toggled="FrameModeToggle_Toggled" OnContent="" OffContent="" MinWidth="0" Margin="0" HorizontalAlignment="Right"/>
                 </Grid>
             </Border>
+            <Border Style="{StaticResource CardBorderStyle}">
+                <StackPanel Spacing="8">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBlock Text="自定义分辨率" VerticalAlignment="Center" Style="{StaticResource H2Style}"/>
+                        <ToggleSwitch x:Name="ResolutionEnableToggle" Grid.Column="1" IsEnabled="False" OnContent="" OffContent="" MinWidth="0" Margin="0" VerticalAlignment="Center" AutomationProperties.Name="启用自定义分辨率" Toggled="ResolutionEnableToggle_Toggled"/>
+                    </Grid>
+                    <TextBlock Text="停用帧格时可设置。开启帧格后用 GPU 拉伸铺满主屏，15 秒内确认，关闭帧格时恢复。" Style="{StaticResource CardDescStyle}" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="CurrentResolutionText" Text="正在读取主显示器分辨率…" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBox x:Name="ResolutionWidthBox" Header="宽度（像素）" Width="116" InputScope="Number" MaxLength="10" PlaceholderText="例如 1440" IsEnabled="False" TextChanged="ResolutionSize_Changed"/>
+                        <TextBox x:Name="ResolutionHeightBox" Header="高度（像素）" Width="116" InputScope="Number" MaxLength="10" PlaceholderText="例如 1080" IsEnabled="False" TextChanged="ResolutionSize_Changed"/>
+                    </StackPanel>
+                    <TextBlock x:Name="FrameResolutionStatus" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" Style="{StaticResource NoteStyle}"/>
+                </StackPanel>
+            </Border>
             <Grid>
                 <Border Style="{StaticResource CardBorderStyle}" ui:HoverLift.Enabled="False">
                     <StackPanel Spacing="8">

@@ -217,8 +217,14 @@ public static class BackendMessages
         var nvContainerVersion = 0;
         if (payload.TryGetProperty("nvDisplayContainerVersion", out _) &&
             (!BackendJson.TryGetInt(payload, "nvDisplayContainerVersion", out nvContainerVersion)
-                || nvContainerVersion is < 0 or > global::DeltaNFD.Services.NvDisplayContainerChange.ProtocolVersion
-                || nvContainerVersion != 0 && module != BackendModules.Gpu))
+                || nvContainerVersion != 0 && !(module switch
+                {
+                    BackendModules.Gpu => nvContainerVersion == global::DeltaNFD.Services.NvDisplayContainerChange.ProtocolVersion,
+                    BackendModules.System => nvContainerVersion is global::DeltaNFD.Services.NvDisplayContainerChange.FileBackupProtocolVersion
+                        or global::DeltaNFD.Services.NvDisplayContainerChange.TelemetryProtocolVersion
+                        or global::DeltaNFD.Services.NvDisplayContainerChange.LocalSystemProtocolVersion,
+                    _ => false
+                })))
             throw new BackendContractException("ready：NVIDIA 显示容器协议版本无效或不兼容。");
         return new BackendReady(nonce, module, moduleVersion, protocolMinor, pid, ticks, imagePath, sha.ToLowerInvariant(),
             scopeVersion, clockVersion, asdVersion, environmentVersion, nvSaveVersion, nvContainerVersion);

@@ -803,22 +803,49 @@ public sealed partial class FrameService : IFrameService
 
     public Task<OperationResult> ActivateFrameModeAsync() => ActivateFrameModeAsync(automatic: false);
 
-    internal async Task<OperationResult> ActivateFrameModeAsync(bool automatic)
+    internal async Task<OperationResult> ActivateFrameModeAsync(bool automatic,
+        Func<int, int, long, Task<bool>>? confirmResolution = null)
     {
         if (OfflineModeGuard.BlocksNormalAutomation)
             return OperationResult.Fail("脱机模式或恢复流程正在运行，普通帧格模式已锁定。");
         await _modeTransition.WaitAsync();
         try
         {
+            _startingFrame = true;
+            OnPropertyChanged(nameof(DisplayResolutionOptionsEditable));
             var settings = AppSettingsStore.Read();
             if (settings.FrameStartupRecoveryPending)
                 return OperationResult.Fail("上次未正常退出，请先人工核对帧格记录。");
             // Never silently write a display spoof, reload a device or create a logon task.
             if (automatic && (!FrameSessionState.CanResume(settings) || settings.TempSpoofRestorePending || IsGpuSpoofInFrame))
                 return OperationResult.Fail("此帧格配置需要手动开启。");
-            return await Backends.FrameBackendReadiness.RunAsync(ActivateFrameModeCoreAsync, "开启", IsGpuSpoofInFrame && _gpuSpoofEnabled);
+            var resolution = DisplayResolutionOptions;
+            var switchResolution = !_frameModeActive && resolution.Enabled;
+            var width = 0;
+            var height = 0;
+            if (switchResolution)
+            {
+                if (automatic || confirmResolution is null)
+                    return OperationResult.Fail("自定义分辨率需要从界面手动开启帧格并确认。");
+                if (!TryReadResolutionPixels(resolution.Width, out width) || !TryReadResolutionPixels(resolution.Height, out height))
+                    return OperationResult.Fail("请在「帧格 → 自定义分辨率」填写大于 0 的整数宽度和高度。");
+            }
+
+            var result = await Backends.FrameBackendReadiness.RunAsync(ActivateFrameModeCoreAsync, "开启", IsGpuSpoofInFrame && _gpuSpoofEnabled);
+            if (!result.Success || !switchResolution || confirmResolution is null) return result;
+            if (result.RequiresDisplayConfirm)
+                return AddDisplayActivationResult(result, new(false, DeltaNFD.Native.FrameDisplayState.Idle,
+                    "此次需要先完成显卡重载确认，未切换自定义分辨率。"));
+
+            var display = await ActivateDisplayResolutionAsync(width, height, confirmResolution);
+            return AddDisplayActivationResult(result, display);
         }
-        finally { _modeTransition.Release(); }
+        finally
+        {
+            _startingFrame = false;
+            _modeTransition.Release();
+            OnPropertyChanged(nameof(DisplayResolutionOptionsEditable));
+        }
     }
 
     private async Task<OperationResult> ActivateFrameModeCoreAsync()
@@ -934,12 +961,12 @@ public sealed partial class FrameService : IFrameService
         using (Backends.BackendOperationGate.EnterStart()) FrameModeActive = true;
 
         // 双CCD 专属调度（帧格生效模式）：帧格开启时自动应用，退出时自动撤销。
-        var dualNote = await ApplyArmedDualCcdAsync();
+        var dual = await ApplyArmedDualCcdAsync();
 
         // 游戏节能 / 临时优化 / 电源锁定：由后端执行。
         var execution = await SyncBackendExecutionAsync();
-        var notes = dualNote + execution.Message;
-        if (!execution.Success)
+        var notes = dual.Message + execution.Message;
+        if (!execution.Success || !dual.Success || dual.IsPartial)
             return new OperationResult { Success = true, IsPartial = true,
                 RequiresReboot = useSpoof && GpuSpoofApplyMode == GpuSpoofApplyMode.Reboot,
                 RequiresDisplayConfirm = needsDisplayConfirm,
@@ -973,7 +1000,12 @@ public sealed partial class FrameService : IFrameService
     public async Task<OperationResult> DeactivateFrameModeAsync()
     {
         await _modeTransition.WaitAsync();
-        try { return await Backends.FrameBackendReadiness.RunAsync(DeactivateFrameModeCoreAsync, "退出", IsGpuSpoofInFrame); }
+        try
+        {
+            var display = await FrameDisplayService.RestoreAsync();
+            if (!display.Success) return OperationResult.Fail(display.Message);
+            return await Backends.FrameBackendReadiness.RunAsync(DeactivateFrameModeCoreAsync, "退出", IsGpuSpoofInFrame);
+        }
         finally { _modeTransition.Release(); }
     }
 
@@ -1179,20 +1211,20 @@ public sealed partial class FrameService : IFrameService
 
     // ---------------- 双CCD 专属调度（帧格生效模式，执行在进程管理后端） ----------------
 
-    private async Task<string> ApplyArmedDualCcdAsync()
+    private async Task<OperationResult> ApplyArmedDualCcdAsync()
     {
         try
         {
             var s = AppSettingsStore.Read();
-            if (!s.DualCcdArmed || !s.DualCcdFrameEnabled) return "";
+            if (!s.DualCcdArmed || !s.DualCcdFrameEnabled) return OperationResult.Ok("");
             var result = await Backends.BackendProcmanService.Instance.ApplyDualCcdAsync(s.DualCcdGameCcdIndex);
             return result.Success
-                ? $"双CCD调度已应用：游戏独占 CCD{s.DualCcdGameCcdIndex}，其他进程在另一个 CCD。"
-                : $"双CCD调度应用失败：{result.Message}";
+                ? result
+                : OperationResult.Fail($"双CCD调度应用失败：{result.Message}");
         }
         catch (Exception ex)
         {
-            return $"双CCD调度应用失败：{ex.Message}";
+            return OperationResult.Fail($"双CCD调度应用失败：{ex.Message}");
         }
     }
 

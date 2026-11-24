@@ -371,15 +371,19 @@ internal static class Program
         result = NvApiDrs.CommitApplicationWrites(changes, (_, _) => 0, () => 0, () => -1, _ => throw new Exception());
         Check(!result.Success && result.OutcomeUnknown, "reload failure cannot claim success");
         result = NvApiDrs.CommitApplicationWrites(changes, (_, _) => 0, () => 0, () => 0, _ => (0, true, true, 4));
-        Check(!result.Success, "wrong value cannot claim success");
+        Check(!result.Success && result.IsPartial && !result.OutcomeUnknown && result.Message.Contains("其中 2 项"),
+            "collect every known mismatch, including a default deletion that left an override");
         result = NvApiDrs.CommitApplicationWrites(Change(1, 2), (_, _) => 0, () => 0, () => 0, _ => (0, true, false, 2));
-        Check(!result.Success, "inherited value cannot confirm explicit override");
+        Check(!result.Success && result.IsPartial && !result.OutcomeUnknown, "inherited value cannot confirm explicit override");
         result = NvApiDrs.CommitApplicationWrites(Change(1, null), (_, _) => -160, () => 0, () => 0, _ => (-160, true, false, 0));
         Check(result.Success, "already absent restore is successful");
         result = NvApiDrs.CommitApplicationWrites(Change(1, null), (_, _) => 0, () => 0, () => 0, _ => (-5, true, false, 0));
-        Check(!result.Success, "read error is not default");
+        Check(!result.Success && result.OutcomeUnknown, "read error is not default");
         result = NvApiDrs.CommitApplicationWrites(Change(1, 2), (_, _) => 0, () => 0, () => 0, _ => (0, false, true, 2));
-        Check(!result.Success, "wrong value type cannot verify");
+        Check(!result.Success && result.OutcomeUnknown, "wrong value type cannot verify");
+        result = NvApiDrs.CommitApplicationWrites(changes, (_, _) => 0, () => 0, () => 0,
+            id => id == 1 ? (0, true, true, 4u) : (-5, false, false, 0u));
+        Check(!result.Success && result.OutcomeUnknown && !result.IsPartial, "a known mismatch cannot settle a batch with another unreadable value");
     }
 
     private static async Task OriginalGpuNameChecksAsync()

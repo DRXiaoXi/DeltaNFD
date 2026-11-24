@@ -27,6 +27,17 @@ internal static class FramePendulumChecks
             Check(PendulumFramePolicy.Prepared(Global(false), settings), "Win11 boot-confirmed saved scan prepared");
             Check(!PendulumFramePolicy.Prepared(Global(false, false), settings), "Win11 restart remains necessary");
             Check(!PendulumFramePolicy.Prepared(Global(true), settings), "Win10 cannot reuse Win11 scan");
+            var defaultWinner = new AppSettings
+            {
+                OptimalClockResolution100ns = 5000, OptimalClockScanUtc = now, OptimalClockScanMode = OptimalClockScanMode.FullRange,
+            };
+            Check(PendulumFramePolicy.Prepared(Global(false), defaultWinner) && PendulumFramePolicy.UsesDeltaForceDefault(defaultWinner),
+                "verified automatic 0.5000 ms uses Delta Force's timer");
+            defaultWinner.CustomGameModeEnabled = true;
+            Check(!PendulumFramePolicy.UsesDeltaForceDefault(defaultWinner), "custom games still use their saved automatic value");
+            defaultWinner.CustomGameModeEnabled = false;
+            defaultWinner.OptimalClockUseCustomResolution = true;
+            Check(!PendulumFramePolicy.UsesDeltaForceDefault(defaultWinner), "explicit custom timer selection still holds the verified value");
             settings.OptimalClockScanPlatform = Global(true).PlatformId;
             Check(!PendulumFramePolicy.Prepared(Global(true), settings), "Basic DPC profile cannot authorize a different target");
             settings.OptimalClockResolution100ns = 10000;
@@ -198,6 +209,25 @@ internal static class FramePendulumChecks
         Check(FrameStatusPresentation.Pendulum(true, engine.Snapshot(), DateTimeOffset.UtcNow, "", enabled: false).Contains("恢复仍待核对"), mode + ": failed restore remains visible after switch off");
         policy.DenyRestore = false;
         Check(engine.FramePendulumOnceForTests() && !policy.State.Forced && !engine.Snapshot().FrameTimerIgnore.RestorePending, mode + ": restoration remains retryable");
+        if (!win10 || algorithm)
+        {
+            AppSettingsStore.Update(s => s.FramePendulumEnabled = true);
+            Check(engine.FramePendulumOnceForTests() && holder.Holding && policy.State.Forced, mode + ": non-default timer and game override active before default transition");
+            events.Clear();
+            AppSettingsStore.Update(s => { s.OptimalClockScanMode = OptimalClockScanMode.FullRange; s.OptimalClockResolution100ns = 5000; });
+            Check(engine.SyncFrameBackground().Success && active && !holder.Holding && !policy.State.Forced,
+                mode + ": automatic 0.5000 ms leaves frame active and restores the game's own timer");
+            Check(events.IndexOf("ignore-restore") >= 0 && events.IndexOf("ignore-restore") < events.FindIndex(x => x.EndsWith("-stop")),
+                mode + ": switching to the game default restores the game before releasing the holder");
+            events.Clear();
+            Check(engine.FramePendulumOnceForTests() && engine.ApplyOptimalClock(5000).Success
+                && !events.Any(e => e.EndsWith("-start")) && !policy.State.Forced,
+                mode + ": neither maintenance nor explicit application starts a holder or ignores the game timer");
+            var defaultState = engine.Snapshot();
+            Check(defaultState.OptimalClock is { Prepared: true, UsesGameDefault: true, SavedResolution100ns: 5000, Holding: false }
+                && FrameStatusPresentation.Pendulum(true, defaultState, DateTimeOffset.UtcNow, "").Contains("沿用三角洲"),
+                mode + ": saved scan and runtime status explain why the game supplies its own timer");
+        }
     }
 
     private sealed class Holder(List<string> events, string name, bool dpc) : IOptimalClockHolderApi

@@ -26,6 +26,7 @@ public sealed partial class ProcessPage
             _ = LoadRulesAsync();
             return;
         }
+        if (ReferenceEquals(ProcessTabs.SelectedItem, TimerRequestsTab)) ShowTimerRequestRows();
         if (IsProcessTab) _ = RefreshListAsync(preserveSelection: true);
     }
 

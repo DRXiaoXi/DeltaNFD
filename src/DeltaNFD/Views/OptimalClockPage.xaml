@@ -11,7 +11,7 @@
             </StackPanel>
             <Border Style="{StaticResource CardBorderStyle}" Visibility="{x:Bind ExperimentalVisibility, Mode=OneWay}">
                 <StackPanel Spacing="10">
-                    <TextBlock Text="1　准备 Windows 10（实验功能）" Style="{StaticResource SectionTitleStyle}"/>
+                    <TextBlock Text="1　准备 Windows 10" Style="{StaticResource SectionTitleStyle}"/>
                     <TextBlock Text="{x:Bind GlobalStatusText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource WarningTextStyle}"/>
                     <TextBlock Text="这项测试要运行你自己提供的 DPC 程序。它会加载旧驱动，有已知蓝屏风险，也未验证能否与反作弊软件一起使用。不接受风险可以跳过，保留现有设置。" TextWrapping="Wrap" Style="{StaticResource WarningTextStyle}"/>
                     <Expander Header="选择 DPC 文件或保存基础设置" IsExpanded="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
@@ -50,12 +50,24 @@
                 <StackPanel Spacing="10">
                     <TextBlock Text="{x:Bind SelectionTitle, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource SectionTitleStyle}" ui:HelpTip.Text="{x:Bind SelectionHelp, Mode=OneWay}"/>
                     <TextBlock Text="{x:Bind ScanPrerequisiteText, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}"/>
-                    <TextBlock Text="完整比较会临时给 CPU 加负载，轮流测试现有方案和其他设置。可以直接开始，不必先做快速筛选。" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}"/>
-                    <Button Content="{x:Bind SelectLabel, Mode=OneWay}" Style="{StaticResource PrimaryButtonStyle}" IsEnabled="{x:Bind CanScan, Mode=OneWay}" Click="Scan_Click"/>
+                    <TextBlock Text="扫描 0.5000～0.5500 ms，共 51 档。扫描期间会临时忽略符合条件的更细请求。" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}"/>
+                    <TextBlock Text="{x:Bind SamplingCpuStatus, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}"/>
+                    <Expander Header="选择采样逻辑处理器" IsEnabled="{x:Bind CanChooseSamplingCpu, Mode=OneWay}"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                        <StackPanel Spacing="8">
+                            <ComboBox x:Name="SamplingGroupBox" Header="处理器组" DisplayMemberPath="Group"
+                                      SelectionChanged="SamplingGroup_SelectionChanged"/>
+                            <ScrollViewer MaxHeight="300">
+                                <StackPanel x:Name="SamplingCpuPanel" Spacing="8"/>
+                            </ScrollViewer>
+                        </StackPanel>
+                    </Expander>
+                    <Button Content="开始全范围扫描" Style="{StaticResource PrimaryButtonStyle}" IsEnabled="{x:Bind CanStartScan, Mode=OneWay}" Click="Scan_Click"/>
                     <Button Content="取消本次检测" Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{x:Bind CanCancelScan, Mode=OneWay}" Click="CancelScan_Click"/>
                     <Expander Header="其他检测方式" IsExpanded="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                         <StackPanel Spacing="8">
-                            <TextBlock Text="只想确认能否使用？选“仅检测”。想先看看哪些值值得复测？选“快速筛选”。两者都不会保存新设置。" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}"/>
+                            <TextBlock Text="完整对照会轮流测量当前设置与候选值的 144 Hz 唤醒表现。这里的检测只生成报告。" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}"/>
+                            <Button Content="开始 144 Hz 完整比较" Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{x:Bind CanScan, Mode=OneWay}" Click="CompareScan_Click"/>
                             <Button Content="{x:Bind ProbeLabel, Mode=OneWay}" Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{x:Bind CanScan, Mode=OneWay}" Click="Compatibility_Click"/>
                             <Button Content="快速筛选候选值" Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{x:Bind CanScan, Mode=OneWay}" Click="QuickScan_Click"/>
                         </StackPanel>
@@ -116,7 +128,7 @@
                     <Button Content="打开日志文件夹" Style="{StaticResource SecondaryButtonStyle}" Click="Logs_Click"/>
                 </StackPanel>
             </Expander>
-            <Expander Header="实验设置与还原：AMD 计时源、HPET 设备" IsExpanded="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+            <Expander Header="AMD 计时源与 HPET 设备设置及还原" IsExpanded="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                 <StackPanel Spacing="8">
                     <TextBlock Text="HPET 禁用仅操作设备管理器中的设备，先备份原状态并逐项回读；不修改 BCD 启动计时源，动态节拍保持原样。修改后手动重启并重新验证钟摆精度。旧版联动备份仍按原记录恢复。" TextWrapping="Wrap" Style="{StaticResource CardDescStyle}"/>
                     <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Message="{x:Bind ClockEnvironmentMessage, Mode=OneWay}"/>

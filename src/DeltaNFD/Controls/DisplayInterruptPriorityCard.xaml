@@ -1,0 +1,22 @@
+<UserControl xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DeltaNFD.Controls.DisplayInterruptPriorityCard">
+    <Border Style="{StaticResource CardBorderStyle}">
+        <StackPanel Spacing="10">
+            <TextBlock Text="显卡中断优先级" Style="{StaticResource H2Style}" TextWrapping="Wrap"/>
+            <InfoBar x:Name="ExperimentalWarning" Severity="Warning" Title="实验功能"
+                     Message="提高中断优先级会影响使用此显卡的应用，可能导致游戏不稳定。应用或恢复后请手动重启电脑。"
+                     IsClosable="False"/>
+            <ComboBox x:Name="Adapters" Header="选择显卡" DisplayMemberPath="Label" HorizontalAlignment="Stretch"
+                      SelectionChanged="Adapter_SelectionChanged"/>
+            <TextBlock x:Name="AdapterStatus" Style="{StaticResource NoteStyle}" TextWrapping="Wrap"
+                       AutomationProperties.LiveSetting="Polite"/>
+            <StackPanel Spacing="8">
+                <Button x:Name="ApplyHigh" Content="备份并设为 High" Style="{StaticResource PrimaryButtonStyle}" Click="Apply_Click" IsEnabled="False"/>
+                <Button x:Name="RestoreOriginal" Content="按备份恢复原值" Style="{StaticResource SecondaryButtonStyle}" Click="Restore_Click" IsEnabled="False"/>
+                <Button x:Name="RefreshAdapters" Content="刷新显卡状态" Style="{StaticResource SecondaryButtonStyle}" Click="Refresh_Click"/>
+            </StackPanel>
+            <InfoBar x:Name="Result" IsClosable="True"/>
+        </StackPanel>
+    </Border>
+</UserControl>

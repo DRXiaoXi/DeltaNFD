@@ -23,7 +23,7 @@ public sealed partial class ProcmanEngine
     private string _frameTimerRetryReason = "";
 
     private bool FrameTimerIgnoreSelected => (ReleaseFeaturePolicy.FrameTimerIgnoreEnabled || ExperimentalTimerFeaturesForTests)
-        && OptimalClockRequested && PendulumPrepared;
+        && OptimalClockRequested && ReadPendulumPreparation() is { Prepared: true, UsesGameDefault: false };
     private bool FrameTimerIgnoreRequested => FrameTimerIgnoreSelected && PendulumClockReadyForIgnore();
 
     private bool PendulumClockReadyForIgnore()
@@ -112,7 +112,7 @@ public sealed partial class ProcmanEngine
                 {
                     _frameTimerPolicyResult ??= FrameTimerPolicyProbeForTests?.Invoke() ?? FrameTimerPolicyProbeHost.RunIsolated();
                     if (!_frameTimerPolicyResult.Accepted)
-                        return RestoreFrameTimerIgnore("Win10 实验：本次策略能力自检未通过，未施加忽略位。" + _frameTimerPolicyResult.Error);
+                        return RestoreFrameTimerIgnore("Win10 策略能力自检未通过，未施加忽略位。" + _frameTimerPolicyResult.Error);
                 }
                 var before = ReadClockForTimerIgnore();
                 var previous = Interlocked.Exchange(ref _frameTimerObservation, null);

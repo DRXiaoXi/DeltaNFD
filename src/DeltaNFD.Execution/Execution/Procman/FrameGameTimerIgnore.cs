@@ -72,6 +72,18 @@ internal sealed class FrameGameTimerIgnore
     internal Action? BeforeSaveForTests { get; set; }
     internal FrameTimerIgnoreSnapshot Snapshot => Volatile.Read(ref _snapshot);
     internal FrameTimerLegacyProbe Probe => _probe;
+
+    internal bool IsAppliedTo(ProcmanProcessIdentity identity)
+    {
+        try
+        {
+            if (_api.IdentityState(identity) != "same") return false;
+            using var handle = _api.Open(identity);
+            return handle.Read().Forced;
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
     // Successful writes or writes with unknown outcome both require a new post-apply check.
     private long _applyWriteRevision;
     internal long ApplyWriteRevision => Interlocked.Read(ref _applyWriteRevision);

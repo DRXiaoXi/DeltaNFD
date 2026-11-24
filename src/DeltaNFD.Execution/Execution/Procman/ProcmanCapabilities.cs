@@ -28,9 +28,20 @@ public static partial class ProcmanCapabilities
     [ThreadStatic] private static SafeProcessHandle? _pinned;
     [ThreadStatic] private static int _pinnedPid;
     internal static IDisposable Pin(ProcmanProcessIdentity identity, bool requireOrdinaryUser = false)
+        => Pin(identity, AccessSetInformation, requireOrdinaryUser);
+
+    internal static IDisposable PinAffinity(ProcmanProcessIdentity identity)
+        => Pin(identity, 0x0600, requireOrdinaryUser: false); // PROCESS_QUERY_INFORMATION | PROCESS_SET_INFORMATION
+
+    private static IDisposable Pin(ProcmanProcessIdentity identity, uint access, bool requireOrdinaryUser)
     {
-        var handle = OpenProcess(AccessSetInformation, false, identity.Pid);
-        if (handle.IsInvalid) { handle.Dispose(); throw new IOException("无法打开写入句柄：" + Marshal.GetLastWin32Error()); }
+        var handle = OpenProcess(access, false, identity.Pid);
+        if (handle.IsInvalid)
+        {
+            var error = Marshal.GetLastWin32Error();
+            handle.Dispose();
+            throw new IOException("无法打开写入句柄：" + error);
+        }
         if (!ProcmanIdentity.Matches(handle, identity)) { handle.Dispose(); throw new IOException("写入句柄身份不符，已拒绝修改。"); }
         if (requireOrdinaryUser && !ProcmanIdentity.IsCurrentOrdinaryUser(handle, identity))
         { handle.Dispose(); throw new IOException("无法确认目标属于当前用户会话的非服务普通进程，已拒绝新增施加。"); }
@@ -191,29 +202,27 @@ public static partial class ProcmanCapabilities
         if (!currentGroup.Ok || !currentGroup.Value!.StartsWith($"g{masks[0].Group}:", StringComparison.Ordinal))
             return ProcmanCapabilityResult.Failure("目标组与当前组不同或无法读取，未修改。");
         if (masks.Any(m => m.Mask == 0)) return ProcmanCapabilityResult.Failure("亲和性掩码不能包含 0。");
-        if (masks.Select(m => m.Group).Distinct().Count() != masks.Count) return ProcmanCapabilityResult.Failure("亲和性存在重复的处理器组。");
-        var handle = TryOpen(pid, AccessPriority);
+        return SetAffinityFromCurrent(pid, masks[0], currentGroup);
+    }
+
+    internal static ProcmanCapabilityResult SetAffinityFromCurrent(int pid, ProcmanGroupMaskValue target, ProcmanCapabilityResult current)
+    {
+        if (target.Mask == 0) return ProcmanCapabilityResult.Failure("亲和性掩码不能包含 0。");
+        if (!current.Ok) return current;
+        if (!current.Value!.StartsWith($"g{target.Group}:", StringComparison.Ordinal))
+            return new(false, current.Value, "目标组与当前组不同，未修改。");
+        var desired = $"g{target.Group}:0x{target.Mask:X}";
+        if (current.Value == desired) return current;
+
+        using var handle = TryOpen(pid, AccessPriority);
         if (handle is null) return ProcmanCapabilityResult.Failure("打开进程失败（权限不足或进程已退出）。");
-        using (handle)
-        {
-            foreach (var mask in masks)
-            {
-                if (!SetProcessAffinityMask(handle, (nuint)mask.Mask))
-                    return ProcmanCapabilityResult.Failure($"设置组 {mask.Group} 亲和性失败：Win32 错误 " + Marshal.GetLastWin32Error());
-            }
-        }
-        // 回读验证（主组掩码核对）
-        var verify = TryOpen(pid, AccessPriority);
-        if (verify is null) return ProcmanCapabilityResult.Failure("回读失败：进程已退出。");
-        using (verify)
-        {
-            if (!GetProcessAffinityMask(verify, out var actual, out _))
-                return ProcmanCapabilityResult.Failure("回读亲和性失败。");
-            var primary = masks.OrderBy(m => m.Group).First();
-            if ((ulong)actual != primary.Mask)
-                return ProcmanCapabilityResult.Failure($"回读不一致：请求 0x{primary.Mask:X}，实际 0x{(ulong)actual:X}。");
-            return ProcmanCapabilityResult.Success(string.Join(";", masks.Select(m => $"g{m.Group}:0x{m.Mask:X}")));
-        }
+        if (!SetProcessAffinityMask(handle, (nuint)target.Mask))
+            return ProcmanCapabilityResult.Failure($"设置组 {target.Group} 亲和性失败：Win32 错误 " + Marshal.GetLastWin32Error());
+        if (!GetProcessAffinityMask(handle, out var actual, out _) || actual == 0)
+            return ProcmanCapabilityResult.Failure("回读亲和性失败。");
+        var actualValue = $"g{target.Group}:0x{(ulong)actual:X}";
+        return actualValue == desired ? ProcmanCapabilityResult.Success(actualValue)
+            : new(false, actualValue, $"回读不一致：请求 {desired}，实际 {actualValue}。");
     }
 
     /// <summary>解除硬亲和性限制 = 恢复该进程可见的全部处理器。</summary>

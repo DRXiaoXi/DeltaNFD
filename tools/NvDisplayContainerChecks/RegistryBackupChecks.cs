@@ -50,17 +50,7 @@ internal static class RegistryBackupChecks
             NvContainerRegistryBackup Store(string leaf) => new(RegistryHive.CurrentUser, parentPath + @"\" + leaf, admin);
             var fresh = Store("fresh");
             check(fresh.Read() is null, "missing backup recognized without creating a key");
-            fresh.Save(original);
-            using (var key = parent.OpenSubKey("fresh")!)
-            {
-                var acl = ReadAcl(key);
-                check(acl.AreAccessRulesProtected && acl.GetAccessRules(true, true, typeof(SecurityIdentifier)).Count == 2,
-                    "new ACL is protected and has only the expected principals under an inheritable parent");
-            }
-            check(fresh.Read() == original, "new record round trips");
-            Reject(() => fresh.Save(original), "new save never overwrites existing bytes");
-            Reject(() => fresh.Clear(original with { WasRunning = false }), "clearing another backup is refused");
-            fresh.Clear(original);
+            check(parent.OpenSubKey("fresh") is null, "missing legacy key remains absent after the read");
 
             var legacy = Store("inherited");
             using (var key = parent.CreateSubKey("inherited"))
@@ -70,20 +60,17 @@ internal static class RegistryBackupChecks
                 check(!before.AreAccessRulesProtected && before.GetAccessRules(true, true, typeof(SecurityIdentifier))
                     .Cast<RegistryAccessRule>().Any(r => r.IsInherited), "real Windows key reproduces the rejected inherited ACL");
                 check(legacy.Read() == original && !ReadAcl(key).AreAccessRulesProtected, "legacy original is visible and inspection never rewrites permissions");
-                legacy.PrepareRestore(original);
                 var after = ReadAcl(key);
-                check(after.AreAccessRulesProtected && after.GetAccessRules(true, true, typeof(SecurityIdentifier)).Count == 2,
-                    "confirmed restore tightens inherited read permissions");
-                check(((byte[])key.GetValue(value)!).SequenceEqual(bytes), "legacy backed-up bytes remain exactly equal after repair");
+                check(after.GetSecurityDescriptorBinaryForm().SequenceEqual(before.GetSecurityDescriptorBinaryForm()),
+                    "reading legacy backup preserves its security descriptor");
+                check(((byte[])key.GetValue(value)!).SequenceEqual(bytes), "legacy backed-up bytes are unchanged");
             }
-            legacy.Clear(original);
 
             var empty = Store("empty");
             using (var key = parent.CreateSubKey("empty"))
             {
                 check(!ReadAcl(key).AreAccessRulesProtected && empty.Read() is null, "empty legacy key does not block a new original backup");
-                empty.Save(original);
-                check(ReadAcl(key).AreAccessRulesProtected && empty.Read() == original, "empty legacy key is secured before recording the original");
+                check(key.ValueCount == 0, "empty legacy key never acquires a value");
             }
 
             var foreign = Store("writable");
@@ -94,7 +81,6 @@ internal static class RegistryBackupChecks
                 key.SetValue(value, bytes, RegistryValueKind.Binary);
                 var before = ReadAcl(key).GetSecurityDescriptorBinaryForm();
                 Reject(() => foreign.Read(), "potentially user-writable contents never acquire trust");
-                Reject(() => foreign.PrepareRestore(original), "repair cannot bless an untrusted writer");
                 check(ReadAcl(key).GetSecurityDescriptorBinaryForm().SequenceEqual(before) &&
                     ((byte[])key.GetValue(value)!).SequenceEqual(bytes), "untrusted key ACL and value are unchanged");
             }
@@ -103,7 +89,7 @@ internal static class RegistryBackupChecks
             using (var key = parent.CreateSubKey("unrelated"))
             {
                 key.SetValue("Unrelated", 7);
-                Reject(() => unrelated.Save(original), "unknown key contents prevent permission changes");
+                Reject(() => unrelated.Read(), "unknown key contents cannot be imported");
                 check(!ReadAcl(key).AreAccessRulesProtected && Equals(key.GetValue("Unrelated"), 7), "unrelated data and ACL stay unchanged");
             }
 
@@ -111,7 +97,7 @@ internal static class RegistryBackupChecks
             using (var key = parent.CreateSubKey("malformed"))
             {
                 key.SetValue(value, new byte[] { 0x42 }, RegistryValueKind.Binary);
-                Reject(() => malformed.PrepareRestore(original), "malformed content prevents permission changes");
+                Reject(() => malformed.Read(), "malformed content cannot be imported");
                 check(!ReadAcl(key).AreAccessRulesProtected && ((byte[])key.GetValue(value)!).SequenceEqual(new byte[] { 0x42 }),
                     "bad backup bytes remain exactly equal");
             }

@@ -24,8 +24,12 @@ public sealed partial class MainWindow : Window
             {
                 // Initialize XAML without taking foreground focus; hide before yielding the UI turn.
                 if (_startupPresentation.IsHidden) AppWindow.Show(activateWindow: false);
-                else Activate();
-            }, () => AppWindow.Hide());
+                else
+                {
+                    Activate();
+                    RestoreMaximizationWhenShown();
+                }
+            }, HideWinUiToTray);
         Log.Info(_startupPresentation.IsHidden ? "静默启动：已驻留托盘，点击托盘或手动打开可显示窗口。" : "启动：显示主窗口。");
     }
 
@@ -173,7 +177,12 @@ public sealed partial class MainWindow : Window
         SystemBackdrop = new MicaBackdrop();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(1280, 820));
+        InitializeWindowPlacement(AppSettingsStore.Read().MainWindowPlacement, placement =>
+        {
+            if (_factoryResetInProgress) return false;
+            AppSettingsStore.Update(settings => settings.MainWindowPlacement = placement);
+            return AppSettingsStore.Read().MainWindowPlacement == placement;
+        });
 
         // 标题栏 logo：ms-appx 资源加载失败（如 pri 缺失）时回退到绝对路径文件
         AppLogoImage.ImageFailed += (_, _) =>
@@ -1008,7 +1017,8 @@ public sealed partial class MainWindow : Window
                 }
 
                 Log.Info("关闭提示：用户选择开启后台驻留" + (rememberChoice.IsChecked == true ? "并记住选择" : ""));
-                AppWindow.Hide();
+                FlushWindowPlacement();
+                HideWinUiToTray();
             }
             else if (choice == ContentDialogResult.Secondary)
             {
@@ -1049,10 +1059,12 @@ public sealed partial class MainWindow : Window
 
     private void RestoreFromTray()
     {
+        CancelTrayWorkingSetTrim();
         _lightweightTrayRequested = false;
         _trayIcon?.Hide();
         AppWindow.Show();
         Activate();
+        RestoreMaximizationWhenShown();
         _startupPresentation.Reveal();
     }
 
@@ -1100,6 +1112,7 @@ public sealed partial class MainWindow : Window
 
     private void ExitAfterPreparedHandover()
     {
+        FlushWindowPlacement();
         App.ExitAlreadyPrepared = true;
         _exitRequested = true;
         EmergencyPolicyUpdateService.Stop();
@@ -1185,12 +1198,7 @@ public sealed partial class MainWindow : Window
             // 本次已完成可信排空，ProcessExit 兜底不应再次执行恢复流程。
             exitOperations.Commit();
             _committedExitOperations = exitOperations; // Keep admission closed through actual process termination.
-            App.ExitAlreadyPrepared = true;
-            _exitRequested = true;
-            EmergencyPolicyUpdateService.Stop();
-            _trayIcon?.Dispose();
-            _trayIcon = null;
-            Application.Current.Exit();
+            ExitAfterPreparedHandover();
         }
         catch (Exception ex)
         {
@@ -1341,7 +1349,7 @@ public sealed partial class MainWindow : Window
             "system" => typeof(SystemOptimizePage),
             "crashlogs" => typeof(CrashDiagnosticsPage),
             "spoof" => typeof(GpuSpoofPage),
-            "nvsettings" => typeof(NvSettingsPage),
+            "nvsettings" => ResolveGraphicsSettingsPage(),
             "gamemods" => typeof(GameModificationsPage),
             "frame" => typeof(FramePage),
             "clock" => typeof(OptimalClockPage),
@@ -1365,6 +1373,20 @@ public sealed partial class MainWindow : Window
         _lastAcceptedNavItem = item;
     }
 
+    private static Type ResolveGraphicsSettingsPage()
+    {
+        try
+        {
+            return DeltaNFD.Inspection.DisplayInterruptInspection.HasPresentNvidia()
+                ? typeof(NvSettingsPage) : typeof(GraphicsSettingsPage);
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Warn("显卡厂商检测未完成：" + ex.Message);
+            return typeof(GraphicsSettingsPage);
+        }
+    }
+
     private NavigationViewItem? _lastAcceptedNavItem;
     private bool _pendulumUnsupportedDialogOpen;
     private bool CanEnterPendulumPage(string tag)
@@ -1381,7 +1403,7 @@ public sealed partial class MainWindow : Window
         try
         {
             await new ContentDialog { XamlRoot = ContentFrame.XamlRoot, Title = "钟摆计划暂不可用",
-                Content = "钟摆计划需要 Windows 10 1809 或更新系统；Win10 提供实验兼容检测。", CloseButtonText = "知道了" }.ShowAsync();
+                Content = "钟摆计划需要 Windows 10 1809 或更新系统；Win10 提供兼容性检测。", CloseButtonText = "知道了" }.ShowAsync();
         }
         catch (Exception ex) { Services.Log.Warn("钟摆计划系统提示未显示：" + ex.Message); }
         finally { _pendulumUnsupportedDialogOpen = false; }

@@ -1,0 +1,12 @@
+<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="using:DeltaNFD.Controls" x:Class="DeltaNFD.Views.GraphicsSettingsPage">
+    <ScrollViewer HorizontalContentAlignment="Stretch" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <Grid HorizontalAlignment="Stretch">
+            <StackPanel MaxWidth="1440" Padding="28,20,28,32" Spacing="12">
+                <ui:PageHeader Title="显卡设置"/>
+                <ui:DisplayInterruptPriorityCard/>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</Page>

@@ -34,7 +34,7 @@ public sealed partial class ProcmanEngine
             if (_optimalClockScanInProgress || _clockValueFinished is not null || _memoryStopping > 0 || _memoryDisposed)
                 return OperationResult.Fail("钟摆检测或后端收尾正在进行，请等待完成。");
             if (FrameBackgroundActive || ClockGameRunning) return OperationResult.Fail("请先关闭帧格并退出目标游戏，再测试或更换分辨率。");
-            if (OfflineModeGuard.BlocksNormalAutomation) return OperationResult.Fail("恢复状态不允许开始钟摆实验。");
+            if (OfflineModeGuard.BlocksNormalAutomation) return OperationResult.Fail("恢复状态不允许开始钟摆计时测试。");
             admitted = ReadGlobalPrecision();
             if (!admitted.Ready) return OperationResult.Fail(admitted.Message);
             if (admitted.ExperimentalWindows10 && _optimalClockHolder is not DpcCombinedHolder)

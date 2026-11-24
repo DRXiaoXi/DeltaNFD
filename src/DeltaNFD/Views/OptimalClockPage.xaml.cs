@@ -4,6 +4,7 @@ using DeltaNFD.Services;
 using DeltaNFD.Services.Backends;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using System.ComponentModel;
 
 namespace DeltaNFD.Views;
@@ -15,6 +16,11 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
     private string _refreshError = "", _operationText = "";
     private PendulumGlobalStatus _global = new();
     private CancellationTokenSource? _scanCancellation;
+    private ProcmanTopologyResult? _samplingTopology;
+    private readonly List<ToggleButton> _samplingToggles = [];
+    private readonly Dictionary<ushort, ulong> _samplingMasks = [];
+    private ClockSamplingMask? _samplingSelection;
+    private string _samplingCpuStatus = "正在读取采样处理器…";
     private readonly BackendCaller _system = new(BackendModules.System);
     private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private static BackendProcmanService Backend => BackendProcmanService.Instance;
@@ -30,13 +36,15 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
     public bool Editable => Supported && !Experimental && !_applying && _global.Readable && PageBackendSessions.SystemWriteBlocker is null;
     public Visibility GlobalSettingsVisibility => Experimental ? Visibility.Collapsed : Visibility.Visible;
     public Visibility ExperimentalVisibility => Experimental ? Visibility.Visible : Visibility.Collapsed;
-    public string PageDescription => "游戏运行正常？可以保持默认，不必做测试。如果想知道换一种计时设置，电脑能否更准时地唤醒程序，可以在这里比较。测的不是游戏帧数，也不会自动套用结果。";
-    public string SelectionTitle => "2　比较哪种设置让程序醒得更准时";
-    public string SelectionHelp => "测量 Sleep(1) 与 144 Hz 周期的晚醒和漏周期。快速检测只提名；完整验证重新交替测量基准与候选，只生成报告。";
+    public string PageDescription => "逐档扫描可为帧格选定计时器分辨率。144 Hz 对照可以比较不同设置下的程序唤醒表现。";
+    public string SelectionTitle => "2　扫描计时器分辨率";
+    public string SelectionHelp => "测量独立进程的 Sleep(1)，比较慢样本数和尾部延迟，初测和复测使用所选逻辑处理器。结果会显示相对排名，只有达标的档位才可自动保存供帧格使用。";
     public string ProbeLabel => Experimental ? "仅检测 DPC（不保存）" : "仅检测兼容性（无 CPU 负载）";
-    public string SelectLabel => "开始完整比较";
     public string ScanPrerequisiteText => Experimental ? "先退出游戏、关闭帧格，并在上方核验自己的 DPC 文件。测试期间会临时运行它，有蓝屏风险。" : "确认上方的系统设置已就绪，然后退出游戏、关闭帧格。";
     public bool CanScan => Supported && !Busy && _global.Ready;
+    public bool CanStartScan => CanScan && _samplingSelection is not null;
+    public bool CanChooseSamplingCpu => !Busy && _samplingTopology is not null;
+    public string SamplingCpuStatus => _samplingCpuStatus;
     public bool CanCancelScan => _applying && !_clockValueBusy && _scanCancellation is not null;
     public bool CanRefresh => Supported && !Busy;
     public bool DpcWindowHidden => AppSettingsStore.Read().OptimalClockDpcWindowHidden;
@@ -52,7 +60,7 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
     public bool GlobalIsOn => _global.Configured;
     public bool CanRegister => Editable && (_global.NeedsRegistration || _global.PendingRecovery);
     public string GlobalStatusText => _global.Message;
-    public string OperationText => string.IsNullOrEmpty(_operationText) ? "还没有本次操作的结果。比较结束后，结论会显示在这里。" : _operationText;
+    public string OperationText => string.IsNullOrEmpty(_operationText) ? "扫描或比较完成后，结果会显示在这里。" : _operationText;
     public string DpcPathText => _global.Win10Dpc?.ExePath is { Length: > 0 } path ? "已核验原件：" + path : "尚未选择原版 DPC EXE；工具不会自动下载或复制第三方原件。";
     public string FrameLinkText => Experimental
         ? "保存后可在帧格页开启或关闭钟摆联动：基础方式只运行 DPC；算法或自定义方式同时运行 DPC 和额外请求。DPC 退出后不反复拉起。"
@@ -67,6 +75,8 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
             if (!Backend.HasCurrentStatus || State is not { } state || !BackendProcmanService.IsFresh(state.UpdatedUtc))
                 return "当前锁定状态尚未确认，请刷新；历史快照不能代表当前状态。";
             if (state.HasError) return "锁定未确认：" + state.Message;
+            if (state.UsesGameDefault && !state.Holding)
+                return "扫描最佳值 0.5000 ms · 沿用三角洲自身的计时器请求";
             if (state.Holding && state.DpcProcessVerified && state.VerifiedGlobal)
                 return $"DPC辅助持有：DPC基底1ms，额外目标{Ms(state.Resolution100ns):0.0000}ms，当前{Ms(state.Current100ns):0.0000}ms；独立等待{state.RequestlessMilliseconds:0.####}ms。";
             if (state.Holding && state.DpcProcessVerified)
@@ -78,7 +88,9 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
                     && state.Current100ns > 0 && state.Current100ns <= (ulong)state.Resolution100ns + 50
                     ? $"Win10 驱动分辨率已确认：请求 {Ms(state.Resolution100ns):0.0000}ms，授予 {Ms(state.Granted100ns):0.0000}ms，当前 {Ms(state.Current100ns):0.0000}ms。"
                     : "驱动分辨率读数无效，无法确认请求。";
-            if (state.Holding && (state.Resolution100ns < (state.CustomResolutionActive ? 5000u : 5100u) || state.Resolution100ns > 156250 || state.Current100ns is < 1 or > 156250))
+            var fineTarget = state.CustomResolutionActive
+                || (PendulumFramePolicy.IsBurstScanMode(state.ScanMode) && state.SavedResolution100ns == state.Resolution100ns);
+            if (state.Holding && (state.Resolution100ns < (fineTarget ? 5000u : 5100u) || state.Resolution100ns > 156250 || state.Current100ns is < 1 or > 156250))
                 return "计时器读数无效，无法确认锁定。";
             if (state.Holding && (ulong)state.Current100ns + 10 < state.Resolution100ns)
                 return $"当前使用的不是帧格设定的值：目标 {Ms(state.Resolution100ns):0.0000} ms，系统当前 {Ms(state.Current100ns):0.0000} ms；可在历史提醒中查看记录。";
@@ -99,7 +111,7 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
             var parts = new List<string>();
             if (Experimental && !IsDpcAlgorithmSaved)
                 return "仅核对本工具启动的DPC、原版驱动服务和系统读数；没有直接读取其授予值，不保证反作弊兼容。不会关闭外部DPC或研究插件的实例。";
-            if (state.BestLock100ns is { } best) parts.Add($"稳定侧锁定值 {Ms(best):0.0000} ms");
+            if (state.BestLock100ns is { } best) parts.Add($"扫描锁定值 {Ms(best):0.0000} ms");
             if (state.BestTypical100ns is { } typical) parts.Add($"典型值 {Ms(typical):0.0000} ms，等待 {state.BestTypicalMedianMs:0.###} ms");
             if (state.BestStable100ns is { } stable) parts.Add($"更稳值 {Ms(stable):0.0000} ms，等待 {state.BestStableMedianMs:0.###} ms");
             parts.Add(ModeLabel(state.ScanMode));
@@ -152,7 +164,7 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
     {
         RaiseCustom();
         RaiseClockEnvironment();
-        foreach (var name in new[] { nameof(Editable), nameof(CanScan), nameof(CanRefresh), nameof(Busy), nameof(GlobalIsOn),
+        foreach (var name in new[] { nameof(Editable), nameof(CanScan), nameof(CanStartScan), nameof(CanChooseSamplingCpu), nameof(CanRefresh), nameof(Busy), nameof(GlobalIsOn),
             nameof(CanRegister), nameof(GlobalStatusText), nameof(StatusText), nameof(DetailText), nameof(FrameLinkText),
             nameof(ScanText), nameof(HistoryText), nameof(OperationText) }) Raise(name);
         Raise(nameof(GlobalSettingsVisibility)); Raise(nameof(ExperimentalVisibility));
@@ -168,6 +180,7 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
         if (!Supported) { App.MainWindow?.NavigateByTag("dashboard"); return; }
         _loaded = true;
         Backend.StatusUpdated += OnStatusUpdated;
+        _ = LoadSamplingCpusAsync();
         SetWindowPresented(App.MainWindow?.IsUiPresented != false);
     }
     internal void SetWindowPresented(bool presented)
@@ -231,9 +244,15 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
         catch (Exception ex) { _operationText = "全局精度设置未完成：" + ex.Message; Log.Warn(_operationText); }
         finally { _applying = false; await RefreshAsync(); RaiseAll(); }
     }
-    private static string ModeLabel(OptimalClockScanMode mode)
-        => mode == OptimalClockScanMode.StableLatency ? "算法2（更激进）" : "算法1（更稳定）";
-    private async void Scan_Click(object sender, RoutedEventArgs e) => await ScanAsync(false);
+    private static string ModeLabel(OptimalClockScanMode mode) => mode switch
+    {
+        OptimalClockScanMode.FirstPassing => "逐档扫描",
+        OptimalClockScanMode.FullRange => "全范围扫描",
+        OptimalClockScanMode.StableLatency => "算法2（更激进）",
+        _ => "原算法1",
+    };
+    private async void Scan_Click(object sender, RoutedEventArgs e) => await ScanAsync(false, burst: true);
+    private async void CompareScan_Click(object sender, RoutedEventArgs e) => await ScanAsync(false);
     private async void QuickScan_Click(object sender, RoutedEventArgs e) => await ScanAsync(true);
     private async void Compatibility_Click(object sender, RoutedEventArgs e) => await ScanAsync(true, true);
     private async void DriverGuide_Click(object sender, RoutedEventArgs e)
@@ -285,28 +304,119 @@ public sealed partial class OptimalClockPage : Page, INotifyPropertyChanged
     }
     private async void BasicDpcSave_Click(object sender, RoutedEventArgs e) => await ScanAsync(false, basicDpc: true);
     private void CancelScan_Click(object sender, RoutedEventArgs e) { _scanCancellation?.Cancel(); _operationText = "正在取消并释放临时请求，请稍候…"; RaiseAll(); }
-    private async Task ScanAsync(bool quick, bool compatibilityOnly = false, bool basicDpc = false)
+    private async Task LoadSamplingCpusAsync()
     {
-        if (!CanScan) return;
+        try
+        {
+            var topology = await Backend.GetTopologyAsync();
+            if (!_loaded) return;
+            var groups = topology?.Groups.Where(group => group.Mask != 0).OrderBy(group => group.Group).ToArray() ?? [];
+            if (groups.Length == 0)
+            {
+                _samplingTopology = null;
+                _samplingSelection = null;
+                _samplingCpuStatus = "未取得可用的采样处理器。";
+                RaiseAll();
+                Raise(nameof(SamplingCpuStatus));
+                return;
+            }
+
+            _samplingTopology = topology;
+            _samplingMasks.Clear();
+            var settings = AppSettingsStore.Read();
+            var saved = settings.OptimalClockSamplingMask ?? ClockSamplingMask.FromCpu(settings.OptimalClockSamplingCpu);
+            var preferredGroup = groups.FirstOrDefault(group => group.Group == (saved?.Group ?? 0)) ?? groups[0];
+            _samplingMasks[preferredGroup.Group] = saved is { } previous
+                ? (previous.Group == preferredGroup.Group && (previous.Mask & preferredGroup.Mask) == previous.Mask ? previous.Mask : 0)
+                : (preferredGroup.Group == 0 && (preferredGroup.Mask & 4UL) != 0 ? 4UL : preferredGroup.Mask & (~preferredGroup.Mask + 1UL));
+            SamplingGroupBox.ItemsSource = groups;
+            SamplingGroupBox.Visibility = groups.Length > 1 ? Visibility.Visible : Visibility.Collapsed;
+            SamplingGroupBox.SelectedItem = preferredGroup;
+            Raise(nameof(CanChooseSamplingCpu));
+        }
+        catch (Exception ex)
+        {
+            if (!_loaded) return;
+            _samplingTopology = null;
+            _samplingSelection = null;
+            _samplingCpuStatus = "处理器拓扑读取失败。";
+            Raise(nameof(SamplingCpuStatus));
+            Raise(nameof(CanStartScan));
+            Raise(nameof(CanChooseSamplingCpu));
+            Log.Warn("钟摆计划读取处理器拓扑失败：" + ex.Message);
+        }
+    }
+
+    private void SamplingGroup_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_samplingTopology is not { } topology || SamplingGroupBox?.SelectedItem is not ProcmanGroupMask group) return;
+        CpuSelectionPanel.Build(SamplingCpuPanel, _samplingToggles, new ProcmanTopologyResult
+        {
+            Groups = [group],
+            Processors = topology.Processors.Where(cpu => cpu.Group == group.Group).ToList(),
+            ProcessorName = topology.ProcessorName,
+        }, showDetectionNote: false, hint: "可勾选同一组内的多个逻辑 CPU。初测与复测使用相同的选择。");
+        CpuSelectionPanel.Select(_samplingToggles, $"g{group.Group}:0x{_samplingMasks.GetValueOrDefault(group.Group):X}");
+        foreach (var toggle in _samplingToggles)
+        {
+            toggle.Checked += SamplingCpu_Changed;
+            toggle.Unchecked += SamplingCpu_Changed;
+        }
+        RefreshSamplingSelection(group.Group);
+    }
+
+    private void SamplingCpu_Changed(object sender, RoutedEventArgs e)
+    {
+        if (SamplingGroupBox.SelectedItem is ProcmanGroupMask group) RefreshSamplingSelection(group.Group);
+    }
+
+    private void RefreshSamplingSelection(ushort group)
+    {
+        var mask = _samplingToggles.Where(toggle => toggle.IsChecked == true)
+            .Aggregate(0UL, (bits, toggle) => bits | ((ProcmanGroupMask)toggle.Tag).Mask);
+        _samplingMasks[group] = mask;
+        _samplingSelection = mask != 0 ? new ClockSamplingMask(group, mask) : null;
+        _samplingCpuStatus = _samplingSelection is { } selected ? $"采样处理器 · {selected.Display}" : "请至少勾选一个逻辑 CPU。";
+        Raise(nameof(SamplingCpuStatus));
+        Raise(nameof(CanStartScan));
+    }
+
+    private async Task ScanAsync(bool quick, bool compatibilityOnly = false, bool basicDpc = false, bool burst = false)
+    {
+        if (!CanScan || (burst && !CanStartScan)) return;
+        var samplingCpu = burst ? _samplingSelection : null;
         _applying = true; _scanCancellation = new(); RaiseAll();
         try
         {
-            if ((Experimental || !compatibilityOnly && !basicDpc) && await new ContentDialog { XamlRoot = XamlRoot, Title = Experimental ? "临时运行自备 DPC？有蓝屏风险" : "开始比较计时设置？",
+            if ((Experimental || !compatibilityOnly && !basicDpc) && await new ContentDialog { XamlRoot = XamlRoot, Title = Experimental ? "临时运行自备 DPC？有蓝屏风险" : burst ? "开始全范围扫描？" : "开始比较计时设置？",
                 Content = compatibilityOnly || basicDpc
                     ? "将临时运行原版DPC并核对1ms，结束后正常关闭；不测量Sleep或施加CPU负载。" + (compatibilityOnly ? "本次只检测，不保存。" : "通过后保存基础1ms方式。")
-                    : (Experimental ? "将临时运行自备 DPC，反作弊兼容性未经验证。" : "") + "请关闭帧格并退出游戏。测量会施加 CPU 负载，比较独立进程的唤醒表现；结束后释放，仅生成报告。",
+                    : (Experimental ? "将临时运行自备 DPC，反作弊兼容性未经验证。" : "") + "请关闭帧格并退出游戏。"
+                        + (burst ? $"将在 {samplingCpu?.Display} 上测量 51 档。前置检测会临时忽略可核验进程小于 0.5500 ms 的请求，结束后恢复。领先档位各复测两次，预计约 3～5 分钟。"
+                            : "测量会施加 CPU 负载，比较独立进程的唤醒表现；结束后释放，仅生成报告。"),
                 PrimaryButtonText = "开始检测", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close }.ShowAsync() != ContentDialogResult.Primary) return;
+            if (samplingCpu is not null) AppSettingsStore.UpdateRequired(s => s.OptimalClockSamplingMask = samplingCpu);
             var mode = AppSettingsStore.Read().OptimalClockPreferredScanMode;
-            _operationText = !compatibilityOnly && !basicDpc ? (quick ? "正在比较不同设置，筛选值得复测的值…" : "正在比较现有方案和其他设置，并轮流复测。此步骤不会保存新值…") : "正在检测，请稍候…"; RaiseAll();
+            _operationText = burst ? "正在逐档测量独立进程的 Sleep(1)…"
+                : !compatibilityOnly && !basicDpc ? (quick ? "正在比较不同设置，筛选值得复测的值…" : "正在比较现有方案和其他设置，并轮流复测。此步骤不会保存新值…") : "正在检测，请稍候…"; RaiseAll();
             var result = compatibilityOnly
                 ? await Backend.ProbeClockCompatibilityAsync(_scanCancellation.Token)
                 : basicDpc ? await Backend.ScanClockAsync(false, mode, _scanCancellation.Token)
+                : burst && samplingCpu is not null ? await RunFullRangeScanAsync(samplingCpu, _scanCancellation)
                 : await Backend.CompareWakeAsync(quick, _scanCancellation.Token);
             _operationText = result.Message;
         }
         catch (Exception ex) { _operationText = "钟摆计划扫描未完成：" + ex.Message; Log.Warn(_operationText); }
         finally { _scanCancellation?.Dispose(); _scanCancellation = null; _applying = false; await RefreshAsync(); RaiseAll(); }
     }
+    private Task<OperationResult> RunFullRangeScanAsync(ClockSamplingMask cpu, CancellationTokenSource scan)
+        => Backend.ScanClockFullRangeAsync(cpu, scan.Token, new Progress<string>(message =>
+        {
+            if (!ReferenceEquals(_scanCancellation, scan) || scan.IsCancellationRequested) return;
+            _operationText = message;
+            Raise(nameof(OperationText));
+        }));
+
     private void Logs_Click(object sender, RoutedEventArgs e) => Log.OpenFolderInExplorer();
     private void Frame_Click(object sender, RoutedEventArgs e) => App.MainWindow?.NavigateByTag("frame");
 }

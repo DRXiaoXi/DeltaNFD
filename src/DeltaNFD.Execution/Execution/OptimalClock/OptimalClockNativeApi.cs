@@ -70,20 +70,23 @@ internal sealed partial class NativeOptimalClockMeasurementApi(string executable
 
     public IOptimalClockLoad? StartLoad(int threads) => StartLoad(threads, Stopwatch.StartNew());
 
-    private IOptimalClockLoad? StartLoad(int threads, Stopwatch totalLifetime)
+    public IOptimalClockLoad? StartBurstLoad() => StartLoad(2, Stopwatch.StartNew(), burst: true);
+
+    private IOptimalClockLoad? StartLoad(int threads, Stopwatch totalLifetime, bool burst = false)
     {
         // 续期也有总上限；超时失败，单个子进程仍保持120秒硬上限。
         if (threads <= 0 || totalLifetime.Elapsed.TotalMinutes >= 10) return null;
         var lifetime = Stopwatch.StartNew();
+        var threadCount = threads.ToString(CultureInfo.InvariantCulture);
         var child = StartChild(OptimalClockProbeHost.LoadArgument,
-            threads.ToString(CultureInfo.InvariantCulture), "120");
+            burst ? [threadCount, "120", "burst"] : [threadCount, "120"]);
         var transferred = false;
         try
         {
             var line = ReadLine(child, "LOAD:");
             if (line is null) return null;
             var actual = (int)ParseUInt(line.Split(':').ElementAtOrDefault(1) ?? "0");
-            var load = new NativeLoad(child, actual > 0 ? actual : threads, () => StartLoad(threads, totalLifetime), () => lifetime.Elapsed.TotalSeconds, Kill);
+            var load = new NativeLoad(child, actual > 0 ? actual : threads, () => StartLoad(threads, totalLifetime, burst), () => lifetime.Elapsed.TotalSeconds, Kill);
             transferred = true;
             return load;
         }
@@ -209,12 +212,12 @@ internal sealed partial class NativeOptimalClockMeasurementApi(string executable
         if (!child.HasExited) throw new InvalidOperationException("无法确认子进程退出");
     }
 
-    private string? ReadLine(IOptimalClockChildProcess child, string prefix)
+    private string? ReadLine(IOptimalClockChildProcess child, string prefix, CancellationToken token = default)
     {
         try
         {
             var readStartedUtc = DateTimeOffset.UtcNow;
-            var line = child.ReadReadyLine();
+            var line = child.ReadReadyLine(token);
             PendulumDiagnosticLog.Emit(diagnostics, "probe-child-output", new { child.Pid, prefix, readStartedUtc, line });
             return line is not null && line.StartsWith(prefix, StringComparison.Ordinal) ? line : null;
         }
@@ -240,6 +243,7 @@ internal interface IOptimalClockChildProcess : IDisposable
     bool WaitForExit(int milliseconds);
     void Kill();
     string? ReadReadyLine();
+    string? ReadReadyLine(CancellationToken token) { token.ThrowIfCancellationRequested(); return ReadReadyLine(); }
 }
 
 internal sealed class OptimalClockChildProcess(Process child) : IOptimalClockChildProcess
@@ -249,8 +253,9 @@ internal sealed class OptimalClockChildProcess(Process child) : IOptimalClockChi
     public void CloseInput() => child.StandardInput.Close();
     public bool WaitForExit(int milliseconds) => child.WaitForExit(milliseconds);
     public void Kill() => child.Kill(entireProcessTree: true);
-    public string? ReadReadyLine() => child.StandardOutput.ReadLineAsync()
-        .WaitAsync(TimeSpan.FromSeconds(30)).GetAwaiter().GetResult();
+    public string? ReadReadyLine() => ReadReadyLine(default);
+    public string? ReadReadyLine(CancellationToken token) => child.StandardOutput.ReadLineAsync(token).AsTask()
+        .WaitAsync(TimeSpan.FromSeconds(30), token).GetAwaiter().GetResult();
     public void Dispose() => child.Dispose();
     internal static IOptimalClockChildProcess Start(ProcessStartInfo info)
     {

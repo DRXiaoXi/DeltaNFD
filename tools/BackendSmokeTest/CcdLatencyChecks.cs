@@ -148,6 +148,25 @@ internal static class CcdLatencyChecks
                 try
                 {
                     var childTid = int.Parse(child.StandardOutput.ReadLine()!);
+                    var childIdentity = ProcmanIdentity.TryIdentify(child.Id)!;
+                    var childOriginal = (ulong)child.ProcessorAffinity;
+                    Check((childOriginal & mask) == mask, "owned child can use the selected processor");
+                    using (var manual = gate.Enter(childIdentity, "affinity")) manual.SetOwner("manual");
+                    Check(!CpuTopologyService.ApplyHardAffinity(child, mask)
+                        && !CpuTopologyService.EnsureDualCcdGameAffinity(child, mask).Ok,
+                        "a denied legacy write returns without throwing; verified CCD reports it as unconfirmed");
+                    child.Refresh();
+                    Check((ulong)child.ProcessorAffinity == childOriginal, "CCD respects a manual affinity owner");
+                    using (var manual = gate.Enter(childIdentity, "affinity")) manual.SetOwner(null);
+                    Check(CpuTopologyService.EnsureDualCcdGameAffinity(child, mask) is { Ok: true, Value: var actualMask }
+                        && actualMask == $"g0:0x{mask:X}", "CCD writes and verifies the real child process affinity");
+                    child.Refresh();
+                    Check((ulong)child.ProcessorAffinity == mask, "independent child affinity readback matches");
+                    child.ProcessorAffinity = (nint)childOriginal;
+                    Check(CpuTopologyService.EnsureDualCcdGameAffinity(child, mask).Ok
+                        && ProcmanCapabilities.ReadAffinity(child.Id).Value == $"g0:0x{mask:X}",
+                        "CCD maintenance repairs a changed mask and verifies it");
+                    child.ProcessorAffinity = (nint)childOriginal;
                     using (var own = CpuSets.WriteSession.TryOpen(self.Id)!)
                         Check(!own.SetThread(childTid, mask), "foreign process TID cannot use another identity's lease");
                     using var childWriter = CpuSets.WriteSession.TryOpen(child.Id)!;

@@ -574,6 +574,21 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
                 || command == BackendCommands.GpuReconcile && argsElement.TryGetProperty("scope", out var displayScope) && displayScope.GetString() == "nv-display-container")
                 && _nvDisplayContainerVersion != NvDisplayContainerChange.ProtocolVersion)
                 return BackendResult.Failed("backend.nv-display-container-unsupported", "旧显卡后端不支持显示容器开关，未操作。请使用完整新版程序目录。");
+            if ((command is BackendCommands.SystemNvDisplayContainerStatus or BackendCommands.SystemNvDisplayContainerChange
+                or BackendCommands.SystemNvDisplayContainerRecover
+                || command == BackendCommands.SystemNvDisplayContainerReconcile
+                    && argsElement.TryGetProperty("module", out var reviewModule) && reviewModule.GetString() != BackendModules.Gpu)
+                && _nvDisplayContainerVersion is not (NvDisplayContainerChange.FileBackupProtocolVersion or NvDisplayContainerChange.TelemetryProtocolVersion
+                    or NvDisplayContainerChange.LocalSystemProtocolVersion))
+                return BackendResult.Failed("backend.nv-display-container-unsupported", "旧系统维护后端不支持显示容器文件备份与恢复，未操作。请使用完整新版程序目录。");
+            if ((command is BackendCommands.SystemNvTelemetryStatus or BackendCommands.SystemNvTelemetryChange
+                or BackendCommands.SystemNvTelemetryReconcile or BackendCommands.SystemNvTelemetryRecover)
+                && _nvDisplayContainerVersion is not (NvDisplayContainerChange.TelemetryProtocolVersion or NvDisplayContainerChange.LocalSystemProtocolVersion))
+                return BackendResult.Failed("backend.nv-telemetry-unsupported", "当前系统维护后端不支持 NVIDIA 遥测服务开关。请使用完整新版程序目录。");
+            if ((command is BackendCommands.SystemNvLocalSystemStatus or BackendCommands.SystemNvLocalSystemChange
+                or BackendCommands.SystemNvLocalSystemReconcile or BackendCommands.SystemNvLocalSystemRecover)
+                && _nvDisplayContainerVersion != NvDisplayContainerChange.LocalSystemProtocolVersion)
+                return BackendResult.Failed("backend.nv-local-system-unsupported", "当前后端不支持 NVIDIA 共用容器开关。请使用完整新版程序目录。");
             if (!SupportsNvSettingsSave(command, _nvSettingsSaveVersion))
                 return BackendResult.Failed("backend.nv-settings-unsupported", "当前后端不支持此版本的 NVIDIA 设置保存，未发送操作。请使用完整新版程序目录。");
             var invoke = new BackendInvoke(command, argsElement);
@@ -622,7 +637,9 @@ internal sealed class BackendClient : IAsyncDisposable, IPageBackendProcess
 
                 if (mutating && !pending.ReaderFailed)
                 {
-                    var detail = command == BackendCommands.GpuNvDisplayContainerChange && result.RequiresReview
+                    var detail = (command is BackendCommands.GpuDriverApply or BackendCommands.GpuDriverRestore or BackendCommands.GpuDriverProfileReset
+                        or BackendCommands.GpuNvDisplayContainerChange or BackendCommands.SystemNvDisplayContainerChange
+                        or BackendCommands.SystemNvTelemetryChange or BackendCommands.SystemNvLocalSystemChange) && result.RequiresReview
                         ? BugFeedbackService.Redact(result.Message) : null;
                     BackendUnconfirmedStore.ResolveIntent(_spec.Id, requestId, result.Status, result.PendingRestore,
                         result.Items.Select(i => $"{i.Id}:{i.Status}").ToArray(), result.RequiresReview, detail);

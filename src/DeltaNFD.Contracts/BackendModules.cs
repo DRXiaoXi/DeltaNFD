@@ -34,6 +34,8 @@ public static class BackendCommands
     public const string SystemPendulumDriverPrepare = "system.pendulum.driver.prepare";
     public const string SystemClockEnvironmentRead = "system.clock-environment.read";
     public const string SystemClockEnvironmentChange = "system.clock-environment.change";
+    public const string SystemDisplayInterruptList = "system.display-interrupt.list";
+    public const string SystemDisplayInterruptChange = "system.display-interrupt.change";
     public const string SystemTimerRecover = "system.timer.recover";
     public const string SystemLowMemoryApply = "system.low-memory.apply";
     public const string SystemStartupList = "system.startup.list";
@@ -140,6 +142,14 @@ public static class BackendCommands
     public const string ProcmanClockRelease = "procman.clock.release";
     public const string ProcmanClockCompare = "procman.clock.compare.v1";
     public const string ProcmanClockScan = "procman.clock.scan";
+    public const string ProcmanClockBurstScan = "procman.clock.burst-scan.v1";
+    public const string ProcmanClockFullRangeScan = "procman.clock.burst-scan.v2";
+    public const string ProcmanClockFastFullRangeScan = "procman.clock.burst-scan.v3";
+    public const string ProcmanClockCpu0FullRangeScan = "procman.clock.burst-scan.v4";
+    public const string ProcmanClockCpu2FullRangeScan = "procman.clock.burst-scan.v5";
+    public const string ProcmanClockManagedScan = "procman.clock.burst-scan.v6";
+    public const string ProcmanClockManagedMaskScan = "procman.clock.burst-scan.v7";
+    public const string ProcmanTimerRequestSurvey = "procman.clock.requests.v1";
     public const string ProcmanClockValue = "procman.clock.value";
     public const string ProcmanClockDpcConfigure = "procman.clock.dpc.configure";
 
@@ -177,6 +187,17 @@ public static class BackendCommands
     public const string SystemPagefileRestoreOriginal = "system.pagefile.restore-original";
     public const string SystemReconcile = "system.reconcile";
     public const string SystemNvDisplayContainerReconcile = "system.nv-display-container.reconcile";
+    public const string SystemNvDisplayContainerStatus = "system.nv-display-container.status";
+    public const string SystemNvDisplayContainerChange = "system.nv-display-container.change";
+    public const string SystemNvDisplayContainerRecover = "system.nv-display-container.recover";
+    public const string SystemNvTelemetryStatus = "system.nv-telemetry-container.status";
+    public const string SystemNvTelemetryChange = "system.nv-telemetry-container.change";
+    public const string SystemNvTelemetryReconcile = "system.nv-telemetry-container.reconcile";
+    public const string SystemNvTelemetryRecover = "system.nv-telemetry-container.recover";
+    public const string SystemNvLocalSystemStatus = "system.nv-local-system-container.status";
+    public const string SystemNvLocalSystemChange = "system.nv-local-system-container.change";
+    public const string SystemNvLocalSystemReconcile = "system.nv-local-system-container.reconcile";
+    public const string SystemNvLocalSystemRecover = "system.nv-local-system-container.recover";
     public const string SystemRecover = "system.recover";
 
     // ---- 系统维护：扩展优化库 / Defender / 内存 / 一键优化（T3）----
@@ -374,6 +395,14 @@ public static class BackendModules
                     [BackendCommands.ProcmanClockDpcConfigure] = TwoMinutes,
                     [BackendCommands.ProcmanClockCompare] = FifteenMinutes,
                     [BackendCommands.ProcmanClockScan] = FifteenMinutes,
+                    [BackendCommands.ProcmanClockBurstScan] = TimeSpan.FromMinutes(35),
+                    [BackendCommands.ProcmanClockFullRangeScan] = TimeSpan.FromMinutes(45),
+                    [BackendCommands.ProcmanClockFastFullRangeScan] = TimeSpan.FromMinutes(20),
+                    [BackendCommands.ProcmanClockCpu0FullRangeScan] = TimeSpan.FromMinutes(20),
+                    [BackendCommands.ProcmanClockCpu2FullRangeScan] = TimeSpan.FromMinutes(20),
+                    [BackendCommands.ProcmanClockManagedScan] = FifteenMinutes,
+                    [BackendCommands.ProcmanClockManagedMaskScan] = FifteenMinutes,
+                    [BackendCommands.ProcmanTimerRequestSurvey] = TimeSpan.FromSeconds(30),
                     [BackendCommands.ProcmanClockValue] = TwoMinutes,
                 }, TwoMinutes),
 
@@ -410,6 +439,8 @@ public static class BackendModules
                     [BackendCommands.SystemGameRecordingChange] = FiveMinutes,
                     [BackendCommands.SystemClockEnvironmentRead] = TwoMinutes,
                     [BackendCommands.SystemClockEnvironmentChange] = TwoMinutes,
+                    [BackendCommands.SystemDisplayInterruptList] = TwoMinutes,
+                    [BackendCommands.SystemDisplayInterruptChange] = TwoMinutes,
                     [BackendCommands.SystemTimerRecover] = FiveMinutes,
                     [BackendCommands.SystemLowMemoryApply] = FiveMinutes,
                     [BackendCommands.SystemStartupList] = TwoMinutes,
@@ -423,6 +454,17 @@ public static class BackendModules
                     [BackendCommands.SystemPagefileRestoreOriginal] = FiveMinutes,
                     [BackendCommands.SystemReconcile] = FiveMinutes,
                     [BackendCommands.SystemNvDisplayContainerReconcile] = TimeSpan.FromSeconds(30),
+                    [BackendCommands.SystemNvDisplayContainerStatus] = TimeSpan.FromSeconds(30),
+                    [BackendCommands.SystemNvDisplayContainerChange] = TwoMinutes,
+                    [BackendCommands.SystemNvDisplayContainerRecover] = TwoMinutes,
+                    [BackendCommands.SystemNvTelemetryStatus] = TimeSpan.FromSeconds(30),
+                    [BackendCommands.SystemNvTelemetryChange] = TwoMinutes,
+                    [BackendCommands.SystemNvTelemetryReconcile] = TimeSpan.FromSeconds(30),
+                    [BackendCommands.SystemNvTelemetryRecover] = TwoMinutes,
+                    [BackendCommands.SystemNvLocalSystemStatus] = TimeSpan.FromSeconds(30),
+                    [BackendCommands.SystemNvLocalSystemChange] = TwoMinutes,
+                    [BackendCommands.SystemNvLocalSystemReconcile] = TimeSpan.FromSeconds(30),
+                    [BackendCommands.SystemNvLocalSystemRecover] = TwoMinutes,
                     [BackendCommands.SystemRecover] = FifteenMinutes,
 
                     [BackendCommands.SystemBxStatus] = FiveMinutes,
@@ -490,7 +532,7 @@ public static class BackendModules
         BackendCommands.CpuFramePowerIncomplete,
         BackendCommands.ProcmanStatus, BackendCommands.ProcmanList,
         BackendCommands.ProcmanDetail, BackendCommands.ProcmanCapability,
-        BackendCommands.ProcmanCpuTopology, BackendCommands.ProcmanReconcile,
+        BackendCommands.ProcmanCpuTopology, BackendCommands.ProcmanReconcile, BackendCommands.ProcmanTimerRequestSurvey,
         BackendCommands.ProcmanNativeProbe,
         BackendCommands.ProcmanClockCompare, BackendCommands.ProcmanClockScan,
         BackendCommands.ProcmanRulesList,
@@ -503,7 +545,10 @@ public static class BackendModules
         BackendCommands.SystemGameRecordingStatus,
         BackendCommands.SystemStartupList,
         BackendCommands.SystemClockEnvironmentRead,
+        BackendCommands.SystemDisplayInterruptList,
         BackendCommands.SystemPagefileStatus, BackendCommands.SystemReconcile, BackendCommands.SystemNvDisplayContainerReconcile,
+        BackendCommands.SystemNvDisplayContainerStatus, BackendCommands.SystemNvTelemetryStatus, BackendCommands.SystemNvTelemetryReconcile,
+        BackendCommands.SystemNvLocalSystemStatus, BackendCommands.SystemNvLocalSystemReconcile,
         // T3：扩展优化库/Defender/内存的只读命令
         BackendCommands.SystemBxStatus, BackendCommands.SystemBxGearInfo,
         BackendCommands.SystemBxServiceGroupResolve, BackendCommands.SystemBxServiceGroupStatus,
@@ -530,6 +575,7 @@ public static class BackendModules
         BackendCommands.GpuRecover, BackendCommands.RuntimeRecover, BackendCommands.SystemRecover,
         BackendCommands.CpuFrameRecover, BackendCommands.ProcmanRecover,
         BackendCommands.SystemDefenderPostApply,
+        BackendCommands.SystemNvDisplayContainerRecover, BackendCommands.SystemNvTelemetryRecover, BackendCommands.SystemNvLocalSystemRecover,
     };
 
     /// <summary>true = 发送前必须落盘写前执行意图。</summary>
@@ -542,7 +588,9 @@ public static class BackendModules
         or BackendCommands.SystemPowerIntelPcores or BackendCommands.SystemTimerRecover or BackendCommands.SystemPendulumGlobalConfigure
         or BackendCommands.SystemGameRecordingChange or BackendCommands.SystemLowMemoryApply or BackendCommands.SystemPendulumDriverPrepare
         or BackendCommands.SystemStartupChange or BackendCommands.SystemStartupRestoreAll
-        or BackendCommands.SystemClockEnvironmentChange;
+        or BackendCommands.SystemClockEnvironmentChange or BackendCommands.SystemNvDisplayContainerChange
+        or BackendCommands.SystemDisplayInterruptChange
+        or BackendCommands.SystemNvTelemetryChange or BackendCommands.SystemNvLocalSystemChange;
 
     /// <summary>公开只读集合（只读命令的负向校验用）。</summary>
     public static IReadOnlySet<string> ReadOnly => ReadOnlyCommands;

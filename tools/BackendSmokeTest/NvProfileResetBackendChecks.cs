@@ -22,7 +22,10 @@ internal static class NvProfileResetBackendChecks
             mapped = BackendNvProfileService.MapProfileResetResult(result);
             Check(!mapped.Success && mapped.OutcomeUnknown, "review or unknown flags never become success");
         }
-        Check(!BackendNvProfileService.MapProfileResetResult(ok with { Data = null }).Success, "missing receipt cannot verify reset");
+        mapped = BackendNvProfileService.MapProfileResetResult(ok with { Data = null });
+        Check(!mapped.Success && mapped.OutcomeUnknown, "missing receipt cannot verify reset");
+        mapped = BackendNvProfileService.MapProfileResetResult(BackendResult.Failed("backend.disconnected", "lost response"));
+        Check(!mapped.Success && mapped.OutcomeUnknown, "disconnection during reset still requires review");
         mapped = BackendNvProfileService.MapProfileResetResult(ok with { Data = null, RequiresReview = true });
         Check(!mapped.Success && mapped.OutcomeUnknown, "missing receipt retains review requirement");
         var snapshot = new ReconcileSnapshot { Module = BackendModules.Gpu, Complete = true, Summary = "fixture",
@@ -31,6 +34,7 @@ internal static class NvProfileResetBackendChecks
             { Command = command, CanRestore = true };
         Check(BackendRecovery.RecoveryChoices(review, snapshot).Count == 0,
             "profile reset cannot be cleared by unrelated display-name backup recovery");
+        Check(BackendRecovery.NvSettingsReviewScope(review) == "driver-settings", "profile reset reviews the game driver profile");
         Check(BackendRecovery.RecoveryChoices(review with { Command = BackendCommands.GpuSpoofApply }, snapshot).Count == 1,
             "existing display-name recovery remains available for its own records");
         Check(BackendModules.RequiresWriteIntent(BackendModules.Gpu, command), "reset is protected by durable write intent");

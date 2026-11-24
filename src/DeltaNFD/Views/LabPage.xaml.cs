@@ -14,15 +14,18 @@ public sealed partial class LabPage : Page
     public LabPage()
     {
         InitializeComponent();
+        _gameRuleReadbackTimer.Tick += (_, _) => RefreshGameRuleAffinityReadback();
         Loaded += (_, _) =>
         {
             _detachedFromWindow = false;
             ViewModel.AttachGameState();
+            _gameRuleReadbackTimer.Start();
             _ = InitializeGameRulesAsync();
         };
         Unloaded += (_, _) =>
         {
             _detachedFromWindow = true;
+            _gameRuleReadbackTimer.Stop();
             ViewModel.DetachGameState();
         };
     }

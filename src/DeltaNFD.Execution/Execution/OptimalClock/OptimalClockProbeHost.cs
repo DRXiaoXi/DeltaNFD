@@ -29,6 +29,7 @@ public static class OptimalClockProbeHost
         if (args.Length == 0) return false;
         try
         {
+            if (args[0] is ClockBurstProbe.Argument or ClockBurstProbe.FullRangeArgument or ClockBurstProbe.ScreeningArgument) { exitCode = ClockBurstProbe.Run(args); return true; }
             if (args[0] == WakeDeadlineProbe.Argument) { exitCode = WakeDeadlineProbe.Run(args); return true; }
             if (args[0] == HoldArgument && args.Length == 2 && uint.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var holdResolution))
             {
@@ -45,7 +46,7 @@ public static class OptimalClockProbeHost
                 && int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var loadThreads))
             {
                 var maxSeconds = args.Length >= 3 && int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var loadSeconds) ? loadSeconds : 120;
-                exitCode = Load(loadThreads, maxSeconds);
+                exitCode = Load(loadThreads, maxSeconds, args is [_, _, _, "burst"]);
                 return true;
             }
             if (args[0] == SelfArgument && args.Length >= 3
@@ -108,7 +109,7 @@ public static class OptimalClockProbeHost
     /// CPU 负载：每个线程「自旋 100ms → 让出一次」，与 timer-tuning/stress.ps1 的负载方式一致。
     /// 三层保护：父进程关闭 stdin 即退出、硬上限秒数、后台线程不阻止进程结束。
     /// </summary>
-    private static int Load(int threads, int maxSeconds)
+    private static int Load(int threads, int maxSeconds, bool burst)
     {
         threads = Math.Clamp(threads, 1, 256);
         var deadline = Environment.TickCount64 + Math.Max(5, maxSeconds) * 1000L;
@@ -116,12 +117,13 @@ public static class OptimalClockProbeHost
         {
             var worker = new Thread(() =>
             {
-                var spinTicks = (long)(Stopwatch.Frequency * 0.1);
                 while (Environment.TickCount64 < deadline)
                 {
+                    var workMs = burst ? Random.Shared.Next(30, 160) : 100;
+                    var spinTicks = Stopwatch.Frequency * workMs / 1000;
                     var start = Stopwatch.GetTimestamp();
                     while (Stopwatch.GetTimestamp() - start < spinTicks) { }
-                    Thread.Sleep(0);
+                    Thread.Sleep(burst ? Random.Shared.Next(40, 350) : 0);
                 }
             }, 1_000_000) { IsBackground = true };
             worker.Start();

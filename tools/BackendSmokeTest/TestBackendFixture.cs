@@ -1,4 +1,5 @@
 using DeltaNFD.Backends;
+using DeltaNFD.Services;
 
 namespace BackendSmokeTest;
 
@@ -21,7 +22,7 @@ internal static class TestBackendFixture
 
         var spec = BackendModules.Require(moduleId);
         var gpuFailure = Environment.GetEnvironmentVariable("DELTANFD_TEST_GPU_RECOVERY");
-        if (moduleId == BackendModules.Gpu && gpuFailure == "startup")
+        if (moduleId == BackendModules.Gpu && gpuFailure?.StartsWith("startup", StringComparison.Ordinal) == true)
             return 73;
         var failRestoreOnce = Environment.GetEnvironmentVariable("DELTANFD_TEST_RESTORE_FAIL_ONCE") == "1";
         _ = int.TryParse(Environment.GetEnvironmentVariable("DELTANFD_TEST_RESTORE_DELAY_MS"), out var restoreDelay);
@@ -44,16 +45,51 @@ internal static class TestBackendFixture
                 if (moduleId == BackendModules.Gpu && gpuFailure == "request"
                     && context.Command is BackendCommands.GpuNvDisplayContainerChange or BackendCommands.GpuDriverRead)
                     Environment.Exit(73);
-                if (context.Command == BackendCommands.SystemNvDisplayContainerReconcile && gpuFailure is not null)
+                if (context.Command is BackendCommands.SystemNvDisplayContainerChange or BackendCommands.SystemNvTelemetryChange or BackendCommands.SystemNvLocalSystemChange
+                    && gpuFailure == "system-request")
+                    Environment.Exit(73);
+                if (context.Command is BackendCommands.SystemNvDisplayContainerReconcile or BackendCommands.SystemNvTelemetryReconcile or BackendCommands.SystemNvLocalSystemReconcile
+                    && gpuFailure is not null)
                 {
-                    var snapshot = new DeltaNFD.Services.ReconcileSnapshot
+                    var module = context.Command != BackendCommands.SystemNvDisplayContainerReconcile
+                        ? BackendModules.System : context.ArgsAs<NvDisplayContainerReviewArgs>().Module ?? BackendModules.Gpu;
+                    var scope = gpuFailure == "startup-wrong-service" ? NvDisplayContainerChange.RecoveryScope : context.Command switch
                     {
-                        Module = gpuFailure == "wrong-scope" ? BackendModules.System : BackendModules.Gpu,
+                        BackendCommands.SystemNvTelemetryReconcile => NvTelemetryContainer.RecoveryScope,
+                        BackendCommands.SystemNvLocalSystemReconcile => NvLocalSystemContainer.RecoveryScope,
+                        _ => NvDisplayContainerChange.RecoveryScope,
+                    };
+                    var snapshot = new ReconcileSnapshot
+                    {
+                        Module = gpuFailure == "wrong-scope" ? BackendModules.System : module,
                         Summary = gpuFailure == "changed" ? "隔离夹具：显示容器已运行。" : "隔离夹具：显示容器已停止。",
                         Complete = gpuFailure != "incomplete",
-                        Items = [new() { Id = "nv-display-container", Kind = "service", State = "已停止" }],
+                        Items = [new() { Id = scope, Kind = "service", State = "已停止", HasBackup = gpuFailure == "startup-recover" }],
+                        RecoveryScopes = gpuFailure == "startup-recover"
+                            ? [new() { Id = scope, Description = "恢复原设置", Available = true, Fingerprint = new string('A', 64) }] : [],
                     };
                     return BackendResult.Ok(context.Command, snapshot.Summary, snapshot);
+                }
+                if (context.Command is BackendCommands.SystemNvDisplayContainerRecover or BackendCommands.SystemNvTelemetryRecover or BackendCommands.SystemNvLocalSystemRecover
+                    && gpuFailure is not null)
+                {
+                    var args = context.ArgsAs<NvDisplayContainerRecoveryArgs>();
+                    var verified = gpuFailure == "startup-recover" && args.Fingerprint == new string('A', 64);
+                    var scope = context.Command switch
+                    {
+                        BackendCommands.SystemNvTelemetryRecover => NvTelemetryContainer.RecoveryScope,
+                        BackendCommands.SystemNvLocalSystemRecover => NvLocalSystemContainer.RecoveryScope,
+                        _ => NvDisplayContainerChange.RecoveryScope,
+                    };
+                    return BackendResult.Ok(context.Command, "隔离恢复结果", new RecoverOutcome
+                    {
+                        Scope = scope, Success = verified, Verified = verified,
+                        VerifiedSnapshot = !verified ? null : new ReconcileSnapshot
+                        {
+                            Module = args.Module, Summary = "已恢复", Complete = true,
+                            Items = [new() { Id = scope, Kind = "service", State = "原启动设置" }],
+                        },
+                    });
                 }
                 if (context.Command == BackendCommands.CpuFrameRestore && failRestoreOnce)
                 {
@@ -181,7 +217,12 @@ internal static class TestBackendFixture
         return await BackendHost.RunAsync(new BackendHostOptions
         {
             Module = spec,
-            NvDisplayContainerVersion = moduleId == BackendModules.Gpu ? DeltaNFD.Services.NvDisplayContainerChange.ProtocolVersion : 0,
+            NvDisplayContainerVersion = moduleId switch
+            {
+                BackendModules.Gpu => NvDisplayContainerChange.ProtocolVersion,
+                BackendModules.System => NvDisplayContainerChange.LocalSystemProtocolVersion,
+                _ => 0,
+            },
             Handlers = handlers,
             OnStopping = Environment.GetEnvironmentVariable("DELTANFD_TEST_STOP_FAIL") == "1"
                 ? () => Task.FromResult(DeltaNFD.Services.OperationResult.Fail("模拟停止收尾失败")) : null,
